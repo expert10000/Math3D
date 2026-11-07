@@ -5,6 +5,7 @@ import { buildMobileProjectExplorer } from "../models/mobileProjectExplorer";
 import type { MobileProjectNoteInput } from "../models/mobileProjectNotes";
 import type { ProjectResourceSidecar } from "@math3d/core";
 import { MobileVectorField3DViewer } from "./MobileVectorField3DViewer";
+import { speakScientificUnit } from "../models/mobileScientificSpeech";
 
 export const MobileProjectExplorer: React.FC<{ raw: string; resources?: readonly ProjectResourceSidecar[]; onOpenGraph?: (id: string) => void;
   onOpenSurface?: (id: string) => void; onOpenCurve?: (id: string) => void; onRefresh?: (relationId: string) => Promise<boolean>;
@@ -14,6 +15,8 @@ export const MobileProjectExplorer: React.FC<{ raw: string; resources?: readonly
   const [noteId, setNoteId] = useState<string | null>(null);
   const [complexId, setComplexId] = useState<string | null>(null);
   const [vector3dId, setVector3dId] = useState<string | null>(null);
+  const [scientificId, setScientificId] = useState<string | null>(null);
+  const [resultId, setResultId] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState<MobileProjectNoteInput | null>(null);
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteMessage, setNoteMessage] = useState("");
@@ -21,7 +24,7 @@ export const MobileProjectExplorer: React.FC<{ raw: string; resources?: readonly
     try { return { explorer: buildMobileProjectExplorer(raw, resources), error: null }; }
     catch (error) { return { explorer: null, error: (error as Error).message }; }
   }, [raw, resources]);
-  useEffect(() => { setWorkbookId(null); setNoteId(null); setComplexId(null); setVector3dId(null); setNoteDraft(null); }, [state.explorer?.projectId]);
+  useEffect(() => { setWorkbookId(null); setNoteId(null); setComplexId(null); setVector3dId(null); setScientificId(null); setResultId(null); setNoteDraft(null); }, [state.explorer?.projectId]);
   if (!state.explorer) return <Text accessibilityRole="alert" style={styles.note}>{state.error}</Text>;
   const { groups, relations, results, workbooks, notes } = state.explorer;
   const selectedWorkbook = workbooks.find(item => item.id === workbookId);
@@ -86,6 +89,21 @@ export const MobileProjectExplorer: React.FC<{ raw: string; resources?: readonly
       <Pressable accessibilityRole="button" style={styles.secondaryBtn} onPress={() => setNoteDraft(null)}><Text style={styles.secondaryBtnText}>Cancel</Text></Pressable>
     </View>}
     {!!noteMessage && <Text accessibilityRole="alert" style={styles.note}>{noteMessage}</Text>}
+    <Text accessibilityRole="header" style={styles.itemTitle}>Scientific recipes ({state.explorer.scientificContracts.length})</Text>
+    {state.explorer.scientificContracts.map(item => <View key={item.id}>
+      <Pressable testID={`mobile-scientific-contract-${item.id}`} accessibilityRole="button"
+        accessibilityLabel={item.spokenSummary}
+        accessibilityHint={scientificId === item.id ? "Collapse scientific details" : "Expand scientific details"}
+        accessibilityState={{ expanded: scientificId === item.id }}
+        onPress={() => setScientificId(scientificId === item.id ? null : item.id)}
+        focusable style={styles.secondaryBtn}>
+        <Text style={styles.secondaryBtnText}>{item.title} · {item.status}</Text>
+      </Pressable>
+      {scientificId === item.id && <Text accessibilityLiveRegion="polite"
+        testID="mobile-scientific-contract-detail" style={styles.note}>
+        {item.kind} · ID {item.id} · status {item.status} · source {item.sourceId}. {item.detail}
+      </Text>}
+    </View>)}
     <Text accessibilityRole="header" style={styles.itemTitle}>Documents and relations</Text>
     {groups.filter(group => group.documents.length).map(group => <View key={group.module}>
       <Text accessibilityRole="header" style={styles.itemTitle}>{group.title} ({group.documents.length})</Text>
@@ -158,7 +176,28 @@ export const MobileProjectExplorer: React.FC<{ raw: string; resources?: readonly
       </View>)}
     </View>)}
     <Text accessibilityRole="header" style={styles.itemTitle}>Analysis ({results.length})</Text>
-    {results.map(result => <Text key={result.id} style={styles.itemMeta}>{result.operation} · {result.authority} · {result.freshness} · {titles.get(result.sourceDocumentId) ?? "Missing source"} revision {result.sourceRevision}</Text>)}
+    {results.map(result => <View key={result.id}>
+      <Pressable testID={`mobile-scientific-result-${result.id}`}
+        accessibilityRole="button" focusable
+        accessibilityState={{ expanded: resultId === result.id }}
+        accessibilityHint={resultId === result.id ? "Collapse result provenance" : "Expand result provenance"}
+        accessibilityLabel={`${result.operation}. Unit ${speakScientificUnit(result.unit)}. ` +
+          `Source revision ${result.sourceRevision}. ` +
+          (result.freshness === "current" ?
+            "Saved summary only. Scientific values require verification before display." :
+            `Values withheld because ${result.freshness.replaceAll("-", " ")}.`) +
+          " Expand for full source provenance."}
+        style={styles.secondaryBtn} onPress={() => setResultId(resultId === result.id ? null : result.id)}>
+        <Text style={styles.secondaryBtnText}>{result.operation} · {result.freshness}</Text>
+      </Pressable>
+      {resultId === result.id && <Text accessibilityLiveRegion="polite" style={styles.note}>
+        Unit {result.unit}. Source {titles.get(result.sourceDocumentId) ?? "Missing source"},
+        revision {result.sourceRevision}, hash {result.sourceHash}.
+        {result.freshness === "current" ?
+          " Saved summary retained; verify scientific source before viewing values." :
+          ` Values withheld: ${result.freshness}.`}
+      </Text>}
+    </View>)}
     <Text accessibilityRole="header" style={styles.itemTitle}>Source resources ({state.explorer.resources.filter(item => item.available).length}/{state.explorer.resources.length})</Text>
     {state.explorer.resources.map(item => <Text key={`${item.kind}:${item.id}`} style={styles.itemMeta}>{item.kind} · {item.available ? "Verified and retained" : item.required ? "Missing source bytes" : "Optional cache unavailable"}</Text>)}
     <Text style={styles.note}>Import a desktop project package to retain Graph tables, Mesh and Volume source bytes. Package export includes verified retained bytes; missing resources stay missing. Edit an available Graph, Curve or Surface without changing other documents. Saved 3D vector fields have a read-only viewer; analysis artifact bytes may require separate transfer.</Text>

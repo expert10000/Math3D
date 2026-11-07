@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { disposeOrbitControls } from "../utils/disposeOrbitControls";
 import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
 import { marchingCubesVolume } from "../math/marchingCubes";
 
@@ -67,6 +68,7 @@ export type VolumeViewerProps = {
   onSliceHover?: (hover: VolumeSliceHover | null) => void;
   showIsosurface?: boolean;
   isoValue?: number;
+  secondaryIsoValue?: number | null;
   isoSmoothing?: boolean;
   isoSmoothingIterations?: number;
   showCropBox?: boolean;
@@ -462,6 +464,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
   onSliceHover,
   showIsosurface = false,
   isoValue = 0,
+  secondaryIsoValue = null,
   isoSmoothing = false,
   isoSmoothingIterations = 20,
   showCropBox = false,
@@ -503,6 +506,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
   const contourGroupRef = useRef<THREE.Group | null>(null);
   const hoverMarkerRef = useRef<THREE.Mesh | null>(null);
   const isoMeshRef = useRef<THREE.Mesh | null>(null);
+  const secondaryIsoMeshRef = useRef<THREE.Mesh | null>(null);
   const isoMarkerRef = useRef<THREE.Mesh | null>(null);
   const directVolumeMeshRef = useRef<THREE.Mesh | null>(null);
   const directVolumeTextureRef = useRef<THREE.Data3DTexture | null>(null);
@@ -1043,7 +1047,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
       controls.removeEventListener("end", finishInteractiveRender);
       renderer.domElement.removeEventListener("webglcontextlost", handleContextLost);
       renderer.domElement.removeEventListener("webglcontextrestored", handleContextRestored);
-      controls.dispose();
+      disposeOrbitControls(controls);
       renderer.dispose();
       renderer.domElement.remove();
 
@@ -1056,6 +1060,11 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
         scene.remove(isoMeshRef.current);
         disposeMesh(isoMeshRef.current);
         isoMeshRef.current = null;
+      }
+      if (secondaryIsoMeshRef.current) {
+        scene.remove(secondaryIsoMeshRef.current);
+        disposeMesh(secondaryIsoMeshRef.current);
+        secondaryIsoMeshRef.current = null;
       }
       if (directVolumeMeshRef.current) {
         scene.remove(directVolumeMeshRef.current);
@@ -1762,7 +1771,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
 
   useEffect(() => {
     const clippingPlanes = clipToCrop ? getCropClippingPlanes(cropCenter, cropExtents) : [];
-    for (const mesh of [sliceMeshRef.current, isoMeshRef.current, directVolumeMeshRef.current]) {
+    for (const mesh of [sliceMeshRef.current, isoMeshRef.current, secondaryIsoMeshRef.current, directVolumeMeshRef.current]) {
       if (!mesh) continue;
       const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
       for (const material of materials) {
@@ -2032,6 +2041,44 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
       cancelled = true;
     };
   }, [autoFitIsosurfaceOnce, dataset, showIsosurface, isoValue, isoSmoothing, isoSmoothingIterations, renderMode]);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    const clear = () => {
+      if (secondaryIsoMeshRef.current) {
+        scene.remove(secondaryIsoMeshRef.current);
+        disposeMesh(secondaryIsoMeshRef.current);
+        secondaryIsoMeshRef.current = null;
+      }
+    };
+    if (!showIsosurface || renderMode !== "isosurface" || !dataset?.grid ||
+        secondaryIsoValue === null || secondaryIsoValue === isoValue) { clear(); return; }
+    let cancelled = false;
+    void (async () => {
+      const result = await vtkVolumeIsosurface({ dims: dataset.grid!.dims,
+        scalars: dataset.grid!.scalars, iso: secondaryIsoValue,
+        spacing: dataset.grid!.spacing, origin: dataset.grid!.origin });
+      if (cancelled) return;
+      let geometry: THREE.BufferGeometry | null = null;
+      if (result.ok) {
+        geometry = new THREE.BufferGeometry();
+        geometry.setAttribute("position", new THREE.BufferAttribute(result.positions, 3));
+        geometry.setIndex(new THREE.BufferAttribute(result.indices, 1));
+        if (result.normals?.length) geometry.setAttribute("normal", new THREE.BufferAttribute(result.normals, 3));
+        else geometry.computeVertexNormals();
+      } else geometry = buildCpuIsosurface(dataset.grid!, secondaryIsoValue);
+      if (!geometry) { clear(); return; }
+      geometry.computeBoundingBox();
+      const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({
+        color: 0xe9a455, roughness: 0.42, metalness: 0.05, side: THREE.DoubleSide,
+        transparent: true, opacity: 0.64 }));
+      mesh.renderOrder = 2;
+      clear(); scene.add(mesh); secondaryIsoMeshRef.current = mesh;
+      setIsoMeshToken(token => token + 1);
+    })();
+    return () => { cancelled = true; };
+  }, [dataset, isoValue, renderMode, secondaryIsoValue, showIsosurface]);
 
   useEffect(() => {
     const scene = sceneRef.current;

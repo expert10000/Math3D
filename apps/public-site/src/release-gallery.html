@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Math3D source-build screenshots with capture origin and available commit provenance." />
+    <title>Math3D | Source-build gallery</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./release-gallery.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container top-nav">
+        <a class="brand" href="./index.html">Math3D Lab</a>
+        <nav class="nav-links" aria-label="Site navigation">
+          <a href="./index.html">Home</a>
+          <a href="./release-gallery.html" aria-current="page">Gallery</a>
+          <a href="./capabilities.html">Capabilities</a>
+          <a href="https://expert10000.github.io/Math3D/app/">Web app</a>
+          <a href="https://github.com/expert10000/Math3D/releases">Download</a>
+        </nav>
+      </div>
+    </header>
+    <main class="container release-gallery">
+      <section class="release-gallery-intro">
+        <p class="eyebrow">Source-build visuals</p>
+        <h1>Math3D in use</h1>
+        <p class="lead">Captures from the public browser app and desktop source builds. Open any image for its original resolution, including full-height analysis panels.</p>
+        <p class="release-gallery-note">The browser app runs on GitHub Pages. Field Explorer, module analysis, and quantum images use desktop builds. A source commit is shown where recorded; otherwise the build is unpinned. These images have not been qualified as captures of a signed 2.0 installer.</p>
+      </section>
+      <section aria-label="Screenshot collection">
+        <div class="release-gallery-controls">
+          <div class="release-gallery-filters" role="group" aria-label="Filter screenshots">
+            <button type="button" data-filter="all" aria-pressed="true">All</button>
+            <button type="button" data-filter="Features" aria-pressed="false">Features</button>
+            <button type="button" data-filter="Graphs" aria-pressed="false">Graphs</button>
+            <button type="button" data-filter="Field Explorer" aria-pressed="false">Field Explorer</button>
+            <button type="button" data-filter="Quantum" aria-pressed="false">Quantum</button>
+            <button type="button" data-filter="Analysis" aria-pressed="false">Analysis</button>
+          </div>
+          <label class="release-gallery-search">Search screenshots
+            <input type="search" id="release-gallery-search" placeholder="Scene, module, or view" autocomplete="off" />
+          </label>
+        </div>
+        <p id="release-gallery-status" role="status">Loading screenshots…</p>
+        <div id="release-gallery-grid" class="release-gallery-grid"></div>
+        <button id="release-gallery-more" class="btn btn-ghost release-gallery-more" type="button" hidden>Show more</button>
+      </section>
+    </main>
+    <footer class="site-footer"><div class="container footer-inner"><p>Math3D · Source-build gallery</p><a href="https://github.com/expert10000/Math3D">Source on GitHub</a></div></footer>
+    <script src="./release-gallery.js" defer></script>
+  </body>
+</html>

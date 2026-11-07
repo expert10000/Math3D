@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { ALGEBRA_OPERATION_REGISTRY, algebraOperationsFor, startAlgebraRecipeRun, structuralHash,
+import { ALGEBRA_OPERATION_REGISTRY, GCD_SWEEP_GLOBAL_BUDGET_MS, MAX_GCD_SWEEP_RUNS,
+  algebraOperationsFor, createGcdParameterSweepRecipe, isGcdParameterSweepRecipe,
+  startAlgebraRecipeRun, structuralHash,
   type AlgebraObjectRef, type AlgebraRecipeGraph, type AlgebraRecipeRunProgress,
   type Math3DProject, type ProjectAlgebraEvidence } from "@math3d/core";
 import { sageExecutionRegistry } from "../../services/sageOperationExecution";
@@ -8,17 +10,19 @@ import { createSageRecipeStarter } from "./sageRecipeStarter";
 type Props = { project: Math3DProject | null; target: AlgebraObjectRef | null;
   onSaveRecipe: (recipe: AlgebraRecipeGraph) => void | Promise<void>;
   onAppendEvidence: (base: Math3DProject, evidence: ProjectAlgebraEvidence) => Math3DProject | Promise<Math3DProject>;
-  onInspectEvidence: (id: string) => void };
+  onInspectEvidence: (id: string) => void;
+  requestedRecipe?: Readonly<{ id: string | null; token: number }> | null };
 const operationLabel = (id: string) => ALGEBRA_OPERATION_REGISTRY.find((item) => item.id === id)?.label ?? id;
 
 export default function SageRecipes({ project, target, onSaveRecipe, onAppendEvidence,
-  onInspectEvidence }: Props) {
+  onInspectEvidence, requestedRecipe }: Props) {
   const [recipeId, setRecipeId] = useState<string | null>(null);
   const [progress, setProgress] = useState<AlgebraRecipeRunProgress | null>(null);
   const [message, setMessage] = useState("");
   const [routes, setRoutes] = useState<readonly { backend: "docker" | "private"; available: boolean;
     operations: readonly string[]; reason?: string }[]>([]);
   const [checking, setChecking] = useState(false);
+  const [sweepRows, setSweepRows] = useState("84,30\n35,15\n17,13");
   const active = useRef<{ cancel: () => void } | null>(null);
   const generation = useRef(0);
   const refresh = async () => {
@@ -36,6 +40,8 @@ export default function SageRecipes({ project, target, onSaveRecipe, onAppendEvi
   useEffect(() => { generation.current += 1; active.current?.cancel(); active.current = null;
     setRecipeId(null); setProgress(null); setMessage("");
   }, [project?.identity.id, target?.objectId, target?.revision]);
+  useEffect(() => { if (requestedRecipe) { setRecipeId(requestedRecipe.id); setProgress(null); setMessage(""); }
+  }, [requestedRecipe?.token]);
   if (!project || !target) return <section data-testid="cas-recipes" role="status" style={{ fontSize: 12 }}>
     Select a saved structure to create or run a recipe.</section>;
   const recipes = (project.algebraRecipes ?? []).filter((item) => item.stages.some((stage) =>
@@ -60,6 +66,19 @@ export default function SageRecipes({ project, target, onSaveRecipe, onAppendEvi
       setMessage(`Saved ${recipe.title} in Project.`);
     } catch (error) { setMessage(String((error as Error).message ?? error)); }
   };
+  const createSweep = async () => {
+    setMessage("");
+    try {
+      const rows = sweepRows.trim().split(/\r?\n/);
+      if (rows.length > MAX_GCD_SWEEP_RUNS) throw new TypeError(`At most ${MAX_GCD_SWEEP_RUNS} sweep rows are allowed.`);
+      const pairs = rows.map((row) => row.split(",").map((value) => value.trim()) as [string, string]);
+      const backend = routes.find((route) => route.available && route.operations.includes("sage.numberTheory.gcd"))?.backend ?? "docker";
+      const recipe = createGcdParameterSweepRecipe(project, target, pairs, backend);
+      await onSaveRecipe(recipe);
+      setRecipeId(recipe.id);
+      setMessage(`Saved ${recipe.title} in Project. Run it explicitly when the Sage route is ready.`);
+    } catch (error) { setMessage(String((error as Error).message ?? error)); }
+  };
   const run = async () => {
     if (!selected || unavailable || active.current) return;
     setMessage(""); setProgress(null);
@@ -71,7 +90,8 @@ export default function SageRecipes({ project, target, onSaveRecipe, onAppendEvi
         return { jobId: handle.jobId, cancel: () => { handle.cancel(); },
           promise: handle.promise.then(({ response, broker }) => ({ ...response,
             success: broker.ok && response.success })) };
-      }, onAppendEvidence, (next) => { if (token === generation.current) setProgress(next); });
+      }, onAppendEvidence, (next) => { if (token === generation.current) setProgress(next); },
+      isGcdParameterSweepRecipe(selected) ? { globalWallTimeMs: GCD_SWEEP_GLOBAL_BUDGET_MS } : undefined);
       active.current = job;
       const completed = await job.promise;
       if (token !== generation.current) return;
@@ -91,6 +111,14 @@ export default function SageRecipes({ project, target, onSaveRecipe, onAppendEvi
     <div>Recipes pin exact structure revisions and run bounded stages in dependency order.</div>
     <button type="button" onClick={() => { void create(); }} disabled={!!active.current}>
       Create and save starter for selected structure</button>
+    {project.algebraObjects?.find((entry) => entry.id === target.objectId)?.revisions[target.revision - 1]?.kind === "integer-ring" &&
+      <div data-testid="cas-gcd-sweep" style={{ border: "1px solid #dbe2ea", borderRadius: 7, padding: 9 }}>
+        <strong>GCD parameter sweep</strong>
+        <p>Enter one integer pair per line. Up to {MAX_GCD_SWEEP_RUNS} runs share a {GCD_SWEEP_GLOBAL_BUDGET_MS / 1000}s wall-time budget. The saved recipe pins this ZZ revision and exact inputs.</p>
+        <textarea aria-label="GCD sweep parameter pairs" value={sweepRows}
+          onChange={(event) => setSweepRows(event.target.value)} rows={4} style={{ width: "100%" }} />
+        <button type="button" disabled={!!active.current} onClick={() => { void createSweep(); }}>Save GCD sweep recipe</button>
+      </div>}
     {recipes.length > 0 && <label>Saved recipe
       <select aria-label="Saved recipe" value={selected?.id ?? ""} onChange={(event) => { setRecipeId(event.target.value);
         setProgress(null); setMessage(""); }} style={{ display: "block", width: "100%" }}>
@@ -110,6 +138,18 @@ export default function SageRecipes({ project, target, onSaveRecipe, onAppendEvi
             onClick={() => onInspectEvidence(retained[retained.length - 1].id)}>Inspect retained evidence</button>}
         </div>;
       })}
+    </div>}
+    {selected && isGcdParameterSweepRecipe(selected) && <div data-testid="cas-gcd-sweep-results">
+      <strong>Sweep results</strong>
+      <table><thead><tr><th>Run</th><th>Inputs</th><th>Result</th></tr></thead><tbody>
+        {selected.stages.map((stage) => {
+          const evidence = (project.algebraEvidence ?? []).filter((item) => structuralHash(item.request) === stage.requestHash).at(-1);
+          const state = progress?.stages.find((item) => item.stageId === stage.id);
+          return <tr key={stage.id}><td>{stage.id}</td><td>{(stage.args as { values: readonly string[] }).values.join(", ")}</td>
+            <td>{evidence ? JSON.stringify(evidence.result) : state?.status ?? "not run"}</td></tr>;
+        })}</tbody></table>
+      <div>{selected.stages.filter((stage) => (project.algebraEvidence ?? []).some((item) => structuralHash(item.request) === stage.requestHash)).length}
+        /{selected.stages.length} saved results</div>
     </div>}
     {unavailableReason && <div role="status" style={{ color: "#9a3412" }}>{unavailableReason}</div>}
     {selected && <div><button type="button" onClick={() => { void run(); }} disabled={!!active.current || !!unavailableReason}>

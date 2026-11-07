@@ -4,7 +4,8 @@ import {
   type CanonicalJsonValue, type DocumentIdentity,
 } from "./documentIdentity";
 import type { ValidationResult } from "./validation";
-import { parseGraph2DExpression, type Graph2DExpressionAst } from "./graph2dExpression";
+import { formatGraph2DExpressionAst, parseGraph2DExpression, type Graph2DExpressionAst } from "./graph2dExpression";
+import { differentiateGraph2DExpression } from "./graph2dDerivatives";
 import { GRAPH2D_PARAMETERS_CAPABILITY, GRAPH2D_PARAMETER_EXPRESSIONS_CAPABILITY, isGraph2DParameter, type Graph2DParameter } from "./graph2dParameterTypes";
 import { graph2DParameterExpressionsCurrent } from "./graph2dParameterExpressions";
 import { isGraph2DFieldReference, isGraph2DFieldLocator,
@@ -25,6 +26,9 @@ export const GRAPH2D_SCALES_CAPABILITY = "graph2d.scales.v1" as const;
 export const GRAPH2D_DOCUMENT_FORMAT = "math3d.graph2d-document" as const;
 export const GRAPH2D_DOCUMENT_SCHEMA_VERSION = 1 as const;
 export const GRAPH2D_EXPLICIT_CAPABILITY = "graph2d.explicit.v1" as const;
+export const GRAPH2D_LINKED_DERIVATIVE_CAPABILITY = "graph2d.linked-derivative.v1" as const;
+export const GRAPH2D_EXTENDED_DERIVATIVE_CAPABILITY = "graph2d.extended-derivative.v1" as const;
+export const GRAPH2D_POINCARE_SERIES_CAPABILITY = "graph2d.poincare-series.v1" as const;
 export const GRAPH2D_PROBES_CAPABILITY = "graph2d.probes.v1" as const;
 export const GRAPH2D_PROBE_VISIBILITY_CAPABILITY = "graph2d.probe-visibility.v1" as const;
 export const GRAPH2D_MAX_PINNED_PROBES = 8;
@@ -44,7 +48,7 @@ export const GRAPH2D_SLOPE_FIELD_CAPABILITY = "graph2d.slope-field.v1" as const;
 export const GRAPH2D_TRAJECTORY_CAPABILITY = "graph2d.trajectory.v1" as const;
 export const GRAPH2D_PHASE_PORTRAIT_CAPABILITY = "graph2d.phase-portrait.v1" as const;
 export const GRAPH2D_TIME_ODE_CAPABILITY = "graph2d.time-ode.v1" as const;
-export const GRAPH2D_OBJECT_KINDS = ["explicit-cartesian", "parametric", "polar", "implicit", "inequality", "point-series", "piecewise", "slope-field", "trajectory", "phase-portrait", "time-ode"] as const;
+export const GRAPH2D_OBJECT_KINDS = ["explicit-cartesian", "derivative-curve", "parametric", "polar", "implicit", "inequality", "point-series", "piecewise", "slope-field", "trajectory", "phase-portrait", "time-ode"] as const;
 export type Graph2DObjectKind = (typeof GRAPH2D_OBJECT_KINDS)[number];
 export const GRAPH2D_RESERVED_OBJECT_KINDS = GRAPH2D_OBJECT_KINDS.slice(1);
 export const GRAPH2D_MAX_DOCUMENT_BYTES = 256 * 1024;
@@ -57,6 +61,15 @@ export type Graph2DExplicitObject = Readonly<{
   kind: "explicit-cartesian";
   label: string;
   expression: Readonly<{ source: string; variable: "x"; ast: Graph2DExpressionAst }>;
+  domain: Graph2DDomain;
+  derivativeOrigin?: Readonly<{ sourceObjectId: string; sourceExpressionHash: string;
+    order: 1 }>;
+}>;
+export type Graph2DSavedDerivativeObject = Readonly<{
+  id: string; kind: "derivative-curve"; label: string;
+  sourceObjectId: string; sourceExpressionHash: string;
+  order: 1 | 2; method: "symbolic-rules" | "finite-difference";
+  fallback: "none" | "finite-difference"; tolerance: number;
   domain: Graph2DDomain;
 }>;
 export type Graph2DParametricObject = Readonly<{
@@ -158,6 +171,25 @@ export type Graph2DComparisonProfileOrigin = Readonly<{
   axis: Readonly<{ name: string; unit: string; min: number; max: number }>;
   unit: string;
 }>;
+export type Graph2DTemporalSpectrumOrigin = Readonly<{
+  kind: "project-temporal-spectrum/v1"; projectId: string; resultId: string;
+  summaryHash: string; rowsSha256: string; series: "psd" | "autocorrelation";
+  axisUnit: string; valueUnit: string; sampleCount: 16 | 32 | 64;
+  window: "rectangular" | "hann"; detrend: "none" | "mean";
+  interpolation: "none" | "linear";
+}>;
+export type Graph2DTemporalFtleOrigin = Readonly<{
+  kind: "project-temporal-ftle-profile/v1"; projectId: string;
+  resultId: string; summaryHash: string; rowsSha256: string;
+  axisUnit: string; valueUnit: string; profileRow: 0 | 1;
+  convergenceTolerance: number;
+}>;
+export type Graph2DPoincareOrigin = Readonly<{
+  kind: "project-poincare-section/v1" | "project-poincare-return/v1";
+  projectId: string; resultId: string;
+  summaryHash: string; rowsSha256: string; sourceDocumentId: string;
+  axisUnit: string; valueUnit: string; crossingCount: number;
+}>;
 type Graph2DLinkedOverlayCommon = Readonly<{
   pairId: string;
   vectorDocumentJson: string;
@@ -236,6 +268,9 @@ export type Graph2DPointSeriesObject = Readonly<{
   derivedOrigin?: Graph2DDerivedFieldOrigin;
   projectProfileOrigin?: Graph2DProjectProfileOrigin;
   comparisonProfileOrigin?: Graph2DComparisonProfileOrigin;
+  temporalSpectrumOrigin?: Graph2DTemporalSpectrumOrigin;
+  temporalFtleOrigin?: Graph2DTemporalFtleOrigin;
+  poincareOrigin?: Graph2DPoincareOrigin;
   parameterStudyOrigin?: Graph2DParameterStudyOrigin;
   linkedOrigin?: Graph2DLinkedOverlayOrigin;
 }>;
@@ -283,7 +318,7 @@ export type Graph2DTimeOdeObject = Readonly<{
   domain: Graph2DDomain; stateDomain: Graph2DDomain;
   seed: Readonly<{ t: number; x: number }>;
 }>;
-export type Graph2DGraphObject = Graph2DExplicitObject | Graph2DParametricObject | Graph2DPolarObject |
+export type Graph2DGraphObject = Graph2DExplicitObject | Graph2DSavedDerivativeObject | Graph2DParametricObject | Graph2DPolarObject |
   Graph2DImplicitObject | Graph2DInequalityObject | Graph2DPointSeriesObject | Graph2DPiecewiseObject |
   Graph2DSlopeFieldObject | Graph2DTrajectoryObject | Graph2DPhasePortraitObject | Graph2DTimeOdeObject;
 export type Graph2DSource = Readonly<{
@@ -297,11 +332,17 @@ export type Graph2DSource = Readonly<{
 }>;
 export const graph2DRequiredCapabilities = (source: Graph2DSource, display?: Pick<Graph2DDisplay, "pinnedProbes"> & Partial<Pick<Graph2DDisplay, "viewport" | "axes">>): Graph2DDocument["requiredCapabilities"] =>
   [GRAPH2D_EXPLICIT_CAPABILITY,
+    ...(source.objects.some(object => object.kind === "derivative-curve") ?
+      [GRAPH2D_EXTENDED_DERIVATIVE_CAPABILITY] : []),
+    ...(source.objects.some(object => object.kind === "explicit-cartesian" &&
+      object.derivativeOrigin) ? [GRAPH2D_LINKED_DERIVATIVE_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "parametric") ? [GRAPH2D_PARAMETRIC_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "polar") ? [GRAPH2D_POLAR_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "implicit") ? [GRAPH2D_IMPLICIT_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "inequality") ? [GRAPH2D_INEQUALITY_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "point-series") ? [GRAPH2D_POINT_SERIES_CAPABILITY] : []),
+    ...(source.objects.some((object) => object.kind === "point-series" && object.poincareOrigin) ?
+      [GRAPH2D_POINCARE_SERIES_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "point-series" && object.origin) ? [GRAPH2D_SCIENTIFIC_DATASET_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "point-series" && object.origin?.slice) ?
       [GRAPH2D_SCIENTIFIC_DATASET_SLICE_CAPABILITY] : []),
@@ -364,7 +405,7 @@ export type Graph2DDocument = Readonly<{
   format: typeof GRAPH2D_DOCUMENT_FORMAT;
   schemaVersion: typeof GRAPH2D_DOCUMENT_SCHEMA_VERSION;
   identity: DocumentIdentity;
-  requiredCapabilities: readonly (typeof GRAPH2D_EXPLICIT_CAPABILITY | typeof GRAPH2D_PARAMETRIC_CAPABILITY |
+  requiredCapabilities: readonly (typeof GRAPH2D_EXPLICIT_CAPABILITY | typeof GRAPH2D_LINKED_DERIVATIVE_CAPABILITY | typeof GRAPH2D_EXTENDED_DERIVATIVE_CAPABILITY | typeof GRAPH2D_POINCARE_SERIES_CAPABILITY | typeof GRAPH2D_PARAMETRIC_CAPABILITY |
     typeof GRAPH2D_POLAR_CAPABILITY | typeof GRAPH2D_IMPLICIT_CAPABILITY |
     typeof GRAPH2D_INEQUALITY_CAPABILITY | typeof GRAPH2D_POINT_SERIES_CAPABILITY |
     typeof GRAPH2D_PIECEWISE_CAPABILITY | typeof GRAPH2D_SLOPE_FIELD_CAPABILITY | typeof GRAPH2D_TRAJECTORY_CAPABILITY | typeof GRAPH2D_PHASE_PORTRAIT_CAPABILITY | typeof GRAPH2D_TIME_ODE_CAPABILITY | typeof GRAPH2D_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_INTEGRAL_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_PARAMETER_STUDY_CAPABILITY | typeof GRAPH2D_SCIENTIFIC_DATASET_CAPABILITY | typeof GRAPH2D_SCIENTIFIC_DATASET_SLICE_CAPABILITY | typeof GRAPH2D_FIELD_REFERENCE_CAPABILITY | typeof GRAPH2D_VECTOR_FIELD_REFERENCE_CAPABILITY | typeof GRAPH2D_PROBES_CAPABILITY | typeof GRAPH2D_PROBE_VISIBILITY_CAPABILITY | typeof GRAPH2D_PARAMETERS_CAPABILITY | typeof GRAPH2D_PARAMETER_EXPRESSIONS_CAPABILITY | typeof GRAPH2D_SCALES_CAPABILITY | typeof GRAPH2D_GRID_CAPABILITY)[];
@@ -382,8 +423,9 @@ export const GRAPH2D_DOCUMENT_FIELD_POLICY = defineDocumentFieldPolicy({
 
 const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
-const exact = (value: Record<string, unknown>, keys: readonly string[]) =>
-  Object.keys(value).length === keys.length && keys.every((key) => Object.prototype.hasOwnProperty.call(value, key));
+const exact = (value: Record<string, unknown>, keys: readonly string[], optional: readonly string[] = []) =>
+  keys.every((key) => Object.prototype.hasOwnProperty.call(value, key)) &&
+  Object.keys(value).every(key => keys.includes(key) || optional.includes(key));
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 const bounded = (value: unknown, max: number): value is string =>
   typeof value === "string" && value.length > 0 && value.length <= max && value.trim() === value;
@@ -404,8 +446,26 @@ const validDomain = (value: unknown): value is Graph2DDomain => record(value) &&
   exact(value, ["min", "max", "includeMin", "includeMax"]) && finite(value.min) && finite(value.max) &&
   value.min < value.max && typeof value.includeMin === "boolean" && typeof value.includeMax === "boolean";
 const validObject = (value: unknown, variables: readonly string[]): value is Graph2DExplicitObject => record(value) &&
-  exact(value, ["id", "kind", "label", "expression", "domain"]) && objectId(value.id) &&
-  value.kind === "explicit-cartesian" && bounded(value.label, 160) && validExpression(value.expression, variables) && validDomain(value.domain);
+  exact(value, ["id", "kind", "label", "expression", "domain"], ["derivativeOrigin"]) && objectId(value.id) &&
+  value.kind === "explicit-cartesian" && bounded(value.label, 160) && validExpression(value.expression, variables) && validDomain(value.domain) &&
+  (value.derivativeOrigin === undefined || record(value.derivativeOrigin) &&
+    exact(value.derivativeOrigin, ["sourceObjectId", "sourceExpressionHash", "order"]) &&
+    objectId(value.derivativeOrigin.sourceObjectId) &&
+    typeof value.derivativeOrigin.sourceExpressionHash === "string" &&
+    /^sha256:[0-9a-f]{64}$/.test(value.derivativeOrigin.sourceExpressionHash) &&
+    value.derivativeOrigin.order === 1);
+const validSavedDerivativeObject = (value: unknown): value is Graph2DSavedDerivativeObject =>
+  record(value) && exact(value, ["id", "kind", "label", "sourceObjectId",
+    "sourceExpressionHash", "order", "method", "fallback", "tolerance", "domain"]) &&
+  objectId(value.id) && value.kind === "derivative-curve" &&
+  bounded(value.label, 160) && objectId(value.sourceObjectId) &&
+  typeof value.sourceExpressionHash === "string" &&
+  /^sha256:[0-9a-f]{64}$/.test(value.sourceExpressionHash) &&
+  (value.order === 1 || value.order === 2) &&
+  (value.method === "symbolic-rules" || value.method === "finite-difference") &&
+  (value.fallback === "none" || value.fallback === "finite-difference") &&
+  finite(value.tolerance) && value.tolerance >= 1e-8 && value.tolerance <= .01 &&
+  validDomain(value.domain);
 const validParametricObject = (value: unknown, variables: readonly string[]): value is Graph2DParametricObject => record(value) &&
   exact(value, ["id", "kind", "label", "xExpression", "yExpression", "domain"]) && objectId(value.id) &&
   value.kind === "parametric" && bounded(value.label, 160) &&
@@ -579,6 +639,41 @@ export const validGraph2DComparisonProfileOrigin = (value: unknown):
   bounded(value.axis.name, 80) && bounded(value.axis.unit, 80) &&
   finite(value.axis.min) && finite(value.axis.max) &&
   (value.axis.min as number) < (value.axis.max as number) && bounded(value.unit, 80);
+export const validGraph2DTemporalSpectrumOrigin = (value: unknown):
+  value is Graph2DTemporalSpectrumOrigin =>
+  record(value) && exact(value, ["kind", "projectId", "resultId", "summaryHash",
+    "rowsSha256", "series", "axisUnit", "valueUnit", "sampleCount", "window",
+    "detrend", "interpolation"]) && value.kind === "project-temporal-spectrum/v1" &&
+  isStableDocumentId(value.projectId) && bounded(value.resultId, 160) &&
+  isStructuralHash(value.summaryHash) && isStructuralHash(value.rowsSha256) &&
+  ["psd", "autocorrelation"].includes(String(value.series)) &&
+  bounded(value.axisUnit, 80) && bounded(value.valueUnit, 80) &&
+  [16, 32, 64].includes(value.sampleCount as number) &&
+  ["rectangular", "hann"].includes(String(value.window)) &&
+  ["none", "mean"].includes(String(value.detrend)) &&
+  ["none", "linear"].includes(String(value.interpolation));
+export const validGraph2DTemporalFtleOrigin = (value: unknown):
+  value is Graph2DTemporalFtleOrigin => record(value) && exact(value,
+    ["kind", "projectId", "resultId", "summaryHash", "rowsSha256",
+      "axisUnit", "valueUnit", "profileRow", "convergenceTolerance"]) &&
+  value.kind === "project-temporal-ftle-profile/v1" &&
+  isStableDocumentId(value.projectId) && bounded(value.resultId, 160) &&
+  isStructuralHash(value.summaryHash) && isStructuralHash(value.rowsSha256) &&
+  bounded(value.axisUnit, 80) && bounded(value.valueUnit, 80) &&
+  [0, 1].includes(value.profileRow as number) &&
+  finite(value.convergenceTolerance) &&
+  (value.convergenceTolerance as number) >= 1e-8 &&
+  (value.convergenceTolerance as number) <= .5;
+export const validGraph2DPoincareOrigin = (value: unknown):
+  value is Graph2DPoincareOrigin => record(value) && exact(value,
+    ["kind", "projectId", "resultId", "summaryHash", "rowsSha256",
+      "sourceDocumentId", "axisUnit", "valueUnit", "crossingCount"]) &&
+  ["project-poincare-section/v1", "project-poincare-return/v1"].includes(String(value.kind)) &&
+  isStableDocumentId(value.projectId) && bounded(value.resultId, 160) &&
+  isStableDocumentId(value.sourceDocumentId) &&
+  isStructuralHash(value.summaryHash) && isStructuralHash(value.rowsSha256) &&
+  bounded(value.axisUnit, 80) && bounded(value.valueUnit, 80) &&
+  integerWithin(value.crossingCount, 1, 64);
 export const validGraph2DLinkedOverlayOrigin = (value: unknown): value is Graph2DLinkedOverlayOrigin => {
   if (record(value) && value.kind === "vector-derived-linked-region/v1") {
     if (!exact(value, ["kind", "pairId", "series", "vectorDocumentJson", "region",
@@ -804,12 +899,17 @@ const validPointSeriesObject = (value: unknown): value is Graph2DPointSeriesObje
     ...(value.derivedOrigin === undefined ? [] : ["derivedOrigin"]),
     ...(value.projectProfileOrigin === undefined ? [] : ["projectProfileOrigin"]),
     ...(value.comparisonProfileOrigin === undefined ? [] : ["comparisonProfileOrigin"]),
+    ...(value.temporalSpectrumOrigin === undefined ? [] : ["temporalSpectrumOrigin"]),
+    ...(value.temporalFtleOrigin === undefined ? [] : ["temporalFtleOrigin"]),
+    ...(value.poincareOrigin === undefined ? [] : ["poincareOrigin"]),
     ...(value.parameterStudyOrigin === undefined ? [] : ["parameterStudyOrigin"]),
     ...(value.linkedOrigin === undefined ? [] : ["linkedOrigin"])]) && objectId(value.id) &&
   value.kind === "point-series" && bounded(value.label, 160) && validPointTableReference(value.table) &&
   ["points", "line"].includes(String(value.mode)) && value.missing === "gap" && validDomain(value.domain) &&
   [value.origin, value.analyticOrigin, value.derivedOrigin, value.linkedOrigin,
-    value.projectProfileOrigin, value.comparisonProfileOrigin,
+    value.projectProfileOrigin, value.comparisonProfileOrigin, value.temporalSpectrumOrigin,
+    value.temporalFtleOrigin,
+    value.poincareOrigin,
     value.parameterStudyOrigin].filter(item => item !== undefined).length <= 1 &&
   (value.origin === undefined || validGraph2DScientificDatasetOrigin(value.origin)) &&
   (value.analyticOrigin === undefined || validGraph2DAnalyticFieldOrigin(value.analyticOrigin)) &&
@@ -817,6 +917,12 @@ const validPointSeriesObject = (value: unknown): value is Graph2DPointSeriesObje
   (value.projectProfileOrigin === undefined || validGraph2DProjectProfileOrigin(value.projectProfileOrigin)) &&
   (value.comparisonProfileOrigin === undefined ||
     validGraph2DComparisonProfileOrigin(value.comparisonProfileOrigin)) &&
+  (value.temporalSpectrumOrigin === undefined ||
+    validGraph2DTemporalSpectrumOrigin(value.temporalSpectrumOrigin)) &&
+  (value.temporalFtleOrigin === undefined ||
+    validGraph2DTemporalFtleOrigin(value.temporalFtleOrigin)) &&
+  (value.poincareOrigin === undefined ||
+    validGraph2DPoincareOrigin(value.poincareOrigin)) &&
   (value.parameterStudyOrigin === undefined || isGraph2DParameterStudyOrigin(value.parameterStudyOrigin)) &&
   (value.linkedOrigin === undefined || validGraph2DLinkedOverlayOrigin(value.linkedOrigin));
 const validPiecewiseObject = (value: unknown, variables: readonly string[]): value is Graph2DPiecewiseObject => {
@@ -864,6 +970,7 @@ const validSource = (value: unknown): value is Graph2DSource => {
   if (names.includes("y") && value.objects.some((entry: Graph2DGraphObject) =>
     entry.kind === "implicit" || entry.kind === "inequality" || entry.kind === "slope-field" || entry.kind === "phase-portrait")) return false;
   return value.objects.every((entry: unknown) => validObject(entry, ["x", ...names]) ||
+    validSavedDerivativeObject(entry) ||
     validParametricObject(entry, ["t", ...names]) || validPolarObject(entry, ["theta", ...names]) ||
     validImplicitObject(entry, ["x", "y", ...names]) || validInequalityObject(entry, ["x", "y", ...names]) ||
     validPointSeriesObject(entry) || validPiecewiseObject(entry, ["x", ...names]) ||
@@ -871,6 +978,32 @@ const validSource = (value: unknown): value is Graph2DSource => {
     validTimeOdeObject(entry, ["t", "x", ...names]) ||
     validPhasePortraitObject(entry, ["x", "y", ...names])) &&
     new Set(value.objects.map((entry: Graph2DGraphObject) => entry.id)).size === value.objects.length &&
+    (value.objects as Graph2DGraphObject[]).every((entry) =>
+      entry.kind !== "explicit-cartesian" || !entry.derivativeOrigin ||
+      (value.objects as Graph2DGraphObject[]).some(source => {
+        if (source.kind !== "explicit-cartesian" || source.derivativeOrigin ||
+            source.id !== entry.derivativeOrigin!.sourceObjectId || source.id === entry.id ||
+            structuralHash(source.expression.ast) !== entry.derivativeOrigin!.sourceExpressionHash ||
+            canonicalJsonStringify(source.domain) !== canonicalJsonStringify(entry.domain))
+          return false;
+        const derivative = differentiateGraph2DExpression(source.expression.ast, 1);
+        if (!derivative.ok) return false;
+        const expected = parseGraph2DExpression(formatGraph2DExpressionAst(derivative.ast),
+          ["x", ...names]);
+        return expected.ok && canonicalJsonStringify(expected.ast) ===
+          canonicalJsonStringify(entry.expression.ast);
+      })) &&
+    (value.objects as Graph2DGraphObject[]).every(entry => entry.kind !== "derivative-curve" ||
+      (value.objects as Graph2DGraphObject[]).some(source => {
+        if (source.kind !== "explicit-cartesian" || source.derivativeOrigin ||
+            source.id !== entry.sourceObjectId || source.id === entry.id ||
+            structuralHash(source.expression.ast) !== entry.sourceExpressionHash ||
+            canonicalJsonStringify(source.domain) !== canonicalJsonStringify(entry.domain))
+          return false;
+        const symbolic = differentiateGraph2DExpression(source.expression.ast, entry.order);
+        return symbolic.ok ? entry.method === "symbolic-rules" :
+          entry.method === "finite-difference" && entry.fallback === "finite-difference";
+      })) &&
     (value.objects as Graph2DGraphObject[]).every((entry) => entry.kind !== "trajectory" ||
       (value.objects as Graph2DGraphObject[]).some((source) => source.kind === "slope-field" &&
         source.id === entry.sourceFieldId && entry.seed.x >= source.domain.min && entry.seed.x <= source.domain.max &&

@@ -27,10 +27,10 @@ const heroModeContent = {
   implicit: {
     copy: "Implicit mode focuses on field-defined surfaces and mesh extraction for complex equation-driven geometry.",
     cards: [
-      { title: "200+", text: "implicit presets and geometry objects" },
+      { title: "Gallery", text: "editable scenes and guided concepts" },
       { title: "CGAL/VTK", text: "iso-surface mesh and volume workflows" },
       { title: "Curvature", text: "field probes and derivative-driven analysis" },
-      { title: "Desktop + Web", text: "same implicit tooling in both runtime modes" },
+      { title: "Host aware", text: "available operations depend on the runtime" },
     ],
   },
   parametric: {

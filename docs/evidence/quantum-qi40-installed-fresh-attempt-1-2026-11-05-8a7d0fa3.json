@@ -1,0 +1,27 @@
+{
+  "schema": "math3d/stable-two-app-signoff/v1",
+  "checkedAtUtc": "2026-11-05T14:29:25.4228397Z",
+  "environment": "clean Windows runner",
+  "status": "failed",
+  "math3d": {
+    "version": "1.7.0",
+    "commit": "8a7d0fa3e0bb68fb5ecb23465de3192bee5fbd61",
+    "channel": "stable",
+    "installerName": "Math3D Setup 1.7.0.exe",
+    "installerSha256": "b2c9e676ca7c81170c0db96138fe697c856282f8ebd14c4a06a95d8f067208c5"
+  },
+  "theoryLab": {
+    "version": "0.1.0",
+    "commit": "38842c8ca927720e9a0f39bd6a04f0e366073996",
+    "installerName": "Quantum-Hamiltonian-Lab-Setup-0.1.0.exe",
+    "installerSha256": "758d3f8ed41ce0242ae90fd06d3ae424439a667b0b67e128342ea1d25d09681a"
+  },
+  "checks": {
+    "candidateBytes": "passed",
+    "install": "pending",
+    "installedUiRoundtrip": "pending"
+  },
+  "failure": "Installer exited with code -1073741819: D:\\a\\Math3D\\Math3D\\candidate\\Quantum-Hamiltonian-Lab-Setup-0.1.0.exe",
+  "candidateBuildRunId": "42041770604",
+  "candidateManifestSha256": "94e5bf957932569d1bf084013a5b1f50592729302f216f7c2221620474b60f7f"
+}

@@ -1,0 +1,238 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-11-05T13:30:54.383Z",
+  "sourceCommit": "55a0196fe63ca16f49c97ff1aead7e41105e0ede",
+  "entries": [
+    {
+      "file": "swirling-flow-verified-source.png",
+      "module": "Scientific Field Explorer",
+      "title": "Swirling flow volume verified source",
+      "view": "Source",
+      "capturedAt": "2026-11-05T13:30:54.383Z"
+    },
+    {
+      "file": "swirling-flow-explorer.png",
+      "module": "Scientific Field Explorer",
+      "title": "Swirling flow volume",
+      "view": "Explorer",
+      "capturedAt": "2026-11-05T13:30:54.383Z"
+    },
+    {
+      "file": "swirling-flow-layer.png",
+      "module": "Scientific Field Explorer",
+      "title": "Swirling flow volume layer",
+      "view": "Inspector",
+      "capturedAt": "2026-11-05T13:30:54.383Z"
+    },
+    {
+      "file": "swirling-flow-probe.png",
+      "module": "Scientific Field Explorer",
+      "title": "Swirling flow volume probe",
+      "view": "Inspector",
+      "capturedAt": "2026-11-05T13:30:54.383Z"
+    },
+    {
+      "file": "swirling-flow-analyze.png",
+      "module": "Scientific Field Explorer",
+      "title": "Swirling flow volume analyze",
+      "view": "Analysis",
+      "capturedAt": "2026-11-05T13:30:54.383Z"
+    },
+    {
+      "file": "swirling-flow-provenance.png",
+      "module": "Scientific Field Explorer",
+      "title": "Swirling flow volume provenance",
+      "view": "Inspector",
+      "capturedAt": "2026-11-05T13:30:54.383Z"
+    },
+    {
+      "file": "swirling-flow-xy-slice.png",
+      "module": "Scientific Field Explorer",
+      "title": "Swirling flow volume XY slice",
+      "view": "Slice",
+      "capturedAt": "2026-11-05T13:30:54.383Z"
+    },
+    {
+      "file": "swirling-flow-xz-slice.png",
+      "module": "Scientific Field Explorer",
+      "title": "Swirling flow volume XZ slice",
+      "view": "Slice",
+      "capturedAt": "2026-11-05T13:30:54.383Z"
+    },
+    {
+      "file": "swirling-flow-yz-slice.png",
+      "module": "Scientific Field Explorer",
+      "title": "Swirling flow volume YZ slice",
+      "view": "Slice",
+      "capturedAt": "2026-11-05T13:30:54.383Z"
+    },
+    {
+      "file": "swirling-flow-split.png",
+      "module": "Scientific Field Explorer",
+      "title": "Swirling flow volume split views",
+      "view": "Layout",
+      "capturedAt": "2026-11-05T13:30:54.383Z"
+    },
+    {
+      "file": "swirling-flow-quad.png",
+      "module": "Scientific Field Explorer",
+      "title": "Swirling flow volume quad views",
+      "view": "Layout",
+      "capturedAt": "2026-11-05T13:30:54.383Z"
+    },
+    {
+      "file": "generated-vortex-80-verified-source.png",
+      "module": "Scientific Field Explorer",
+      "title": "Generated vortex 80³ verified source",
+      "view": "Source",
+      "capturedAt": "2026-11-05T13:30:54.383Z"
+    },
+    {
+      "file": "generated-vortex-80-explorer.png",
+      "module": "Scientific Field Explorer",
+      "title": "Generated vortex 80³",
+      "view": "Explorer",
+      "capturedAt": "2026-11-05T13:30:54.383Z"
+    },
+    {
+      "file": "generated-vortex-80-layer.png",
+      "module": "Scientific Field Explorer",
+      "title": "Generated vortex 80³ layer",
+      "view": "Inspector",
+      "capturedAt": "2026-11-05T13:30:54.383Z"
+    },
+    {
+      "file": "generated-vortex-80-probe.png",
+      "module": "Scientific Field Explorer",
+      "title": "Generated vortex 80³ probe",
+      "view": "Inspector",
+      "capturedAt": "2026-11-05T13:30:54.383Z"
+    },
+    {
+      "file": "generated-vortex-80-analyze.png",
+      "module": "Scientific Field Explorer",
+      "title": "Generated vortex 80³ analyze",
+      "view": "Analysis",
+      "capturedAt": "2026-11-05T13:30:54.383Z"
+    },
+    {
+      "file": "generated-vortex-80-provenance.png",
+      "module": "Scientific Field Explorer",
+      "title": "Generated vortex 80³ provenance",
+      "view": "Inspector",
+      "capturedAt": "2026-11-05T13:30:54.383Z"
+    },
+    {
+      "file": "generated-vortex-80-xy-slice.png",
+      "module": "Scientific Field Explorer",
+      "title": "Generated vortex 80³ XY slice",
+      "view": "Slice",
+      "capturedAt": "2026-11-05T13:30:54.383Z"
+    },
+    {
+      "file": "generated-vortex-80-xz-slice.png",
+      "module": "Scientific Field Explorer",
+      "title": "Generated vortex 80³ XZ slice",
+      "view": "Slice",
+      "capturedAt": "2026-11-05T13:30:54.383Z"
+    },
+    {
+      "file": "generated-vortex-80-yz-slice.png",
+      "module": "Scientific Field Explorer",
+      "title": "Generated vortex 80³ YZ slice",
+      "view": "Slice",
+      "capturedAt": "2026-11-05T13:30:54.383Z"
+    },
+    {
+      "file": "generated-vortex-80-split.png",
+      "module": "Scientific Field Explorer",
+      "title": "Generated vortex 80³ split views",
+      "view": "Layout",
+      "capturedAt": "2026-11-05T13:30:54.383Z"
+    },
+    {
+      "file": "generated-vortex-80-quad.png",
+      "module": "Scientific Field Explorer",
+      "title": "Generated vortex 80³ quad views",
+      "view": "Layout",
+      "capturedAt": "2026-11-05T13:30:54.383Z"
+    },
+    {
+      "file": "measured-burgers-vortex-verified-source.png",
+      "module": "Scientific Field Explorer",
+      "title": "Measured Burgers vortex verified source",
+      "view": "Source",
+      "capturedAt": "2026-11-05T13:30:54.383Z"
+    },
+    {
+      "file": "measured-burgers-vortex-explorer.png",
+      "module": "Scientific Field Explorer",
+      "title": "Measured Burgers vortex",
+      "view": "Explorer",
+      "capturedAt": "2026-11-05T13:30:54.383Z"
+    },
+    {
+      "file": "measured-burgers-vortex-layer.png",
+      "module": "Scientific Field Explorer",
+      "title": "Measured Burgers vortex layer",
+      "view": "Inspector",
+      "capturedAt": "2026-11-05T13:30:54.383Z"
+    },
+    {
+      "file": "measured-burgers-vortex-probe.png",
+      "module": "Scientific Field Explorer",
+      "title": "Measured Burgers vortex probe",
+      "view": "Inspector",
+      "capturedAt": "2026-11-05T13:30:54.383Z"
+    },
+    {
+      "file": "measured-burgers-vortex-analyze.png",
+      "module": "Scientific Field Explorer",
+      "title": "Measured Burgers vortex analyze",
+      "view": "Analysis",
+      "capturedAt": "2026-11-05T13:30:54.383Z"
+    },
+    {
+      "file": "measured-burgers-vortex-provenance.png",
+      "module": "Scientific Field Explorer",
+      "title": "Measured Burgers vortex provenance",
+      "view": "Inspector",
+      "capturedAt": "2026-11-05T13:30:54.383Z"
+    },
+    {
+      "file": "measured-burgers-vortex-xy-slice.png",
+      "module": "Scientific Field Explorer",
+      "title": "Measured Burgers vortex XY slice",
+      "view": "Slice",
+      "capturedAt": "2026-11-05T13:30:54.383Z"
+    },
+    {
+      "file": "measured-burgers-vortex-xz-slice.png",
+      "module": "Scientific Field Explorer",
+      "title": "Measured Burgers vortex XZ slice",
+      "view": "Slice",
+      "capturedAt": "2026-11-05T13:30:54.383Z"
+    },
+    {
+      "file": "measured-burgers-vortex-yz-slice.png",
+      "module": "Scientific Field Explorer",
+      "title": "Measured Burgers vortex YZ slice",
+      "view": "Slice",
+      "capturedAt": "2026-11-05T13:30:54.383Z"
+    },
+    {
+      "file": "measured-burgers-vortex-split.png",
+      "module": "Scientific Field Explorer",
+      "title": "Measured Burgers vortex split views",
+      "view": "Layout",
+      "capturedAt": "2026-11-05T13:30:54.383Z"
+    },
+    {
+      "file": "measured-burgers-vortex-quad.png",
+      "module": "Scientific Field Explorer",
+      "title": "Measured Burgers vortex quad views",
+      "view": "Layout",
+      "capturedAt": "2026-11-05T13:30:54.383Z"
+    }
+  ]
+}

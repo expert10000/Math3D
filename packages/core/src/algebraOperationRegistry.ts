@@ -19,6 +19,20 @@ import { buildSageGaloisInput, parseSageGaloisInput, parseSageGaloisResult,
   type SageGaloisResult } from "./sageGaloisAnalysis";
 import { buildSageFiniteGroupInput, finiteGroupAction, parseSageFiniteGroupInput,
   parseSageFiniteGroupResult, type SageFiniteGroupResult } from "./sageFiniteGroupOperations";
+import { buildSageGroupActionInput, parseSageGroupActionInput, parseSageGroupActionResult,
+  type SageGroupActionResult } from "./sageGroupActionCharacters";
+import { buildSageModuleInvariantInput, parseSageModuleInvariantInput, parseSageModuleInvariantResult,
+  type SageModuleInvariantResult } from "./sageModuleInvariantFactors";
+import { buildSageChainHomologyInput, parseSageChainHomologyInput, parseSageChainHomologyResult,
+  type SageChainHomologyResult } from "./sageChainHomology";
+import { buildSageFiniteFieldInput, parseSageFiniteFieldInput, parseSageFiniteFieldResult,
+  type SageFiniteFieldResult } from "./sageFiniteFieldExplorer";
+import { buildSagePadicInput, parseSagePadicInput, parseSagePadicResult,
+  type PadicRational, type SagePadicResult } from "./sagePadicWorkspace";
+import { buildSageLocalExtensionInput, parseSageLocalExtensionInput, parseSageLocalExtensionResult,
+  type SageLocalExtensionResult } from "./sageLocalExtensions";
+import { buildSageEllipticCurveInput, parseSageEllipticCurveInput, parseSageEllipticCurveResult,
+  type EllipticPoint, type SageEllipticCurveResult } from "./sageEllipticCurve";
 
 export type AlgebraOperationId = "sage.algebra.reconstruct" | "sage.algebra.inspectDomains" |
   SageNumberFieldOperation |
@@ -26,6 +40,13 @@ export type AlgebraOperationId = "sage.algebra.reconstruct" | "sage.algebra.insp
   "sage.polynomial.roots_exact" | "sage.polynomial.dossier" | "sage.groebner.compute" |
   "sage.galois.analyze" |
   "sage.group.dossier" |
+  "sage.group.actionCharacters" |
+  "sage.module.invariantFactors" |
+  "sage.chain.homology" |
+  "sage.finiteField.explore" |
+  "sage.numberTheory.padic" |
+  "sage.numberField.localExtensions" |
+  "sage.ellipticCurve.dossier" |
   "sage.matrix.linear_dossier" | "sage.matrix.integer_forms" | SageIdealOperation;
 export type AlgebraBackend = "docker" | "private";
 export type AlgebraOperationArguments = {
@@ -40,6 +61,14 @@ export type AlgebraOperationArguments = {
   "sage.polynomial.dossier": Readonly<{ polynomial: string }>;
   "sage.galois.analyze": Readonly<{ polynomial: string }>;
   "sage.group.dossier": Readonly<Record<string, never>>;
+  "sage.group.actionCharacters": Readonly<{ point: number }>;
+  "sage.module.invariantFactors": Readonly<Record<string, never>>;
+  "sage.chain.homology": Readonly<Record<string, never>>;
+  "sage.finiteField.explore": Readonly<{ element: readonly number[] }>;
+  "sage.numberTheory.padic": Readonly<{ prime: number; precision: number; a: PadicRational; b: PadicRational;
+    hensel: Readonly<{ coefficients: readonly string[]; seed: number }> | null }>;
+  "sage.numberField.localExtensions": Readonly<{ prime: number; precision: number }>;
+  "sage.ellipticCurve.dossier": Readonly<{ point: EllipticPoint }>;
   "sage.groebner.compute": Readonly<{ polynomials: readonly string[] }>;
   "sage.matrix.linear_dossier": Readonly<{ matrix: readonly (readonly string[])[] }>;
   "sage.matrix.integer_forms": Readonly<{ matrix: readonly (readonly string[])[] }>;
@@ -49,10 +78,14 @@ export type AlgebraOperationArguments = {
   "sage.ideal.quotientDimension": Readonly<{ budgetProfile?: SageIdealBudgetProfile }>;
   "sage.ideal.syzygies": Readonly<{ budgetProfile?: SageIdealBudgetProfile }>;
   "sage.ideal.hilbertSeries": Readonly<{ budgetProfile?: SageIdealBudgetProfile }>;
+  "sage.ideal.radical": Readonly<{ budgetProfile: SageIdealBudgetProfile }>;
+  "sage.ideal.primaryDecomposition": Readonly<{ budgetProfile: SageIdealBudgetProfile }>;
+  "sage.ideal.hilbertPolynomial": Readonly<{ budgetProfile: SageIdealBudgetProfile }>;
 };
 export type AlgebraOperationResult = SageAlgebraReconstructionResult | SageAlgebraDomainResult | PolynomialDossierResult |
   SageMatrixDossierResult | SageIntegerMatrixFormsResult | SageIdealResult | SageNumberFieldResult | SageGaloisResult |
-  SageFiniteGroupResult |
+  SageFiniteGroupResult | SageGroupActionResult | SageModuleInvariantResult | SageChainHomologyResult | SageFiniteFieldResult | SagePadicResult |
+  SageLocalExtensionResult | SageEllipticCurveResult |
   Readonly<{ value: string }> | Readonly<{ value: string; modulus: string }> |
   Readonly<{ text: string }> | Readonly<{ roots: readonly Readonly<{ value: string; multiplicity: number }>[] }> |
   Readonly<{ basis: readonly string[] }>;
@@ -97,6 +130,20 @@ export const ALGEBRA_OPERATION_REGISTRY: readonly AlgebraOperationDefinition[] =
     "math3d.sage-galois-analysis/v1", "math3d.sage-galois-analysis-result/v1"),
   definition("sage.group.dossier", "GAP group invariants", "structure", ["finite-group"], "any",
     "group.dossier", ["docker"], "math3d.sage-finite-group-operation/v1", "math3d.sage-finite-group-result/v1"),
+  definition("sage.group.actionCharacters", "Group action and characters", "structure", ["finite-group"], "any",
+    "group.action-characters", ["docker"], "math3d.sage-finite-group-operation/v1", "math3d.sage-group-action-result/v1"),
+  definition("sage.module.invariantFactors", "ZZ module invariant factors", "structure", ["module"], "any",
+    "module.invariant-factors", ["docker"], "math3d.sage-module-invariant-factors/v1", "math3d.sage-module-invariant-factors-result/v1"),
+  definition("sage.chain.homology", "ZZ chain homology", "structure", ["chain-complex"], "any",
+    "chain.homology", ["docker"], "math3d.sage-chain-homology/v1", "math3d.sage-chain-homology-result/v1"),
+  definition("sage.finiteField.explore", "Finite-field explorer", "structure", ["finite-field"], "any",
+    "finite-field.explore", ["docker"], "math3d.sage-finite-field-explorer/v1", "math3d.sage-finite-field-explorer-result/v1"),
+  definition("sage.numberTheory.padic", "p-adic precision study", "number-theory", ["integer-ring", "rational-field"], "any",
+    "number-theory.padic", ["docker"], "math3d.sage-padic-workspace/v1", "math3d.sage-padic-workspace-result/v1"),
+  definition("sage.numberField.localExtensions", "Quadratic local extensions", "number-theory", ["number-field"], "any",
+    "number-field.local-extensions", ["docker"], "math3d.sage-local-extension/v1", "math3d.sage-local-extension-result/v1"),
+  definition("sage.ellipticCurve.dossier", "Elliptic curve invariants and doubling", "number-theory", ["elliptic-curve"], "any",
+    "elliptic-curve.dossier", ["docker"], "math3d.sage-elliptic-curve/v1", "math3d.sage-elliptic-curve-result/v1"),
   definition("sage.groebner.compute", "Gröbner basis over QQ", "polynomial", POLY, "QQ-polynomial", "algebra.groebner",
     ["docker"], "math3d.algebra-groebner-arguments/v1", "sage.groebner.compute/result-v1"),
   definition("sage.matrix.linear_dossier", "Exact QQ matrix analysis", "matrix", ["rational-field"], "any", "matrix.linear-dossier",
@@ -114,6 +161,12 @@ export const ALGEBRA_OPERATION_REGISTRY: readonly AlgebraOperationDefinition[] =
   definition("sage.ideal.syzygies", "Generator syzygies", "ideal", ["ideal"], "any", "ideal.syzygies",
     ["docker"], "math3d.sage-ideal-operation/v1", "math3d.sage-ideal-result/v1"),
   definition("sage.ideal.hilbertSeries", "Quotient Hilbert series", "ideal", ["quotient-ring"], "any", "ideal.hilbert-series",
+    ["docker"], "math3d.sage-ideal-operation/v1", "math3d.sage-ideal-result/v1"),
+  definition("sage.ideal.radical", "Ideal radical", "ideal", ["ideal"], "any", "ideal.radical",
+    ["docker"], "math3d.sage-ideal-operation/v1", "math3d.sage-ideal-result/v1"),
+  definition("sage.ideal.primaryDecomposition", "Primary decomposition and associated primes", "ideal", ["ideal"], "any", "ideal.primary-decomposition",
+    ["docker"], "math3d.sage-ideal-operation/v1", "math3d.sage-ideal-result/v1"),
+  definition("sage.ideal.hilbertPolynomial", "Quotient Hilbert polynomial", "ideal", ["quotient-ring"], "any", "ideal.hilbert-polynomial",
     ["docker"], "math3d.sage-ideal-operation/v1", "math3d.sage-ideal-result/v1"),
 ]);
 const byId = new Map(ALGEBRA_OPERATION_REGISTRY.map((item) => [item.id, item]));
@@ -138,8 +191,19 @@ const currentRecord = (project: Math3DProject, ref: AlgebraObjectRef): { record:
 const domainReason = (project: Math3DProject, record: AlgebraObjectRecord,
   operation: AlgebraOperationDefinition): string | null => {
   if (!operation.accepts.includes(record.kind)) return `${operation.label} does not accept ${record.kind} objects.`;
-  if (operation.id === "sage.group.dossier") try { finiteGroupAction(record.definition as import("./finiteGroup").FiniteGroupDefinition); }
+  if (operation.id === "sage.finiteField.explore" && record.definition.kind === "finite-field" &&
+      record.definition.characteristic ** record.definition.degree > 64)
+    return "Finite-field exploration is limited to fields with at most 64 elements.";
+  if (operation.id === "sage.group.dossier" || operation.id === "sage.group.actionCharacters")
+    try { finiteGroupAction(record.definition as import("./finiteGroup").FiniteGroupDefinition); }
   catch (error) { return String((error as Error).message ?? error); }
+  if (operation.id === "sage.module.invariantFactors") {
+    if (record.definition.kind !== "module") return "Invariant factors require a saved ZZ module.";
+    const moduleDefinition = record.definition;
+    const parent = project.algebraObjects?.find((item) => item.id === moduleDefinition.baseRing.objectId)
+      ?.revisions[moduleDefinition.baseRing.revision - 1];
+    if (parent?.definition.kind !== "integer-ring") return "Invariant factors require a pinned ZZ parent ring.";
+  }
   if (operation.category === "ideal") {
     const idealRef = record.definition.kind === "quotient-ring" ? record.definition.ideal : { objectId: record.id, revision: record.revision };
     const ideal = project.algebraObjects?.find((item) => item.id === idealRef.objectId)?.revisions[idealRef.revision - 1];
@@ -149,12 +213,15 @@ const domainReason = (project: Math3DProject, record: AlgebraObjectRecord,
         ring.definition.variables.length > 3 || ideal.definition.generators.length > 6 ||
         ideal.definition.generators.some((item) => item.length > 128))
       return "Bounded ideal operations require a pinned QQ polynomial ring with at most three variables and six short generators.";
-    if ((operation.id === "sage.ideal.syzygies" || operation.id === "sage.ideal.hilbertSeries") &&
+    if ((operation.id === "sage.ideal.syzygies" || operation.id === "sage.ideal.hilbertSeries" ||
+        operation.id === "sage.ideal.radical" || operation.id === "sage.ideal.primaryDecomposition" ||
+        operation.id === "sage.ideal.hilbertPolynomial") &&
         (ring.definition.variables.length > 2 || ideal.definition.generators.length > 3))
       return "Advanced ideal operations require at most two variables and three generators.";
-    if (operation.id === "sage.ideal.hilbertSeries" && (ring.definition.monomialOrder === "lex" ||
+    if ((operation.id === "sage.ideal.hilbertSeries" || operation.id === "sage.ideal.hilbertPolynomial") &&
+        (ring.definition.monomialOrder === "lex" ||
         !isProvablyHomogeneousIdeal(ideal.definition.generators, ring.definition.variables)))
-      return "Hilbert series requires a graded monomial order and provably homogeneous generators.";
+      return "Hilbert invariants require a graded monomial order and provably homogeneous generators.";
   }
   if (operation.domain === "any") return null;
   const polynomial = record.definition.kind === "polynomial-ring" ? record.definition : null;
@@ -245,6 +312,31 @@ export const buildAlgebraOperationRequest = <K extends AlgebraOperationId>(proje
   } else if (id === "sage.group.dossier") {
     if (!exact(input, [])) throw new TypeError("GAP group dossier takes no freeform arguments.");
     params = buildSageFiniteGroupInput(project, target) as unknown as Record<string, unknown>;
+  } else if (id === "sage.group.actionCharacters") {
+    if (!exact(input, ["point"])) throw new TypeError("Choose one point of the saved group action.");
+    params = buildSageGroupActionInput(project, target, input.point as number) as unknown as Record<string, unknown>;
+  } else if (id === "sage.module.invariantFactors") {
+    if (!exact(input, [])) throw new TypeError("ZZ module invariant factors take no freeform arguments.");
+    params = buildSageModuleInvariantInput(project, target) as unknown as Record<string, unknown>;
+  } else if (id === "sage.chain.homology") {
+    if (!exact(input, [])) throw new TypeError("ZZ chain homology takes no freeform arguments.");
+    params = buildSageChainHomologyInput(project, target) as unknown as Record<string, unknown>;
+  } else if (id === "sage.finiteField.explore") {
+    if (!exact(input, ["element"])) throw new TypeError("Choose one exact finite-field element vector.");
+    params = buildSageFiniteFieldInput(project, target, input.element as number[]) as unknown as Record<string, unknown>;
+  } else if (id === "sage.numberTheory.padic") {
+    if (!exact(input, ["prime", "precision", "a", "b", "hensel"]))
+      throw new TypeError("p-adic study requires prime, precision, two exact operands and an optional Hensel input.");
+    params = buildSagePadicInput(project, target,
+      input as AlgebraOperationArguments["sage.numberTheory.padic"]) as unknown as Record<string, unknown>;
+  } else if (id === "sage.numberField.localExtensions") {
+    if (!exact(input, ["prime", "precision"]))
+      throw new TypeError("Local extension requires an odd prime and finite precision.");
+    params = buildSageLocalExtensionInput(project, target, input.prime as number,
+      input.precision as number) as unknown as Record<string, unknown>;
+  } else if (id === "sage.ellipticCurve.dossier") {
+    if (!exact(input, ["point"])) throw new TypeError("Curve dossier requires a sample point or null.");
+    params = buildSageEllipticCurveInput(project, target, input.point as EllipticPoint) as unknown as Record<string, unknown>;
   } else if (id === "sage.matrix.linear_dossier") {
     if (!exact(input, ["matrix"])) throw new TypeError("Matrix analysis requires one exact QQ matrix.");
     params = parseSageMatrixDossierInput({ format: "math3d.sage-matrix-dossier", schemaVersion: 1,
@@ -296,6 +388,20 @@ export const parseAlgebraOperationResult = (request: AlgebraOperationRequest, va
     return parseSageGaloisResult(value, parseSageGaloisInput(request.params));
   if (request.operation === "sage.group.dossier")
     return parseSageFiniteGroupResult(value, parseSageFiniteGroupInput(request.params));
+  if (request.operation === "sage.group.actionCharacters")
+    return parseSageGroupActionResult(value, parseSageGroupActionInput(request.params));
+  if (request.operation === "sage.module.invariantFactors")
+    return parseSageModuleInvariantResult(value, parseSageModuleInvariantInput(request.params));
+  if (request.operation === "sage.chain.homology")
+    return parseSageChainHomologyResult(value, parseSageChainHomologyInput(request.params));
+  if (request.operation === "sage.finiteField.explore")
+    return parseSageFiniteFieldResult(value, parseSageFiniteFieldInput(request.params));
+  if (request.operation === "sage.numberTheory.padic")
+    return parseSagePadicResult(value, parseSagePadicInput(request.params));
+  if (request.operation === "sage.numberField.localExtensions")
+    return parseSageLocalExtensionResult(value, parseSageLocalExtensionInput(request.params));
+  if (request.operation === "sage.ellipticCurve.dossier")
+    return parseSageEllipticCurveResult(value, parseSageEllipticCurveInput(request.params));
   if (request.operation === "sage.matrix.linear_dossier") return parseSageMatrixDossierResult(value,
     parseSageMatrixDossierInput(request.params));
   if (request.operation === "sage.matrix.integer_forms") return parseSageIntegerMatrixFormsResult(value,

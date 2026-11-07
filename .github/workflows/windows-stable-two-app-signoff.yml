@@ -59,7 +59,7 @@ jobs:
         run: |
           ./scripts/setup-cgal-python-worker.ps1 -Python (Get-Command python).Source -VcpkgCommit 52fd90f2b7798d9fe6fef18fc1787db44574d704 -FrozenRequirements
           $workerPython = Join-Path $PWD '.venv-worker/Scripts/python.exe'
-          & $workerPython -m pip install pyinstaller mkdocs -r python/worker/requirements.freeze.txt
+          & $workerPython -m pip install mkdocs -r python/worker/build-requirements.freeze.txt -r python/worker/requirements.freeze.txt
           if ($LASTEXITCODE -ne 0) { throw 'Pinned worker dependencies failed' }
           "MATH3D_PYTHON=$workerPython" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           (Join-Path $PWD '.venv-worker/Scripts') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
@@ -271,6 +271,83 @@ jobs:
             test-results/stable-two-app-signoff.json
             test-results/playwright/quantum-installed-ui-round*/trace.zip
             test-results/playwright/quantum-installed-ui-round*/test-failed-*.png
+            test-results/playwright/quantum-installed-qec*/trace.zip
+            test-results/playwright/quantum-installed-qec*/test-failed-*.png
+
+  rollback-installed-candidate:
+    needs: build-candidates
+    runs-on: windows-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Check out Math3D rollback test harness
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+          cache: npm
+
+      - name: Install test harness dependencies
+        shell: pwsh
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw 'Math3D npm ci failed' }
+
+      - name: Download exact current candidate
+        uses: actions/download-artifact@v7
+        with:
+          name: two-app-stable-candidate
+          path: installers/candidate
+
+      - name: Download pinned pre-QEC 1.7.0 candidate
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 42035098178 --repo expert10000/Math3D `
+            --name two-app-stable-candidate --dir installers/rollback
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned pre-QEC candidate download failed' }
+
+      - name: Install QEC candidate then restore pinned v1 and v2 readers
+        id: rollback
+        shell: pwsh
+        run: |
+          & scripts/stable-quantum-installed-rollback.ps1 `
+            -CandidateDirectory (Join-Path $PWD 'installers/candidate') `
+            -RollbackDirectory (Join-Path $PWD 'installers/rollback') `
+            -InstallRoot (Join-Path $env:RUNNER_TEMP 'stable-quantum-installed-rollback') `
+            -EvidencePath (Join-Path $PWD 'test-results/stable-quantum-installed-rollback.json')
+          if ($LASTEXITCODE -ne 0) { throw 'Installed quantum rollback failed' }
+
+      - name: Record setup failure
+        if: always()
+        shell: pwsh
+        run: |
+          $path = 'test-results/stable-quantum-installed-rollback.json'
+          if (-not (Test-Path -LiteralPath $path)) {
+            New-Item -ItemType Directory -Path test-results -Force | Out-Null
+            [ordered]@{
+              schema = 'math3d/stable-quantum-installed-rollback/v1'
+              checkedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+              status = 'failed-before-signoff'
+              rollback = '${{ steps.rollback.outcome }}'
+            } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $path -Encoding UTF8
+          }
+
+      - name: Upload rollback evidence and failure traces
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: stable-quantum-installed-rollback
+          if-no-files-found: error
+          path: |
+            test-results/stable-quantum-installed-rollback.json
+            test-results/playwright/quantum-installed-rollback*/trace.zip
+            test-results/playwright/quantum-installed-rollback*/test-failed-*.png
 
   upgrade-installed-candidate:
     needs: [build-candidates, signoff-installed-candidate]

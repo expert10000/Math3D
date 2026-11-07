@@ -22,8 +22,15 @@ type SageOperation =
   | "sage.ideal.quotientDimension"
   | "sage.ideal.syzygies"
   | "sage.ideal.hilbertSeries"
+  | "sage.ideal.radical"
+  | "sage.ideal.primaryDecomposition"
+  | "sage.ideal.hilbertPolynomial"
   | "sage.algebra.reconstruct"
   | "sage.algebra.inspectDomains"
+  | "sage.finiteField.explore"
+  | "sage.numberTheory.padic"
+  | "sage.numberField.localExtensions"
+  | "sage.ellipticCurve.dossier"
   | "sage.numberTheory.gcd"
   | "sage.numberTheory.modInverse"
   | "sage.numberField.elementDossier"
@@ -61,7 +68,7 @@ const validConsoleScope = (scope: unknown): scope is string =>
 async function requestJson(path: string, init?: RequestInit, signal?: AbortSignal,
   endpoint = baseUrl, credential?: string): Promise<unknown> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), endpoint === gatewayUrl ? 25_000 : 15_000);
+  const timeout = setTimeout(() => controller.abort(), endpoint === gatewayUrl ? 25_000 : path === "/run" ? 45_000 : 15_000);
   const abort = () => controller.abort();
   signal?.addEventListener("abort", abort, { once: true });
   if (signal?.aborted) controller.abort();

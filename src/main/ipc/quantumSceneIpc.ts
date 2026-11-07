@@ -47,6 +47,10 @@ function opened(directory: string, imported: ImportedQuantumScene, remembered: b
     reference: { directory: resolve(directory), sceneFingerprint: sceneFingerprint(imported) },
     mappedObjectIds: imported.mappedObjectIds, deferredObjectIds: imported.deferredObjectIds,
     deferredFieldIds: imported.deferredFieldIds,
+    diagnostics: { importMs: imported.importDurationMs ?? 0,
+      datasetBytes: imported.source.datasets.reduce((sum, dataset) => sum + dataset.bytes, 0),
+      mappedPrimitives: (imported.document.geometry.points?.length ?? 0) +
+        (imported.document.geometry.segments?.length ?? 0) + (imported.document.geometry.triangles?.length ?? 0) },
     ...(imported.stream ? { stream: { level: imported.stream.level, levels: imported.stream.levels } } : {}) };
 }
 
@@ -93,10 +97,10 @@ export function registerQuantumSceneIpc(initialDirectory: string | null = null, 
     return inspectVerifiedTimeFrames(imported);
   });
   ipcMain.handle("quantumScenes:compare", async (event, ...args: unknown[]) => {
-    if (!trustedSender(event) || args.length !== 2) throw new Error("Invalid quantum comparison request");
+    if (!trustedSender(event) || args.length !== 3 || !["exact","linear-1d"].includes(args[2] as string)) throw new Error("Invalid quantum comparison request");
     const a = await reopenQuantumSceneReference(args[0]);
     const b = await reopenQuantumSceneReference(args[1]);
-    return compareVerifiedQuantumScenes(a.imported, b.imported);
+    return compareVerifiedQuantumScenes(a.imported, b.imported,args[2] as "exact"|"linear-1d");
   });
   ipcMain.handle("quantumScenes:consumeStudyLaunch", async (event, ...args: unknown[]) => {
     if (!trustedSender(event) || args.length) return { ok: false, canceled: false, error: "Invalid study launch request" };

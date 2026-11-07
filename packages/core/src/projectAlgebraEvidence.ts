@@ -8,6 +8,15 @@ import { parseSageNumberFieldInput, validateSageNumberFieldSnapshot,
   type SageNumberFieldOperation } from "./sageNumberFieldOperations";
 import { parseSageGaloisInput, validateSageGaloisSnapshot } from "./sageGaloisAnalysis";
 import { parseSageFiniteGroupInput, validateSageFiniteGroupSnapshot } from "./sageFiniteGroupOperations";
+import { parseSageGroupActionInput, validateSageGroupActionSnapshot } from "./sageGroupActionCharacters";
+import { parseSageModuleInvariantInput, validateSageModuleInvariantSnapshot } from "./sageModuleInvariantFactors";
+import { parseSageChainHomologyInput, validateSageChainHomologySnapshot } from "./sageChainHomology";
+import { parseSageFiniteFieldInput, validateSageFiniteFieldSnapshot } from "./sageFiniteFieldExplorer";
+import { validateSagePadicSnapshot } from "./sagePadicWorkspace";
+import { validateSageLocalExtensionSnapshot } from "./sageLocalExtensions";
+import { validateSageEllipticCurveSnapshot } from "./sageEllipticCurve";
+import { createSageExecutionCertificate, parseSageExecutionCertificate,
+  type SageExecutionCertificate } from "./sageExecutionCertificate";
 
 export const MAX_PROJECT_ALGEBRA_EVIDENCE = 128;
 export type ProjectAlgebraEvidence = Readonly<{
@@ -17,6 +26,7 @@ export type ProjectAlgebraEvidence = Readonly<{
   request: AlgebraOperationRequest;
   result: AlgebraOperationResult;
   resultHash: StructuralHash;
+  certificate?: SageExecutionCertificate;
   runtime: Readonly<{ engine: "sagemath"; version: string; backend: "docker" | "private";
     jobId: string; elapsedMs: number; warnings: readonly string[] }>;
 }>;
@@ -37,13 +47,15 @@ export const createProjectAlgebraEvidence = (projectId: StableDocumentId,
   if (!target) throw new TypeError("Algebra evidence target revision is missing.");
   const checked = parseAlgebraOperationResult(request, result);
   const value = { id: evidenceId(projectId, runtime.jobId), projectId, targetHash: target.contentHash,
-    request, result: checked, resultHash: structuralHash(checked), runtime };
+    request, result: checked, resultHash: structuralHash(checked), runtime,
+    certificate: createSageExecutionCertificate(objects, request, checked, runtime) };
   return parseProjectAlgebraEvidence(value, projectId, objects);
 };
 
 export const parseProjectAlgebraEvidence = (value: unknown, projectId: StableDocumentId,
   objects: readonly ProjectAlgebraObjectEntry[]): ProjectAlgebraEvidence => {
-  if (!object(value) || !exact(value, ["id", "projectId", "targetHash", "request", "result", "resultHash", "runtime"]) ||
+  if (!object(value) || !(exact(value, ["id", "projectId", "targetHash", "request", "result", "resultHash", "runtime"]) ||
+      exact(value, ["id", "projectId", "targetHash", "request", "result", "resultHash", "runtime", "certificate"])) ||
       !isStableDocumentId(value.id) || value.projectId !== projectId || !isStructuralHash(value.targetHash) ||
       !isStructuralHash(value.resultHash) || !object(value.request) ||
       !exact(value.request, ["operation", "backend", "params", "target", "outputSchema"]) ||
@@ -79,7 +91,24 @@ export const parseProjectAlgebraEvidence = (value: unknown, projectId: StableDoc
     validateSageGaloisSnapshot(parseSageGaloisInput(request.params), projectId, objects);
   if (request.operation === "sage.group.dossier")
     validateSageFiniteGroupSnapshot(parseSageFiniteGroupInput(request.params), projectId, objects);
+  if (request.operation === "sage.group.actionCharacters")
+    validateSageGroupActionSnapshot(parseSageGroupActionInput(request.params), projectId, objects);
+  if (request.operation === "sage.module.invariantFactors")
+    validateSageModuleInvariantSnapshot(parseSageModuleInvariantInput(request.params), projectId, objects);
+  if (request.operation === "sage.chain.homology")
+    validateSageChainHomologySnapshot(parseSageChainHomologyInput(request.params), projectId, objects);
+  if (request.operation === "sage.finiteField.explore")
+    validateSageFiniteFieldSnapshot(parseSageFiniteFieldInput(request.params), projectId, objects);
+  if (request.operation === "sage.numberTheory.padic")
+    validateSagePadicSnapshot(request.params, projectId, objects);
+  if (request.operation === "sage.numberField.localExtensions")
+    validateSageLocalExtensionSnapshot(request.params, projectId, objects);
+  if (request.operation === "sage.ellipticCurve.dossier")
+    validateSageEllipticCurveSnapshot(request.params, projectId, objects);
   const result = parseAlgebraOperationResult(request, value.result);
   if (structuralHash(result) !== value.resultHash) throw new TypeError("Algebra evidence result hash does not match.");
+  if (value.certificate !== undefined)
+    parseSageExecutionCertificate(value.certificate, objects, request, result,
+      runtime as ProjectAlgebraEvidence["runtime"]);
   return JSON.parse(canonicalJsonStringify(value)) as ProjectAlgebraEvidence;
 };

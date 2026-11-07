@@ -8,15 +8,24 @@ import { sageExecutionRegistry, type SageOperationHandle } from "../../services/
 
 type Props = { project: Math3DProject | null; target: AlgebraObjectRef | null;
   onSaveEvidence: (evidence: ProjectAlgebraEvidence) => void | Promise<void>;
-  selectedEvidenceId: string | null; onInspectEvidence: (id: string) => void };
+  selectedEvidenceId: string | null; onInspectEvidence: (id: string) => void;
+  requestedOperation?: Readonly<{ id: AlgebraOperationId; token: number }> | null };
 const field = { width: "100%", boxSizing: "border-box" as const, padding: 6, fontSize: 12 };
 const parseArguments = (id: AlgebraOperationId, text: string, other: AlgebraObjectRef,
   budgetProfile: SageIdealBudgetProfile):
   AlgebraOperationArguments[AlgebraOperationId] => {
   if (id === "sage.algebra.reconstruct") return {};
   if (id === "sage.group.dossier") return {};
+  if (id === "sage.group.actionCharacters") return { point: Number(text.trim()) };
+  if (id === "sage.module.invariantFactors") return {};
+  if (id === "sage.chain.homology") return {};
+  if (id === "sage.finiteField.explore") return { element: text.split(",").map((item) => Number(item.trim())) };
+  if (id === "sage.ellipticCurve.dossier") return { point: text.trim() ?
+    text.split(",").map((item) => item.trim()) as [string, string] : null };
   if (id === "sage.ideal.groebner" || id === "sage.ideal.quotientDimension" ||
-      id === "sage.ideal.syzygies" || id === "sage.ideal.hilbertSeries") return { budgetProfile };
+      id === "sage.ideal.syzygies" || id === "sage.ideal.hilbertSeries" ||
+      id === "sage.ideal.radical" || id === "sage.ideal.primaryDecomposition" ||
+      id === "sage.ideal.hilbertPolynomial") return { budgetProfile };
   if (id === "sage.ideal.eliminate") return { eliminate: text.split(",").map((item) => item.trim()), budgetProfile };
   if (id === "sage.ideal.membership") return { polynomial: text.trim(), budgetProfile };
   if (id === "sage.algebra.inspectDomains") return { other };
@@ -31,7 +40,7 @@ const parseArguments = (id: AlgebraOperationId, text: string, other: AlgebraObje
 };
 
 export default function SageObjectOperations({ project, target, onSaveEvidence, selectedEvidenceId,
-  onInspectEvidence }: Props) {
+  onInspectEvidence, requestedOperation }: Props) {
   const [routes, setRoutes] = useState<readonly AlgebraRouteCapability[]>([]);
   const [checking, setChecking] = useState(false);
   const [selected, setSelected] = useState<AlgebraOperationId | null>(null);
@@ -59,9 +68,14 @@ export default function SageObjectOperations({ project, target, onSaveEvidence, 
     setRunning(false); setSelected(null); setInput(""); setMessage("");
     setBudgetProfile("standard"); setExpandedAcknowledged(false);
   }, [project?.identity.id, target?.objectId, target?.revision]);
+  useEffect(() => { if (requestedOperation) { setSelected(requestedOperation.id); setInput(""); setMessage("");
+    setBudgetProfile("standard"); setExpandedAcknowledged(false); }
+  }, [requestedOperation?.token]);
   if (!project || !target) return <section data-testid="cas-object-operations" role="status" style={{ fontSize: 12 }}>
     Select a saved structure to see compatible object operations.</section>;
-  const operations = algebraOperationsFor(project, target, routes);
+  const operations = algebraOperationsFor(project, target, routes)
+    .filter((item) => item.definition.id !== "sage.numberTheory.padic" &&
+      item.definition.id !== "sage.numberField.localExtensions");
   const current = operations.find((item) => item.definition.id === selected);
   const otherOptions = (project.algebraObjects ?? []).filter((entry) => !entry.archived).map((entry) => ({
     id: entry.id, record: entry.revisions[entry.revisions.length - 1] }));
@@ -70,6 +84,10 @@ export default function SageObjectOperations({ project, target, onSaveEvidence, 
   const targetStale = inspectProjectAlgebraFreshness(project).find((item) => item.objectId === target.objectId)?.status === "stale";
   const idealSelection = selected?.startsWith("sage.ideal.") ?? false;
   const targetRecord = project.algebraObjects?.find((item) => item.id === target.objectId)?.revisions[target.revision - 1];
+  const targetFieldDegree = targetRecord?.definition.kind === "finite-field" ? targetRecord.definition.degree : null;
+  if (targetRecord?.kind === "module-map") return <section
+    data-testid="cas-object-operations" role="status" style={{ fontSize: 12 }}>
+    This exact module definition is saved in the Project. Select Structures to inspect its pinned matrix and parent revisions.</section>;
   const idealRef = targetRecord?.definition.kind === "quotient-ring" ? targetRecord.definition.ideal : target;
   const ideal = project.algebraObjects?.find((item) => item.id === idealRef.objectId)?.revisions[idealRef.revision - 1];
   const ringRef = ideal?.definition.kind === "ideal" ? ideal.definition.ambientRing : null;
@@ -128,6 +146,10 @@ export default function SageObjectOperations({ project, target, onSaveEvidence, 
       <button type="button" disabled={!item.readyBackend || running} title={item.reason ?? item.runtimeReason ?? undefined}
         aria-label={`Select ${item.definition.label}`} onClick={() => { setSelected(item.definition.id);
           setInput(item.definition.id === "sage.numberField.elementDossier" ? "1, 1"
+            : item.definition.id === "sage.group.actionCharacters" ? "1"
+            : item.definition.id === "sage.finiteField.explore" && targetFieldDegree !== null
+              ? Array.from({ length: targetFieldDegree }, (_, index) =>
+                index === (targetFieldDegree === 1 ? 0 : 1) ? "1" : "0").join(", ")
             : item.definition.id === "sage.numberField.primeDecomposition" ? "5"
               : item.definition.id === "sage.galois.analyze" && targetRecord?.definition.kind === "polynomial-ring"
                 ? `${targetRecord.definition.variables[0]}^4-2` : "");
@@ -142,7 +164,10 @@ export default function SageObjectOperations({ project, target, onSaveEvidence, 
       {idealSelection && <div data-testid="cas-ideal-budget-warning" style={{ display: "grid", gap: 5,
         border: "1px solid #d9b46b", background: "#fff9ed", borderRadius: 6, padding: 8 }}>
         <strong>Ideal operation budget</strong>
-        <span>{idealCost?.warning}</span>
+        <span>{idealCost?.warning}{selected === "sage.ideal.primaryDecomposition"
+          ? " Primary decomposition can grow sharply; this run is subject to a component cap and hard wall-time limit."
+          : selected === "sage.ideal.radical" || selected === "sage.ideal.hilbertPolynomial"
+            ? " This exact invariant may require expensive Gröbner work and is subject to the hard wall-time limit." : ""}</span>
         <label>Budget profile <select aria-label="Ideal budget profile" value={budgetProfile}
           onChange={(event) => { setBudgetProfile(event.target.value as SageIdealBudgetProfile);
             setExpandedAcknowledged(false); }}>
@@ -159,15 +184,20 @@ export default function SageObjectOperations({ project, target, onSaveEvidence, 
         <select style={field} value={other?.id ?? ""} onChange={(event) => setOtherId(event.target.value)}>
           {otherOptions.map((item) => <option key={item.id} value={item.id}>{item.record.label}@{item.record.revision}</option>)}
         </select></label>}
-      {selected !== "sage.algebra.reconstruct" && selected !== "sage.group.dossier" && selected !== "sage.algebra.inspectDomains" &&
+      {selected !== "sage.algebra.reconstruct" && selected !== "sage.group.dossier" && selected !== "sage.module.invariantFactors" && selected !== "sage.chain.homology" && selected !== "sage.algebra.inspectDomains" &&
         selected !== "sage.ideal.groebner" && selected !== "sage.ideal.quotientDimension" &&
         selected !== "sage.ideal.syzygies" && selected !== "sage.ideal.hilbertSeries" &&
+        selected !== "sage.ideal.radical" && selected !== "sage.ideal.primaryDecomposition" &&
+        selected !== "sage.ideal.hilbertPolynomial" &&
         <label>{selected === "sage.ideal.eliminate" ? "Variables to eliminate, comma separated" :
           selected === "sage.ideal.membership" ? "Polynomial to test" :
+          selected === "sage.group.actionCharacters" ? "Action point (1 through the saved permutation degree)" :
           selected === "sage.numberTheory.gcd" ? "Integers, comma separated" :
           selected === "sage.numberTheory.modInverse" ? "Integer to invert" :
           selected === "sage.numberField.elementDossier" ? "Element coefficients u, v for u + v·a" :
           selected === "sage.numberField.primeDecomposition" ? "Rational prime p (2–97)" :
+          selected === "sage.finiteField.explore" ? "Element coefficients (constant first, in base p)" :
+          selected === "sage.ellipticCurve.dossier" ? "Sample point x, y for doubling; leave blank for invariants only" :
           selected === "sage.galois.analyze" ? "Monic irreducible QQ polynomial (degree 2–4; coefficients ≤ 100)" :
           selected?.startsWith("sage.matrix.") ? "Matrix: comma separated rows, one row per line" :
           selected === "sage.groebner.compute" ? "Polynomials, one per line" : "Polynomial"}

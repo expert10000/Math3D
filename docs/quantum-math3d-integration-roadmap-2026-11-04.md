@@ -930,11 +930,15 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 
 - Fallback modes, bounding-box metadata and GPU capability tests.
 
+**Implementation note (2026-11-05):** The verified quantum Volume view now exposes source-derived amplitude, transfer presets, direct volume and maximum projections, two simultaneous density thresholds, central clipping and physical grid bounds. Its renderer reports the actual GPU plan or CPU slice fallback. Display controls do not alter the saved source. See [QI-28–30 implementation details](quantum-qi28-30-volume-topology-dynamics.md).
+
 ### QI-29 — Topological geometry overlays
 
 **Commit:** `feat(topology): render reciprocal geometry and integration objects`
 
 - BZ, k-path, integration surfaces, Weyl charge and gap-closing markers.
+
+**Implementation note (2026-11-05):** Math3D inventories verified BZ boundaries, k-paths, enclosing integration surfaces and node/gap markers as separately switchable geometry layers. It displays only producer-supplied charge or gap invariants and does not infer charge from a marker. See [QI-28–30 implementation details](quantum-qi28-30-volume-topology-dynamics.md).
 
 ### QI-30 — Quantum dynamics workspace
 
@@ -942,11 +946,18 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 
 - Record-aware time synchronization, solver-output termination and uncertainty.
 
+**Implementation note (2026-11-05):** Theory Lab's saved-run plot, Bloch, density matrix and observable panels share one exact time sample. A Hann-windowed DFT of the stored P₁ series adds a clearly labeled sampled response spectrum. The workspace reports the completed stored interval, final-sample boundary and absent termination/uncertainty metadata without extrapolation. See [QI-28–30 implementation details](quantum-qi28-30-volume-topology-dynamics.md).
+
+**Math3D consumer note (2026-11-05):** Typed scene time frames link the Bloch marker, σz plot, and an exact-frame inspector; clicking the plot selects a recorded sample without interpolation. Playback stops at the supplied endpoint. The exported scene does not contain the Lab's full density matrix or sampled response spectrum, so those panels remain unavailable in Math3D. This consumer extension is Partial until those records are supplied by a verified scene contract.
+
 ### QI-31 — QEC/syndrome and decoder visualizations
 
 **Commit:** `feat(qec): represent syndrome histories and decoding evidence`
 
 - Source-linked rounds, defects, correction chains and logical results.
+
+**Status (2026-11-05): Partial.** Theory Lab has a pinned, source-checked repetition-code viewer in its Atlas and a bounded ideal three-data-bit example on its Backend page. The Python worker records exact flip, parity syndrome, temporal defects, final correction and logical outcome; Electron independently checks the trace and digest. The trace now persists as a hash-verified immutable run and exports a portable `.qscene` with exact syndrome, defect and data-bit arrays. Math3D independently opens and verifies that scene, shows its ideal-example scope and decoder record, and refuses changed scene bytes. Multiple-error ambiguity is explicit. A surface-code patch, circuit-level noisy decoding and comparison of scientifically independent decoders remain required for full QI-31.
+See [QI-31–33 implementation details](quantum-qi31-33-qec-validation-alignment.md) and [saved QEC scene evidence](evidence/quantum-qi40-qec-saved-scene-2026-11-05.md).
 
 ### QI-32 — Numerical validation dashboard
 
@@ -954,11 +965,17 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 
 - Hermiticity, normalization, trace, orthogonality, convergence, invariants and warnings.
 
+**Status (2026-11-05): Partial.** Theory Lab's Runs provenance panel derives eigenstate norm/overlap, recorded evolution population, cavity norm, Lindblad trace/purity and stored damped-oscillator density Hermiticity checks from a hash-verified saved result and artifact. It surfaces producer topology validity and convergence flags; absent checks are explicitly unavailable. Math3D's scene inspector displays only supplied gap, invariant status and limitations alongside bundle verification. A versioned exported solver-check record is still needed for a complete cross-app dashboard; Math3D does not infer Hermiticity or solver accuracy from display geometry.
+See [QI-31–33 implementation details](quantum-qi31-33-qec-validation-alignment.md).
+
 ### QI-33 — Scientific-data compare alignment
 
 **Commit:** `feat(compare): add unit-aware resampling and eigenstate matching`
 
 - Interpolation policy, gauge/degeneracy guards and uncertainty flags.
+
+**Status (2026-11-05): Partial.** Theory Lab's saved-run A/B view offers opt-in unit-aware scalar alignment and phase/sign-invariant matching for stored, resolved two-level eigenstates; it refuses degenerate or ambiguous pairs. Math3D Projects comparison offers exact samples or explicitly selected linear interpolation of B onto A for monotone 1D band paths, with convertible eV/meV/µeV energy units. It refuses extrapolation, differing spatial frames/units, 2D surfaces and sampled degeneracies; the UI labels interpolation uncertainty. Existing `.qscene` bands do not generally supply eigenvectors, so cross-scene state overlap, gauge-safe matching and unsampled crossing certification remain unavailable. No state identity is inferred from band index.
+See [QI-31–33 implementation details](quantum-qi31-33-qec-validation-alignment.md).
 
 ### QI-34 — Scene composition and cross-document overlays
 
@@ -966,11 +983,15 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 
 - Coordinate transform validation, multi-layer picking, clipping and source links.
 
+**Implementation note (2026-11-05):** Project now offers a verified, read-only quantum/native Mesh or Geometry overlay with exact identity-frame validation, independent layers, shared Z clipping, source-local picks and source links. Non-identity transforms and persisted overlay state remain open. See [QI-34–36 evidence](quantum-qi34-36-overlay-runtime-portability.md).
+
 ### QI-35 — DevShell science-runtime diagnostics
 
 **Commit:** `feat(devshell): expose quantum worker diagnostics and fixture tests`
 
 - Version probe, health logs, reproducibility report and backend benchmarking.
+
+**Implementation note (2026-11-05):** DevShell's desktop-five health check probes the worker protocol and repeatable native fixture; a CLI writes a JSON reproducibility report and optionally runs the guarded acceleration benchmark. See [QI-34–36 evidence](quantum-qi34-36-overlay-runtime-portability.md).
 
 ### QI-36 — Cross-platform portable opening
 
@@ -978,11 +999,15 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 
 - Drive-letter independence, missing worker fallback, read-only mobile planning.
 
+**Implementation note (2026-11-05):** A relocated two-scene `.qpack` reopens in Math3D with a missing worker path. Windows and Ubuntu/WSL independently verified and reconstructed its relative references and blobs with matching project hash. Native Linux Electron opening and read-only mobile consumption remain open. See [QI-34–36 evidence](quantum-qi34-36-overlay-runtime-portability.md).
+
 ### QI-37 — Full keyboard/panel/large-data UX pass
 
 **Commit:** `fix(ux): improve quantum inspector accessibility and performance`
 
 - View/Data/Science/Provenance inspector; keyboard focus; error and loading states.
+
+**Implementation note (2026-11-05):** The quantum viewer now has keyboard-operated View/Data/Science/Provenance tabs, bounded dataset paging, dialog focus handling and a responsive inspector layout. Full installed-app keyboard and large-data certification remains in QI-40. See [QI-37–39 evidence](quantum-qi37-39-ux-observability-hardening.md).
 
 ### QI-38 — Operational observability
 
@@ -990,11 +1015,15 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 
 - Correlation IDs, bounded logs, redacted support bundle, metric baselines.
 
+**Implementation note (2026-11-05):** Theory Lab exports verified job/result identities and runtime duration; Math3D exports matching run/result/scene identities, bounded viewer events and observed import/preview metrics. The frozen scene contract has no job ID, so cross-app correlation uses run ID and result SHA-256. See [QI-37–39 evidence](quantum-qi37-39-ux-observability-hardening.md).
+
 ### QI-39 — Threat model and import hardening
 
 **Commit:** `security(artifacts): harden bundles, links and broker requests`
 
 - Path, size, schema, decompression, code execution and transport trust tests.
+
+**Implementation note (2026-11-05):** Portable pack reads now verify file identity and reject a linked cache root; negative tests cover traversal, size, schema and changed blobs. Theory Lab adds explicit injected-path transport tests. The pack format has no decompressor or executable payload. See [QI-37–39 evidence](quantum-qi37-39-ux-observability-hardening.md).
 
 ### QI-40 — Integration certification + release freeze
 
@@ -1003,6 +1032,34 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 - Golden scene matrix, numerical/visual parity, migration, stress, cross-app navigation and portable export certification.
 
 **Done when:** release evidence is generated, all P0 gates pass, known limitations are documented, and new result/scene adapters can be rolled back while both pinned `quantum-scene/v1|v2` readers remain available.
+
+**Current disposition (2026-11-07): Partial; release freeze withheld.** The 80-cycle Windows **source** gate now passes the provisional 2 MiB late-heap target (1,924,848 bytes), with WebGL contexts, textures and closed-preview canvases at baseline. The saved-scene review passed 39 pinned fingerprints and three fresh Lab producer round trips with matching hashes, units and sampled values; the Rice–Mele exact-selection race found during review was fixed. These checks complete the source-only work described [below](evidence/quantum-qi40-source-heap-scene-review-2026-11-07.md). QI-40 still needs an exact new **installed-candidate** memory and two-app pass, installer reliability/root-cause evidence for the intermittent `0xC0000005`, broader science and visual signoff, and the documented rollback compatibility gaps resolved or accepted. Passing source measurements cannot certify a different installed binary.
+
+**Status (2026-11-06): In progress; release freeze withheld.** The [QI-40 certification candidate](evidence/quantum-qi40-certification-2026-11-05.md) pins 39 v1/v2 scenes and records passing QWZ, QEC, importer, Project, portable, inspector, worker and live two-app checks. Installed Math3D captured all 39 current scenes, then a pinned pre-QEC rollback captured 38 scenes with exact fingerprints. A six-runner installer probe passed five times and reproduced one Theory Lab `0xC0000005` crash in `System.dll`; a later three-runner replay passed but does not explain that failure. The 120-cycle Electron stress run returned every scene canvas to baseline and its total/GPU working set leveled off after early growth, while forced-GC renderer heap continued to rise. The QEC-profile-off and pre-QEC source checks retained pinned v1/v2 readers; installed QEC opening, v1.6.0 upgrade and a narrow installed adapter rollback also passed for exact pinned files. Surface-code science, a memory budget and retained-object analysis, full visual signoff, reliable installation and rollback across all result/scene adapters remain outstanding. Later `main` commits are not certified by those pinned installer runs.
+
+**Installed follow-up (2026-11-06):** The [next three checks](evidence/quantum-qi40-rollback-stress-installer-2026-11-06.md) passed a saved Graph Project and changed setting across the pinned QEC-to-pre-QEC installer rollback, then passed 80 installed Math3D scene cycles with every preview close returning to the baseline canvas count. Six additional clean-runner probes installed both apps, while a separate setup attempt reproduced the Theory Lab `0xC0000005` fault in `System.dll` at offset `00001581`. The installed renderer heap continued to rise after forced garbage collection. QI-40 release freeze remains open pending installer root-cause/reliability evidence and memory signoff.
+
+**Further QI-40 evidence (2026-11-06):** A [Lab-only versus both-app installer comparison](evidence/quantum-qi40-installer-heap-project-followup-2026-11-06.md) passed six clean-runner installs but did not reproduce or explain the earlier access violation. Two installed 80-cycle V8 snapshots showed string growth and 80 additional WebGL context wrappers each; zero canvas mismatches are therefore insufficient for memory signoff. The pinned pre-QEC installed app reopened a retained mixed Project with exact QWZ, Rice–Mele and QEC scene references. Investigate the retained-object paths and installer fault before release freeze.
+
+**Retainer and rollback follow-up (2026-11-06):** A [40-cycle installed V8 trace](evidence/quantum-qi40-retainers-dumps-six-scene-2026-11-06.md) found document event-listener paths to closed WebGL contexts. Six clean-runner Theory Lab installs had per-application WER mini-dump capture enabled; all passed, so the earlier access violation was not reproduced. The pinned pre-QEC installed app reopened a retained six-scene Project, including field, time, QEC and v2 band references. Cleanup repair, installer diagnosis and release memory limits remain open.
+
+**Cleanup and native rollback follow-up (2026-11-06):** The [next three checks](evidence/quantum-qi40-cleanup-installer-native-rollback-2026-11-06.md) add captured-root OrbitControls cleanup and guarded Three.js renderer texture-listener cleanup. A local 80-cycle source run held WebGL context wrappers at 2 and texture wrappers at 10, with zero leftover canvases; total renderer heap still grew about 11 MB. The first Windows matrix reproduced `0xC0000005` in both archived Math3D and Theory Lab setup executables at the same `System.dll` offset. Its new source job lacked the separate renderer install, and the native rollback test failed a Geometry ID lookup before reaching rollback; both harness issues are being corrected. Release freeze remains withheld pending repeat Windows results, installed cleanup validation, a complete memory budget, and installer fault diagnosis.
+
+**Repeat matrix (2026-11-06):** The [second Windows run](https://github.com/expert10000/Math3D/actions/runs/42214279473) passed all twelve installer probes and rechecked the archived installed renderer's 40-cycle leak. The new source job built but a first-run overlay blocked its Palette click; the rollback test read before an asynchronous save completed. Both harness paths were corrected and a local 80-cycle run with the revised source harness held contexts and textures at baseline. Installed native rollback and Windows source memory confirmation remain pending another run.
+
+**Third matrix (2026-11-06):** The [third Windows run](https://github.com/expert10000/Math3D/actions/runs/42215273423) passed all twelve archived installer probes and the installed retainer check. Candidate Project seeding with a QWZ-promoted native Geometry document passed; after uninstall and pinned pre-QEC install, the older app classified the expanded Project as a compatibility preview and would not open its native Geometry document. This is a real rollback gap beyond the previously passing six scene references. The source job completed 80 cycles but failed to write its report on the fresh runner; the report writer was fixed for a targeted rerun. QI-40 freeze remains withheld.
+
+**Targeted source confirmation (2026-11-06):** The [Windows source run](https://github.com/expert10000/Math3D/actions/runs/42216520427) passed 80 quantum scene cycles with WebGL context wrappers at 1 → 1, texture wrappers at 5 → 5, and no canvas mismatches. Renderer heap still rose by 16,546,484 bytes. This supports the targeted listener cleanup on fresh Windows source builds, while installed-build memory signoff, a total heap budget, native Project rollback and installer diagnosis remain open.
+
+**Graph, heap and installer component follow-up (2026-11-06):** The [next three checks](evidence/quantum-qi40-graph-heap-installer-components-2026-11-06.md) reproduced the older app's two-Geometry construction limit. A [corrected installed rollback run](https://github.com/expert10000/Math3D/actions/runs/42219564141) passed the exact installer downgrade, reopened the same promoted Graph2D document and all six exact-fingerprint scene references, and retained the separate saved Graph and changed setting; the promoted Geometry path remains preview-only. A provisional 2 MiB post-warmup heap budget failed in three 80-cycle source traces (12.30–15.73 MB growth), dominated by large workbook/autosave-shaped strings. A [fresh Windows source run](https://github.com/expert10000/Math3D/actions/runs/42219664921) retained contexts and textures at baseline with no canvas mismatches but still missed that heap target. Both crashing archived setup executables contain byte-identical `System.dll` components, narrowing the shared installer fault but not its trigger. QI-40 release freeze remains withheld.
+
+**Geometry, autosave and debugger follow-up (2026-11-06):** The [next three checks](evidence/quantum-qi40-geometry-autosave-debugger-2026-11-06.md) show that promoted scene-primitives Geometry also reopens only as a compatibility preview in the current app; the promotion UI now warns before save and an E2E regression verifies the exact reason. Matched local and Windows 80-cycle control/ablation pairs suppressed workbook autosave writes but left about 9.8–10.9 MB of post-warmup heap growth, with 36 large strings still present on Windows, so autosave storage writes are not the dominant retained-string cause. Three exact-hash installer matrices each reproduced one intermittent `0xC0000005` crash across Math3D or Theory Lab. CDB narrowed the third failure to candidate symbol `System!Store+0x4a0`, but a stack-unwind warning prevents an ordered call-stack claim. QI-40 release freeze remains withheld pending an editable Geometry path, a memory repair, and installer trigger diagnosis.
+
+**Exact installed candidate follow-up (2026-11-06):** The [nonpublishing candidate and 80-cycle replay](evidence/quantum-qi40-fixed-installed-candidate-2026-11-06.md) pinned Math3D `276a265b` and Theory Lab `38842c8c` installer hashes. Installed handoff, rollback, and upgrade passed. The installed 80-cycle trace returned canvases, WebGL contexts, and textures to baseline, but forced-GC closed-preview heap grew **13,510,144 bytes** after warmup, exceeding the provisional 2 MiB target. A 12-attempt installer matrix reproduced one Theory Lab `0xC0000005` crash in `System.dll` at offset `00001581`. A later source-only workbook serialization change reduced growth substantially, but it has no installed candidate measurement yet. QI-40 stays **Partial** and the release freeze remains withheld.
+
+**Promoted Geometry, workbook retention and full-dump follow-up (2026-11-06):** The [next three checks](evidence/quantum-qi40-geometry-workbook-full-dump-2026-11-06.md) restored bounded QWZ-promoted Geometry to the **current** Project source editor; save/reload/open/navigation passed, while the pinned pre-QEC app still has a compatibility-preview rollback gap. Readable heap paths showed workbook JSON retained through editor callback chains; lazy save/export serialization removed the repeated large workbook strings, reducing two minified 80-cycle source heap slopes to 2.80 MB and 2.30 MB, still above the provisional 2 MiB budget. Three full-dump installer matrices passed 34/36 exact-hash probes; two Theory Lab access violations reproduced `System.dll` offset `00001581` and `System!Store+0x4a0`, but CDB still could not unwind an ordered stack. QI-40 release freeze remains withheld pending installed memory and rollback certification, installer fault diagnosis, and the remaining science/visual gates.
+
+**Source heap and saved-scene follow-up (2026-11-07):** The [source-only review](evidence/quantum-qi40-source-heap-scene-review-2026-11-07.md) identified large Geometry/Mesh arrays held by an E2E-only global hook. Clearing those hooks before production-like source samples brought the local 80-cycle late growth to **1,282,972 bytes**; the [Windows source run](https://github.com/expert10000/Math3D/actions/runs/42308882693) passed at **1,924,848 bytes** against the provisional 2 MiB target, with contexts, textures and closed-preview canvases at baseline. Thirty-nine pinned scene fingerprints, three fresh Lab producer round trips, exact values and units, and targeted restart/tamper checks passed. A Rice–Mele bulk–chain selection race was fixed. This was a source measurement and representative scene review, with **no installation**; installed memory, broader visual/science signoff, rollback compatibility, and intermittent installer failure remain open. QI-40 stays **Partial**.
 
 ### Cross-repository ownership and evidence for the first cut
 

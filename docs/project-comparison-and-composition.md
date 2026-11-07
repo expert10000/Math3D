@@ -13,6 +13,47 @@ Projects. Each creates an independent saved copy; **New copy** creates another.
 Then open **Compare saved documents** in the Project navigator and choose the
 named entry under **Saved composition**.
 
+## PC03 legacy Geometry and Mesh frame declarations
+
+For a saved overlay or side-by-side comparison containing a Geometry or Mesh
+source with no coordinate frame, open that comparison and use **Record frame in
+source A/B**. Enter the source's axis labels and handedness. An overlay uses
+its asserted frame and unit; a side-by-side comparison asks for both values.
+The declared frame and unit become part of the owning source in a new
+replay-backed revision. Mesh declarations retain the
+exact verified binary buffer; only source origin metadata changes. An old Mesh
+revision beyond the checkpoint is marked as an explicit retained snapshot
+before the edit. An original overlay remains an operator assertion. A second
+saved composition pins the new revision and its exact hash.
+Reopen either composition after restart to check its own source generation.
+
+Geometry and Mesh can each retain their current pre-declaration revision within
+an eight-generation budget. A historical revision that was never explicitly
+retained remains unavailable. Save live document edits before using the action.
+Math3D
+checks the authored declaration against the other source's declaration; it
+cannot independently establish that the authored axes describe the physical
+source correctly.
+
+## PC05 legacy Surface frame declarations
+
+For a saved side-by-side comparison with a current Surface source that has no
+frame, save the Project and open that comparison. Use **Record frame in source
+A/B**, enter the frame name, axis labels, and handedness confirmed for the
+Surface, then record it. The unit comes from the Surface source's length unit;
+Math3D refuses a declaration that conflicts with the other source's available
+frame at the exact revision pinned by the comparison. The Surface orientation
+receives the authored declaration in a new replay-backed revision. The original
+comparison keeps its exact retained generation, and a new comparison pins the
+declared revision. Reopen either after restart.
+
+If the current Surface revision is beyond its replay checkpoint, the frame
+edit explicitly retains that exact pre-declaration revision as a selectable
+snapshot, within an eight-generation budget. The original comparison then
+reopens against the retained snapshot. Earlier unmarked revisions stay
+unavailable. The declaration records the author's coordinate claim; it does
+not independently verify the Surface's physical alignment.
+
 ## PC24 linked coordinate probe
 
 Open **Coordinate Overlay Verification → Compare saved documents → Verified A/B
@@ -23,10 +64,34 @@ the exact picked source ID, revision and hash. Only the coordinate is shared;
 face and vertex IDs remain local to the picked source. The marker is a transient
 view aid and is recreated from a fresh pick after reopening the comparison.
 
+For a heterogeneous Surface/Mesh pair, open **Surface and Mesh Coordinate
+Probe → Surface / Mesh · shared metres**. Both saved sources declare the same
+local 3D frame and metre unit. A Surface pick places its local xyz coordinate
+in the Mesh pane; a Mesh pick can mark the same coordinate in the Surface pane.
+The marker may lie off the other shape. It does not identify a matching
+parameter, vertex, face, or measured value. The bounded coordinate can be
+recorded in a comparison Note; reopening rechecks both exact sources and the
+Mesh sidecar. Missing or mismatched declarations disable the link.
+
+For a Surface/Geometry pair, open **Surface and Geometry Coordinate Probe →
+Surface / Geometry · shared metres**. A pick in either pane marks the same
+declared 3D coordinate in the other pane. A saved coordinate Note checks both
+exact source revisions on reopen. The marker does not claim a corresponding
+Surface parameter or Geometry object, and it may lie off the other shape.
+
+When a saved Surface has a valid declared frame, **Create Mesh** carries
+that frame into the new Mesh source along with the Surface's recorded length
+unit. The generated-by relation pins the exact Surface generation. A saved
+side-by-side Surface/Mesh pair can then share a coordinate and record an exact
+comparison Note. A missing or invalid Surface declaration is not propagated;
+the Mesh snapshot does not acquire a frame by inference. A Mesh declaration
+that disagrees with its own recorded length unit is invalid.
+
 Choose the undeclared D source or mismatched C source to see the link refused.
 Changed or missing source evidence also prevents the marker. PC03 remains
-Partial for legacy coordinate metadata, and PC05 remains Partial for history
-that was never retained and comparison families without a linked adapter.
+Partial for historical generations outside retained checkpoints or marked
+snapshots. PC05 remains Partial for history that was never retained and
+comparison families without a linked adapter.
 
 ## PC25 saved coordinate observations
 
@@ -108,8 +173,10 @@ The acceptance covers the bounded Mesh/Geometry adapter. PC03 remains
 For a compatible side-by-side pair, turn on **Synchronize cameras** and choose
 **A → B** or **B → A**. The leader's orbit, pan, and zoom pose is applied to the
 other viewer; either pane can remain independent when the switch is off. The
-control is disabled for unmatched or undeclared coordinate frames and for
-Surfaces without the same saved parameter domain, x/y axes, and length unit.
+control is disabled for invalid or contradictory declared frames. Two
+generations of the same Surface can also qualify through the same saved
+parameter domain, x/y axes, and length unit; a declared frame conflict still
+disables linking.
 Saving the composition retains the camera-link preference and leader, but not a
 transient camera pose. Reopening rechecks source compatibility before linking;
 it never uses a saved preference as proof that two frames match.
@@ -133,9 +200,11 @@ coordinate declaration was scientifically correct.
 4. For a Mesh–Geometry overlay, choose **Overlay** and enter a common frame and
    unit. When both structural sources contain `math3dCoordinateFrame` metadata,
    the viewer checks frame, unit, axes and handedness independently and refuses
-   a mismatch. Older sources without that metadata remain explicitly labeled
-   as an **unverified operator assertion**; entering matching text does not turn
-   it into scientific evidence. Surface overlays are refused; compare them in
+   a mismatch. If only one source declares a frame, its declared frame and unit
+   must still agree with the entered alignment. Older sources without that
+   metadata remain explicitly labeled as an **unverified operator assertion**;
+   entering matching text does not turn it into scientific evidence. Surface
+   overlays are refused; compare them in
    separate panes instead.
 5. Adjust each member's visibility and opacity. Mesh/Geometry color is
    independent per member; Surface retains its own viewer palette.

@@ -1,6 +1,6 @@
 import type { ImportedQuantumScene } from "./importer";
 
-export type FieldVolumeQuantity = "real" | "imaginary" | "density" | "phase";
+export type FieldVolumeQuantity = "real" | "imaginary" | "amplitude" | "density" | "phase";
 export type FieldVolumeRequest = { fingerprint: string; fieldId: string; quantity: FieldVolumeQuantity; requestId: string };
 export type FieldVolume = {
   fingerprint: string; fieldId: string; label: string; kind: "scalar-field" | "complex-field";
@@ -24,7 +24,7 @@ export async function deriveVerifiedFieldVolume(imported: ImportedQuantumScene, 
   cancelled: () => boolean = () => false): Promise<FieldVolume> {
   const field = imported.source.fields?.find(candidate => candidate.id === request.fieldId);
   if (!field) throw new TypeError("Unknown verified scene field");
-  if (!["real", "imaginary", "density", "phase"].includes(request.quantity) ||
+  if (!["real", "imaginary", "amplitude", "density", "phase"].includes(request.quantity) ||
       (field.kind === "scalar-field" && request.quantity !== "real")) throw new TypeError("Unsupported field quantity");
   const realDataset = imported.source.datasets.find(candidate => candidate.id === field.real);
   const imaginaryDataset = field.imaginary ? imported.source.datasets.find(candidate => candidate.id === field.imaginary) : undefined;
@@ -48,7 +48,8 @@ export async function deriveVerifiedFieldVolume(imported: ImportedQuantumScene, 
     const isUndefined = request.quantity === "phase" && re * re + im * im <= maximumDensity * 1e-12;
     if (isUndefined) { undefinedMask[targetIndex] = 1; undefinedNodeCount++; }
     const value = request.quantity === "real" ? re : request.quantity === "imaginary" ? im :
-      request.quantity === "density" ? re * re + im * im : isUndefined ? 0 : Math.atan2(im, re);
+      request.quantity === "density" ? re * re + im * im :
+      request.quantity === "amplitude" ? Math.hypot(re, im) : isUndefined ? 0 : Math.atan2(im, re);
     if (!Number.isFinite(value) || Math.abs(value) > 3.4028234663852886e38)
       throw new RangeError("Field quantity exceeds Math3D Volume float32 range");
     values[targetIndex] = value;

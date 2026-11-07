@@ -3,7 +3,7 @@ import { createGeometryDocument, geometryDocumentFromSceneDocument, createMath3D
 import { geometryEditorSeed, geometrySourceFromEditor, geometryDisplayFromEditor, projectConstructionsEditable, retainConstructionSource, LIVE_GEOMETRY_CONSTRUCTIONS } from "./nativeGeometryRestore";
 import { inspectProjectCompatibility } from "./projectTransfer";
 import { GeometryDocumentAdapter } from "../geometry/geometryDocumentAdapter";
-const fixture = () => geometryDocumentFromSceneDocument({ id: "project-geometry", title: "Saved construction", createdAt: 0, updatedAt: 0, objects: [{ id: "box", type: "box", name: "Research box", params: { width: 2, height: 3, depth: 4 }, visible: true, material: { color: 0x3366ff, opacity: 1 }, transform: { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } } }], extensions: { [LIVE_GEOMETRY_CONSTRUCTIONS]: [{ id: "center", type: "object-centroid", sourceKind: "object", sourceObjectId: "box", dependent: true }], "research.extra": { retained: 7 } } });
+const fixture = (id = "project-geometry") => geometryDocumentFromSceneDocument({ id, title: "Saved construction", createdAt: 0, updatedAt: 0, objects: [{ id: "box", type: "box", name: "Research box", params: { width: 2, height: 3, depth: 4 }, visible: true, material: { color: 0x3366ff, opacity: 1 }, transform: { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } } }], extensions: { [LIVE_GEOMETRY_CONSTRUCTIONS]: [{ id: "center", type: "object-centroid", sourceKind: "object", sourceObjectId: "box", dependent: true }], "research.extra": { retained: 7 } } });
 const workspace = (document = fixture()) => createMixedWorkspaceDocument({ entries: [{ module: "geometry", checkpoint: document, expected: document.identity, replay: null }], activeDocumentIds: [document.identity.id], constructions: [{ kind: "scene-script", source: "box = box(2, 3, 4)", normalizedSceneScript: "box = box(2, 3, 4)" }], results: [], relations: [], artifacts: [], committedSelection: null });
 describe("native Geometry project restore", () => {
   it("supports procedural Geometry and recorded construction state without a Graph", () => {
@@ -28,8 +28,48 @@ describe("native Geometry project restore", () => {
     expect(GeometryDocumentAdapter.restore(adapter.exportReplay()).document()).toEqual(adapter.document());
   });
   it("does not advertise unrelated Geometry payloads or lossy construction normalization", () => {
-    const doc = fixture(); expect(() => geometryEditorSeed(createGeometryDocument({ source: { ...doc.source, geometry: { points: [{ id: "a", x: 0, y: 0, z: 0 }] } } }))).toThrow();
+    const doc = fixture();
+    const primitiveCopy = createGeometryDocument({ source: { ...doc.source,
+      geometry: { points: [{ id: "a", x: 0, y: 0, z: 0 }] } } });
+    expect(() => geometryEditorSeed(primitiveCopy)).toThrow();
+    expect(inspectProjectCompatibility(createMath3DProject(workspace(primitiveCopy),
+      { stableKey: "primitive-copy" })).reasons).toContain(
+      "geometry: this document has verified preview support; its editor state cannot be fully restored by this host adapter.");
     expect(() => geometryEditorSeed(createGeometryDocument({ source: { ...doc.source, extensions: { [LIVE_GEOMETRY_CONSTRUCTIONS]: [{ id: "future", type: "future-construction", sourceKind: "object", sourceObjectId: "box", dependent: true }] } } }))).toThrow();
     expect(projectConstructionsEditable({ ...workspace(), entries: [] })).toBe(false);
+  });
+  it("classifies a second Geometry document with legacy construction state as preview-only", () => {
+    const original = fixture(), promoted = fixture("promoted-qwz");
+    const base = workspace(original);
+    const withPromotion = createMixedWorkspaceDocument({ ...base,
+      entries: [...base.entries, { module: "geometry", checkpoint: promoted,
+        expected: promoted.identity, replay: null }],
+      activeDocumentIds: [original.identity.id, promoted.identity.id] });
+    const compatibility = inspectProjectCompatibility(createMath3DProject(withPromotion,
+      { stableKey: "legacy-promotion" }));
+    expect(compatibility.canOpenWorkspace).toBe(false);
+    expect(compatibility.reasons).toContain("Saved construction/script state has preview support; the active editor adapters do not restore it.");
+    expect(projectConstructionsEditable({ ...withPromotion, constructions: [] })).toBe(true);
+  });
+  it("restores a bounded independent quantum primitive copy beside procedural constructions", () => {
+    const original = fixture(), points = Array.from({ length: 600 }, (_, index) =>
+      ({ id: `p${index}`, x: index / 100, y: 0, z: 0 }));
+    const source = { ...original.source, objects: [], geometry: { points },
+      extensions: { "quantum.promotion/v1": { conversion: "geometry",
+        sceneFingerprint: "a".repeat(64), runId: "run", resultSha256: "b".repeat(64) } } };
+    const promoted = createGeometryDocument({ source });
+    const base = workspace(original);
+    const withPromotion = createMixedWorkspaceDocument({ ...base,
+      entries: [...base.entries, { module: "geometry", checkpoint: promoted,
+        expected: promoted.identity, replay: null }] });
+    expect(projectConstructionsEditable(withPromotion)).toBe(true);
+    expect(inspectProjectCompatibility(createMath3DProject(withPromotion,
+      { stableKey: "quantum-primitive-copy" })).canOpenWorkspace).toBe(true);
+    const unqualified = createGeometryDocument({ source: { ...source, extensions: {} } });
+    const withoutProvenance = createMixedWorkspaceDocument({ ...base,
+      entries: [...base.entries, { module: "geometry", checkpoint: unqualified,
+        expected: unqualified.identity, replay: null }] });
+    expect(inspectProjectCompatibility(createMath3DProject(withoutProvenance,
+      { stableKey: "unqualified-primitive-copy" })).canOpenWorkspace).toBe(false);
   });
 });

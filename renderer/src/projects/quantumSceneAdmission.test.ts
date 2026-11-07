@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { updateQuantumFieldView } from "@math3d/core";
 import { quantumFieldDocumentFromVerifiedOpen } from "./quantumSceneAdmission";
 import type { QuantumSceneOpenResponse } from "../components/QuantumScenePreview";
 
-const original = JSON.parse(readFileSync(resolve("tests/fixtures/quantum-scene-orbitals/orbital-3p.qscene/scene.json"), "utf8"));
+const original = JSON.parse(readFileSync(new URL(
+  "../../../tests/fixtures/quantum-scene-orbitals/orbital-3p.qscene/scene.json", import.meta.url), "utf8"));
 const opened = (scene: typeof original, stream?: { level: number }) => ({ ok: true, canceled: false,
   directory: "C:\\verified.qscene", remembered: false,
   reference: { directory: "C:\\verified.qscene", sceneFingerprint: "a".repeat(64) },

@@ -10,6 +10,10 @@ import { parseIdealGenerator } from "./algebraIdealGenerators";
 import { analyzeQuadraticNumberField } from "./quadraticNumberField";
 import { requireBiquadraticGenerator, requireBiquadraticRadicand } from "./biquadraticFieldTower";
 import { parseFiniteGroupDefinition, type FiniteGroupDefinition } from "./finiteGroup";
+import { parseModuleDefinition, parseModuleMapDefinition,
+  type ModuleDefinition, type ModuleMapDefinition } from "./modulePresentations";
+import { parseChainComplexDefinition, type ChainComplexDefinition } from "./chainComplex";
+import { ellipticCurveFacts, type EllipticCurveDefinition } from "./ellipticCurve";
 
 export const ALGEBRA_OBJECT_SCHEMA_VERSION = 1 as const;
 
@@ -22,10 +26,18 @@ export type AlgebraObjectDefinition =
   | Readonly<{ kind: "number-field"; baseField: AlgebraObjectRef;
       definingPolynomial: readonly [string, string, "1"]; generator: string }>
   | Readonly<{ kind: "field-extension"; baseField: AlgebraObjectRef; radicand: string; generator: string }>
+  | EllipticCurveDefinition
   | Readonly<{ kind: "polynomial-ring"; coefficientDomain: AlgebraObjectRef; variables: readonly string[]; monomialOrder: AlgebraMonomialOrder }>
   | Readonly<{ kind: "ideal"; ambientRing: AlgebraObjectRef; generators: readonly string[] }>
   | Readonly<{ kind: "quotient-ring"; ambientRing: AlgebraObjectRef; ideal: AlgebraObjectRef }>
-  | FiniteGroupDefinition;
+  | Readonly<{ kind: "affine-scheme" | "projective-scheme"; ambientRing: AlgebraObjectRef; ideal: AlgebraObjectRef }>
+  | Readonly<{ kind: "scheme-chart"; projectiveScheme: AlgebraObjectRef; nonzeroCoordinate: string }>
+  | Readonly<{ kind: "scheme-map"; mapKind: "chart-inclusion"; sourceChart: AlgebraObjectRef;
+      targetProjective: AlgebraObjectRef }>
+  | FiniteGroupDefinition
+  | ModuleDefinition
+  | ModuleMapDefinition
+  | ChainComplexDefinition;
 
 export type AlgebraObjectKind = AlgebraObjectDefinition["kind"];
 export type AlgebraMonomialOrder = "lex" | "deglex" | "degrevlex";
@@ -140,6 +152,14 @@ const requireDefinition = (value: unknown): AlgebraObjectDefinition => {
       return { kind: "field-extension", baseField: requireRef(definition.baseField, "definition.baseField"),
         radicand: requireBiquadraticRadicand(definition.radicand),
         generator: requireBiquadraticGenerator(definition.generator) };
+    case "elliptic-curve": {
+      requireKeys(definition, ["kind", "baseField", "model", "a", "b"], "definition");
+      if (definition.model !== "short-weierstrass")
+        throw new TypeError("Only the short Weierstrass model is supported.");
+      const facts = ellipticCurveFacts(definition.a, definition.b);
+      return { kind: "elliptic-curve", baseField: requireRef(definition.baseField, "definition.baseField"),
+        model: "short-weierstrass", a: facts.a, b: facts.b };
+    }
     case "polynomial-ring": {
       requireKeys(definition, ["kind", "coefficientDomain", "variables", "monomialOrder"], "definition");
       const coefficientDomain = requireRef(definition.coefficientDomain, "definition.coefficientDomain");
@@ -170,8 +190,36 @@ const requireDefinition = (value: unknown): AlgebraObjectDefinition => {
       requireKeys(definition, ["kind", "ambientRing", "ideal"], "definition");
       return { kind: "quotient-ring", ambientRing: requireRef(definition.ambientRing, "definition.ambientRing"),
         ideal: requireRef(definition.ideal, "definition.ideal") };
+    case "affine-scheme":
+    case "projective-scheme":
+      requireKeys(definition, ["kind", "ambientRing", "ideal"], "definition");
+      return { kind: definition.kind, ambientRing: requireRef(definition.ambientRing, "definition.ambientRing"),
+        ideal: requireRef(definition.ideal, "definition.ideal") };
+    case "scheme-chart":
+      requireKeys(definition, ["kind", "projectiveScheme", "nonzeroCoordinate"], "definition");
+      return { kind: "scheme-chart", projectiveScheme: requireRef(definition.projectiveScheme,
+        "definition.projectiveScheme"), nonzeroCoordinate: requireIdentifier(definition.nonzeroCoordinate,
+        "definition.nonzeroCoordinate") };
+    case "scheme-map":
+      requireKeys(definition, ["kind", "mapKind", "sourceChart", "targetProjective"], "definition");
+      if (definition.mapKind !== "chart-inclusion")
+        throw new TypeError("Only canonical projective chart inclusion maps are supported.");
+      return { kind: "scheme-map", mapKind: "chart-inclusion",
+        sourceChart: requireRef(definition.sourceChart, "definition.sourceChart"),
+        targetProjective: requireRef(definition.targetProjective, "definition.targetProjective") };
     case "finite-group":
       return parseFiniteGroupDefinition(definition);
+    case "module": {
+      const parsed = parseModuleDefinition(definition);
+      return { ...parsed, baseRing: requireRef(parsed.baseRing, "definition.baseRing") };
+    }
+    case "module-map": {
+      const parsed = parseModuleMapDefinition(definition);
+      return { ...parsed, sourceModule: requireRef(parsed.sourceModule, "definition.sourceModule"),
+        targetModule: requireRef(parsed.targetModule, "definition.targetModule") };
+    }
+    case "chain-complex":
+      return parseChainComplexDefinition(definition, requireRef);
     default:
       throw new TypeError(`Unsupported algebra object kind '${String(definition.kind)}'.`);
   }
@@ -179,9 +227,18 @@ const requireDefinition = (value: unknown): AlgebraObjectDefinition => {
 
 const dependenciesOf = (definition: AlgebraObjectDefinition): readonly AlgebraObjectRef[] =>
   definition.kind === "polynomial-ring" ? [definition.coefficientDomain]
-    : definition.kind === "number-field" || definition.kind === "field-extension" ? [definition.baseField]
+    : definition.kind === "number-field" || definition.kind === "field-extension" ||
+      definition.kind === "elliptic-curve" ? [definition.baseField]
     : definition.kind === "ideal" ? [definition.ambientRing]
-      : definition.kind === "quotient-ring" ? [definition.ambientRing, definition.ideal] : [];
+      : definition.kind === "quotient-ring" ? [definition.ambientRing, definition.ideal]
+        : definition.kind === "affine-scheme" || definition.kind === "projective-scheme"
+          ? [definition.ambientRing, definition.ideal]
+        : definition.kind === "scheme-chart" ? [definition.projectiveScheme]
+        : definition.kind === "scheme-map" ? [definition.sourceChart, definition.targetProjective]
+        : definition.kind === "finite-group" && definition.source ? [definition.source.ring]
+        : definition.kind === "module" ? [definition.baseRing]
+          : definition.kind === "module-map" ? [definition.sourceModule, definition.targetModule]
+            : definition.kind === "chain-complex" ? [definition.coefficientRing, ...definition.modules, ...definition.boundaries] : [];
 
 const definitionHash = (definition: AlgebraObjectDefinition): StructuralHash =>
   structuralHash({ schemaVersion: ALGEBRA_OBJECT_SCHEMA_VERSION, definition });

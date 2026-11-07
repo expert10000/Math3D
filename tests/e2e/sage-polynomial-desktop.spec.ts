@@ -34,7 +34,7 @@ test("desktop Surface Services sends exact Sage results to Analysis and Workbook
     await expect(analysis).toContainText("2*x ; 2*y ; 2*z");
     await analysis.getByRole("button", { name: "Preview vector field" }).click();
     await expect(analysis).toContainText("Previewing");
-    await expect(analysis.getByTestId("sage-viewer-provenance")).toContainText("source surface:active-implicit:");
+    await expect(analysis.getByTestId("sage-viewer-provenance")).toContainText("source surface:active-implicit r1");
     await analysis.getByRole("button", { name: "Commit vector overlay" }).click();
     await expect(analysis).toContainText("Committed");
 
@@ -119,10 +119,16 @@ test("desktop Sage backend selector sends shared operations to the Docker servic
     await runtimes.getByTestId("sage-runtime-docker").getByRole("button", { name: "Check Docker" }).click();
     await expect(runtimes.getByTestId("sage-runtime-docker")).toContainText("Reported status: ok");
     await expect(runtimes.getByTestId("sage-runtime-version-docker")).toContainText("SageMath 10.6");
+    await expect(runtimes.getByTestId("sage-runtime-manifest-docker")).toContainText("Capability manifest: v1");
+    await runtimes.getByTestId("sage-runtime-capabilities-docker").locator("summary").click();
+    await expect(runtimes.getByTestId("sage-runtime-capabilities-docker"))
+      .toContainText("sage.algebra.reconstruct: worker-unadvertised");
     await expect(runtimes.getByTestId("sage-runtime-limits-docker")).toContainText("input 64 KiB · output 256 KiB · memory 512 MiB");
     serviceAvailable = false;
     await runtimes.getByTestId("sage-runtime-docker").getByRole("button", { name: "Check Docker" }).click();
     await expect(runtimes.getByTestId("sage-runtime-docker")).toContainText("service stopped");
+    await expect(runtimes.getByTestId("sage-runtime-capabilities-docker"))
+      .toContainText("sage.polynomial.factor: runtime-unavailable");
     await expect(runtimes.getByTestId("sage-runtime-docker")).toContainText("Next: Start the service with docker compose");
     await expect(runtimes.getByTestId("sage-runtime-limits-docker")).toContainText("input 64 KiB");
     serviceAvailable = true;
@@ -234,11 +240,28 @@ test("desktop Symbolic Simplify uses local WSL SageMath without Docker", async (
 
 test("desktop Sage polynomial factor handles valid input, rejection, and cancellation", async () => {
   test.setTimeout(180_000);
+  const service = createServer((req, res) => {
+    res.setHeader("Content-Type", "application/json");
+    if (req.url === "/health") {
+      res.end(JSON.stringify({ engine: "sagemath", engineVersion: "10.10", available: true,
+        status: "ok", operations: ["sage.polynomial.factor"] }));
+      return;
+    }
+    const timer = setTimeout(() => {
+      if (!res.writableEnded) res.end(JSON.stringify({ engine: "sagemath", engineVersion: "10.10",
+        operation: "sage.polynomial.factor", success: false, result: {}, error: "Delayed test response" }));
+    }, 5_000);
+    res.on("close", () => clearTimeout(timer));
+  });
+  await new Promise<void>((done) => service.listen(0, "127.0.0.1", done));
+  const address = service.address();
+  if (!address || typeof address === "string") throw new Error("Cancellation test service did not bind.");
   const root = await mkdtemp(join(tmpdir(), "m3d-sage-desktop-"));
   const app = await launchRepoElectron({
     args: ["."],
     cwd: resolve(__dirname, "../.."),
-    env: { ...process.env, MATH3D_E2E_PROFILE_ROOT: root },
+    env: { ...process.env, MATH3D_E2E_PROFILE_ROOT: root,
+      MATH3D_SAGE_SERVICE_URL: `http://127.0.0.1:${address.port}` },
   });
   try {
     const page = await app.firstWindow();
@@ -262,6 +285,8 @@ test("desktop Sage polynomial factor handles valid input, rejection, and cancell
     await expect(panel).toContainText("Exact reconstruction: verified", { timeout: 60_000 });
     await expect(panel).toContainText("(x - 1) * (x + 1)");
 
+    await panel.getByLabel("SageMath backend").selectOption("docker");
+    await expect(panel).toContainText("Backend available for this operation");
     await coefficients.fill("-2, 0, 1");
     await panel.getByRole("button", { name: "Run", exact: true }).click();
     await panel.getByRole("button", { name: "Cancel", exact: true }).click();
@@ -273,6 +298,7 @@ test("desktop Sage polynomial factor handles valid input, rejection, and cancell
       .getByText("Exact polynomial factorization").first().locator("../..")).toContainText("cancelled");
   } finally {
     await app.close();
+    await new Promise<void>((done) => service.close(() => done()));
     if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-sage-desktop-"))
       throw new Error("Unsafe Sage desktop test cleanup path");
     await rm(root, { recursive: true, force: true });

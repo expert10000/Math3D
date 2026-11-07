@@ -1,0 +1,162 @@
+name: Windows Quantum Installed Review
+
+on:
+  workflow_dispatch:
+
+jobs:
+  installer-probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        slot: [1, 2, 3]
+    runs-on: windows-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Check out Math3D review harness
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        if: matrix.slot == 1
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+          cache: npm
+
+      - name: Download exact QEC candidate files
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 42123298884 --repo expert10000/Math3D `
+            --name two-app-stable-candidate --dir installers/candidate
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned candidate download failed' }
+
+      - name: Probe both installers on a clean runner
+        id: probe
+        shell: pwsh
+        run: |
+          & scripts/probe-quantum-installers.ps1 `
+            -CandidateDirectory (Join-Path $PWD 'installers/candidate') `
+            -InstallRoot (Join-Path $env:RUNNER_TEMP 'qi40-installer-probe') `
+            -EvidencePath (Join-Path $PWD 'test-results/qi40-installer-probe.json')
+
+      - name: Install visual review harness
+        if: matrix.slot == 1
+        shell: pwsh
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw 'Math3D npm ci failed' }
+
+      - name: Capture all 39 scenes in installed Math3D
+        if: matrix.slot == 1
+        shell: pwsh
+        run: |
+          $env:MATH3D_INSTALLED_CAPTURE_EXE = Join-Path $env:RUNNER_TEMP 'qi40-installer-probe/Math3D/Math3D.exe'
+          node scripts/capture-quantum-release-review.mjs test-results/installed-visual-39
+          if ($LASTEXITCODE -ne 0) { throw 'Installed 39-scene capture failed' }
+          $signal = Get-Content test-results/installed-visual-39/visual-signal.json -Raw | ConvertFrom-Json
+          if ($signal.fixtureCount -ne 39 -or -not $signal.installed -or
+              @($signal.rows | Where-Object needsVisualReview).Count -ne 0) {
+            throw 'Installed scene capture has missing scenes or heuristic blank flags'
+          }
+          Copy-Item -LiteralPath test-results/qi40-installer-probe.json `
+            -Destination test-results/installed-visual-39/installer-probe.json
+
+      - name: Upload installer probe evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: qi40-installer-probe-${{ matrix.slot }}
+          if-no-files-found: ignore
+          path: test-results/qi40-installer-probe.json
+
+      - name: Upload installed scene review
+        if: matrix.slot == 1 && always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: qi40-installed-visual-39
+          if-no-files-found: ignore
+          retention-days: 30
+          compression-level: 1
+          path: test-results/installed-visual-39/*
+
+  rollback-matrix:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Check out Math3D review harness
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+          cache: npm
+
+      - name: Install test harness dependencies
+        shell: pwsh
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw 'Math3D npm ci failed' }
+
+      - name: Download QEC and pre-QEC candidate files
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 42123298884 --repo expert10000/Math3D `
+            --name two-app-stable-candidate --dir installers/candidate
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned QEC candidate download failed' }
+          gh run download 42035098178 --repo expert10000/Math3D `
+            --name two-app-stable-candidate --dir installers/rollback
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned pre-QEC candidate download failed' }
+
+      - name: Restore pre-QEC installed application
+        id: rollback
+        shell: pwsh
+        run: |
+          & scripts/stable-quantum-installed-rollback.ps1 `
+            -CandidateDirectory (Join-Path $PWD 'installers/candidate') `
+            -RollbackDirectory (Join-Path $PWD 'installers/rollback') `
+            -ExpectedCandidateCommit '49485e816fcfc7b46d5da1634c6746a631343f8e' `
+            -ExpectedCandidateSha256 '63442950be85edb6f90f0321a37781650bde2c16cf4b32923aa64a3ae2cb6535' `
+            -InstallRoot (Join-Path $env:RUNNER_TEMP 'stable-quantum-installed-rollback') `
+            -EvidencePath (Join-Path $PWD 'test-results/stable-quantum-installed-rollback.json')
+
+      - name: Capture 38 pre-QEC scenes in rolled-back Math3D
+        shell: pwsh
+        run: |
+          $env:MATH3D_INSTALLED_CAPTURE_EXE = Join-Path $env:RUNNER_TEMP 'stable-quantum-installed-rollback/Math3D/Math3D.exe'
+          node scripts/capture-quantum-release-review.mjs test-results/installed-rollback-38 --pre-qec
+          if ($LASTEXITCODE -ne 0) { throw 'Installed 38-scene rollback capture failed' }
+          $signal = Get-Content test-results/installed-rollback-38/visual-signal.json -Raw | ConvertFrom-Json
+          if ($signal.fixtureCount -ne 38 -or -not $signal.installed -or -not $signal.preQec -or
+              @($signal.rows | Where-Object needsVisualReview).Count -ne 0) {
+            throw 'Rolled-back scene capture has missing scenes or heuristic blank flags'
+          }
+          Copy-Item -LiteralPath test-results/stable-quantum-installed-rollback.json `
+            -Destination test-results/installed-rollback-38/rollback-evidence.json
+
+      - name: Upload rollback matrix evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: qi40-rollback-matrix-evidence
+          if-no-files-found: ignore
+          path: test-results/stable-quantum-installed-rollback.json
+
+      - name: Upload rolled-back scene review
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: qi40-installed-rollback-38
+          if-no-files-found: ignore
+          retention-days: 30
+          compression-level: 1
+          path: test-results/installed-rollback-38/*

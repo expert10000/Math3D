@@ -16,7 +16,7 @@ test("live desktop Sage parity, rejection, cancellation, and runtime controls", 
     await page.getByRole("button", { name: "Palette", exact: true }).click();
     await page.getByPlaceholder("Type a command (examples: export, screenshot, run stage)...")
       .fill("Open backend services panel");
-    await page.getByRole("button", { name: "Open backend services panel", exact: true }).click();
+    await page.getByPlaceholder("Type a command (examples: export, screenshot, run stage)...").press("Enter");
     const panel = page.getByTestId("scientific-services-surface");
     await panel.getByLabel("Services preset").selectOption("All");
     const backend = panel.getByLabel("SageMath backend");
@@ -24,13 +24,13 @@ test("live desktop Sage parity, rejection, cancellation, and runtime controls", 
     const json = panel.getByRole("checkbox", { name: "JSON" });
     await json.check();
     const cases = [
-      { operation: "sage.symbolic.simplify", expression: "sin(x)^2+cos(x)^2", variables: "x" },
-      { operation: "sage.symbolic.expand", expression: "(x+1)^2", variables: "x" },
-      { operation: "sage.symbolic.factor", expression: "x^2-1", variables: "x" },
-      { operation: "sage.symbolic.solve", expression: "x-1", variables: "x" },
-      { operation: "sage.symbolic.gradient", expression: "x^2+y^2+z^2", variables: "x,y,z" },
-      { operation: "sage.symbolic.hessian", expression: "x^2+y^2+z^2", variables: "x,y,z" },
-      { operation: "sage.symbolic.singularities", expression: "x^2+y^2+z^2-1", variables: "x,y,z" },
+      { operation: "sage.symbolic.simplify", expression: "sin(x)^2+cos(x)^2", variables: "x", expected: { text: "1" } },
+      { operation: "sage.symbolic.expand", expression: "(x+1)^2", variables: "x", expected: { text: "x^2 + 2*x + 1" } },
+      { operation: "sage.symbolic.factor", expression: "x^2-1", variables: "x", expected: { text: "(x + 1)*(x - 1)" } },
+      { operation: "sage.symbolic.solve", expression: "x-1", variables: "x", expected: { solutions: ["{x: 1}"] } },
+      { operation: "sage.symbolic.gradient", expression: "x^2+y^2+z^2", variables: "x,y,z", expected: { components: ["2*x", "2*y", "2*z"] } },
+      { operation: "sage.symbolic.hessian", expression: "x^2+y^2+z^2", variables: "x,y,z", expected: { matrix: [["2", "0", "0"], ["0", "2", "0"], ["0", "0", "2"]] } },
+      { operation: "sage.symbolic.singularities", expression: "x^2+y^2+z^2-1", variables: "x,y,z", expected: { points: [], text: "[]" } },
     ] as const;
     for (const item of cases) {
       await panel.getByLabel("Operation").selectOption(item.operation);
@@ -47,6 +47,7 @@ test("live desktop Sage parity, rejection, cancellation, and runtime controls", 
         responses.push(response);
       }
       const [local, docker] = responses;
+      expect(docker.result, `${item.operation} exact baseline`).toMatchObject(item.expected);
       if (item.operation === "sage.symbolic.solve") {
         expect(local.result.text).toBe(`[${docker.result.solutions.join(", ")}]`);
       } else if (item.operation === "sage.symbolic.singularities") {
@@ -119,6 +120,8 @@ test("live desktop Sage parity, rejection, cancellation, and runtime controls", 
     expect((await earlyRun.json()).error).toContain("cancelled");
 
     await compute.getByRole("button", { name: "Runtimes", exact: true }).click();
+    await expect(compute.getByTestId("sage-runtime-worker-policy-docker"))
+      .toContainText("2 running · 4 waiting", { timeout: 30_000 });
     const engines = compute.getByText("SageMath Docker", { exact: true }).locator("../..");
     await engines.getByRole("button", { name: "Stop", exact: true }).click();
     await expect(engines.getByRole("button", { name: "Start", exact: true })).toBeEnabled({ timeout: 30_000 });

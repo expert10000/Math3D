@@ -1,0 +1,350 @@
+name: Windows QI40 Retainers Dumps Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      focus:
+        type: choice
+        description: Select a targeted Windows check
+        options: [all, source, autosave, rollback, retainers, fixed-memory, installer, installer-full, components]
+        default: all
+      candidate_run_id:
+        type: string
+        description: Stable two-app candidate build run for fixed-memory or installer checks
+        required: false
+
+jobs:
+  installer-components:
+    if: ${{ inputs.focus == 'all' || inputs.focus == 'components' }}
+    runs-on: windows-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+      - name: Download pinned installers
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 42123298884 --repo expert10000/Math3D --name two-app-stable-candidate --dir installers/candidate
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate download failed' }
+      - name: Compare archived NSIS System.dll components
+        shell: pwsh
+        run: |
+          & scripts/inspect-quantum-installer-components.ps1 `
+            -CandidateDirectory (Join-Path $PWD 'installers/candidate') `
+            -EvidencePath (Join-Path $PWD 'test-results/qi40-installer-components.json')
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: qi40-installer-components
+          if-no-files-found: ignore
+          path: test-results/qi40-installer-components.json
+
+  source-memory-cleanup:
+    if: ${{ inputs.focus == 'all' || inputs.focus == 'source' || inputs.focus == 'autosave' }}
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+          cache: npm
+      - name: Build current source
+        shell: pwsh
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw 'npm ci failed' }
+          npm --prefix renderer ci
+          if ($LASTEXITCODE -ne 0) { throw 'Renderer npm ci failed' }
+          npm run build:main
+          if ($LASTEXITCODE -ne 0) { throw 'Main build failed' }
+          npm run build:renderer
+          if ($LASTEXITCODE -ne 0) { throw 'Renderer build failed' }
+      - name: Check 80 source scene cycles after cleanup
+        shell: pwsh
+        env:
+          MATH3D_HEAP_DIAGNOSTIC: '1'
+          # E2E-only Geometry/Mesh hooks retain data that is absent in production.
+          MATH3D_STRESS_ABLATE_E2E_HOOKS: '1'
+          MATH3D_STRESS_AUTOSAVE_ABLATION: ${{ inputs.focus == 'autosave' && '1' || '0' }}
+        run: |
+          if ('${{ inputs.focus }}' -eq 'autosave') {
+            $env:MATH3D_STRESS_AUTOSAVE_ABLATION = '0'
+            node scripts/measure-quantum-scene-stress.mjs test-results/qi40-autosave-control-80.json 80 | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw 'Autosave control scene stress failed' }
+            node scripts/evaluate-quantum-scene-memory-budget.mjs `
+              test-results/qi40-autosave-control-80.json test-results/qi40-autosave-control-budget.json
+            if ($LASTEXITCODE -ne 0) { throw 'Autosave control budget evaluation failed' }
+            $env:MATH3D_STRESS_AUTOSAVE_ABLATION = '1'
+          }
+          node scripts/measure-quantum-scene-stress.mjs test-results/qi40-source-cleanup-80.json 80 | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Scene stress failed' }
+          $report = Get-Content test-results/qi40-source-cleanup-80.json -Raw | ConvertFrom-Json
+          $contexts = $report.heapComposition.trackedConstructors.'native:WebGL2RenderingContext'
+          $textures = $report.heapComposition.trackedConstructors.'native:WebGLTexture'
+          if ($report.cycles -ne 80 -or $report.installed -or -not $report.e2eHookAblation -or
+              $contexts.final -ne $contexts.baseline -or
+              $textures.final -ne $textures.baseline -or
+              @($report.samples | Where-Object { $_.closed.canvasCount -ne $report.baseline.canvasCount }).Count -ne 0) {
+            throw 'Post-cleanup source context or canvas budget failed'
+          }
+          node scripts/evaluate-quantum-scene-memory-budget.mjs `
+            test-results/qi40-source-cleanup-80.json test-results/qi40-source-memory-budget.json
+          if ($LASTEXITCODE -ne 0) { throw 'Memory budget evaluation failed' }
+          $budget = Get-Content test-results/qi40-source-memory-budget.json -Raw | ConvertFrom-Json
+          if (-not $budget.targetMet) { throw 'Provisional source memory target remains unmet; see uploaded evidence' }
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: qi40-source-cleanup-80
+          if-no-files-found: ignore
+          path: |
+            test-results/qi40-source-cleanup-80.json
+            test-results/qi40-source-memory-budget.json
+            test-results/qi40-autosave-control-80.json
+            test-results/qi40-autosave-control-budget.json
+
+  mixed-project-rollback:
+    if: ${{ inputs.focus == 'all' || inputs.focus == 'rollback' }}
+    runs-on: windows-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+          cache: npm
+      - name: Install harness
+        shell: pwsh
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw 'npm ci failed' }
+      - name: Download pinned installers
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 42123298884 --repo expert10000/Math3D --name two-app-stable-candidate --dir installers/candidate
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate download failed' }
+          gh run download 42035098178 --repo expert10000/Math3D --name two-app-stable-candidate --dir installers/rollback
+          if ($LASTEXITCODE -ne 0) { throw 'Rollback download failed' }
+      - name: Verify six scenes and promoted Graph across installed rollback
+        shell: pwsh
+        run: |
+          & scripts/stable-quantum-installed-rollback.ps1 `
+            -CandidateDirectory (Join-Path $PWD 'installers/candidate') `
+            -RollbackDirectory (Join-Path $PWD 'installers/rollback') `
+            -ExpectedCandidateCommit '49485e816fcfc7b46d5da1634c6746a631343f8e' `
+            -ExpectedCandidateSha256 '63442950be85edb6f90f0321a37781650bde2c16cf4b32923aa64a3ae2cb6535' `
+            -InstallRoot (Join-Path $env:RUNNER_TEMP 'qi40-six-scene-rollback') `
+            -EvidencePath (Join-Path $PWD 'test-results/qi40-six-scene-rollback.json')
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: qi40-six-scene-rollback
+          if-no-files-found: ignore
+          path: |
+            test-results/qi40-six-scene-rollback.json
+            test-results/playwright/quantum-installed-rollback-profile*/trace.zip
+            test-results/playwright/quantum-installed-rollback-profile*/test-failed-*.png
+
+  installed-retainers:
+    if: ${{ inputs.focus == 'all' || inputs.focus == 'retainers' }}
+    runs-on: windows-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+          cache: npm
+      - name: Download pinned candidate
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 42123298884 --repo expert10000/Math3D --name two-app-stable-candidate --dir installers/candidate
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate download failed' }
+      - name: Install pinned Math3D
+        shell: pwsh
+        run: |
+          & scripts/probe-quantum-installers.ps1 `
+            -CandidateDirectory (Join-Path $PWD 'installers/candidate') `
+            -InstallRoot (Join-Path $env:RUNNER_TEMP 'qi40-retainer-install') `
+            -EvidencePath (Join-Path $PWD 'test-results/qi40-retainer-installer.json') `
+            -Math3DOnly -CaptureCrashDump
+      - name: Install harness
+        shell: pwsh
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw 'npm ci failed' }
+      - name: Trace retained heap roots after 40 installed scene cycles
+        shell: pwsh
+        env:
+          MATH3D_HEAP_DIAGNOSTIC: '1'
+        run: |
+          $env:MATH3D_INSTALLED_STRESS_EXE = Join-Path $env:RUNNER_TEMP 'qi40-retainer-install/Math3D/Math3D.exe'
+          node scripts/measure-quantum-scene-stress.mjs test-results/qi40-installed-retainers-40.json 40 | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Retainer trace failed' }
+          $report = Get-Content test-results/qi40-installed-retainers-40.json -Raw | ConvertFrom-Json
+          if ($report.cycles -ne 40 -or -not $report.installed -or
+              @($report.heapComposition.retainers.paths | Where-Object { $_.status -eq 'root path found' }).Count -lt 2 -or
+              @($report.samples | Where-Object { $_.closed.canvasCount -ne $report.baseline.canvasCount }).Count -ne 0) {
+            throw 'Retainer trace assertions failed'
+          }
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: qi40-installed-retainers-40
+          if-no-files-found: ignore
+          path: |
+            test-results/qi40-retainer-installer.json
+            test-results/qi40-installed-retainers-40.json
+
+  installed-fixed-memory:
+    if: ${{ inputs.focus == 'fixed-memory' }}
+    runs-on: windows-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+          cache: npm
+      - name: Download and identify exact candidate
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+        run: |
+          if ($env:CANDIDATE_RUN_ID -notmatch '^[0-9]+$') { throw 'A numeric candidate_run_id is required' }
+          $run = gh run view $env:CANDIDATE_RUN_ID --repo expert10000/Math3D --json headSha,jobs | ConvertFrom-Json
+          $build = @($run.jobs | Where-Object { $_.name -eq 'build-candidates' })
+          if ($LASTEXITCODE -ne 0 -or $build.Count -ne 1 -or $build[0].conclusion -ne 'success') {
+            throw 'Candidate build job has not completed successfully'
+          }
+          gh run download $env:CANDIDATE_RUN_ID --repo expert10000/Math3D --name two-app-stable-candidate --dir installers/candidate
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate download failed' }
+          $manifest = Get-Content installers/candidate/candidate-manifest.json -Raw | ConvertFrom-Json
+          if ([string]$manifest.buildRunId -ne $env:CANDIDATE_RUN_ID -or
+              $manifest.math3d.commit -ne $run.headSha) { throw 'Candidate manifest does not match the build run' }
+          "EXPECTED_MATH3D_COMMIT=$($run.headSha)" >> $env:GITHUB_ENV
+      - name: Install exact Math3D candidate
+        shell: pwsh
+        env:
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+        run: |
+          & scripts/probe-quantum-installers.ps1 `
+            -CandidateDirectory (Join-Path $PWD 'installers/candidate') `
+            -InstallRoot (Join-Path $env:RUNNER_TEMP 'qi40-fixed-memory-install') `
+            -EvidencePath (Join-Path $PWD 'test-results/qi40-fixed-memory-installer.json') `
+            -ExpectedBuildRunId $env:CANDIDATE_RUN_ID `
+            -ExpectedMath3DCommit $env:EXPECTED_MATH3D_COMMIT `
+            -Math3DOnly -CaptureCrashDump
+      - name: Install stress harness
+        shell: pwsh
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw 'npm ci failed' }
+      - name: Measure 80 installed scene cycles and evaluate provisional budget
+        shell: pwsh
+        env:
+          MATH3D_HEAP_DIAGNOSTIC: '1'
+        run: |
+          $env:MATH3D_INSTALLED_STRESS_EXE = Join-Path $env:RUNNER_TEMP 'qi40-fixed-memory-install/Math3D/Math3D.exe'
+          node scripts/measure-quantum-scene-stress.mjs test-results/qi40-installed-fixed-memory-80.json 80 | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Installed scene stress failed' }
+          $report = Get-Content test-results/qi40-installed-fixed-memory-80.json -Raw | ConvertFrom-Json
+          if ($report.cycles -ne 80 -or -not $report.installed -or
+              @($report.samples | Where-Object { $_.closed.canvasCount -ne $report.baseline.canvasCount }).Count -ne 0) {
+            throw 'Installed scene cycle or canvas assertions failed'
+          }
+          node scripts/evaluate-quantum-scene-memory-budget.mjs `
+            test-results/qi40-installed-fixed-memory-80.json test-results/qi40-installed-fixed-memory-budget.json
+          if ($LASTEXITCODE -ne 0) { throw 'Installed memory budget evaluation failed' }
+          $budget = Get-Content test-results/qi40-installed-fixed-memory-budget.json -Raw | ConvertFrom-Json
+          if (-not $budget.targetMet) { throw 'Provisional installed memory target remains unmet; see uploaded evidence' }
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: qi40-installed-fixed-memory-80
+          if-no-files-found: ignore
+          path: |
+            test-results/qi40-fixed-memory-installer.json
+            test-results/qi40-installed-fixed-memory-80.json
+            test-results/qi40-installed-fixed-memory-budget.json
+
+  lab-crash-dumps:
+    if: ${{ inputs.focus == 'all' || inputs.focus == 'installer' || inputs.focus == 'installer-full' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        slot: [1, 2, 3, 4, 5, 6]
+        scope: [lab-only, both-apps]
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+      - name: Download pinned candidate
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+        run: |
+          $candidateRunId = if ($env:CANDIDATE_RUN_ID) { $env:CANDIDATE_RUN_ID } else { '42123298884' }
+          if ($candidateRunId -notmatch '^[0-9]+$') { throw 'candidate_run_id must be numeric' }
+          if ($env:CANDIDATE_RUN_ID) {
+            $run = gh run view $candidateRunId --repo expert10000/Math3D --json headSha,jobs | ConvertFrom-Json
+            $build = @($run.jobs | Where-Object { $_.name -eq 'build-candidates' })
+            if ($LASTEXITCODE -ne 0 -or $build.Count -ne 1 -or $build[0].conclusion -ne 'success') {
+              throw 'Candidate build job has not completed successfully'
+            }
+            "EXPECTED_MATH3D_COMMIT=$($run.headSha)" >> $env:GITHUB_ENV
+          }
+          gh run download $candidateRunId --repo expert10000/Math3D --name two-app-stable-candidate --dir installers/candidate
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate download failed' }
+          $manifest = Get-Content installers/candidate/candidate-manifest.json -Raw | ConvertFrom-Json
+          if ([string]$manifest.buildRunId -ne $candidateRunId -or
+              ($env:CANDIDATE_RUN_ID -and $manifest.math3d.commit -ne $run.headSha)) {
+            throw 'Candidate manifest does not match the build run'
+          }
+      - name: Install pinned candidate with per-app WER dump enabled
+        shell: pwsh
+        env:
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+        run: |
+          $arguments = @{
+            CandidateDirectory = Join-Path $PWD 'installers/candidate'
+            InstallRoot = Join-Path $env:RUNNER_TEMP 'qi40-lab-dump-probe'
+            EvidencePath = Join-Path $PWD 'test-results/qi40-lab-dump-probe.json'
+            CaptureCrashDump = $true
+          }
+          if ('${{ matrix.scope }}' -eq 'lab-only') { $arguments.TheoryLabOnly = $true }
+          if ('${{ inputs.focus }}' -eq 'installer-full') { $arguments.FullCrashDump = $true }
+          if ($env:CANDIDATE_RUN_ID) {
+            $arguments.ExpectedBuildRunId = $env:CANDIDATE_RUN_ID
+            $arguments.ExpectedMath3DCommit = $env:EXPECTED_MATH3D_COMMIT
+          }
+          & scripts/probe-quantum-installers.ps1 @arguments
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: qi40-lab-dump-probe-${{ matrix.scope }}-${{ matrix.slot }}
+          if-no-files-found: ignore
+          path: test-results/qi40-lab-dump-probe.json

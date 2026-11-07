@@ -9,7 +9,8 @@ import { quantumFieldDocumentFromVerifiedOpen, quantumSceneDocumentFromVerifiedO
 import { addQuantumFieldDerivation, updateQuantumFieldView } from "@math3d/core";
 import { meshDocumentEditable } from "./projects/nativeMeshRestore";
 import { createMeshDocument, canonicalJsonStringify, parseMath3DProject, upsertMath3DProjectAlgebraObject,
-  addMath3DProjectAlgebraEvidence, upsertMath3DProjectAlgebraRecipe, type ProjectScientificSceneReference } from "@math3d/core";
+  addMath3DProjectAlgebraEvidence, upsertMath3DProjectAlgebraRecipe, installAlgebraGalleryExample,
+  type ProjectScientificSceneReference } from "@math3d/core";
 import { VerifiedProjectResources, type ProjectResourceReader, type ProjectResourceRequirement } from "./projects/projectResources";
 import type { MeshReplayBundle } from "./mesh/meshReplay";
 import { geometryEditorSeed as restoredGeometryEditorSeed, geometryDocumentEditable, geometrySourceFromEditor, geometryDisplayFromEditor, retainConstructionSource } from "./projects/nativeGeometryRestore";
@@ -43,11 +44,13 @@ import { promoteScientificIsosurfaceMesh, rebuildScientificIsosurfaceMesh,
 import { promoteDerivedScalarIsosurfaceMesh } from "./projects/derivedScalarIsosurfaceMesh";
 import { runVerifiedIsosurface } from "./vectorfield3d/runVerifiedIsosurface";
 import { loadVerifiedVectorFieldTransfer } from "./vectorfield3d/loadVerifiedVectorFieldTransfer";
+import { loadSavedAtlasBytes } from "./vectorfield3d/loadSavedAtlasBytes";
 import { checkSavedRegionResultSources, type SavedRegionSourceStatus } from
   "./vectorfield3d/checkSavedRegionResultSources";
 import { WorkbookPublication, type PublicationKind } from "./components/WorkbookPublication";
 import { loadProjectResources } from "./projects/projectResourceArchive";
 import { createPortableNotebookPublication, notebookPublicationManifest, notebookPublicationMarkdown, notebookPublicationManifestHtml, portableNotebookPublicationHtml } from "./workbook/notebookPublication";
+import { algebraReproManifestMarkdown, createAlgebraReproManifest } from "./workbook/algebraReproManifest";
 import { freezeWorkbookSnapshot, workbookSnapshotQualification } from "@math3d/workbook";
 import { rerunNotebookAnalysis } from "./workbook/notebookRerun";
 import { analyzeSavedMesh, appendSavedMeshAnalysis, type SavedMeshAnalysisKind } from "./projects/savedMeshAnalysis";
@@ -808,6 +811,10 @@ import {
   applyGraph2DAuthoring,
   createMixedWorkspaceDocument,
   replaceMath3DProjectWorkspace,
+  upsertMath3DProjectAlgebraicLocusScene,
+  SAGE_LOCUS_GEOMETRY_EXTENSION,
+  upsertMath3DProjectAlgebraicLocusSample,
+  upsertMath3DProjectAlgebraicSingularityScene,
   upsertProjectScientificSelection,
   upsertProjectLineIntegralResult,
   upsertProjectRegionResult,
@@ -815,12 +822,33 @@ import {
   upsertProjectTrajectoryCurve,
   upsertProjectLocalSeparatrix,
   upsertProjectVectorField3DComparison,
+  upsertProjectVectorField3DTopologyStudy,
+  upsertProjectPoincareReturnMap,
+  upsertProjectLyapunov,
+  upsertProjectTensorGlyphs,
+  promoteProjectLocalManifoldPatch,
+  projectLocalManifoldMeshStatus,
   upsertProjectTemporalFieldSource,
   upsertProjectTemporalPathline,
   projectTemporalPathlineStatus,
   upsertProjectTemporalStreakline,
   projectTemporalStreaklineStatus,
   upsertProjectTemporalSpectrum,
+  upsertProjectTemporalLyapunovField,
+  upsertProjectTemporalSurfaceEvents,
+  upsertProjectTemporalSurfaceLinkage,
+  upsertProjectTemporalSurfaceTransport,
+  upsertProjectTemporalFtleProfile,
+  promoteProjectManifoldContinuation,
+  promoteProjectExtendedManifold,
+  promoteProjectManifoldAtlas,
+  computeProjectManifoldSurfaceCoverage,
+  upsertProjectManifoldSurfaceCoverage,
+  computeProjectAtlasSeams,
+  upsertProjectAtlasSeams,
+  computeProjectAtlasRefinement,
+  upsertProjectAtlasRefinement,
+  upsertProjectTemporalSurfaceIdentity,
   rebaseProjectDerivedSource,
   verifiedVectorFieldSampler,
   appendProjectDerivedField,
@@ -10123,6 +10151,7 @@ const WORKBOOK_EXPORT_BLOCK_LABELS: Record<WorkbookBlockType, string> = {
   visualize: "Visualize",
   compute: "Compute",
   "sage-code": "Sage code",
+  "algebra-object": "Algebra object",
   interaction: "Interact",
   assert: "Assert",
 };
@@ -10246,6 +10275,15 @@ const buildWorkbooksMarkdown = (workbooks: Workbook[], activeWorkbookId: string 
           lines.push(block.formula ?? "");
           lines.push("$$");
         } else if (block.type === "reference") {
+          if (block.algebraResult) {
+            const cell = block.algebraResult;
+            lines.push(`Algebra object: ${cell.objectId} revision ${cell.revision}`);
+            lines.push(`Operation: ${cell.evidence.request.operation}`);
+            lines.push(`Runtime: ${cell.evidence.runtime.backend} SageMath ${cell.evidence.runtime.version}`);
+            lines.push(`Result hash: ${cell.evidence.resultHash}`);
+            lines.push(`Freshness: ${resolveWorkbookFreshness(workbook, project).get(block.id)?.status ?? "missing"}`);
+            lines.push("```json", JSON.stringify(cell.evidence.result, null, 2), "```");
+          }
           const reference = normalizeNotebookReference(block.notebookReference);
           if (reference) {
             lines.push(`Project: ${reference.projectId}`);
@@ -10258,6 +10296,14 @@ const buildWorkbooksMarkdown = (workbooks: Workbook[], activeWorkbookId: string 
           lines.push(`Operator: ${block.compute?.operatorId ?? "—"}`);
           if (block.compute?.lastRun?.status) lines.push(`Status: ${block.compute.lastRun.status}`);
           if (block.compute?.summary) lines.push(`Summary: ${block.compute.summary}`);
+        } else if (block.type === "algebra-object") {
+          const latest = block.algebraObject?.runs.at(-1);
+          lines.push(`Source freshness at export: ${resolveWorkbookFreshness(workbook, project).get(block.id)?.status ?? "missing"}`);
+          if (latest) lines.push(`Project: ${latest.source.projectId}`, `Object: ${latest.source.objectId}`,
+            `Revision: ${latest.source.revision}`, `Definition hash: ${latest.source.contentHash}`,
+            `Output hash: ${latest.outputHash}`, "```json",
+            JSON.stringify(latest.output, null, 2), "```");
+          else lines.push("_(No algebra object run saved)_");
         } else if (block.type === "sage-code") {
           lines.push("```sage", block.sageCode?.code ?? "", "```");
           lines.push(`Source freshness at export: ${resolveWorkbookFreshness(workbook, project).get(block.id)?.status ?? "missing"}`);
@@ -10484,8 +10530,16 @@ const buildWorkbooksReportHtml = (workbooks: Workbook[], activeWorkbookId: strin
         } else if (block.type === "formula") {
           body = `<div class="block-body">${renderNotebookMath(block.formula ?? "", true, true)}</div>`;
         } else if (block.type === "reference") {
+          const algebra = block.algebraResult;
           const reference = normalizeNotebookReference(block.notebookReference);
-          body = reference ? `<div class="block-body">
+          body = algebra ? `<div class="block-body">
+            <div>Algebra object: ${escapeHtml(algebra.objectId)} revision ${algebra.revision}</div>
+            <div>Operation: ${escapeHtml(algebra.evidence.request.operation)}</div>
+            <div>Runtime: ${escapeHtml(algebra.evidence.runtime.backend)} SageMath ${escapeHtml(algebra.evidence.runtime.version)}</div>
+            <div>Result hash: ${escapeHtml(algebra.evidence.resultHash)}</div>
+            <div>Freshness: ${escapeHtml(resolveWorkbookFreshness(workbook, project).get(block.id)?.status ?? "missing")}</div>
+            <pre>${escapeHtml(JSON.stringify(algebra.evidence.result, null, 2))}</pre>
+          </div>` : reference ? `<div class="block-body">
             <div>Project: ${escapeHtml(reference.projectId)}</div>
             <div>${reference.kind === "document" ? "Document" : "Saved result"}: ${escapeHtml(reference.targetId)}</div>
             <div>Source: ${escapeHtml(reference.source.documentId)} revision ${reference.source.revision}</div>
@@ -10498,6 +10552,13 @@ const buildWorkbooksReportHtml = (workbooks: Workbook[], activeWorkbookId: strin
             ${block.compute?.lastRun?.status ? `<div>Status: ${escapeHtml(block.compute.lastRun.status)}</div>` : ""}
             ${block.compute?.summary ? `<div>Summary: ${escapeHtml(block.compute.summary)}</div>` : ""}
           </div>`;
+        } else if (block.type === "algebra-object") {
+          const latest = block.algebraObject?.runs.at(-1);
+          body = `<div class="block-body">
+            <div>Source freshness at export: ${escapeHtml(resolveWorkbookFreshness(workbook, project).get(block.id)?.status ?? "missing")}</div>
+            ${latest ? `<div>Project: ${escapeHtml(latest.source.projectId)} · Object: ${escapeHtml(latest.source.objectId)} · revision ${latest.source.revision}</div>
+              <div>Definition hash: ${escapeHtml(latest.source.contentHash)} · output hash: ${escapeHtml(latest.outputHash)}</div>
+              <pre>${escapeHtml(JSON.stringify(latest.output, null, 2))}</pre>` : "No algebra object run saved."}</div>`;
         } else if (block.type === "sage-code") {
           const run = block.sageCode?.runs.at(-1);
           body = `<div class="block-body"><pre>${escapeHtml(block.sageCode?.code ?? "")}</pre>
@@ -11413,6 +11474,7 @@ const DEFAULT_BLOCK_PORTS: Record<WorkbookBlockType, { inputs: WorkbookPort[]; o
   },
   compute: { inputs: BASE_COMPUTE_INPUTS, outputs: [] },
   "sage-code": { inputs: [], outputs: [{ id: "text", label: "Output", type: "text" }] },
+  "algebra-object": { inputs: [], outputs: [{ id: "object", label: "Algebra object", type: "algebra-object" }] },
   interaction: { inputs: [{ id: "dataset", label: "Dataset", type: "dataset" }], outputs: [] },
   assert: { inputs: [{ id: "dataset", label: "Dataset", type: "dataset" }], outputs: [] },
 };
@@ -53259,6 +53321,7 @@ case "mobius":
         compute: { status: "idle", inputs: [], outputs: undefined, lastRun: undefined, runHistory: [], cache: {} },
       });
     if (type === "sage-code") return applyDefaultPorts({ ...base, title: "Sage code", sageCode: { code: "", runs: [] } });
+    if (type === "algebra-object") return applyDefaultPorts({ ...base, title: "Algebra object" });
     if (type === "interaction") {
       return applyDefaultPorts({
         ...base,
@@ -54897,22 +54960,20 @@ case "mobius":
     [workbookSessionPayload, buildWorkbookWorkspaceState]
   );
 
-  const workbookSessionJsonWithWorkspace = useMemo(
+  const workbookSessionHashWithWorkspace = useMemo(
     () =>
-      JSON.stringify(
-        {
-          version: WORKBOOK_PROJECT_FORMAT_VERSION,
-          format: WORKBOOK_PROJECT_FORMAT,
-          payload: workbookSessionPayloadWithWorkspace,
-        },
-        null,
-        2
+      hashString(
+        JSON.stringify(
+          {
+            version: WORKBOOK_PROJECT_FORMAT_VERSION,
+            format: WORKBOOK_PROJECT_FORMAT,
+            payload: workbookSessionPayloadWithWorkspace,
+          },
+          null,
+          2
+        )
       ),
     [workbookSessionPayloadWithWorkspace]
-  );
-  const workbookSessionHashWithWorkspace = useMemo(
-    () => hashString(workbookSessionJsonWithWorkspace),
-    [workbookSessionJsonWithWorkspace]
   );
   const workbookBundlePayload = useMemo<WorkbookReplayPayload>(
     () =>
@@ -54924,15 +54985,17 @@ case "mobius":
           },
     [workbookBundleAssetMode, workbookSessionPayloadWithWorkspace]
   );
-  const workbookBundleJson = useMemo(
-    () =>
-      JSON.stringify(
-        buildWorkbookProjectEnvelope(workbookBundlePayload, workbookBundleAssetMode, Date.now()),
-        null,
-        2
-      ),
-    [workbookBundlePayload, workbookBundleAssetMode]
-  );
+  // The bundle is needed only for an explicit save/export. Keep the committed
+  // payload in a stable ref so editor callback chains do not retain a full JSON
+  // string from every prior render.
+  const workbookBundleSourceRef = useRef({ payload: workbookBundlePayload, assetMode: workbookBundleAssetMode });
+  useLayoutEffect(() => {
+    workbookBundleSourceRef.current = { payload: workbookBundlePayload, assetMode: workbookBundleAssetMode };
+  }, [workbookBundlePayload, workbookBundleAssetMode]);
+  const serializeWorkbookBundle = useCallback(() => {
+    const { payload, assetMode } = workbookBundleSourceRef.current;
+    return JSON.stringify(buildWorkbookProjectEnvelope(payload, assetMode, Date.now()), null, 2);
+  }, []);
 
   const markWorkbookManualSave = useCallback(
     (hash: string, savedAt: number, fileName?: string) => {
@@ -55770,9 +55833,9 @@ case "mobius":
         ? "math3d-book"
         : sanitizeFileBase(activeWorkbook?.title ?? "workbook", "workbook");
     const fileName = `${base}-${new Date().toISOString().slice(0, 10)}.math3d`;
-    downloadTextFile(workbookBundleJson, fileName, "application/json");
+    downloadTextFile(serializeWorkbookBundle(), fileName, "application/json");
     markWorkbookManualSave(workbookSessionHash, Date.now(), fileName);
-  }, [workbookBundleJson, workbookSessionHash, workbooks.length, activeWorkbook, markWorkbookManualSave]);
+  }, [serializeWorkbookBundle, workbookSessionHash, workbooks.length, activeWorkbook, markWorkbookManualSave]);
 
   const handleSaveWorkbook = useCallback(() => {
     const base =
@@ -55781,10 +55844,10 @@ case "mobius":
         : sanitizeFileBase(activeWorkbook?.title ?? "workbook", "workbook");
     const defaultName = `${base}-${new Date().toISOString().slice(0, 10)}.math3d`;
     const fileName = ensureMath3dExtension(workbookManualSaveName || defaultName);
-    downloadTextFile(workbookBundleJson, fileName, "application/json");
+    downloadTextFile(serializeWorkbookBundle(), fileName, "application/json");
     markWorkbookManualSave(workbookSessionHash, Date.now(), fileName);
   }, [
-    workbookBundleJson,
+    serializeWorkbookBundle,
     workbookSessionHash,
     workbookManualSaveName,
     workbooks.length,
@@ -56007,11 +56070,11 @@ case "mobius":
 
   const handleExportWorkbooks = useCallback(() => {
     downloadTextFile(
-      workbookBundleJson,
+      serializeWorkbookBundle(),
       `math3d-workbooks-${new Date().toISOString().slice(0, 10)}.math3d`,
       "application/json"
     );
-  }, [workbookBundleJson]);
+  }, [serializeWorkbookBundle]);
 
   const handleExportWorkbooksMarkdown = useCallback(() => {
     const markdown = buildWorkbooksMarkdown(workbooks, activeWorkbookId, getWorkbookDependencyProjectRef.current(), undefined, undefined, readComparisonReportResourceRef.current);
@@ -77571,7 +77634,8 @@ case "mobius":
       if (activeCurveKernelAdapter === restoredCurveAdapter) activeCurveKernelAdapter.commitSource(curveSourceFromEditor(activeCurveKernelAdapter.document().source, activeCurveFormulas, activeCurveDomain));
       if (restoredSurfaceAdapter && surfaceViewerKind === "param" && paramSurfaceId === "custom") restoredSurfaceAdapter.commitSource(surfaceSourceFromEditor(restoredSurfaceAdapter.document().source, { x: paramXExpr, y: paramYExpr, z: paramZExpr }, activeParamDomain));
       const activeGeometry = geometryKernelAdapterRef.current!;
-      if (restored.geometries.has(activeGeometry.document().identity.id)) {
+      if (restored.geometries.has(activeGeometry.document().identity.id) &&
+          !(SAGE_LOCUS_GEOMETRY_EXTENSION in activeGeometry.document().source.extensions)) {
         activeGeometry.commitSource(geometrySourceFromEditor(activeGeometry.document(), geometryKernelSceneSnapshot));
         activeGeometry.commitDisplay(geometryDisplayFromEditor(activeGeometry.document(), geometryKernelSceneSnapshot));
       }
@@ -77595,7 +77659,14 @@ case "mobius":
         const scientific = restored.topologies.get(entry.expected.id) ?? restored.complexes.get(entry.expected.id);
         if (scientific) { const document = scientific.document(), replay = scientific.exportReplay(); return { ...entry, checkpoint: replay.checkpoint.document, expected: document.identity, replay: { format: entry.module === "topology" ? MIXED_REPLAY_FORMATS.topology : MIXED_REPLAY_FORMATS.complex, payload: replay as unknown as CanonicalJsonValue } }; }
         const geometry = restored.geometries.get(entry.expected.id);
-        if (geometry) { const document = geometry.document(), replay = geometry.exportReplay(); return { ...entry, checkpoint: replay.checkpoint.document, expected: document.identity, replay: { format: MIXED_REPLAY_FORMATS.geometry, payload: replay as unknown as CanonicalJsonValue } }; }
+        if (geometry) {
+          const document = geometry.document();
+          if (SAGE_LOCUS_GEOMETRY_EXTENSION in document.source.extensions)
+            return { ...entry, checkpoint: document, expected: document.identity, replay: null };
+          const replay = geometry.exportReplay();
+          return { ...entry, checkpoint: replay.checkpoint.document, expected: document.identity,
+            replay: { format: MIXED_REPLAY_FORMATS.geometry, payload: replay as unknown as CanonicalJsonValue } };
+        }
         const curve = restored.curves.get(entry.expected.id), surface = restored.surfaces.get(entry.expected.id);
         const adapter = curve ?? surface;
         if (adapter) { const document = adapter.document(), replay = adapter.replayBundle(); return { ...entry, checkpoint: replay.checkpoint, expected: document.identity, replay: { format: curve ? MIXED_REPLAY_FORMATS.curve : MIXED_REPLAY_FORMATS.surface, payload: replay as unknown as CanonicalJsonValue } }; }
@@ -77798,6 +77869,13 @@ case "mobius":
     const reportProject = exactSavedProject ?? project;
     const reportReader: ProjectResourceReader = exactResources ? item => exactResources.bytes(item) : readComparisonResource;
     const base = sanitizeFileBase(book.title, "workbook");
+    if (kind === "algebra-manifest" || kind === "algebra-snapshot") {
+      if (!project) throw new TypeError("Open a named Project before exporting its algebra manifest.");
+      const manifest = createAlgebraReproManifest(project, [book], selected, kind === "algebra-snapshot");
+      downloadTextFile(canonicalJsonStringify(manifest), base + ".algebra.json", "application/json");
+      downloadTextFile(algebraReproManifestMarkdown(manifest), base + ".algebra.md", "text/markdown");
+      return;
+    }
     if (kind === "markdown") {
       downloadTextFile(buildWorkbooksMarkdown([book], book.id, reportProject, selected, context?.readArtifact, reportReader), base + ".report.md", "text/markdown"); return;
     }
@@ -79532,6 +79610,11 @@ case "mobius":
     if (!restored || !mesh) return true;
     if ((mesh.document().source.origin as { kind?: string })?.kind === "derivedVectorFieldIsosurface")
       return scientificMeshSourceStates[mesh.document().identity.id] === "current";
+    if ((mesh.document().source.origin as { kind?: string })?.kind ===
+        "vector3d.local-manifold-patch")
+      return !!activeNotebookProjectRef.current && projectLocalManifoldMeshStatus(
+        activeNotebookProjectRef.current, mesh.document(),
+        mesh.resources.bytes(mesh.document().source.resource)).status === "current";
     const lineage = restored.workspace.relations.find(relation => relation.operation === "surface.tessellate-saved" && relation.target.type === "document" && relation.target.generation.documentId === mesh.document().identity.id);
     if (!lineage) return true;
     const source = lineage.sources[0], parent = restored.additional.get(source.documentId)?.document() ?? restored.surfaces.get(source.documentId)?.document();
@@ -82866,6 +82949,22 @@ case "mobius":
         onResolutionCompare={runSavedResolutionStudy} onCreate={createMeshFromSavedSurface} onOpen={id => navigateRestoredDocument(id, "mesh")} onAnalyze={saveLinkedMeshAnalysis}
         creationHint="Uses saved formulas and ranges at the selected analysis resolution, independent of display resolution. Earlier Meshes and results remain available. Projects → Save project keeps them."
       />}
+      {savedMeshActive && (meshDocumentAdapterRef.current?.document().source.origin as { kind?: string })?.kind ===
+        "vector3d.local-manifold-patch" && (() => {
+          const adapter = meshDocumentAdapterRef.current!;
+          const mesh = adapter.document();
+          const project = activeNotebookProjectRef.current;
+          const status = project ? projectLocalManifoldMeshStatus(project, mesh,
+            adapter.resources.bytes(mesh.source.resource)) :
+            { status: "withheld", reason: "project-missing" };
+          return <div role="status" data-testid="gf46-mesh-source-status" style={{
+            margin: "8px 18px", padding: "7px 11px", border: "1px solid #b9cbe0",
+            borderRadius: 8, fontSize: 13 }}>
+            Local manifold patch · {status.status === "current" ?
+              "source and Mesh bytes verified" : `values withheld: ${status.reason}`}.
+            This is a local finite-time patch, not a global manifold.
+          </div>;
+        })()}
       {savedMeshActive && (meshDocumentAdapterRef.current?.document().source.origin as { kind?: string })?.kind === "derivedVectorFieldIsosurface" &&
         <div role="status" data-testid="scientific-mesh-source-status" style={{ margin: "8px 18px",
           padding: "7px 11px", border: "1px solid #b9cbe0", borderRadius: 8,
@@ -90850,6 +90949,152 @@ case "mobius":
               activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
               setNotebookProjectVersion(value => value + 1);
             }}
+            onSaveVectorField3DTopologyStudy={result => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const updated = upsertProjectVectorField3DTopologyStudy(active, result);
+              activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+            }}
+            onSaveVectorField3DPoincareReturn={study => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const updated = upsertProjectPoincareReturnMap(active, study);
+              activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+            }}
+            onSaveVectorField3DLyapunov={study => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const updated = upsertProjectLyapunov(active, study);
+              activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+            }}
+            onSaveVectorField3DTensorGlyphs={(study, transfers) => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const updated = upsertProjectTensorGlyphs(active, study, transfers);
+              activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+            }}
+            onPromoteVectorField3DManifoldPatch={patch => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const promoted = promoteProjectLocalManifoldPatch(active, patch);
+              const adapter = MeshDocumentAdapter.restore({ document: promoted.mesh,
+                resourceBytes: promoted.bytes });
+              activeNotebookProjectRef.current = promoted.project;
+              restored.workspace = promoted.project.workspace;
+              restored.meshes.set(promoted.mesh.identity.id, adapter);
+              meshDocumentAdapterRef.current = adapter;
+              setMeshKernelDocument(promoted.mesh);
+              setNotebookProjectVersion(value => value + 1);
+              setAdditionalVersion(value => value + 1);
+              navigateRestoredDocument(promoted.mesh.identity.id, "mesh");
+            }}
+            onPromoteVectorField3DManifoldContinuation={study => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const promoted = promoteProjectManifoldContinuation(active, study);
+              const adapter = MeshDocumentAdapter.restore({ document: promoted.mesh,
+                resourceBytes: promoted.bytes });
+              activeNotebookProjectRef.current = promoted.project;
+              restored.workspace = promoted.project.workspace;
+              restored.meshes.set(promoted.mesh.identity.id, adapter);
+              meshDocumentAdapterRef.current = adapter;
+              setMeshKernelDocument(promoted.mesh);
+              setNotebookProjectVersion(value => value + 1);
+              setAdditionalVersion(value => value + 1);
+              navigateRestoredDocument(promoted.mesh.identity.id, "mesh");
+            }}
+            onPromoteVectorField3DExtendedManifold={study => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const promoted = promoteProjectExtendedManifold(active, study);
+              const adapter = MeshDocumentAdapter.restore({ document: promoted.mesh,
+                resourceBytes: promoted.bytes });
+              activeNotebookProjectRef.current = promoted.project;
+              restored.workspace = promoted.project.workspace;
+              restored.meshes.set(promoted.mesh.identity.id, adapter);
+              meshDocumentAdapterRef.current = adapter;
+              setMeshKernelDocument(promoted.mesh);
+              setNotebookProjectVersion(value => value + 1);
+              setAdditionalVersion(value => value + 1);
+              navigateRestoredDocument(promoted.mesh.identity.id, "mesh");
+            }}
+            onPromoteVectorField3DManifoldAtlas={study => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const promoted = promoteProjectManifoldAtlas(active, study);
+              const adapter = MeshDocumentAdapter.restore({ document: promoted.mesh,
+                resourceBytes: promoted.bytes });
+              activeNotebookProjectRef.current = promoted.project;
+              restored.workspace = promoted.project.workspace;
+              restored.meshes.set(promoted.mesh.identity.id, adapter);
+              meshDocumentAdapterRef.current = adapter;
+              setMeshKernelDocument(promoted.mesh);
+              setNotebookProjectVersion(value => value + 1);
+              setAdditionalVersion(value => value + 1);
+              navigateRestoredDocument(promoted.mesh.identity.id, "mesh");
+            }}
+            onValidateVectorField3DManifoldCoverage={async (baseId, refinedId) => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const baseBytes = await loadSavedAtlasBytes(active, restored, baseId);
+              const refinedBytes = await loadSavedAtlasBytes(active, restored, refinedId);
+              const study = computeProjectManifoldSurfaceCoverage(active, baseId, refinedId,
+                baseBytes, refinedBytes);
+              if (study.status !== "validated")
+                throw new TypeError(`Atlas surface coverage unavailable: ${study.reason}.`);
+              const updated = upsertProjectManifoldSurfaceCoverage(active, study,
+                baseBytes!, refinedBytes!);
+              activeNotebookProjectRef.current = updated;
+              restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+              return study;
+            }}
+            onValidateVectorField3DAtlasSeams={async coverageId => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const coverage = active.workspace.results.find(item => item.resultId === coverageId);
+              if (!coverage) throw new TypeError("Save GF-62 coverage first.");
+              const baseBytes = await loadSavedAtlasBytes(active, restored,
+                String(coverage.summary.baseResultId));
+              const refinedBytes = await loadSavedAtlasBytes(active, restored,
+                String(coverage.summary.refinedResultId));
+              const study = computeProjectAtlasSeams(active, coverage,
+                baseBytes, refinedBytes);
+              if (study.status !== "measured")
+                throw new TypeError(`Atlas seam evidence unavailable: ${study.reason}.`);
+              const updated = upsertProjectAtlasSeams(active, study,
+                baseBytes!, refinedBytes!);
+              activeNotebookProjectRef.current = updated;
+              restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+              return study;
+            }}
+            onValidateVectorField3DAtlasRefinement={async seamsId => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const seams = active.workspace.results.find(item => item.resultId === seamsId);
+              const coverage = active.workspace.results.find(item =>
+                item.resultId === seams?.summary.coverageResultId);
+              if (!seams || !coverage) throw new TypeError("Save GF-63 seam evidence first.");
+              const baseBytes = await loadSavedAtlasBytes(active, restored,
+                String(coverage.summary.baseResultId));
+              const refinedBytes = await loadSavedAtlasBytes(active, restored,
+                String(coverage.summary.refinedResultId));
+              const study = computeProjectAtlasRefinement(active, seams,
+                baseBytes, refinedBytes);
+              if (study.status !== "measured")
+                throw new TypeError(`Atlas refinement unavailable: ${study.reason}.`);
+              const updated = upsertProjectAtlasRefinement(active, study,
+                baseBytes!, refinedBytes!);
+              activeNotebookProjectRef.current = updated;
+              restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+              return study;
+            }}
             onSaveVectorField3DTemporalSource={(source, transfers) => {
               const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
               if (!active || !restored) throw new TypeError("Open a saved Project first.");
@@ -90875,6 +91120,51 @@ case "mobius":
               const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
               if (!active || !restored) throw new TypeError("Open a saved Project first.");
               const updated = upsertProjectTemporalSpectrum(active, result, transfers);
+              activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+            }}
+            onSaveVectorField3DTemporalFtLeField={(study, transfers) => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const updated = upsertProjectTemporalLyapunovField(active, study, transfers);
+              activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+            }}
+            onSaveVectorField3DTemporalSurfaceEvents={(study, transfers) => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const updated = upsertProjectTemporalSurfaceEvents(active, study, transfers);
+              activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+            }}
+            onSaveVectorField3DTemporalSurfaceLinkage={(study, transfers) => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const updated = upsertProjectTemporalSurfaceLinkage(active, study, transfers);
+              activeNotebookProjectRef.current = updated;
+              restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+            }}
+            onSaveVectorField3DTemporalSurfaceTransport={(study, transfers) => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const updated = upsertProjectTemporalSurfaceTransport(active, study, transfers);
+              activeNotebookProjectRef.current = updated;
+              restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+            }}
+            onSaveVectorField3DTemporalSurfaceIdentity={(study, transfers) => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const updated = upsertProjectTemporalSurfaceIdentity(active, study, transfers);
+              activeNotebookProjectRef.current = updated;
+              restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+            }}
+            onSaveVectorField3DTemporalFtleProfile={(study, transfers) => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const updated = upsertProjectTemporalFtleProfile(active, study, transfers);
               activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
               setNotebookProjectVersion(value => value + 1);
             }}
@@ -111621,6 +111911,70 @@ case "mobius":
       )}
       {computeCenterOpen && <ComputeCenterPanel initialTab={computeCenterInitialTab} onClose={() => { setComputeCenterOpen(false); setComputeCenterInitialTab("overview"); }} />}
       {casWorkspaceOpen && <CASAlgebraWorkspace record={casAnalysisRecord} project={projectForNotePins}
+        onInstallGalleryExample={(id) => {
+          const current = projectForNotePins;
+          if (!current) throw new TypeError("Open and save a Project before adding a gallery example.");
+          const savedBytes = localStorage.getItem(projectPayloadKey(current.identity.id));
+          if (!savedBytes || parseMath3DProject(savedBytes).identity.structuralHash !== current.identity.structuralHash)
+            throw new TypeError("The saved Project changed. Reopen it before adding a gallery example.");
+          const installed = installAlgebraGalleryExample(current, id);
+          if (installed.records > 0) {
+            saveLibraryProject(localStorage, installed.project, Date.now(), undefined, { expectedBytes: savedBytes });
+            activeNotebookProjectRef.current = installed.project;
+            setNotebookProjectVersion((version) => version + 1);
+            window.dispatchEvent(new Event("math3d:project-saved-externally"));
+          }
+          return installed.primary;
+        }}
+        onSaveLocusSingularity={(analysis) => {
+          const current = projectForNotePins;
+          if (!current || current.identity.id !== analysis.scene.source.projectId)
+            throw new TypeError("Open the matching Project before saving a tangent view.");
+          const savedBytes = localStorage.getItem(projectPayloadKey(current.identity.id));
+          if (!savedBytes || parseMath3DProject(savedBytes).identity.structuralHash !== current.identity.structuralHash)
+            throw new TypeError("The saved Project changed. Reopen it before saving the tangent view.");
+          const next = upsertMath3DProjectAlgebraicSingularityScene(current, analysis);
+          saveLibraryProject(localStorage, next, Date.now(), undefined, { expectedBytes: savedBytes });
+          activeNotebookProjectRef.current = next;
+          setNotebookProjectVersion((version) => version + 1);
+          window.dispatchEvent(new Event("math3d:project-saved-externally"));
+        }}
+        onSaveLocusSample={(sample) => {
+          const current = projectForNotePins;
+          if (!current || current.identity.id !== sample.scene.source.projectId)
+            throw new TypeError("Open the matching Project before saving a real-locus sample.");
+          const savedBytes = localStorage.getItem(projectPayloadKey(current.identity.id));
+          if (!savedBytes || parseMath3DProject(savedBytes).identity.structuralHash !== current.identity.structuralHash)
+            throw new TypeError("The saved Project changed. Reopen it before saving the locus sample.");
+          const next = upsertMath3DProjectAlgebraicLocusSample(current, sample);
+          saveLibraryProject(localStorage, next, Date.now(), undefined, { expectedBytes: savedBytes });
+          activeNotebookProjectRef.current = next;
+          setNotebookProjectVersion((version) => version + 1);
+          window.dispatchEvent(new Event("math3d:project-saved-externally"));
+        }}
+        onSaveLocusScene={(scene) => {
+          const current = projectForNotePins;
+          if (!current || current.identity.id !== scene.source.projectId)
+            throw new TypeError("Open the matching Project before saving a real-locus contract.");
+          const savedBytes = localStorage.getItem(projectPayloadKey(current.identity.id));
+          if (!savedBytes || parseMath3DProject(savedBytes).identity.structuralHash !== current.identity.structuralHash)
+            throw new TypeError("The saved Project changed. Reopen it before saving the locus contract.");
+          const next = upsertMath3DProjectAlgebraicLocusScene(current, scene);
+          saveLibraryProject(localStorage, next, Date.now(), undefined, { expectedBytes: savedBytes });
+          activeNotebookProjectRef.current = next;
+          setNotebookProjectVersion((version) => version + 1);
+          window.dispatchEvent(new Event("math3d:project-saved-externally"));
+        }}
+        onOpenLocusGeometry={(documentId) => {
+          const current = activeNotebookProjectRef.current;
+          const entry = current?.workspace.entries.find(item => item.expected.id === documentId &&
+            item.module === "geometry" && item.checkpoint.format === "math3d.geometry-document");
+          if (!current || !entry) throw new TypeError("The saved locus Geometry document is unavailable.");
+          reopenProjectWorkspace(current.workspace, restoredProjectRef.current?.resources, current);
+          if (!navigateRestoredDocument(documentId, "geometry"))
+            throw new TypeError("The saved locus Geometry document could not be opened.");
+          setCasWorkspaceOpen(false); setProjectsOpen(false);
+        }}
         onSaveRecipe={(recipe) => {
           const current = projectForNotePins;
           if (!current || current.identity.id !== recipe.projectId) throw new TypeError("Open the matching Project before saving an algebra recipe.");

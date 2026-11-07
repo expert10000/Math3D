@@ -1,11 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { buildSageAlgebraDomainInput, buildSageAlgebraReconstructionInput, buildSageNumberFieldInput, buildSageGaloisInput,
+  buildSageFiniteFieldInput,
+  buildSagePadicInput,
+  buildSageLocalExtensionInput,
+  buildSageEllipticCurveInput,
   createAlgebraObjectRecord, createMath3DProject,
-  createMixedWorkspaceDocument, createProjectAlgebraObjectId, upsertMath3DProjectAlgebraObject } from "@math3d/core";
+  createMixedWorkspaceDocument, createProjectAlgebraObjectId, createStableDocumentId,
+  upsertMath3DProjectAlgebraObject } from "@math3d/core";
 import { getComputeJobs } from "../features/computeCenter/scientificJobTelemetry";
 import { SAGE_OPERATIONS, SAGE_SYMBOLIC_OPERATIONS } from "../integrations/sage/sageSchemas";
 import { scientificOperationsFor } from "../features/scientificServices/operationCatalog";
-import { createSageExecutionRegistry, SAGE_CONSOLE_OPERATION, SAGE_JOB_OPERATIONS, type BrokeredSageOperation, type SageExecutionRegistryOptions } from "./sageOperationExecution";
+import { createSageExecutionRegistry, SAGE_CONSOLE_OPERATION, SAGE_JOB_OPERATIONS,
+  validateSageCapabilityManifest, type BrokeredSageOperation, type SageExecutionRegistryOptions } from "./sageOperationExecution";
 
 const health: NonNullable<SageExecutionRegistryOptions["health"]> = async () => ({
   engine: "sagemath", engineVersion: "10.6", status: "ok", available: true, operations: SAGE_OPERATIONS,
@@ -24,10 +30,16 @@ const dockerOnlyOperations = new Set<BrokeredSageOperation>([
   "sage.numberField.elementDossier", "sage.numberField.primeDecomposition",
   "sage.polynomial.dossier",
   "sage.galois.analyze",
+  "sage.group.dossier", "sage.group.actionCharacters", "sage.module.invariantFactors", "sage.chain.homology",
+  "sage.finiteField.explore",
+  "sage.numberTheory.padic",
+  "sage.numberField.localExtensions",
+  "sage.ellipticCurve.dossier",
   "sage.matrix.linear_dossier",
   "sage.matrix.integer_forms",
   "sage.ideal.groebner", "sage.ideal.eliminate", "sage.ideal.membership", "sage.ideal.quotientDimension",
-  "sage.ideal.syzygies", "sage.ideal.hilbertSeries",
+  "sage.ideal.syzygies", "sage.ideal.hilbertSeries", "sage.ideal.radical",
+  "sage.ideal.primaryDecomposition", "sage.ideal.hilbertPolynomial",
 ]);
 const algebraParams = (domains = false) => {
   const workspace = createMixedWorkspaceDocument({ entries: [], activeDocumentIds: [], results: [], artifacts: [],
@@ -67,12 +79,84 @@ const galoisParams = () => {
   project = upsertMath3DProjectAlgebraObject(project, ring);
   return buildSageGaloisInput(project, { objectId: ring.id, revision: 1 }, "x^4-2") as unknown as Record<string, unknown>;
 };
+const finiteFieldParams = () => {
+  const workspace = createMixedWorkspaceDocument({ entries: [], activeDocumentIds: [], results: [], artifacts: [],
+    relations: [], committedSelection: null, constructions: [] });
+  let project = createMath3DProject(workspace, { stableKey: "sage-g01-broker" });
+  const field = createAlgebraObjectRecord({ id: createProjectAlgebraObjectId(project.identity.id, "F"),
+    label: "F", revision: 1, definition: { kind: "finite-field", characteristic: 2, degree: 2,
+      generator: "a", construction: "canonical" } });
+  project = upsertMath3DProjectAlgebraObject(project, field);
+  return buildSageFiniteFieldInput(project, { objectId: field.id, revision: 1 }, [0, 1]) as unknown as Record<string, unknown>;
+};
+const padicParams = () => {
+  const workspace = createMixedWorkspaceDocument({ entries: [], activeDocumentIds: [], results: [], artifacts: [],
+    relations: [], committedSelection: null, constructions: [] });
+  let project = createMath3DProject(workspace, { stableKey: "sage-g02-broker" });
+  const parent = createAlgebraObjectRecord({ id: createProjectAlgebraObjectId(project.identity.id, "ZZ"),
+    label: "ZZ", revision: 1, definition: { kind: "integer-ring" } });
+  project = upsertMath3DProjectAlgebraObject(project, parent);
+  return buildSagePadicInput(project, { objectId: parent.id, revision: 1 }, { prime: 7, precision: 6,
+    a: { numerator: "3", denominator: "1" }, b: { numerator: "4", denominator: "1" }, hensel: null }) as unknown as Record<string, unknown>;
+};
+const localExtensionParams = () => {
+  const workspace = createMixedWorkspaceDocument({ entries: [], activeDocumentIds: [], results: [], artifacts: [],
+    relations: [], committedSelection: null, constructions: [] });
+  let project = createMath3DProject(workspace, { stableKey: "sage-g03-broker" });
+  const q = createAlgebraObjectRecord({ id: createProjectAlgebraObjectId(project.identity.id, "Q"),
+    label: "Q", revision: 1, definition: { kind: "rational-field" } });
+  project = upsertMath3DProjectAlgebraObject(project, q);
+  const k = createAlgebraObjectRecord({ id: createProjectAlgebraObjectId(project.identity.id, "K"),
+    label: "K", revision: 1, definition: { kind: "number-field",
+      baseField: { objectId: q.id, revision: 1 }, definingPolynomial: ["-5", "0", "1"], generator: "a" } });
+  project = upsertMath3DProjectAlgebraObject(project, k);
+  return buildSageLocalExtensionInput(project, { objectId: k.id, revision: 1 }, 3, 8) as unknown as Record<string, unknown>;
+};
+const ellipticCurveParams = () => {
+  const workspace = createMixedWorkspaceDocument({ entries: [], activeDocumentIds: [], results: [], artifacts: [],
+    relations: [], committedSelection: null, constructions: [] });
+  let project = createMath3DProject(workspace, { stableKey: "sage-g04-broker" });
+  const q = createAlgebraObjectRecord({ id: createProjectAlgebraObjectId(project.identity.id, "Q"),
+    label: "Q", revision: 1, definition: { kind: "rational-field" } });
+  project = upsertMath3DProjectAlgebraObject(project, q);
+  const curve = createAlgebraObjectRecord({ id: createProjectAlgebraObjectId(project.identity.id, "E"),
+    label: "E", revision: 1, definition: { kind: "elliptic-curve",
+      baseField: { objectId: q.id, revision: 1 }, model: "short-weierstrass", a: "-1", b: "1" } });
+  project = upsertMath3DProjectAlgebraObject(project, curve);
+  return buildSageEllipticCurveInput(project, { objectId: curve.id, revision: 1 }, ["0", "1"]) as unknown as Record<string, unknown>;
+};
+const pinnedStructureParams = (operation: "sage.group.dossier" | "sage.group.actionCharacters" |
+  "sage.module.invariantFactors" | "sage.chain.homology") => {
+  const projectId = createStableDocumentId("project", "sage-broker-contract");
+  const ref = (key: string) => ({ objectId: createProjectAlgebraObjectId(projectId, key), revision: 1 });
+  const hash = `sha256:${"0".repeat(64)}`;
+  const target = ref(operation);
+  const common = { schemaVersion: 1, projectId, target, targetHash: hash };
+  if (operation === "sage.group.dossier" || operation === "sage.group.actionCharacters") return { ...common,
+    format: "math3d.sage-finite-group-operation",
+    definition: { kind: "finite-group", representation: "abelian", invariantFactors: [2], generators: ["a"] },
+    ...(operation === "sage.group.actionCharacters" ? { point: 1 } : {}) };
+  if (operation === "sage.module.invariantFactors") return { ...common,
+    format: "math3d.sage-module-invariant-factors", baseRing: ref("ZZ"), baseRingHash: hash,
+    ambientRank: 1, relationRank: 1, matrix: [["2"]] };
+  return { ...common, format: "math3d.sage-chain-homology",
+    definition: { kind: "chain-complex", coefficientRing: ref("ZZ"),
+      modules: [ref("C0"), ref("C1"), ref("C2")], boundaries: [ref("d1"), ref("d2")] },
+    dimensions: [1, 1, 1], boundary1: [["0"]], boundary2: [["2"]] };
+};
 const paramsFor = (operation: BrokeredSageOperation, backend: "local" | "docker") =>
   operation === "sage.algebra.reconstruct" ? algebraParams()
     : operation === "sage.algebra.inspectDomains" ? algebraParams(true)
     : operation === "sage.numberField.elementDossier" || operation === "sage.numberField.primeDecomposition"
       ? numberFieldParams(operation)
     : operation === "sage.galois.analyze" ? galoisParams()
+    : operation === "sage.finiteField.explore" ? finiteFieldParams()
+    : operation === "sage.numberTheory.padic" ? padicParams()
+    : operation === "sage.numberField.localExtensions" ? localExtensionParams()
+    : operation === "sage.ellipticCurve.dossier" ? ellipticCurveParams()
+    : operation === "sage.group.dossier" || operation === "sage.group.actionCharacters" ||
+      operation === "sage.module.invariantFactors" ||
+      operation === "sage.chain.homology" ? pinnedStructureParams(operation)
     : operation === "sage.matrix.linear_dossier" ? { format: "math3d.sage-matrix-dossier", schemaVersion: 1,
       matrix: [["1", "2"], ["2", "4"]] }
     : operation === "sage.matrix.integer_forms" ? { format: "math3d.sage-integer-matrix-forms", schemaVersion: 1,
@@ -83,7 +167,11 @@ const paramsFor = (operation: BrokeredSageOperation, backend: "local" | "docker"
       ambientRing: { objectId: "math3d:algebra:ring", revision: 1 }, ambientHash: "sha256:fixture",
       variables: ["x", "y"], monomialOrder: "lex", generators: ["x*y-1", "y-1"],
       ...(operation === "sage.ideal.eliminate" ? { eliminate: ["x"] } : {}),
-      ...(operation === "sage.ideal.membership" ? { polynomial: "x-1" } : {}) }
+      ...(operation === "sage.ideal.membership" ? { polynomial: "x-1" } : {}),
+      ...(["sage.ideal.radical", "sage.ideal.primaryDecomposition", "sage.ideal.hilbertPolynomial"].includes(operation)
+        ? { budget: { format: "math3d.sage-ideal-budget", schemaVersion: 1, profile: "standard",
+          maxVariables: 2, maxGenerators: 3, maxDegree: 8, maxTermsPerPolynomial: 48,
+          maxResultBytes: 16384, wallTimeMs: 15000 } } : {}) }
     : operation.startsWith("sage.matrix.") ? { matrix: [[1, 2], [3, 4]], variable: "lambda" }
     : operation === "sage.groebner.compute" ? { polynomials: ["x^2+y^2-1", "x-y"], variables: ["x", "y"] }
     : operation === "sage.numberTheory.gcd" ? { values: ["84", "30"] }
@@ -95,6 +183,46 @@ const paramsFor = (operation: BrokeredSageOperation, backend: "local" | "docker"
     : { expression: "x^2+y^2+z^2", variables: ["x", "y", "z"] };
 
 describe("Sage scientific execution contract", () => {
+  it("publishes versioned, route-filtered manifests with deterministic unsupported reasons", async () => {
+    const registry = createSageExecutionRegistry({ health, consoleAvailable: () => true });
+    const [local, docker, gateway] = await Promise.all([registry.probeBackend("local"),
+      registry.probeBackend("docker"), registry.probeBackend("private")]);
+    for (const probe of [local, docker, gateway]) {
+      expect(probe.manifest).toMatchObject({ schemaVersion: 1,
+        kind: "sage-capability-manifest/v1", sageVersion: "10.6" });
+      expect(validateSageCapabilityManifest(JSON.parse(JSON.stringify(probe.manifest)),
+        probe.backend, probe.health, true)).toEqual(probe.manifest);
+      expect(probe.manifest.operations.filter((item) => item.supported)
+        .map((item) => item.operationType).sort())
+        .toEqual(probe.operations.map((item) => item.operationType).sort());
+    }
+    expect(local.manifest.operations.find((item) => item.id === "sage.algebra.reconstruct"))
+      .toMatchObject({ supported: false, reasonCode: "route-excluded" });
+    expect(local.manifest.operations.find((item) => item.id === SAGE_CONSOLE_OPERATION))
+      .toMatchObject({ supported: true, mode: "trusted-code" });
+    expect(docker.manifest.operations.find((item) => item.id === "sage.algebra.reconstruct"))
+      .toMatchObject({ supported: true, mode: "bounded" });
+    expect(gateway.manifest.operations.find((item) => item.id === "sage.algebra.reconstruct"))
+      .toMatchObject({ supported: false, reasonCode: "route-excluded" });
+    const forged = { ...docker.manifest, operations: docker.manifest.operations.map((item) =>
+      item.id === "sage.group.dossier" ? { ...item, supported: false } : item) };
+    expect(() => validateSageCapabilityManifest(forged, "docker", docker.health, true)).toThrow(/differs/);
+  });
+
+  it("distinguishes a missing worker operation from an unavailable runtime", async () => {
+    const partial = createSageExecutionRegistry({ health: async () => ({ engine: "sagemath",
+      engineVersion: "10.10", status: "ok", available: true,
+      operations: ["sage.numberTheory.gcd"] }), consoleAvailable: () => false });
+    const docker = await partial.probeBackend("docker");
+    expect(docker.manifest.operations.find((item) => item.id === "sage.algebra.reconstruct"))
+      .toMatchObject({ supported: false, reasonCode: "worker-unadvertised",
+        reason: "Worker did not advertise sage.algebra.reconstruct." });
+    const offline = await createSageExecutionRegistry({ health: async () => ({ engine: "sagemath",
+      status: "WSL missing", available: false, operations: SAGE_OPERATIONS }) }).probeBackend("local");
+    expect(offline.manifest.operations.find((item) => item.id === "sage.polynomial.factor"))
+      .toMatchObject({ supported: false, reasonCode: "runtime-unavailable",
+        reason: "Runtime unavailable: WSL missing" });
+  });
   it("discovers trusted local console execution and records output provenance through the shared service", async () => {
     const calls: { jobId: string; code: string; scope?: string }[] = [];
     const registry = createSageExecutionRegistry({ health, consoleAvailable: () => true,

@@ -9,7 +9,8 @@ import { inspectProjectAlgebraFreshness } from "./projectAlgebraRegistry";
 import type { ProjectAlgebraObjectEntry } from "./projectAlgebraRegistry";
 
 export type SageIdealOperation = "sage.ideal.groebner" | "sage.ideal.eliminate" |
-  "sage.ideal.membership" | "sage.ideal.quotientDimension" | "sage.ideal.syzygies" | "sage.ideal.hilbertSeries";
+  "sage.ideal.membership" | "sage.ideal.quotientDimension" | "sage.ideal.syzygies" | "sage.ideal.hilbertSeries" |
+  "sage.ideal.radical" | "sage.ideal.primaryDecomposition" | "sage.ideal.hilbertPolynomial";
 export type SageIdealArguments = Readonly<{ eliminate?: readonly string[]; polynomial?: string;
   budgetProfile?: SageIdealBudgetProfile }>;
 export type SageIdealInput = Readonly<{ format: "math3d.sage-ideal-operation"; schemaVersion: 1;
@@ -23,7 +24,15 @@ export type SageIdealResult = Readonly<{ format: "math3d.sage-ideal-result"; sch
   polynomial?: string; member?: boolean; normalForm?: string;
   dimension?: number; quotientPresentation?: string;
   syzygies?: readonly (readonly string[])[]; generatorCount?: number;
-  series?: string; numerator?: string; grading?: "standard" }>;
+  series?: string; numerator?: string; grading?: "standard";
+  hilbertPolynomial?: string; components?: readonly (readonly string[])[];
+  associatedPrimes?: readonly (readonly string[])[] }>;
+
+const advanced = (operation: SageIdealOperation) => ["sage.ideal.syzygies", "sage.ideal.hilbertSeries",
+  "sage.ideal.radical", "sage.ideal.primaryDecomposition", "sage.ideal.hilbertPolynomial"].includes(operation);
+const hilbert = (operation: SageIdealOperation) => operation === "sage.ideal.hilbertSeries" ||
+  operation === "sage.ideal.hilbertPolynomial";
+const quotientTarget = (operation: SageIdealOperation) => operation === "sage.ideal.quotientDimension" || hilbert(operation);
 
 const entryAt = (project: Math3DProject, ref: AlgebraObjectRef) => {
   const entry = project.algebraObjects?.find((item) => item.id === ref.objectId);
@@ -47,7 +56,7 @@ export const buildSageIdealInput = (project: Math3DProject, target: AlgebraObjec
   operation: SageIdealOperation, args: SageIdealArguments): SageIdealInput => {
   const selected = entryAt(project, target);
   const idealRef = selected.definition.kind === "quotient-ring" ? selected.definition.ideal : target;
-  if (operation === "sage.ideal.quotientDimension" || operation === "sage.ideal.hilbertSeries"
+  if (quotientTarget(operation)
     ? selected.kind !== "quotient-ring" : selected.kind !== "ideal")
     throw new TypeError("Choose the saved ideal or quotient required by this operation.");
   const ideal = entryAt(project, idealRef);
@@ -60,12 +69,12 @@ export const buildSageIdealInput = (project: Math3DProject, target: AlgebraObjec
     throw new TypeError("Ideal operations require at most three variables, six generators and 128 characters per generator.");
   }
   for (const generator of ideal.definition.generators) parseIdealGenerator(generator, ring.variables);
-  if ((operation === "sage.ideal.syzygies" || operation === "sage.ideal.hilbertSeries") &&
+  if (advanced(operation) &&
       (ring.variables.length > 2 || ideal.definition.generators.length > 3))
     throw new TypeError("Advanced ideal operations require at most two variables and three generators.");
-  if (operation === "sage.ideal.hilbertSeries" &&
+  if (hilbert(operation) &&
       (ring.monomialOrder === "lex" || !isProvablyHomogeneousIdeal(ideal.definition.generators, ring.variables)))
-    throw new TypeError("Hilbert series requires a graded monomial order and provably homogeneous generators.");
+    throw new TypeError("Hilbert invariants require a graded monomial order and provably homogeneous generators.");
   if (selected.definition.kind === "quotient-ring" && (selected.definition.ambientRing.objectId !== ambient.id ||
       selected.definition.ambientRing.revision !== ambient.revision))
     throw new TypeError("The quotient's pinned ambient ring differs from its ideal.");
@@ -76,6 +85,9 @@ export const buildSageIdealInput = (project: Math3DProject, target: AlgebraObjec
     throw new TypeError("Ideal operation arguments do not match the typed mode.");
   if (args.budgetProfile !== undefined && args.budgetProfile !== "standard" && args.budgetProfile !== "expanded")
     throw new TypeError("Choose a supported ideal budget profile.");
+  if ((operation === "sage.ideal.radical" || operation === "sage.ideal.primaryDecomposition" ||
+      operation === "sage.ideal.hilbertPolynomial") && args.budgetProfile === undefined)
+    throw new TypeError("Advanced ideal invariants require an explicit bounded budget profile.");
   const budget = args.budgetProfile ? SAGE_IDEAL_BUDGETS[args.budgetProfile] : undefined;
   const variables = ring.variables;
   let extra: { eliminate?: readonly string[]; polynomial?: string } = {};
@@ -109,7 +121,7 @@ export const validateSageIdealSnapshot = (input: SageIdealInput, operation: Sage
       target.contentHash !== input.targetHash || ideal.contentHash !== input.idealHash ||
       ring.contentHash !== input.ambientHash ||
       !sameRef(ideal.definition.ambientRing, input.ambientRing) ||
-      (operation === "sage.ideal.quotientDimension" || operation === "sage.ideal.hilbertSeries"
+      (quotientTarget(operation)
         ? target.definition.kind !== "quotient-ring" || !sameRef(target.definition.ideal, input.ideal) ||
           !sameRef(target.definition.ambientRing, input.ambientRing)
         : target.id !== ideal.id || target.revision !== ideal.revision))
@@ -126,6 +138,9 @@ export const validateSageIdealSnapshot = (input: SageIdealInput, operation: Sage
     throw new TypeError("Saved ideal request fields differ from the pinned Project definitions.");
   if (input.budget !== undefined) enforceSageIdealBudget(parseSageIdealBudget(input.budget),
     ring.definition.variables, ideal.definition.generators, ring.definition.monomialOrder, input.polynomial);
+  if ((operation === "sage.ideal.radical" || operation === "sage.ideal.primaryDecomposition" ||
+      operation === "sage.ideal.hilbertPolynomial") && input.budget === undefined)
+    throw new TypeError("Saved advanced ideal invariant lacks a bounded budget.");
   if (operation === "sage.ideal.eliminate" && (!Array.isArray(input.eliminate) ||
       !input.eliminate.length || input.eliminate.length >= ring.definition.variables.length ||
       new Set(input.eliminate).size !== input.eliminate.length ||
@@ -134,10 +149,10 @@ export const validateSageIdealSnapshot = (input: SageIdealInput, operation: Sage
   if (operation === "sage.ideal.membership" &&
       parseIdealGenerator(input.polynomial, ring.definition.variables) !== input.polynomial)
     throw new TypeError("Saved membership polynomial is invalid.");
-  if ((operation === "sage.ideal.syzygies" || operation === "sage.ideal.hilbertSeries") &&
+  if (advanced(operation) &&
       (ring.definition.variables.length > 2 || ideal.definition.generators.length > 3))
     throw new TypeError("Saved advanced ideal request exceeds its input bounds.");
-  if (operation === "sage.ideal.hilbertSeries" && (ring.definition.monomialOrder === "lex" ||
+  if (hilbert(operation) && (ring.definition.monomialOrder === "lex" ||
       !isProvablyHomogeneousIdeal(ideal.definition.generators, ring.definition.variables)))
     throw new TypeError("Saved Hilbert request is not proven homogeneous in a graded order.");
 };
@@ -149,6 +164,9 @@ export const parseSageIdealResult = (value: unknown, input: SageIdealInput,
   const extra = operation === "sage.ideal.groebner" ? ["basis"] :
     operation === "sage.ideal.eliminate" ? ["basis", "eliminate"] :
       operation === "sage.ideal.membership" ? ["basis", "polynomial", "member", "normalForm"] :
+        operation === "sage.ideal.radical" ? ["basis"] :
+          operation === "sage.ideal.primaryDecomposition" ? ["components", "associatedPrimes"] :
+            operation === "sage.ideal.hilbertPolynomial" ? ["hilbertPolynomial", "dimension", "grading"] :
         operation === "sage.ideal.syzygies" ? ["syzygies", "generatorCount"] :
           operation === "sage.ideal.hilbertSeries" ? ["series", "numerator", "dimension", "grading"] :
             ["dimension", "quotientPresentation"];
@@ -157,7 +175,21 @@ export const parseSageIdealResult = (value: unknown, input: SageIdealInput,
       !sameRef(value.target, input.target) || value.targetHash !== input.targetHash ||
       value.idealHash !== input.idealHash)
     throw new TypeError("Ideal result schema or pinned object identity differs.");
-  if (operation === "sage.ideal.syzygies") {
+  const boundedBasis = (basis: unknown): basis is string[] => Array.isArray(basis) && basis.length <= 128 &&
+    basis.every((item) => typeof item === "string" && item.length > 0 && item.length <= 1024);
+  if (operation === "sage.ideal.primaryDecomposition") {
+    if (!Array.isArray(value.components) || !value.components.length || value.components.length > 32 ||
+        !value.components.every(boundedBasis) || !Array.isArray(value.associatedPrimes) ||
+        !value.associatedPrimes.length || value.associatedPrimes.length > 32 ||
+        !value.associatedPrimes.every(boundedBasis))
+      throw new TypeError("Invalid bounded primary decomposition result.");
+  } else if (operation === "sage.ideal.hilbertPolynomial") {
+    if (value.grading !== "standard" || typeof value.hilbertPolynomial !== "string" ||
+        !value.hilbertPolynomial || value.hilbertPolynomial.length > 1024 ||
+        !Number.isSafeInteger(value.dimension) || (value.dimension as number) < -1 ||
+        (value.dimension as number) > input.variables.length)
+      throw new TypeError("Invalid bounded Hilbert polynomial result.");
+  } else if (operation === "sage.ideal.syzygies") {
     if (value.generatorCount !== input.generators.length || !Array.isArray(value.syzygies) ||
         value.syzygies.length > 128 || !value.syzygies.every((row) => Array.isArray(row) &&
           row.length === input.generators.length && row.every((item) => typeof item === "string" &&
@@ -175,8 +207,7 @@ export const parseSageIdealResult = (value: unknown, input: SageIdealInput,
         !value.quotientPresentation || value.quotientPresentation.length > 1024)
       throw new TypeError("Invalid quotient dimension result.");
   } else {
-    if (!Array.isArray(value.basis) || value.basis.length > 128 ||
-        !value.basis.every((item) => typeof item === "string" && item.length > 0 && item.length <= 1024))
+    if (!boundedBasis(value.basis))
       throw new TypeError("Invalid bounded ideal basis.");
     if (operation === "sage.ideal.eliminate" && canonicalJsonStringify(value.eliminate) !== canonicalJsonStringify(input.eliminate))
       throw new TypeError("Elimination variables differ from the request.");

@@ -3,6 +3,9 @@ import { parseMath3DProject, serializeMath3DProject, type Math3DProject } from "
 import { reviewProjectDerivedField } from "./projectDerivedFields";
 import type { DerivedFieldDocument, DerivedFieldInput } from "./derivedFieldDocument";
 import type { VectorField3DDocument } from "./vectorField3DDocument";
+import { evaluateAdvancedTensorMeasures } from "./advancedTensorMeasures";
+import { verifiedVectorFieldSampler, type VerifiedVectorFieldTransfer } from
+  "./verifiedVectorFieldSampling";
 
 type Vec3 = readonly [number, number, number];
 type Matrix3 = readonly [Vec3, Vec3, Vec3];
@@ -10,6 +13,8 @@ export type DerivedFieldValue = number | Vec3 | Matrix3;
 export const DERIVED_FIELD_MAX_EVALUATIONS = 262_144;
 export type DerivedFieldEvaluator = Readonly<{ source: DerivedFieldDocument;
   unit: string; sample: (point: Vec3) => DerivedFieldValue | null;
+  sampleDetailed: (point: Vec3) => Readonly<{ status: "value";
+    value: DerivedFieldValue } | { status: "unavailable"; reason: string }>;
   evaluations: () => number; maxEvaluations: number }>;
 
 const vector = (value: DerivedFieldValue): Vec3 => {
@@ -28,13 +33,20 @@ const cross = (a: Vec3, b: Vec3): Vec3 =>
 
 /** Evaluates a current analytic DAG with bounded source calls; verified bundles use their own sampler. */
 export function compileProjectDerivedFieldEvaluator(project: Math3DProject, id: string,
-  maxEvaluations = DERIVED_FIELD_MAX_EVALUATIONS): DerivedFieldEvaluator {
+  maxEvaluations = DERIVED_FIELD_MAX_EVALUATIONS,
+  verifiedTransfers: ReadonlyMap<string, VerifiedVectorFieldTransfer> = new Map()): DerivedFieldEvaluator {
   if (!Number.isSafeInteger(maxEvaluations) || maxEvaluations < 1 ||
       maxEvaluations > DERIVED_FIELD_MAX_EVALUATIONS)
     throw new RangeError("Derived field evaluation cap is out of range.");
   const current = parseMath3DProject(serializeMath3DProject(project));
-  const review = reviewProjectDerivedField(current, id,
-    source => source.source.field.kind === "expressions");
+  const samplers = new Map<string, ReturnType<typeof verifiedVectorFieldSampler>>();
+  const review = reviewProjectDerivedField(current, id, source => {
+    if (source.source.field.kind === "expressions") return true;
+    const transfer = verifiedTransfers.get(source.identity.id);
+    if (!transfer) return false;
+    samplers.set(source.identity.id, verifiedVectorFieldSampler(source, transfer));
+    return true;
+  });
   if (review.status !== "current") throw new TypeError(`Derived source ${review.status}.`);
   const byId = new Map<string, DerivedFieldDocument>((current.workspace.derivedFields ?? []).map(item =>
     [item.identity.id, item]));
@@ -44,13 +56,14 @@ export function compileProjectDerivedFieldEvaluator(project: Math3DProject, id: 
     sourceById.set(entry.expected.id, entry.checkpoint);
   const root = byId.get(id)!;
   let evaluations = 0;
+  let unavailableReason = "Source coverage is incomplete at this physical point.";
   const sourceValue = (document: VectorField3DDocument, point: Vec3): Vec3 | null => {
     if (point.some((value, axis) => value < document.source.axes[axis]!.min ||
         value > document.source.axes[axis]!.max)) return null;
     if (evaluations >= maxEvaluations) throw new RangeError("Derived evaluation cap reached.");
     evaluations++;
     const field = document.source.field;
-    if (field.kind !== "expressions") return null;
+    if (field.kind !== "expressions") return samplers.get(document.identity.id)?.sample(point) ?? null;
     const values = field.components.map(component => evaluateGraph2DExpression(
       component.ast, { x: point[0], y: point[1], z: point[2] },
       { maxEvaluations: 256 }));
@@ -133,9 +146,21 @@ export function compileProjectDerivedFieldEvaluator(project: Math3DProject, id: 
       return rows as unknown as Matrix3;
     }
     if (["vector-jacobian", "jacobian-symmetric", "jacobian-antisymmetric",
-      "vorticity", "helicity", "enstrophy"].includes(op.kind)) {
+      "vorticity", "helicity", "enstrophy", "q-criterion", "lambda2",
+      "swirling-strength"].includes(op.kind)) {
       const matrix = jacobian(document.input, point);
       if (!matrix) return null;
+      if (op.kind === "q-criterion" || op.kind === "lambda2" ||
+          op.kind === "swirling-strength") {
+        const measures = evaluateAdvancedTensorMeasures(matrix, document.input.shape);
+        const measure = op.kind === "q-criterion" ? measures.qCriterion :
+          op.kind === "lambda2" ? measures.lambda2 : measures.swirlingStrength;
+        if (measure.status === "unavailable") {
+          unavailableReason = measure.reason ?? "Tensor eigenvalue conditioning is unavailable.";
+          return null;
+        }
+        return measure.value;
+      }
       if (op.kind === "vector-jacobian") return matrix;
       if (op.kind === "jacobian-symmetric" || op.kind === "jacobian-antisymmetric") {
         const sign = op.kind === "jacobian-symmetric" ? 1 : -1;
@@ -162,14 +187,19 @@ export function compileProjectDerivedFieldEvaluator(project: Math3DProject, id: 
     }
     throw new TypeError("Unsupported derived operation.");
   };
-  return { source: root, unit: root.output.unit, maxEvaluations,
-    sample: point => {
-      if (point.some(value => !Number.isFinite(value))) return null;
-      const value = evaluate(root, point);
-      if (value === null) return null;
-      const numbers = typeof value === "number" ? [value] :
-        Array.isArray(value[0]) ? value.flat() : value;
-      return numbers.every(Number.isFinite) ? value : null;
-    },
+  const sample = (point: Vec3): DerivedFieldValue | null => {
+    unavailableReason = "Source coverage is incomplete at this physical point.";
+    if (point.some(value => !Number.isFinite(value))) {
+      unavailableReason = "Physical coordinates must be finite."; return null;
+    }
+    const value = evaluate(root, point);
+    if (value === null) return null;
+    const numbers = typeof value === "number" ? [value] :
+      Array.isArray(value[0]) ? value.flat() : value;
+    return numbers.every(Number.isFinite) ? value : null;
+  };
+  return { source: root, unit: root.output.unit, maxEvaluations, sample,
+    sampleDetailed: point => { const value = sample(point); return value === null ?
+      { status: "unavailable", reason: unavailableReason } : { status: "value", value }; },
     evaluations: () => evaluations };
 }

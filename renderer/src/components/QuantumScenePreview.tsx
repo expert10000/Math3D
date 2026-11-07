@@ -13,8 +13,13 @@ import { buildQuantumReciprocalView, reciprocalPathFromPrimitive, reciprocalPoin
   type ReciprocalDefinition } from "./quantumReciprocalView";
 import { qwzSceneRole, reviewedQwzPair, sshSceneRole, reviewedSshPair } from "./quantumStudyProfile";
 import { projectTimeCursor, scientificCursorBus } from "./scientificCursor";
+import { nearestRecordedFrame } from "./quantumDynamicsSelection";
 import { createQuantumDerivationRecord, type QuantumDerivationRecord, type QuantumFieldDocument } from "@math3d/core";
 import { quantumSceneDocumentFromVerifiedOpen } from "../projects/quantumSceneAdmission";
+import { quantumTopologyOverlayGroups, topologyOverlayObjectVisible } from "./quantumTopologyOverlay";
+import { quantumSceneValidation } from "./quantumSceneValidation";
+import { QuantumInspectorSummary } from "./QuantumInspectorSummary";
+import { QuantumViewerTrace } from "./quantumViewerTrace";
 
 type Vector3 = { x: number; y: number; z: number };
 type SceneSource = {
@@ -43,7 +48,8 @@ export type QuantumSceneOpenResponse =
       cameras: { position: Vector3; target: Vector3; up: Vector3 }[];
       extensions: Record<string, unknown>;
     }; remembered: boolean; mappedObjectIds: string[]; deferredObjectIds: string[]; deferredFieldIds: string[];
-    stream?: { level: number; levels: { id: string; label: string; bytes: number }[] } }
+    stream?: { level: number; levels: { id: string; label: string; bytes: number }[] };
+    diagnostics?: { importMs: number; datasetBytes: number; mappedPrimitives: number } }
   | { ok: false; canceled: true }
   | { ok: false; canceled: false; error: string };
 
@@ -68,6 +74,12 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
     topologyDisplay?: { scalars: { quantityId: string; objectId: string; minimum: number; maximum: number;
       unit: string; faceBins: number[] }[]; vectors: VectorGlyphDisplay[] } };
   const scene = details.scene;
+  const topologyOverlays = useMemo(() => quantumTopologyOverlayGroups(scene), [scene]);
+  const [hiddenTopologyOverlays, setHiddenTopologyOverlays] = useState<string[]>([]);
+  useEffect(() => setHiddenTopologyOverlays([]), [opened.reference.sceneFingerprint]);
+  const hiddenTopologyObjectIds = useMemo(() => new Set(topologyOverlays
+    .filter(group => hiddenTopologyOverlays.includes(group.id)).flatMap(group => group.objectIds)),
+  [hiddenTopologyOverlays, topologyOverlays]);
   const fluxPoints = scene.provenance.model === "hofstadter_flux_sweep" ?
     (document.geometry.points ?? []).flatMap(point => {
       const id = point.id?.match(/^(flux-\d+):site:(\d+)$/);
@@ -107,6 +119,10 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
       scene.time!.playback.loop ? scene.time!.playback.startFrame : index), 180);
     return () => window.clearInterval(timer);
   }, [timePlaying, opened.reference.sceneFingerprint]);
+  useEffect(() => {
+    if (timePlaying && scene.time && !scene.time.playback.loop && timeFrameIndex >= scene.time.playback.endFrame)
+      setTimePlaying(false);
+  }, [timePlaying, timeFrameIndex, scene.time]);
   useEffect(() => {
     if (!timeFrame || !scene.time) return;
     scientificCursorBus.publish({ runId: timeFrame.runId, resultSha256: timeFrame.resultSha256,
@@ -423,12 +439,16 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
       ["chain-current",comparisonTime*(sites-1)+Math.min(comparisonSite,sites-2)],
       ["chain-charge",comparisonTime],["chain-left-edge",comparisonTime],["chain-right-edge",comparisonTime],
     ];
-    void Promise.all(requests.map(async ([objectId,sampleIndex])=>{
-      const sample=await window.quantumScenes!.scalarSample({fingerprint:opened.reference.sceneFingerprint,objectId,sampleIndex});
-      if(sample.fingerprint!==opened.reference.sceneFingerprint||sample.runId!==scene.provenance.runId||
-         sample.resultSha256!==scene.provenance.resultSha256)throw new Error("Comparison source identity changed");
-      return [objectId,sample] as const;
-    })).then(samples=>{
+    void (async()=>{
+      const samples: (readonly [string, PickedScalarSample])[]=[];
+      for(const [objectId,sampleIndex] of requests){
+        const sample=await window.quantumScenes!.scalarSample({fingerprint:opened.reference.sceneFingerprint,objectId,sampleIndex});
+        if(sample.fingerprint!==opened.reference.sceneFingerprint||sample.runId!==scene.provenance.runId||
+           sample.resultSha256!==scene.provenance.resultSha256)throw new Error("Comparison source identity changed");
+        samples.push([objectId,sample]);
+      }
+      return samples;
+    })().then(samples=>{
       if(samples.some(([,sample])=>sample.position[0]!==samples[0][1].position[0]))throw new Error("Saved time samples are not aligned");
       if(generation===comparisonGeneration.current)setComparisonSamples(Object.fromEntries(samples));
     }).catch(error=>{
@@ -515,6 +535,15 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
       x: track.xyz[0], y: track.xyz[1], z: track.xyz[2], id: `time-frame:${track.id}`,
       label: `${track.id} at ${timeFrame.time} ${timeFrame.unit}`, color: 0xffc857, size: .18,
     }))] } : viewerScene, [viewerScene, timeFrame, scene.time]);
+  const visibleGeometry = useMemo(() => ({ ...timeDisplayScene,
+    points: timeDisplayScene.points?.filter(point => topologyOverlayObjectVisible(point.id, hiddenTopologyObjectIds)),
+    segments: timeDisplayScene.segments?.filter(segment => topologyOverlayObjectVisible(segment.a.id, hiddenTopologyObjectIds)),
+  }), [timeDisplayScene, hiddenTopologyObjectIds]);
+  const visibleMeshOverrides = useMemo(() => (supercell ? supercellMeshes :
+    geometrySpace === "reciprocal" ? reciprocalMeshes : [...meshObjects, ...primitiveMeshes, ...vectorMeshes])
+    .filter(mesh => topologyOverlayObjectVisible("sourceObjectId" in mesh ? String(mesh.sourceObjectId) : mesh.id,
+      hiddenTopologyObjectIds)),
+  [supercell, supercellMeshes, geometrySpace, reciprocalMeshes, meshObjects, primitiveMeshes, vectorMeshes, hiddenTopologyObjectIds]);
   const visibleLabels = useMemo(() => {
     const annotations = geometrySpace === "reciprocal" ? [] : supercell ? [] : scene.annotations;
     const supplied = annotations.filter(annotation => annotation.text.length <= 64).map(annotation => ({
@@ -567,12 +596,64 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
     hasTrajectory: scene.objects.some(object => object.kind === "trajectory" || object.kind === "polyline"),
   };
   const availableView = (request: QuantumViewRequest) => Boolean(negotiateQuantumView(request, viewCapabilities));
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const trace = useMemo(() => new QuantumViewerTrace({ runId: scene.provenance.runId,
+    resultSha256: scene.provenance.resultSha256, sceneFingerprint: opened.reference.sceneFingerprint,
+    model: scene.provenance.model }), [scene.provenance.runId, scene.provenance.resultSha256,
+      scene.provenance.model, opened.reference.sceneFingerprint]);
+  const [supportStatus, setSupportStatus] = useState("");
+  useEffect(() => {
+    const previous = window.document.activeElement instanceof HTMLElement ? window.document.activeElement : null;
+    closeButtonRef.current?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation();
+        void window.quantumScenes?.cancelStreamLevel(opened.reference.sceneFingerprint); onCloseRef.current(); return; }
+      if (event.key !== "Tab") return;
+      const focusable = [...(dialogRef.current?.querySelectorAll<HTMLElement>("button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex='0']") ?? [])];
+      if (!focusable.length) return;
+      const first = focusable[0]!, last = focusable.at(-1)!;
+      if (event.shiftKey && window.document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && window.document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => { window.removeEventListener("keydown", onKey, true); previous?.focus(); };
+  }, [opened.reference.sceneFingerprint]);
+  useEffect(() => {
+    trace.record("opened");
+    if (opened.diagnostics) for (const [name, value] of Object.entries(opened.diagnostics))
+      trace.measure(name as "importMs" | "datasetBytes" | "mappedPrimitives", value);
+    const started = performance.now();
+    const frame = requestAnimationFrame(() => { trace.measure("firstFrameMs", performance.now() - started); trace.record("first-frame"); });
+    return () => { cancelAnimationFrame(frame); trace.record("closed"); };
+  }, [trace, opened.diagnostics]);
+  useEffect(() => { trace.record("view"); }, [trace, view]);
+  useEffect(() => { if (pickedBandSample || pickedScalarSample || pickedTopologySample || pickedVectorSample) trace.record("sample"); },
+    [trace, pickedBandSample, pickedScalarSample, pickedTopologySample, pickedVectorSample]);
+  useEffect(() => { if (timeError || topologyError || bandSelectionError || scalarError || reciprocalError || streamStatus.includes("unavailable")) trace.record("error"); },
+    [trace, timeError, topologyError, bandSelectionError, scalarError, reciprocalError, streamStatus]);
+  const exportSupport = async () => {
+    setSupportStatus("Re-verifying the active source…");
+    try {
+      if (!window.quantumScenes?.verifyActive || !await window.quantumScenes.verifyActive(opened.reference.sceneFingerprint))
+        throw new Error("Desktop source verifier unavailable");
+      const blob = new Blob([JSON.stringify(trace.supportBundle(), null, 2) + "\n"], { type: "application/json" });
+      const url = URL.createObjectURL(blob), link = window.document.createElement("a");
+      link.href = url; link.download = `quantum-support-${opened.reference.sceneFingerprint.slice(0, 12)}.json`;
+      window.document.body.appendChild(link); link.click(); link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setSupportStatus("Redacted support bundle downloaded from the re-verified scene.");
+    } catch (error) { trace.record("error"); setSupportStatus(`Support export refused: ${String((error as Error).message ?? error)}`); }
+  };
   return createPortal(
     <div role="dialog" aria-modal="true" aria-label="Verified quantum scene" data-testid="quantum-scene-preview"
-      style={{ position: "fixed", inset: 0, zIndex: 2900, background: "rgba(15,23,42,.64)", display: "grid", placeItems: "center", padding: 20 }}>
-      <div style={{ width: "min(1200px, 96vw)", height: "min(790px, 94vh)", minHeight: 360, background: "var(--panel-strong, #fff)",
+      ref={dialogRef}
+      style={{ position: "fixed", inset: 0, zIndex: 2900, background: "rgba(15,23,42,.64)", display: "grid", placeItems: "center", padding: 12 }}>
+      <div style={{ width: "min(1200px, calc(100vw - 24px))", height: "min(790px, calc(100dvh - 24px))", minHeight: 0, background: "var(--panel-strong, #fff)",
         color: "var(--text, #172033)", borderRadius: 12, display: "grid", gridTemplateRows: "auto minmax(0, 1fr)", overflow: "hidden" }}>
-        <header style={{ padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, borderBottom: "1px solid var(--border, #cbd5e1)" }}>
+        <header style={{ padding: "10px 16px", display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 16, borderBottom: "1px solid var(--border, #cbd5e1)" }}>
           <div><strong>{document.title}</strong><div style={{ fontSize: 12 }}>Verified {scene.schema} · {scene.provenance.model} · {opened.stream ?
             `Stream ${opened.stream.level + 1}/${opened.stream.levels.length}: ${opened.stream.levels[opened.stream.level].label}` :
             "Save a workspace or attach it to a Project to retain this source"}</div>
@@ -592,10 +673,10 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
               void window.quantumScenes?.cancelStreamLevel(opened.reference.sceneFingerprint);
               setStreamStatus("Canceling full-level load…");
             }}>Cancel load</button>}
-            <button type="button" onClick={() => { if (streamBusy) void window.quantumScenes?.cancelStreamLevel(opened.reference.sceneFingerprint); onClose(); }} data-testid="quantum-scene-close">Close</button>
+            <button type="button" ref={closeButtonRef} onClick={() => { if (streamBusy) void window.quantumScenes?.cancelStreamLevel(opened.reference.sceneFingerprint); onClose(); }} data-testid="quantum-scene-close">Close</button>
           </div>
         </header>
-        <div style={{ minHeight: 0, display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(260px, 320px)" }}>
+        <div className="quantum-scene-layout">
           <div style={{ minHeight: 0, position: "relative", display: "flex", flexDirection: "column" }} data-testid="quantum-scene-geometry">
             {scene.time && <div data-testid="quantum-time-playback" style={{ padding: "10px 14px", borderBottom: "1px solid var(--border, #cbd5e1)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -608,6 +689,9 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
                 `${track.id}: (${track.xyz.map(value => value.toPrecision(4)).join(", ")})`).join(" · ")}</small>}
               {timeFrames && timeFrames.length > 1 && timeFrames[0].tracks.some(track => track.id === "sigma-z") && <svg
                 role="img" aria-label="Pauli sigma z expectation versus physical time" viewBox="0 0 300 120"
+                onClick={event => { const bounds = event.currentTarget.getBoundingClientRect();
+                  const fraction = ((event.clientX - bounds.left) / bounds.width * 300 - 10) / 280;
+                  setTimePlaying(false); setTimeFrameIndex(nearestRecordedFrame(timeFrames, fraction)); }}
                 style={{ display: "block", width: "100%", maxWidth: 420, height: 100, marginTop: 6, background: "var(--panel, #f8fafc)" }}>
                 <line x1="10" y1="60" x2="290" y2="60" stroke="#94a3b8" />
                 <polyline fill="none" stroke="#d97706" strokeWidth="2" points={timeFrames.map(frame => {
@@ -622,6 +706,8 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
                 <text x="10" y="113" fontSize="10">{timeFrames[0].time.toPrecision(4)}</text>
                 <text x="260" y="113" fontSize="10">{timeFrames[timeFrames.length - 1].time.toPrecision(4)} {scene.time.unit}</text>
               </svg>}
+              {timeFrame && <small data-testid="quantum-time-termination">Recorded frame {timeFrame.index + 1}/{scene.time.frameIds.length}
+                {timeFrame.index >= scene.time.playback.endFrame && !scene.time.playback.loop ? " · supplied endpoint reached" : " · exact sample; no interpolation"}</small>}
               {timeError && <small role="alert">{timeError}</small>}
             </div>}
             {scene.reciprocal && <div data-testid="quantum-space-controls" style={{ padding: 8, display: "flex", gap: 8 }}>
@@ -636,6 +722,21 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
                 setSupercell(null); setGeometrySpace("reciprocal"); setPickedPrimitive(null); setPickedBandSample(null); setView("geometry");
               }}>Reciprocal space</button>
             </div>}
+            {topologyOverlays.length > 0 && <section data-testid="quantum-topology-overlays" style={{ padding: 8 }}>
+              <strong>Source-linked topology geometry</strong>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                {topologyOverlays.map(group => <label key={group.id}>
+                  <input type="checkbox" aria-label={`Show ${group.label}`} checked={!hiddenTopologyOverlays.includes(group.id)}
+                    onChange={event => {
+                      setHiddenTopologyOverlays(current => event.target.checked ? current.filter(id => id !== group.id) : [...current, group.id]);
+                      setPickedPrimitive(null); setPickedBandSample(null); clearTopologySelection();
+                    }}/> {group.label} ({group.objectIds.join(", ")})
+                </label>)}
+              </div>
+              <small>Geometry and labels come from the verified scene. Enclosing a node does not establish charge; only a producer-supplied invariant can report it.</small>
+              {scene.topology?.invariants.filter(item => /charge|chern|gap/i.test(item.id)).map(item =>
+                <div key={item.id}>Producer {item.label}: {item.value ?? "undefined"} · {item.status} · {item.method}</div>)}
+            </section>}
             {Boolean(scene.fields?.length) && <div style={{ padding: 8, display: "flex", gap: 8 }}>
               {availableView("geometry") && <button type="button" onClick={() => setView("geometry")} aria-pressed={view === "geometry"}>Geometry</button>}
               {availableView("slice") && <button type="button" onClick={() => setView("slice")} aria-pressed={view === "slice"}>Field slice</button>}
@@ -669,9 +770,9 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
                 onRecordDerivation?.(record);
                 return record;
               },
-              geometry: <GeometryViewer scene={timeDisplayScene} meshOverrides={supercell ? supercellMeshes : geometrySpace === "reciprocal" ? reciprocalMeshes : [...meshObjects, ...primitiveMeshes, ...vectorMeshes]}
+              geometry: <GeometryViewer scene={visibleGeometry} meshOverrides={visibleMeshOverrides}
               overlayLabelSets={visibleLabels} showPlanes={false}
-              pickEnabled={(supercell ? supercellMeshes.length : geometrySpace === "reciprocal" ? reciprocalMeshes.length : meshObjects.length + primitiveMeshes.length + vectorMeshes.length) > 0} onPick={pickScene}
+              pickEnabled={visibleMeshOverrides.length > 0} onPick={pickScene}
               onPickMiss={() => { reciprocalGeneration.current++; bandGeneration.current++; topologyGeneration.current++;
                 scalarGeneration.current++; setPickedScalarSample(null); setScalarError(""); setVerifyingScalar(false);
                 setVerifyingReciprocal(false); setVerifyingBand(false); setBandSelectionError("");
@@ -683,6 +784,22 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
             </div>
           </div>
           <aside style={{ padding: 16, overflow: "auto", borderLeft: "1px solid var(--border, #cbd5e1)", fontSize: 12, lineHeight: 1.5 }}>
+            <QuantumInspectorSummary data={{ view, mapped: opened.mappedObjectIds.length, deferred: opened.deferredObjectIds.length,
+              stream: opened.stream ? `Verified level ${opened.stream.level + 1} of ${opened.stream.levels.length}` : undefined,
+              datasets: scene.datasets, invariants: scene.topology?.invariants ?? [], limitations: scene.topology?.limitations ?? [],
+              provenance: { schema: scene.schema, model: scene.provenance.model, runId: scene.provenance.runId,
+                resultSha256: scene.provenance.resultSha256, fingerprint: opened.reference.sceneFingerprint,
+                engine: scene.provenance.engine, engineVersion: scene.provenance.engineVersion } }} onExportSupport={exportSupport} supportStatus={supportStatus} />
+            <h3>Detailed source inspection</h3>
+            {scene.time?.tracks.some(track => track.id === "bloch") && <section data-testid="quantum-dynamics-inspector" style={{ border: "1px solid var(--border, #cbd5e1)", borderRadius: 8, padding: 10, marginBottom: 14 }}>
+              <h3 style={{ marginTop: 0 }}>Recorded dynamics</h3>
+              {timeFrame ? <><p>Exact frame <code>{timeFrame.frameId}</code> · t={timeFrame.time.toPrecision(8)} {timeFrame.unit} · source run <code>{timeFrame.runId}</code>.</p>
+                {timeFrame.tracks.filter(track => track.id === "bloch").map(track => <p key={track.id}>Bloch vector: ({track.xyz.map(value => value.toPrecision(6)).join(", ")}) · source track <code>{track.id}</code>.</p>)}
+                {timeFrame.tracks.filter(track => track.id !== "bloch").map(track => <p key={track.id}>{track.id}: {track.xyz[1].toPrecision(8)} · recorded sample {track.xyz.map(value => value.toPrecision(6)).join(", ")}.</p>)}
+                <p>Density matrix: unavailable in this scene. Time-resolved spectrum: unavailable in this scene.</p>
+                <p>Result SHA-256: <code style={{ overflowWrap: "anywhere" }}>{timeFrame.resultSha256}</code>.</p>
+              </> : <p>{timeError || "Loading verified time samples…"}</p>}
+            </section>}
             {fieldPromotionStatus && <p data-testid="quantum-field-promotion-status" role="status">{fieldPromotionStatus}</p>}
             {activeFieldDocument && <section data-testid="quantum-field-explorer-document">
               <h3>Field Explorer document</h3>
@@ -924,6 +1041,16 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
               <p>Density and winding are shown as supplied. Math3D does not infer edge/bulk classification, band inversion, or node claims.</p>
               {sshError && <p role="alert">SSH view link refused: {sshError}</p>}
             </section>}
+            {import.meta.env.VITE_QEC_PROFILE !== "off" && scene.provenance.model === "qec_repetition_ideal" && <section data-testid="qec-repetition-profile"
+              style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
+              <h3 style={{ margin: 0 }}>Ideal repetition-code record</h3>
+              <p>Discrete rounds are on the horizontal axis. Blue shows recorded Z₀Z₁ and Z₁Z₂ parity bits,
+                orange shows changes since the preceding round, and teal shows the three data bits.
+                Marker height is the exact stored 0 or 1 value; the lanes are display positions.</p>
+              <p>{scene.annotations.find(note => note.id === "decoder")?.text}</p>
+              <p>Math3D verifies and displays the supplied scene; it does not decode errors or run a worker.
+                This is an ideal three-bit example, not a surface-code or fault-tolerance result.</p>
+            </section>}
             <h3 style={{ marginTop: 0 }}>Source and coordinates</h3>
             <div><b>{scene.provenance.model==="rice_mele_convergence_study"?"Study:":"Run:"}</b> {scene.provenance.runId}</div>
             <div><b>{scene.provenance.model==="rice_mele_convergence_study"?"Study SHA-256:":"Result SHA-256:"}</b> <code style={{ overflowWrap: "anywhere" }}>{scene.provenance.resultSha256}</code></div>
@@ -932,7 +1059,7 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
               {locating ? "Re-verifying source…" : "Reveal verified bundle"}
             </button>
             {locateStatus && <p role="status" data-testid="quantum-reveal-status">{locateStatus}</p>}
-            {scene.provenance.kind !== "geometry-fixture" && scene.provenance.model!=="hofstadter_flux_sweep" && scene.provenance.model!=="hofstadter_bulk_edge_study" && scene.provenance.model!=="rice_mele_convergence_study" && <>
+            {scene.provenance.kind !== "geometry-fixture" && scene.provenance.model!=="hofstadter_flux_sweep" && scene.provenance.model!=="hofstadter_bulk_edge_study" && scene.provenance.model!=="rice_mele_convergence_study" && scene.provenance.model!=="qec_repetition_ideal" && <>
               <button type="button" data-testid="quantum-open-source-run" disabled={openingRun}
                 onClick={() => void openSourceRun()}>
                 {openingRun ? "Re-verifying source…" : "Open source run in Theory Lab"}
@@ -941,7 +1068,9 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
                 onClick={() => void openSourceRun("fork")}>Fork as new Theory Lab run…</button>
               {runStatus && <p role="status" data-testid="quantum-source-run-status">{runStatus}</p>}
             </>}
-            <p>Bundle reveal locates this export. Opening an original run requires a selected Theory Lab installation or built checkout and a matching hash-verified saved run there. A pinned example may not have that run in your Lab profile; its scene remains available for read-only inspection. Math3D does not call a worker.{scene.provenance.model==="rice_mele_convergence_study"?" Select a convergence point to open its corresponding saved run.":""}</p>
+            {scene.provenance.model === "qec_repetition_ideal" ?
+              <p>Bundle reveal locates this export. Reopen its immutable run from Theory Lab’s Backend page in the originating profile; the generic source-run fork route does not apply to this separate ideal-example record.</p> :
+              <p>Bundle reveal locates this export. Opening an original run requires a selected Theory Lab installation or built checkout and a matching hash-verified saved run there. A pinned example may not have that run in your Lab profile; its scene remains available for read-only inspection. Math3D does not call a worker.{scene.provenance.model==="rice_mele_convergence_study"?" Select a convergence point to open its corresponding saved run.":""}</p>}
             <div><b>Engine:</b> {scene.provenance.engine} {scene.provenance.engineVersion}</div>
             {scene.provenance.parameters && <><h3>Stored model inputs</h3><dl data-testid="quantum-scene-parameters" style={{ margin: 0 }}>
               {Object.entries(scene.provenance.parameters).map(([key, value]) => <div key={key} style={{ display: "flex", gap: 8 }}>
@@ -950,6 +1079,13 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
             </dl></>}
             <div><b>Source axes:</b> {scene.coordinates.axes.join(", ")} ({scene.coordinates.handedness}-handed)</div>
             <div><b>Source coordinate units:</b> {scene.coordinates.units.join(", ")}</div>
+            <details data-testid="quantum-validation-dashboard"><summary>Numerical validation dashboard</summary>
+              <p>Scene checks report source evidence and limits. Producer-run physical diagnostics require reopening that run.</p>
+              {quantumSceneValidation(scene, { fingerprint: opened.reference.sceneFingerprint,
+                mappedObjectIds: opened.mappedObjectIds, deferredObjectIds: opened.deferredObjectIds,
+                deferredFieldIds: opened.deferredFieldIds }).map((check, index) => <div key={`${check.name}-${index}`}>
+                <strong>{check.name}</strong> · {check.status} · {check.detail}</div>)}
+            </details>
             {scene.reciprocal && <section data-testid="quantum-reciprocal-inspector">
               <h3>Supplied reciprocal geometry</h3>
               <div>Reciprocal coordinates: {(scene.reciprocal.basis.length===1 ? ["k"] : ["kx", "ky", "kz"].slice(0, scene.reciprocal.basis.length)).join(", ")} · {scene.reciprocal.reciprocalUnit}</div>

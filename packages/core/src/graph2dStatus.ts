@@ -2,6 +2,7 @@ import type { Graph2DDocument, Graph2DObjectKind } from "./graph2dDocument";
 
 const sourceName: Record<Graph2DObjectKind, string> = {
   "explicit-cartesian": "Cartesian function",
+  "derivative-curve": "Saved derivative curve",
   parametric: "Parametric curve",
   polar: "Polar curve",
   implicit: "Implicit curve",

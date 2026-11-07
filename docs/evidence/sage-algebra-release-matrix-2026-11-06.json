@@ -1,0 +1,32 @@
+{
+  "format": "math3d.sage-algebra-release-matrix",
+  "schemaVersion": 1,
+  "evidenceStatus": "historical",
+  "b08": {
+    "path": "docs/evidence/sage-b08-live-2026-11-05.json",
+    "sha256": "4e9aa5933a9730d233e945258e72e950c30ab956cea48c821794528e6f9026ab",
+    "fixtureCount": 16,
+    "localVersion": "9.5",
+    "dockerVersion": "10.10"
+  },
+  "currentLive": {
+    "path": "docs/evidence/sage-m0-m6-live-release-2026-11-06.json",
+    "sha256": "f19333a3fcb02972bd0b7a8a7450ca416bf3642694362831276125998226be29"
+  },
+  "milestones": [
+    { "id": "M0", "evidence": ["docs/evidence/sage-f08-real-backend-regression-2026-11-05.md"],
+      "tests": ["tests/sage-live-desktop/sageLiveDesktop.spec.ts", "tests/sage-live-desktop/sageF08Advanced.spec.ts", "tests/sage-live-desktop/numberTheoryWorkbookAcceptance.spec.ts"] },
+    { "id": "M1", "evidence": ["docs/evidence/sage-a01-schema-2026-11-03.md", "docs/evidence/sage-a02-project-registry-2026-11-03.md", "docs/evidence/sage-a03-dependency-freshness-2026-11-03.md", "docs/evidence/sage-a04-bounded-reconstruction-2026-11-03.md", "docs/evidence/sage-a05-domain-coercion-2026-11-03.md", "docs/evidence/sage-a06-structures-ui-2026-11-03.md", "docs/evidence/sage-a07-ring-field-builder-2026-11-03.md", "docs/evidence/sage-a08-runtime-fixtures-2026-11-04.md"],
+      "tests": ["tests/e2e/sage-structures-desktop.spec.ts"] },
+    { "id": "M2", "evidence": ["docs/evidence/sage-b01-typed-operation-registry-2026-11-04.md", "docs/evidence/sage-b02-polynomial-dossier-2026-11-04.md", "docs/evidence/sage-b03-exact-matrix-2026-11-04.md", "docs/evidence/sage-b04-smith-hermite-2026-11-04.md", "docs/evidence/sage-b05-contextual-evidence-2026-11-04.md", "docs/evidence/sage-b06-dossier-inspector-2026-11-04.md", "docs/evidence/sage-b07-recipe-dag-2026-11-04.md", "docs/evidence/sage-b08-live-2026-11-05.md"],
+      "tests": ["tests/unit/algebraRecipeGraph.test.ts", "tests/e2e/sage-recipes-desktop.spec.ts"] },
+    { "id": "M3", "evidence": ["docs/evidence/sage-c01-ideal-objects-2026-11-04.md", "docs/evidence/sage-c02-c04-ideal-workflows-2026-11-04.md", "docs/evidence/sage-c05-syzygy-hilbert-capabilities-2026-11-04.md", "docs/evidence/sage-c06-operation-budgets-2026-11-04.md"],
+      "tests": ["tests/e2e/sage-ideal-operations-desktop.spec.ts"] },
+    { "id": "M4", "evidence": ["docs/evidence/sage-d01-number-fields-2026-11-04.md", "docs/evidence/sage-d02-shared-number-theory-refs-2026-11-04.md", "docs/evidence/sage-d03-norm-trace-embeddings-2026-11-04.md", "docs/evidence/sage-d04-prime-decomposition-2026-11-04.md", "docs/evidence/sage-d05-field-tower-2026-11-05.md", "docs/evidence/sage-d06-galois-correspondence-2026-11-05.md", "docs/evidence/sage-e01-finite-group-objects-2026-11-05.md", "docs/evidence/sage-e02-gap-group-operations-2026-11-05.md", "docs/evidence/sage-e03-finite-group-scenes-2026-11-05.md"],
+      "tests": ["tests/e2e/sage-galois-desktop.spec.ts", "tests/e2e/sage-finite-group-operations-desktop.spec.ts"] },
+    { "id": "M5", "evidence": ["docs/evidence/sage-f01-algebraic-locus-scene-2026-11-05.md", "docs/evidence/sage-f02-bounded-real-locus-2026-11-05.md", "docs/evidence/sage-f03-singular-locus-tangent-2026-11-05.md", "docs/evidence/sage-e04-module-presentations-2026-11-05.md", "docs/evidence/sage-e05-module-invariant-factors-2026-11-05.md", "docs/evidence/sage-e06-chain-complex-homology-2026-11-05.md"],
+      "tests": ["tests/e2e/sage-chain-homology-desktop.spec.ts", "tests/e2e/sage-algebraic-locus-scene-desktop.spec.ts"] },
+    { "id": "M6", "evidence": ["docs/evidence/sage-g01-finite-field-explorer-2026-11-06.md", "docs/evidence/sage-g02-padic-workspace-2026-11-06.md", "docs/evidence/sage-g03-local-extensions-2026-11-06.md", "docs/evidence/sage-g04-elliptic-curves-2026-11-06.md", "docs/evidence/sage-g05-elliptic-visualizations-2026-11-06.md", "docs/evidence/sage-g06-ideal-invariants-2026-11-06.md", "docs/evidence/sage-g07-representations-actions-2026-11-06.md", "docs/evidence/sage-g08-schemes-charts-2026-11-06.md"],
+      "tests": ["tests/e2e/sage-finite-field-explorer-desktop.spec.ts", "tests/e2e/sage-elliptic-curve-desktop.spec.ts"] }
+  ]
+}

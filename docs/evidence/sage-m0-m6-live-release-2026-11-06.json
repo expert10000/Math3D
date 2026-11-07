@@ -1,0 +1,35 @@
+{
+  "format": "math3d.sage-m0-m6-live-release",
+  "schemaVersion": 1,
+  "recordedDate": "2026-11-06",
+  "status": "passed",
+  "sourceBaseCommit": "e234c891",
+  "testAssertionUpdates": [
+    "tests/e2e/sage-local-extensions-desktop.spec.ts",
+    "tests/e2e/sage-number-field-desktop.spec.ts",
+    "tests/e2e/sage-padic-workspace-desktop.spec.ts",
+    "tests/e2e/sage-polynomial-desktop.spec.ts"
+  ],
+  "routes": {
+    "local": "SageMath 9.5 on WSL Ubuntu",
+    "docker": "SageMath 10.10 on math3d-sage-worker"
+  },
+  "b08": {
+    "artifact": "docs/evidence/sage-b08-live-2026-11-06.json",
+    "artifactSha256": "4e9aa5933a9730d233e945258e72e950c30ab956cea48c821794528e6f9026ab",
+    "localPassed": 16,
+    "dockerPassed": 16,
+    "differences": 0
+  },
+  "suites": {
+    "f08LiveDesktop": { "passed": 6, "total": 6 },
+    "wslService": { "passed": 78, "total": 78 },
+    "dockerServiceWithReadOnlyRepoMount": { "passed": 78, "total": 78 },
+    "m1ToM6Desktop": { "passed": 28, "total": 28, "files": 21 }
+  },
+  "limitations": [
+    "The M1-M6 desktop cohort includes controlled Sage responses for UI and persistence; real arithmetic is checked separately by both 78-test service suites and B08.",
+    "The Docker image alone omits shared repository fixtures; three tests need the repository bind-mounted read-only.",
+    "This record describes the 2026-11-06 run and does not execute tests when audited later."
+  ]
+}

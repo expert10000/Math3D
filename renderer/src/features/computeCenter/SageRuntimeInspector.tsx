@@ -106,12 +106,26 @@ export default function SageRuntimeInspector() {
             <div><strong>Route:</strong> {probe.backendId} · {probe.transport}</div>
             <div><strong>Reported status:</strong> {probe.health.status}</div>
             <div><strong>Operations:</strong> {probe.operations.length} available through this route</div>
+            <div data-testid={`sage-runtime-manifest-${id}`}>
+              <strong>Capability manifest:</strong> v{probe.manifest.schemaVersion} · {probe.manifest.contentHash}
+            </div>
+            <details data-testid={`sage-runtime-capabilities-${id}`}>
+              <summary>Operation support and reasons</summary>
+              <ul style={{ margin: "5px 0", paddingLeft: 18, maxHeight: 230, overflow: "auto" }}>
+                {probe.manifest.operations.map((item) => <li key={item.id}>
+                  {item.id}: {item.supported ? `${item.mode} · supported` : `${item.reasonCode} · ${item.reason}`}
+                </li>)}
+              </ul>
+            </details>
             <div data-testid={`sage-runtime-algebra-${id}`} role="status">
               <strong>Algebra reconstruction:</strong> {describeAlgebraRuntime(probe).detail}
             </div>
             <div data-testid={`sage-runtime-limits-${id}`}>
               <strong>Service operation limits:</strong> input {formatBytes(probe.limits.maxInputBytes)} · output {formatBytes(probe.limits.maxOutputBytes)} · memory {formatBytes(probe.limits.maxMemoryBytes)} · work {probe.limits.maxWorkUnits.toLocaleString()} units
             </div>
+            {probe.health.workerPolicy && <div data-testid={`sage-runtime-worker-policy-${id}`}>
+              <strong>Worker queue and budgets:</strong> {probe.health.workerPolicy.maxRunning} running · {probe.health.workerPolicy.maxQueued} waiting · {Math.round(probe.health.workerPolicy.queueWaitMs / 1000)} s queue wait · {Math.round(probe.health.workerPolicy.wallTimeMs / 1000)} s wall · {probe.health.workerPolicy.cpuTimeSeconds} s CPU · {formatBytes(probe.health.workerPolicy.maxMemoryBytes)} memory · {formatBytes(probe.health.workerPolicy.maxInputBytes)} input · {formatBytes(probe.health.workerPolicy.maxOutputBytes)} output
+            </div>}
             {id === "private" && probe.health.limits && <div data-testid="sage-runtime-quota-private">
               <strong>Gateway quotas:</strong> {probe.health.limits.maxConcurrent} concurrent · {probe.health.limits.maxRequestsPerMinute} requests/min · {Math.round(probe.health.limits.timeoutMs / 1000)} s timeout
             </div>}

@@ -32,6 +32,48 @@ const result = (request: ReturnType<typeof buildAlgebraOperationRequest>, fields
 const runtime = (jobId: string) => ({ engine: "sagemath" as const, version: "9.5", backend: "docker" as const,
   jobId, elapsedMs: 1, warnings: [] });
 
+describe("SAGE-G06 advanced ideal invariants", () => {
+  it("saves exact bounded invariants and independently reopens pinned Project evidence", () => {
+    let { project, iref, qref, ideal } = setup({ generators: ["x*y"], monomialOrder: "degrevlex" });
+    const radical = buildAlgebraOperationRequest(project, iref, "sage.ideal.radical", "docker", { budgetProfile: "standard" });
+    const primary = buildAlgebraOperationRequest(project, iref, "sage.ideal.primaryDecomposition", "docker", { budgetProfile: "standard" });
+    const hilbert = buildAlgebraOperationRequest(project, qref, "sage.ideal.hilbertPolynomial", "docker", { budgetProfile: "standard" });
+    const outputs = [
+      [radical, { basis: ["x*y"] }],
+      [primary, { components: [["x"], ["y"]], associatedPrimes: [["x"], ["y"]] }],
+      [hilbert, { hilbertPolynomial: "2", dimension: 1, grading: "standard" }],
+    ] as const;
+    outputs.forEach(([request, fields], index) => {
+      project = addMath3DProjectAlgebraEvidence(project, createProjectAlgebraEvidence(
+        project.identity.id, project.algebraObjects!, request, result(request, fields), runtime(`sageg06-${index}`)));
+    });
+    const reopened = parseMath3DProject(serializeMath3DProject(project));
+    expect(reopened.algebraEvidence?.map((item) => item.request.operation).sort()).toEqual([
+      "sage.ideal.hilbertPolynomial", "sage.ideal.primaryDecomposition", "sage.ideal.radical"]);
+    expect(reopened.algebraEvidence?.find((item) => item.request.operation === "sage.ideal.primaryDecomposition")?.result).toMatchObject({
+      idealHash: ideal.contentHash, components: [["x"], ["y"]], associatedPrimes: [["x"], ["y"]] });
+    expect(reopened.algebraEvidence?.find((item) => item.request.operation === "sage.ideal.hilbertPolynomial")?.result)
+      .toMatchObject({ hilbertPolynomial: "2", grading: "standard" });
+  });
+
+  it("rejects unbudgeted, malformed, oversized and unsupported invariant requests", () => {
+    const { project, iref, qref } = setup({ generators: ["x*y"], monomialOrder: "degrevlex" });
+    expect(() => buildAlgebraOperationRequest(project, iref, "sage.ideal.primaryDecomposition", "docker",
+      {} as never)).toThrow(/budget/);
+    const request = buildAlgebraOperationRequest(project, iref, "sage.ideal.primaryDecomposition", "docker",
+      { budgetProfile: "standard" });
+    for (const fields of [
+      { components: [], associatedPrimes: [] },
+      { components: [["x"]], associatedPrimes: [] },
+      { components: [["x".repeat(1025)]], associatedPrimes: [["x"]] },
+    ]) expect(() => createProjectAlgebraEvidence(project.identity.id, project.algebraObjects!, request,
+      result(request, fields), runtime("invalid"))).toThrow(/bounded primary/);
+    const unsupported = algebraOperationsFor(project, qref, [{ backend: "docker", available: true,
+      operations: ["ideal.hilbert-series"] }]).find((item) => item.definition.id === "sage.ideal.hilbertPolynomial");
+    expect(unsupported?.readyBackend).toBeNull();
+  });
+});
+
 describe("SAGE-C02–C04 typed saved ideal operations", () => {
   it("keeps quotient parent revisions and exact evidence after independent Project import", () => {
     let { project, r, ideal, quotient, iref, qref } = setup();
@@ -148,6 +190,9 @@ describe("SAGE-C06 explicit ideal budgets", () => {
     const request = buildAlgebraOperationRequest(project, iref, "sage.ideal.groebner", "docker",
       { budgetProfile: "standard" });
     expect(request.params.budget).toMatchObject({ profile: "standard", maxDegree: 8, wallTimeMs: 15_000 });
+    const certified = createProjectAlgebraEvidence(project.identity.id, project.algebraObjects!, request,
+      result(request, { basis: ["x - 1", "y - 1"] }), runtime("certified-budget"));
+    expect(certified.certificate?.limits).toMatchObject({ profile: "standard", wallTimeMs: 15_000 });
     const forged = { ...request, params: { ...request.params,
       budget: { ...(request.params.budget as Record<string, unknown>), maxDegree: 100 } } };
     expect(() => createProjectAlgebraEvidence(project.identity.id, project.algebraObjects!, forged,

@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  inspectProjectCompositionAvailability, readProjectCoordinateFrame, qualifyProjectOverlayCoordinates, retainedMeshGenerationDocuments, sameProjectCoordinateFrame,
-  type ProjectCoordinateFrameRead, type GeometryDocument, type GeometryScene, type Math3DProject,
+  inspectProjectCompositionAvailability, readProjectCoordinateFrame, qualifyProjectOverlayCoordinates, retainedGeometryGenerationDocuments, retainedMeshGenerationDocuments,
+  retainedSurfaceGenerationDocuments, sameProjectCoordinateFrame,
+  type ProjectCoordinateFrame, type ProjectCoordinateFrameRead, type GeometryDocument, type GeometryScene, type Math3DProject,
   type MeshDocument, type SurfaceDocument, type ProjectComposition, type ProjectCompositionMember, type MixedWorkspaceEntry,
+  SAGE_LOCUS_SAMPLE_EXTENSION, parseSampledAlgebraicLocusGeometryDocument,
+  SAGE_LOCUS_SINGULARITY_EXTENSION, parseAlgebraicSingularityGeometryDocument,
 } from "@math3d/core";
-import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { projectResourceInventory, type ProjectResourceReader } from "../projects/projectResources";
 import { MeshResourceStore } from "../mesh/meshResourceStore";
 import { buildSurfaceMeshFromGeometry, type SurfaceMeshData } from "../mesh/surfaceMesh";
@@ -19,6 +21,7 @@ import { type ComparisonEvidenceSelection } from "../projects/projectComparisonE
 import { useComparisonEvidenceExport } from "../projects/useComparisonEvidenceExport";
 import { inspectProjectComparisonNote } from "../projects/projectComparisonNotes";
 import { resolveLinkedCoordinateProbe, resolveSavedCoordinateProbe, type LinkedCoordinateProbe } from "../projects/projectLinkedCoordinateProbe";
+import { resolveExactProjectCompositionSource } from "../projects/projectCompositionSource";
 
 type RenderMesh = SurfaceMeshData & { id: string; color: number; opacity: number; transform?: {
   position: { x: number; y: number; z: number }; rotation: { x: number; y: number; z: number }; scale: { x: number; y: number; z: number };
@@ -46,6 +49,20 @@ const generationChoices = (entry: MixedWorkspaceEntry): GenerationChoice[] => {
         expected: document.identity, label: `Retained snapshot r${document.identity.revision}` });
     }
   }
+  if (entry.module === "geometry") {
+    for (const document of retainedGeometryGenerationDocuments(entry)) {
+      const isCheckpoint = sameGeneration(document.identity, entry.checkpoint.identity);
+      if (!isCheckpoint) choices.push({ value: `retained:${document.identity.revision}:${document.identity.structuralHash}`,
+        expected: document.identity, label: `Retained snapshot r${document.identity.revision}` });
+    }
+  }
+  if (entry.module === "surface") {
+    for (const document of retainedSurfaceGenerationDocuments(entry)) {
+      const isCheckpoint = sameGeneration(document.identity, entry.checkpoint.identity);
+      if (!isCheckpoint) choices.push({ value: `retained:${document.identity.revision}:${document.identity.structuralHash}`,
+        expected: document.identity, label: `Retained snapshot r${document.identity.revision}` });
+    }
+  }
   return choices;
 };
 const titleOf = (project: Math3DProject, id: string): string => {
@@ -61,16 +78,8 @@ const titleOf = (project: Math3DProject, id: string): string => {
 export const resolveProjectCompositionMember = (project: Math3DProject, member: ProjectCompositionMember, read: ProjectResourceReader): RenderMember => {
   const entry = project.workspace.entries.find(item => item.expected.id === member.documentId);
   if (!entry) throw new TypeError("The selected source document is missing.");
-  const current = verifyMixedWorkspaceReplay(project.workspace).get(member.documentId);
-  if (!current || current.identity.revision !== entry.expected.revision || current.identity.structuralHash !== entry.expected.structuralHash)
-    throw new TypeError("The current source did not pass replay verification.");
-  const currentSelected = current.identity.revision === member.expected.revision && current.identity.structuralHash === member.expected.structuralHash;
-  const retainedDocument = entry.replay && sameGeneration(entry.checkpoint.identity, member.expected) ? entry.checkpoint :
-    entry.module === "mesh" ? retainedMeshGenerationDocuments(entry).find(document =>
-      sameGeneration(document.identity, member.expected)) : undefined;
-  if (!currentSelected && !retainedDocument)
-    throw new TypeError("The selected source has a different saved revision and no matching retained checkpoint or snapshot.");
-  const document = currentSelected ? current : retainedDocument!;
+  const document = resolveExactProjectCompositionSource(project, member);
+  const currentSelected = sameGeneration(document.identity, entry.expected);
   const color = Number.parseInt(member.color.slice(1), 16), meshes: RenderMesh[] = [];
   const points: OverlayPointSet[] = [], lines: OverlayPolylineGroup[] = [];
   let param: RenderMember["param"];
@@ -86,6 +95,46 @@ export const resolveProjectCompositionMember = (project: Math3DProject, member: 
     meshes.push({ ...decoded, label: document.metadata.label, source: source.origin as SurfaceMeshData["source"], id: member.documentId, color, opacity: member.opacity });
   } else if (entry.module === "geometry" && document.format === "math3d.geometry-document") {
     const source = (document as GeometryDocument).source;
+    if (SAGE_LOCUS_SINGULARITY_EXTENSION in source.extensions) {
+      const { analysis } = parseAlgebraicSingularityGeometryDocument(document, project);
+      const coordinate = (value: string) => { const [n, d] = value.split("/"); return Number(n) / Number(d ?? 1); };
+      const p = analysis.point.map(coordinate), origin = { x: p[0] ?? 0, y: p[1] ?? 0, z: p[2] ?? 0 };
+      points.push({ points: [origin], color, opacity: member.opacity, size: 9 });
+      const span = Math.min(...analysis.scene.domain.bounds.map((bound) => bound.max - bound.min)) * 0.3;
+      if (analysis.local.realTangentDirections.length) lines.push({
+        lines: analysis.local.realTangentDirections.map(([dx, dy]) => {
+          const scale = span / (Math.hypot(dx, dy) || 1);
+          return [{ x: origin.x - dx * scale, y: origin.y - dy * scale, z: origin.z },
+            { x: origin.x + dx * scale, y: origin.y + dy * scale, z: origin.z }];
+        }), color, opacity: member.opacity });
+      if (p.length === 3 && analysis.local.onLocus && analysis.local.jacobianRank === 1) {
+        const normal = analysis.local.jacobian.map(coordinate), length = Math.hypot(...normal);
+        if (length > 0 && Number.isFinite(length)) {
+          const n = normal.map((value) => value / length);
+          const anchor = Math.abs(n[2]) < 0.9 ? [0, 0, 1] : [0, 1, 0];
+          const u = [n[1]*anchor[2]-n[2]*anchor[1], n[2]*anchor[0]-n[0]*anchor[2], n[0]*anchor[1]-n[1]*anchor[0]];
+          const ul = Math.hypot(...u), unit = u.map((value) => value / ul);
+          const v = [n[1]*unit[2]-n[2]*unit[1], n[2]*unit[0]-n[0]*unit[2], n[0]*unit[1]-n[1]*unit[0]];
+          const vertex = (a: number, b: number) => [origin.x, origin.y, origin.z].map((value, axis) =>
+            value + span * (a * unit[axis] + b * v[axis]));
+          const a = vertex(-1,-1), b = vertex(1,-1), c = vertex(1,1), d = vertex(-1,1);
+          meshes.push({ id: `${member.documentId}/tangent-plane`, label: "Exact tangent plane at selected point",
+            positions: new Float32Array([...a,...b,...c,...a,...c,...d]), indices: null,
+            source: { kind: "bakedFromImplicit" }, color, opacity: member.opacity * 0.5 });
+        }
+      }
+    }
+    if (SAGE_LOCUS_SAMPLE_EXTENSION in source.extensions) {
+      const { sample } = parseSampledAlgebraicLocusGeometryDocument(document, project);
+      const asPoint = (p: readonly number[]) => ({ x: p[0] ?? 0, y: p[1] ?? 0, z: p[2] ?? 0 });
+      if (sample.points.length) points.push({ points: sample.points.map(asPoint), color, opacity: member.opacity });
+      if (sample.segments.length) lines.push({ lines: sample.segments.map(([a, b]) => [asPoint(a), asPoint(b)]),
+        color, opacity: member.opacity });
+      if (sample.triangles.length) meshes.push({ id: `${member.documentId}/locus`,
+        label: `${document.metadata.title} (bounded numerical sample)`,
+        positions: new Float32Array(sample.triangles.flatMap((triangle) => triangle.flatMap((p) => [p[0], p[1], p[2]]))),
+        indices: null, source: { kind: "bakedFromImplicit" }, color, opacity: member.opacity });
+    }
     const primitive = buildGeometryRenderData(source.geometry ?? {});
     if (primitive.mesh) meshes.push({ ...primitive.mesh, id: `${member.documentId}/primitives`, color, opacity: member.opacity });
     points.push(...primitive.overlayPointSets.map(item => ({ ...item, color, opacity: member.opacity })));
@@ -129,10 +178,13 @@ export const compatibleCompositionParameterChart = (members: readonly RenderMemb
 export const qualifyProjectCameraPair = (members: readonly RenderMember[]): "shared-surface-axes" | "declared-3d-frame" | null => {
   if (members.length !== 2) return null;
   const [a, b] = members;
+  if (a!.coordinates.status === "invalid" || b!.coordinates.status === "invalid" ||
+    a!.coordinates.value && b!.coordinates.value && !sameProjectCoordinateFrame(a!.coordinates.value, b!.coordinates.value))
+    return null;
   if (a!.param && b!.param && compatibleCompositionParameterChart(members) && a!.param.unit === b!.param.unit &&
     !!a!.param.x && a!.param.x === b!.param.x && !!a!.param.y && a!.param.y === b!.param.y)
     return "shared-surface-axes";
-  if (!a!.param && !b!.param && a!.coordinates.status === "declared" && b!.coordinates.status === "declared" &&
+  if (a!.coordinates.status === "declared" && b!.coordinates.status === "declared" &&
     a!.coordinates.value && b!.coordinates.value && sameProjectCoordinateFrame(a!.coordinates.value, b!.coordinates.value))
     return "declared-3d-frame";
   return null;
@@ -165,6 +217,7 @@ export const ComparisonPane: React.FC<{ members: RenderMember[]; label: string; 
       paramResolution={48} materialOpacity={members[0]!.param.opacity} inspectEnabled
       isCameraLeader={!!onCameraSync} onCameraSync={onCameraSync} cameraOverride={cameraOverride} cameraOverrideToken={cameraOverrideToken}
       paramProbeUV={linkedUV} paramProbeToken={linkedToken}
+      overlayPointSets={coordinateProbe ? [{ points: [coordinateProbe.point], color: 0xffbd2e, size: 0.2, opacity: 1 }] : null}
       captureToken={captureToken} onCaptureThumbnail={onCaptureThumbnail}
       captureSize="report"
       onInspectPick={hit => onPick({ memberId: members[0]!.id,
@@ -181,8 +234,9 @@ export const ComparisonPane: React.FC<{ members: RenderMember[]; label: string; 
 
 export const ProjectCompositionView: React.FC<{ project: Math3DProject; readResource: ProjectResourceReader; onClose: () => void;
   initialCompositionId?: string; initialProbeNoteId?: string; onSave: (composition: ProjectComposition) => Promise<boolean>;
+  onDeclareCoordinateFrame?: (composition: ProjectComposition, slot: 0 | 1, frame: ProjectCoordinateFrame) => Promise<string>;
   onSaveObservation: (composition: ProjectComposition, title: string, body: string, probe?: LinkedCoordinateProbe) => Promise<boolean> }> =
-  ({ project, readResource, onClose, initialCompositionId, initialProbeNoteId, onSave, onSaveObservation }) => {
+  ({ project, readResource, onClose, initialCompositionId, initialProbeNoteId, onSave, onDeclareCoordinateFrame, onSaveObservation }) => {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } };
     window.addEventListener("keydown", onKeyDown, true);
@@ -199,6 +253,9 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
   ]);
   const [mode, setMode] = useState<"overlay" | "side-by-side">("side-by-side");
   const [frame, setFrame] = useState(""), [unit, setUnit] = useState("");
+  const [declaredAxes, setDeclaredAxes] = useState<[string, string, string]>(["x", "y", "z"]);
+  const [declaredHandedness, setDeclaredHandedness] = useState<"right" | "left">("right");
+  const [declaringFrame, setDeclaringFrame] = useState(false);
   const [visible, setVisible] = useState<[boolean, boolean]>([true, true]);
   const [palette, setPalette] = useState<[string, string]>([...colors]);
   const [opacity, setOpacity] = useState<[number, number]>([1, 0.72]);
@@ -246,7 +303,7 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
   const resolved = useMemo(() => {
     if (!composition) return { members: [] as RenderMember[], error: "Choose two different saved documents, or two retained generations of one document. Overlay also requires a declared frame and unit." };
     const statuses = inspectProjectCompositionAvailability(composition, project.workspace);
-    if (statuses.some(status => status !== "current" && status !== "retained-checkpoint" && status !== "retained-mesh"))
+    if (statuses.some(status => status !== "current" && status !== "retained-checkpoint" && status !== "retained-mesh" && status !== "retained-geometry" && status !== "retained-surface"))
       return { members: [] as RenderMember[], error: `Source status: ${statuses.join(" / ")}. Unavailable historical bytes are not reconstructed.` };
     if (composition.mode === "overlay" && composition.members.some(member => project.workspace.entries.find(entry => entry.expected.id === member.documentId)?.module === "surface"))
       return { members: [] as RenderMember[], error: "Overlay currently accepts Mesh and Geometry sources only. Use side-by-side for a Surface." };
@@ -278,6 +335,20 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
   }) : [];
   const savedProbe = savedProbeId ? savedProbes.find(item => item.note.identity.id === savedProbeId) : savedProbes.at(-1);
   const displayedProbe = coordinateProbe ?? savedProbe?.probe ?? null;
+  const legacyFrameSlots = saved && !resolved.error ? ([0, 1] as const).filter(slot => {
+    const member = saved.members[slot], entry = project.workspace.entries.find(item => item.expected.id === member.documentId);
+    if (!entry || !["geometry", "mesh", "surface"].includes(entry.module) ||
+      mode === "overlay" && entry.module === "surface") return false;
+    return (!entry.replay || entry.replay.format === (entry.module === "mesh" ? "math3d.mesh-replay.v1" :
+      entry.module === "geometry" ? "math3d.geometry-replay.v1" : "math3d.surface-replay.v1")) &&
+      entry.expected.revision === member.expected.revision && entry.expected.structuralHash === member.expected.structuralHash &&
+      resolved.members.find(item => item.slot === slot)?.coordinates.status === "missing" &&
+      (entry.module !== "mesh" || entry.checkpoint.format === "math3d.mesh-document" &&
+        !!entry.checkpoint.source.origin && typeof entry.checkpoint.source.origin === "object" &&
+        !Array.isArray(entry.checkpoint.source.origin));
+  }) : [];
+  const declarationValid = declaredAxes.every(axis => !!axis.trim() && axis.trim() === axis && axis.length <= 32) &&
+    new Set(declaredAxes).size === 3;
   const cameraQualification = mode === "side-by-side" && !resolved.error ? qualifyProjectCameraPair(resolved.members) : null;
   const cameraLinked = cameraMode === "linked" && !!cameraQualification;
   const onPick = (next: Pick) => { setPick(next); setLinked(current => linkable && next.uv ? { uv: next.uv!, token: (current?.token ?? 0) + 1 } : null); };
@@ -287,14 +358,14 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
     style={{ position: "fixed", inset: 16, zIndex: 10000, background: "#f8fafc", color: "#18243a", border: "1px solid #94a3b8", borderRadius: 12,
       boxShadow: "0 24px 80px #0008", overflow: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
     <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><div><small>PROJECT / PC01–PC06</small><h2 style={{ margin: "4px 0" }}>Compare saved documents</h2>
-      <p style={{ margin: 0 }}>Read-only composition; sources and scientific buffers stay in their owning documents.</p></div><button onClick={onClose}>Close</button></header>
+      <p style={{ margin: 0 }}>Comparisons read saved sources. Recording a frame creates a new revision of its owning document.</p></div><button onClick={onClose}>Close</button></header>
     <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
       <label>Saved composition <select value={savedId} onChange={event => chooseSaved(event.target.value)}><option value="">New comparison</option>{project.compositions?.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>
       <label>View <select data-testid="project-composition-mode" value={mode} onChange={event => { setSavedId(""); setMode(event.target.value as typeof mode);
         setPick(null); setLinked(null); setCameraMode("independent"); setCameraPose(null); }}><option value="side-by-side">Side by side</option><option value="overlay">Overlay</option></select></label>
       {mode === "overlay" && <><label>Shared frame (your assertion) <input aria-label="Shared frame" value={frame} onChange={event => setFrame(event.target.value)} placeholder="e.g. laboratory xyz" maxLength={80} /></label>
         <label>Shared unit (your assertion) <input aria-label="Shared unit" value={unit} onChange={event => setUnit(event.target.value)} placeholder="e.g. mm" maxLength={40} /></label>
-        <small>Source declarations are compared when both exist; otherwise this frame and unit remain your explicit alignment assertion.</small></>}
+        <small>Each available source declaration is checked against the entered frame and unit. A missing declaration remains your alignment assertion.</small></>}
       <button disabled={!composition || !!resolved.error || cameraMode === "linked" && !cameraQualification} onClick={() => { if (composition) void onSave(composition).then(ok => { if (ok) { setSavedId(composition.id); setMessage("Composition saved; source documents were not changed."); } else setMessage("Composition could not be saved."); }); }}>Save composition</button>
     </div>
     {mode === "side-by-side" && <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -353,6 +424,37 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
         "Source-declared coordinate frames, axes, handedness, and units match this overlay." :
         "Unverified overlay: at least one source has no coordinate-frame declaration. The frame and unit above are operator assertions."}
     </p>}
+    {!!legacyFrameSlots.length && onDeclareCoordinateFrame && saved && composition && <section data-testid="project-composition-declare-frame"
+      style={{ border: "1px solid #cbd5e1", borderRadius: 8, padding: 8 }}>
+      <strong>Record a frame in a legacy source</strong>
+      <p style={{ margin: "4px 0" }}>Enter the axes and handedness confirmed for that source. This creates a replay-backed source revision and a new exact comparison. The previous comparison keeps its exact retained generation. Matching declarations do not prove the producer's coordinate claim.</p>
+      {mode === "side-by-side" && <label>Declared frame <input aria-label="Declared frame" value={frame} maxLength={80}
+        onChange={event => setFrame(event.target.value)} placeholder="e.g. local" /></label>}
+      {mode === "side-by-side" && legacyFrameSlots.some(slot => project.workspace.entries.find(item =>
+        item.expected.id === composition.members[slot].documentId)?.module !== "surface") &&
+        <label>Declared unit <input aria-label="Declared unit" value={unit} maxLength={40}
+          onChange={event => setUnit(event.target.value)} placeholder="e.g. m" /></label>}
+      {declaredAxes.map((axis, index) => <label key={index} style={{ marginRight: 8 }}>Axis {index + 1} <input
+        aria-label={`Declared axis ${index + 1}`} value={axis} maxLength={32} style={{ width: 70 }}
+        onChange={event => setDeclaredAxes(current => current.map((value, i) => i === index ? event.target.value : value) as [string, string, string])} /></label>)}
+      <label>Handedness <select aria-label="Declared handedness" value={declaredHandedness}
+        onChange={event => setDeclaredHandedness(event.target.value as "right" | "left")}>
+        <option value="right">Right</option><option value="left">Left</option></select></label>
+      <div>{legacyFrameSlots.map(slot => <button key={slot} type="button" style={{ marginTop: 6, marginRight: 8 }}
+        data-testid={`project-composition-declare-frame-${slot}`} disabled={declaringFrame || !declarationValid ||
+          mode === "side-by-side" && (!frame.trim() ||
+            project.workspace.entries.find(item => item.expected.id === composition.members[slot].documentId)?.module !== "surface" && !unit.trim())}
+        onClick={() => { setDeclaringFrame(true); setMessage("");
+          const sourceEntry = project.workspace.entries.find(item => item.expected.id === composition.members[slot].documentId);
+          const sourceUnit = sourceEntry?.module === "surface" ? resolved.members.find(item => item.slot === slot)?.param?.unit ?? "" : unit.trim();
+          const declaration: ProjectCoordinateFrame = { format: "math3d.coordinate-frame/v1", frame: frame.trim(), unit: sourceUnit,
+            axes: declaredAxes, handedness: declaredHandedness };
+          void onDeclareCoordinateFrame(composition, slot, declaration).then(id => {
+            setSavedId(id); setPick(null); setLinked(null); setMessage("Source frame recorded in a new document revision; new exact comparison saved.");
+          }).catch(error => setMessage(`Frame declaration refused: ${String((error as Error).message)}`))
+            .finally(() => setDeclaringFrame(false));
+        }}>Record frame in source {slot === 0 ? "A" : "B"}</button>)}</div>
+    </section>}
     {composition && <section data-testid="project-comparison-evidence" style={{ border: "1px solid #cbd5e1", borderRadius: 8, padding: 8 }}>
       <strong>Exportable comparison evidence</strong><p style={{ margin: "4px 0" }}>A/B source revisions and complete hashes are retained in the report; selected values are local to their source.</p>
       {composition.members.map((member, index) => <div key={index} style={{ overflowWrap: "anywhere" }}>
@@ -383,7 +485,7 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
             if (ok) { setObservationBody(""); setPick(null); setMessage("Coordinate observation saved with both exact source generations."); }
             else setMessage("Coordinate observation could not be saved; recheck both sources.");
           }).finally(() => setObservationBusy(false)); }}>Save coordinate observation</button>
-      <small style={{ display: "block" }}>Pick a Mesh or Geometry surface first. The Note records its coordinate and declared frame, not a matching element or measured value in the other source.</small>
+      <small style={{ display: "block" }}>Pick a declared-frame Mesh, Geometry, or Surface first. The Note records its coordinate and frame, not a matching element or measured value in the other source.</small>
       {(project.notes ?? []).filter(note => note.anchor?.kind === "comparison" && note.anchor.compositionId === saved.id).map(note => {
         const anchor = note.anchor!;
         if (anchor.kind !== "comparison") return null;
@@ -411,8 +513,8 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
         displayedProbe ? <p data-testid="project-composition-probe-status">{coordinateProbe ? "Linked" : "Saved"} coordinate from {displayedProbe.source.slot === 0 ? "A" : "B"} to {displayedProbe.target.slot === 0 ? "A" : "B"}:
           {` (${displayedProbe.point.x.toPrecision(5)}, ${displayedProbe.point.y.toPrecision(5)}, ${displayedProbe.point.z.toPrecision(5)}) ${displayedProbe.unit}`}
           {` in ${displayedProbe.frame}.`} Source: {displayedProbe.source.id} r{displayedProbe.source.revision} · {displayedProbe.source.hash}.
-          Mesh and Geometry element picks remain source-local; the other pane shows a coordinate marker only.</p> :
-        <p data-testid="project-composition-probe-status">Linked coordinate unavailable until a Mesh or Geometry is picked in two visible sources with matching declared frames, axes, handedness, and units. Element picks remain source-local.</p>)}
+          Element picks remain source-local; the other pane shows a coordinate marker only.</p> :
+        <p data-testid="project-composition-probe-status">Linked coordinate unavailable until a Mesh, Geometry, or Surface is picked in two visible sources with matching declared frames, axes, handedness, and units. Element picks remain source-local.</p>)}
       {message && <p role="status">{message}</p>}
     </footer>
   </div>, document.body);

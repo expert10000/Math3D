@@ -4,7 +4,7 @@ import hashlib
 import json
 import re
 
-from sage.all import GF, QQ, QQbar, ZZ, Integers, NumberField, PolynomialRing, latex
+from sage.all import EllipticCurve, GF, QQ, QQbar, ZZ, Integers, NumberField, PolynomialRing, latex
 
 
 FORMAT = "math3d.sage-algebra-reconstruction"
@@ -84,6 +84,19 @@ def _definition(value):
         generator = value["generator"]
         if type(generator) is not str or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,31}", generator):
             raise ValueError("Field tower generator is invalid.")
+        return [parent]
+    if kind == "elliptic-curve":
+        _fields(value, ("kind", "baseField", "model", "a", "b"), "definition")
+        parent = _reference(value["baseField"], "definition.baseField")
+        if value["model"] != "short-weierstrass":
+            raise ValueError("Only short Weierstrass curves are supported.")
+        for name in ("a", "b"):
+            coefficient = value[name]
+            if type(coefficient) is not str or not re.fullmatch(r"(?:0|-?[1-9][0-9]{0,3})", coefficient) or \
+                    abs(int(coefficient)) > 4096:
+                raise ValueError("Curve coefficients must be canonical bounded integers.")
+        if 4 * int(value["a"]) ** 3 + 27 * int(value["b"]) ** 2 == 0:
+            raise ValueError("Singular short Weierstrass curve.")
         return [parent]
     if kind == "polynomial-ring":
         _fields(value, ("kind", "coefficientDomain", "variables", "monomialOrder"), "definition")
@@ -202,6 +215,26 @@ def _build_algebra(records):
             if not polynomial.is_irreducible():
                 raise ValueError("Field tower polynomial is reducible over its pinned base field.")
             value = base.extension(polynomial, definition["generator"])
+        elif kind == "elliptic-curve":
+            parent = definition["baseField"]
+            parent_key = (parent["objectId"], parent["revision"])
+            parent_record = next((record for record in records if
+                (record["id"], record["revision"]) == parent_key), None)
+            if parent_record is None or parent_record["kind"] not in ("rational-field", "finite-field"):
+                raise ValueError("Curve requires pinned QQ or prime GF(p).")
+            base = built[parent_key]
+            if parent_record["kind"] == "finite-field":
+                p = parent_record["definition"]["characteristic"]
+                if parent_record["definition"]["degree"] != 1 or not 5 <= p <= 1009 or any(
+                    not 0 <= int(definition[name]) < p for name in ("a", "b")
+                ):
+                    raise ValueError("Curve requires a prime field with canonical coefficient residues.")
+            try:
+                value = EllipticCurve(base, [base(int(definition["a"])), base(int(definition["b"]))])
+            except (ArithmeticError, ValueError) as error:
+                raise ValueError("Singular short Weierstrass curve over its pinned field.") from error
+            if value.discriminant() == 0:
+                raise ValueError("Singular short Weierstrass curve over its pinned field.")
         else:
             parent = definition["coefficientDomain"]
             base = built[(parent["objectId"], parent["revision"])]
@@ -215,6 +248,8 @@ def reconstruct_algebra(params):
     target, records = _validated_objects(params)
     built = _build_algebra(records)
     record = records[-1]
+    if record["kind"] == "elliptic-curve":
+        raise ValueError("Elliptic curves use the bounded curve dossier operation.")
     value = built[target]
     result = {
         "format": RESULT_FORMAT, "schemaVersion": 1,

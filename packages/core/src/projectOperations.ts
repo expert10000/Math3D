@@ -62,8 +62,9 @@ export const deleteProjectDocument = (project: Math3DProject, id: string): Math3
   const linked = new Map(linkQuantumSceneDocuments(retainedEntries.filter(entry => entry.module === "quantum")
     .map(entry => entry.checkpoint as QuantumSceneDocument)).map(document => [document.source.sceneFingerprint, document]));
   const workspace = createMixedWorkspaceDocument({ ...current.workspace,
-    ...(removedQuantumFingerprint?.format === "math3d.quantum-scene-document" ? { quantumStudies:
-      current.workspace.quantumStudies?.filter(study => !study.panels.some(panel =>
+    ...(removedQuantumFingerprint?.format === "math3d.quantum-scene-document" &&
+      current.workspace.quantumStudies !== undefined ? { quantumStudies:
+      current.workspace.quantumStudies.filter(study => !study.panels.some(panel =>
         panel.sceneFingerprint === removedQuantumFingerprint.source.sceneFingerprint)) } : {}),
     entries: retainedEntries.map(entry => entry.module === "quantum" && entry.checkpoint.format === "math3d.quantum-scene-document"
       ? { ...entry, checkpoint: linked.get(entry.checkpoint.source.sceneFingerprint)! } : entry),

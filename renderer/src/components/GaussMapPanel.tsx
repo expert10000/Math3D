@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { disposeOrbitControls } from "../utils/disposeOrbitControls";
 import { scalarToColor01, type ColorPalette } from "./colorPalette";
 import type { GaussColorMode } from "./gaussMapUtils";
 import type { GaussCapSelection, SelectionMask } from "../math/selection/selectionModel";
@@ -490,7 +491,7 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
       renderer.domElement.removeEventListener("pointermove", handlePointerMove);
       renderer.domElement.removeEventListener("pointerleave", handlePointerLeave);
       renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
-      controls.dispose();
+      disposeOrbitControls(controls);
 
       if (sphereRef.current) {
         scene.remove(sphereRef.current);

@@ -1,11 +1,17 @@
 import { GRAPH2D_MAX_OBJECTS, validPointTableReference, validGraph2DScientificDatasetOrigin,
   validGraph2DAnalyticFieldOrigin, validGraph2DDerivedFieldOrigin, validGraph2DLinkedOverlayOrigin,
   validGraph2DProjectProfileOrigin, validGraph2DComparisonProfileOrigin,
+  validGraph2DTemporalSpectrumOrigin, validGraph2DTemporalFtleOrigin,
+  validGraph2DPoincareOrigin,
   type Graph2DDocument, type Graph2DDomain, type Graph2DObjectDisplay,
   type Graph2DPointTableReference, type Graph2DScientificDatasetOrigin,
   type Graph2DAnalyticFieldOrigin, type Graph2DDerivedFieldOrigin, type Graph2DProjectProfileOrigin,
-  type Graph2DLinkedOverlayOrigin, type Graph2DComparisonProfileOrigin } from "./graph2dDocument";
-import { parseGraph2DExpression } from "./graph2dExpression";
+  type Graph2DLinkedOverlayOrigin, type Graph2DComparisonProfileOrigin,
+  type Graph2DTemporalSpectrumOrigin, type Graph2DTemporalFtleOrigin,
+  type Graph2DPoincareOrigin } from "./graph2dDocument";
+import { formatGraph2DExpressionAst, parseGraph2DExpression } from "./graph2dExpression";
+import { differentiateGraph2DExpression } from "./graph2dDerivatives";
+import { structuralHash } from "./documentIdentity";
 import { inspectGraph2DPiecewiseDomains } from "./graph2dPiecewise";
 import { applyGraph2DParameterAction, isGraph2DParameterAction, type Graph2DParameterAction } from "./graph2dParameters";
 import { isGraph2DFieldReference, reviewGraph2DFieldRelink, type Graph2DFieldReference } from "./graph2dFieldReference";
@@ -78,6 +84,9 @@ export type Graph2DPointSeriesDraft = Readonly<{
   derivedOrigin?: Graph2DDerivedFieldOrigin;
   projectProfileOrigin?: Graph2DProjectProfileOrigin;
   comparisonProfileOrigin?: Graph2DComparisonProfileOrigin;
+  temporalSpectrumOrigin?: Graph2DTemporalSpectrumOrigin;
+  temporalFtleOrigin?: Graph2DTemporalFtleOrigin;
+  poincareOrigin?: Graph2DPoincareOrigin;
   parameterStudyOrigin?: Graph2DParameterStudyOrigin;
   linkedOrigin?: Graph2DLinkedOverlayOrigin;
   style: Pick<Graph2DObjectDisplay, "color" | "lineWidth" | "lineStyle" | "visible">;
@@ -98,6 +107,10 @@ export type Graph2DAuthoringAction =
   | Readonly<{ type: "relink-vector-field-reference"; referenceId: string; replacement: Graph2DVectorFieldReference }>
   | Readonly<{ type: "remove-vector-field-reference"; referenceId: string }>
   | Readonly<{ type: "create"; draft: Graph2DFunctionDraft }>
+  | Readonly<{ type: "create-derivative-curve"; sourceObjectId: string }>
+  | Readonly<{ type: "create-saved-derivative"; sourceObjectId: string;
+      order: 1 | 2; fallback: "none" | "finite-difference";
+      tolerance: number }>
   | Readonly<{ type: "edit"; objectId: string; draft: Graph2DFunctionDraft }>
   | Readonly<{ type: "create-parametric"; draft: Graph2DParametricDraft }>
   | Readonly<{ type: "edit-parametric"; objectId: string; draft: Graph2DParametricDraft }>
@@ -271,12 +284,23 @@ export const validateGraph2DPointSeriesDraft = (draft: Graph2DPointSeriesDraft):
   if (draft.comparisonProfileOrigin !== undefined &&
       !validGraph2DComparisonProfileOrigin(draft.comparisonProfileOrigin))
     errors.push("Comparison profile provenance is invalid.");
+  if (draft.temporalSpectrumOrigin !== undefined &&
+      !validGraph2DTemporalSpectrumOrigin(draft.temporalSpectrumOrigin))
+    errors.push("Temporal spectrum provenance is invalid.");
+  if (draft.temporalFtleOrigin !== undefined &&
+      !validGraph2DTemporalFtleOrigin(draft.temporalFtleOrigin))
+    errors.push("Temporal FTLE provenance is invalid.");
+  if (draft.poincareOrigin !== undefined &&
+      !validGraph2DPoincareOrigin(draft.poincareOrigin))
+    errors.push("Poincaré section provenance is invalid.");
   if (draft.parameterStudyOrigin !== undefined && !isGraph2DParameterStudyOrigin(draft.parameterStudyOrigin))
     errors.push("Parameter study provenance is invalid.");
   if (draft.linkedOrigin !== undefined && !validGraph2DLinkedOverlayOrigin(draft.linkedOrigin))
     errors.push("Linked field provenance is invalid.");
   if ([draft.origin, draft.analyticOrigin, draft.derivedOrigin, draft.linkedOrigin,
-    draft.projectProfileOrigin, draft.comparisonProfileOrigin,
+    draft.projectProfileOrigin, draft.comparisonProfileOrigin, draft.temporalSpectrumOrigin,
+    draft.temporalFtleOrigin,
+    draft.poincareOrigin,
     draft.parameterStudyOrigin].filter(item => item !== undefined).length > 1)
     errors.push("Choose one provenance source for the point series.");
   return errors;
@@ -385,9 +409,55 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
   let selection = document.selection;
   const index = "objectId" in action ? objects.findIndex((entry) => entry.id === action.objectId) : -1;
   if ("objectId" in action && index < 0) throw new TypeError("Function does not exist.");
-  if (action.type === "create" || action.type === "edit") {
+  if (action.type === "create-saved-derivative") {
+    const source = objects.find(item => item.id === action.sourceObjectId);
+    if (source?.kind !== "explicit-cartesian" || source.derivativeOrigin)
+      throw new TypeError("Choose a source explicit function.");
+    if (objects.length >= GRAPH2D_MAX_OBJECTS || ![1, 2].includes(action.order) ||
+        !["none", "finite-difference"].includes(action.fallback) ||
+        !Number.isFinite(action.tolerance) || action.tolerance < 1e-8 ||
+        action.tolerance > .01)
+      throw new TypeError("Saved derivative order, tolerance or object budget is invalid.");
+    const differentiated = differentiateGraph2DExpression(source.expression.ast,
+      action.order);
+    if (!differentiated.ok && action.fallback === "none")
+      throw new TypeError("Saved derivative unavailable: symbolic rule or work limit.");
+    let serial = 1, id = `saved_derivative_${serial}`;
+    while (objects.some(item => item.id === id)) id = `saved_derivative_${++serial}`;
+    objects.push({ id, kind: "derivative-curve", label: `${source.label}${"'".repeat(action.order)}`,
+      sourceObjectId: source.id, sourceExpressionHash: structuralHash(source.expression.ast),
+      order: action.order, method: differentiated.ok ? "symbolic-rules" : "finite-difference",
+      fallback: action.fallback, tolerance: action.tolerance, domain: source.domain });
+    displays.push({ objectId: id, visible: true, color: "#a855f7", lineWidth: 2,
+      lineStyle: "dashed" });
+    selection = { objectId: id, probe: null };
+  } else if (action.type === "create-derivative-curve") {
+    const source = objects.find(item => item.id === action.sourceObjectId);
+    if (source?.kind !== "explicit-cartesian" || source.derivativeOrigin)
+      throw new TypeError("Choose a source explicit function.");
+    if (objects.length >= GRAPH2D_MAX_OBJECTS) throw new TypeError("Function limit reached.");
+    const differentiated = differentiateGraph2DExpression(source.expression.ast, 1);
+    if (!differentiated.ok)
+      throw new TypeError("Saved derivative unavailable: symbolic rule or work limit.");
+    const formula = formatGraph2DExpressionAst(differentiated.ast);
+    const parsed = parseGraph2DExpression(formula,
+      ["x", ...document.source.variables.map(entry => entry.name)]);
+    if (!parsed.ok) throw new TypeError("Saved derivative expression is unavailable.");
+    let serial = 1, id = `derivative_${serial}`;
+    while (objects.some(item => item.id === id)) id = `derivative_${++serial}`;
+    objects.push({ id, kind: "explicit-cartesian", label: `${source.label}'`,
+      expression: { source: formula, variable: "x", ast: parsed.ast },
+      domain: source.domain, derivativeOrigin: { sourceObjectId: source.id,
+        sourceExpressionHash: structuralHash(source.expression.ast), order: 1 } });
+    displays.push({ objectId: id, visible: true, color: "#a855f7", lineWidth: 2,
+      lineStyle: "dashed" });
+    selection = { objectId: id, probe: null };
+  } else if (action.type === "create" || action.type === "edit") {
     if (action.type === "edit" && objects[index]?.kind !== "explicit-cartesian")
       throw new TypeError("Selected object is not an explicit function.");
+    if (action.type === "edit" && objects[index]?.kind === "explicit-cartesian" &&
+        objects[index].derivativeOrigin)
+      throw new TypeError("Edit the source function to update its saved derivative.");
     const names = ["x", ...document.source.variables.map((entry) => entry.name)];
     const errors = validateGraph2DFunctionDraft(action.draft, names);
     if (errors.length) throw new TypeError(errors.join(" "));
@@ -403,7 +473,39 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
       expression: { source: action.draft.expression, variable: "x" as const, ast: parsed.ast }, domain: action.draft.domain };
     const display = { objectId: id, ...action.draft.style };
     if (action.type === "create") { objects.push(object); displays.push(display); }
-    else { objects[index] = object; displays[index] = display; }
+    else {
+      const dependentIndexes = objects.flatMap((entry, i) =>
+        entry.kind === "explicit-cartesian" &&
+        entry.derivativeOrigin?.sourceObjectId === id ? [i] : []);
+      const savedIndexes = objects.flatMap((entry, i) =>
+        entry.kind === "derivative-curve" && entry.sourceObjectId === id ? [i] : []);
+      if (dependentIndexes.length) {
+        const next = differentiateGraph2DExpression(parsed.ast, 1);
+        if (!next.ok) throw new TypeError("Saved derivative unavailable for the edited source. Remove it first.");
+        const formula = formatGraph2DExpressionAst(next.ast);
+        const derivative = parseGraph2DExpression(formula, names);
+        if (!derivative.ok) throw new TypeError("Saved derivative expression is unavailable.");
+        for (const dependentIndex of dependentIndexes) {
+          const prior = objects[dependentIndex]!;
+          if (prior.kind !== "explicit-cartesian") continue;
+          objects[dependentIndex] = { ...prior, domain: action.draft.domain,
+            expression: { source: formula, variable: "x", ast: derivative.ast },
+            derivativeOrigin: { sourceObjectId: id,
+              sourceExpressionHash: structuralHash(parsed.ast), order: 1 } };
+        }
+      }
+      for (const savedIndex of savedIndexes) {
+        const prior = objects[savedIndex]!;
+        if (prior.kind !== "derivative-curve") continue;
+        const symbolic = differentiateGraph2DExpression(parsed.ast, prior.order);
+        if (!symbolic.ok && prior.fallback === "none")
+          throw new TypeError("Saved derivative unavailable for the edited source. Remove it or enable fallback.");
+        objects[savedIndex] = { ...prior, domain: action.draft.domain,
+          sourceExpressionHash: structuralHash(parsed.ast),
+          method: symbolic.ok ? "symbolic-rules" : "finite-difference" };
+      }
+      objects[index] = object; displays[index] = display;
+    }
     selection = { objectId: id, probe: null };
   } else if (action.type === "create-parametric" || action.type === "edit-parametric") {
     if (action.type === "edit-parametric" && objects[index]?.kind !== "parametric")
@@ -646,6 +748,9 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
         ...(draft.analyticOrigin ? { analyticOrigin: draft.analyticOrigin } : {}),
         ...(draft.projectProfileOrigin ? { projectProfileOrigin: draft.projectProfileOrigin } : {}),
         ...(draft.comparisonProfileOrigin ? { comparisonProfileOrigin: draft.comparisonProfileOrigin } : {}),
+        ...(draft.temporalSpectrumOrigin ? { temporalSpectrumOrigin: draft.temporalSpectrumOrigin } : {}),
+        ...(draft.temporalFtleOrigin ? { temporalFtleOrigin: draft.temporalFtleOrigin } : {}),
+        ...(draft.poincareOrigin ? { poincareOrigin: draft.poincareOrigin } : {}),
         ...(draft.parameterStudyOrigin ? { parameterStudyOrigin: draft.parameterStudyOrigin } : {}),
         ...(draft.derivedOrigin ? { derivedOrigin: draft.derivedOrigin } : {}) };
       if (draft.linkedOrigin) objects[target] = { ...objects[target], linkedOrigin: draft.linkedOrigin };
@@ -672,6 +777,9 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
         ...(draft.analyticOrigin ? { analyticOrigin: draft.analyticOrigin } : {}),
         ...(draft.projectProfileOrigin ? { projectProfileOrigin: draft.projectProfileOrigin } : {}),
         ...(draft.comparisonProfileOrigin ? { comparisonProfileOrigin: draft.comparisonProfileOrigin } : {}),
+        ...(draft.temporalSpectrumOrigin ? { temporalSpectrumOrigin: draft.temporalSpectrumOrigin } : {}),
+        ...(draft.temporalFtleOrigin ? { temporalFtleOrigin: draft.temporalFtleOrigin } : {}),
+        ...(draft.poincareOrigin ? { poincareOrigin: draft.poincareOrigin } : {}),
         ...(draft.parameterStudyOrigin ? { parameterStudyOrigin: draft.parameterStudyOrigin } : {}),
         ...(draft.derivedOrigin ? { derivedOrigin: draft.derivedOrigin } : {}),
         ...(draft.linkedOrigin ? { linkedOrigin: draft.linkedOrigin } : {}) });
@@ -696,6 +804,9 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
       ...(action.draft.analyticOrigin ? { analyticOrigin: action.draft.analyticOrigin } : {}),
       ...(action.draft.projectProfileOrigin ? { projectProfileOrigin: action.draft.projectProfileOrigin } : {}),
       ...(action.draft.comparisonProfileOrigin ? { comparisonProfileOrigin: action.draft.comparisonProfileOrigin } : {}),
+      ...(action.draft.temporalSpectrumOrigin ? { temporalSpectrumOrigin: action.draft.temporalSpectrumOrigin } : {}),
+      ...(action.draft.temporalFtleOrigin ? { temporalFtleOrigin: action.draft.temporalFtleOrigin } : {}),
+      ...(action.draft.poincareOrigin ? { poincareOrigin: action.draft.poincareOrigin } : {}),
       ...(action.draft.parameterStudyOrigin ? { parameterStudyOrigin: action.draft.parameterStudyOrigin } : {}),
       ...(action.draft.derivedOrigin ? { derivedOrigin: action.draft.derivedOrigin } : {}),
       ...(action.draft.linkedOrigin ? { linkedOrigin: action.draft.linkedOrigin } : {}) };
@@ -713,6 +824,12 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
     displays.splice(index + 1, 0, { ...displays[index]!, objectId: id });
     selection = { objectId: id, probe: null };
   } else if (action.type === "delete") {
+    if (objects.some(entry => entry.kind === "derivative-curve" &&
+        entry.sourceObjectId === action.objectId))
+      throw new TypeError("Remove saved derivative curves before deleting their source.");
+    if (objects.some(entry => entry.kind === "explicit-cartesian" &&
+        entry.derivativeOrigin?.sourceObjectId === action.objectId))
+      throw new TypeError("Remove saved derivative curves before deleting their source.");
     if (objects.some(entry => entry.kind === "trajectory" && entry.sourceFieldId === action.objectId))
       throw new TypeError("Remove trajectories depending on this slope field before deleting it.");
     if (document.source.constructions?.objects.some(construction => construction.inputs.some(input =>

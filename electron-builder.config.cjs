@@ -141,5 +141,9 @@ const config = {
   },
 };
 
+if (!isDevChannel && require("./package.json").version === "2.0.0") {
+  config.afterPack = require("./scripts/release20-sign-worker.cjs");
+}
+
 assertNativeCgalPackagingPolicy(config);
 module.exports = config;

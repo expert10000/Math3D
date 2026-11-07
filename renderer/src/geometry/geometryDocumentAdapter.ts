@@ -21,6 +21,7 @@ export type GeometryReplayTransaction = Readonly<{
   commands: readonly CommandEnvelope[];
   inverseCommands: readonly CommandEnvelope[];
   stateHash: StructuralHash;
+  retainedBefore?: StructuralHash;
 }>;
 
 export type GeometryReplayBundle = Readonly<{
@@ -54,8 +55,11 @@ export class GeometryDocumentAdapter {
   history() { return this.#kernel.historyStatus(); }
   previewSource(source: GeometryDocumentSource): GeometryDocumentSource { return clone(source); }
 
-  commitSource(source: GeometryDocumentSource, origin: CommandOrigin = { kind: "interactive", sourceId: "geometry-workspace" }): GeometryDocument {
-    return this.#commit(GEOMETRY_COMMAND_TYPES.replaceSource, source, this.document().source, origin);
+  commitSource(source: GeometryDocumentSource, origin: CommandOrigin = { kind: "interactive", sourceId: "geometry-workspace" },
+    retainedBefore?: StructuralHash): GeometryDocument {
+    if (retainedBefore !== undefined && retainedBefore !== this.document().identity.structuralHash)
+      throw new TypeError("Retained Geometry marker does not match the current source.");
+    return this.#commit(GEOMETRY_COMMAND_TYPES.replaceSource, source, this.document().source, origin, retainedBefore);
   }
 
   commitDisplay(display: GeometryDocumentDisplay, origin: CommandOrigin = { kind: "interactive", sourceId: "geometry-view" }): GeometryDocument {
@@ -161,7 +165,8 @@ export class GeometryDocumentAdapter {
     type: typeof GEOMETRY_COMMAND_TYPES[keyof typeof GEOMETRY_COMMAND_TYPES],
     next: GeometryDocumentSource | GeometryDocumentDisplay,
     previous: GeometryDocumentSource | GeometryDocumentDisplay,
-    origin: CommandOrigin
+    origin: CommandOrigin,
+    retainedBefore?: StructuralHash,
   ): GeometryDocument {
     if (canonicalJsonStringify(next) === canonicalJsonStringify(previous)) return this.document();
     this.#sequence += 1;
@@ -171,7 +176,8 @@ export class GeometryDocumentAdapter {
     const result = this.#kernel.transact({ transactionId, commands: [command], history: { kind: "reversible", inverseCommands: [inverse] } });
     if (!result.ok) throw new TypeError(result.errors.flatMap((error) => error.transactionErrors?.flatMap((entry) => entry.messages) ?? [error.message]).join(" "));
     this.#transactions.splice(this.#cursor);
-    this.#transactions.push({ transactionId, commands: [command], inverseCommands: [inverse], stateHash: result.event.stateHash });
+    this.#transactions.push({ transactionId, commands: [command], inverseCommands: [inverse], stateHash: result.event.stateHash,
+      ...(retainedBefore ? { retainedBefore } : {}) });
     this.#cursor += 1;
     this.#trimHistory();
     return this.document();

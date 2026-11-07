@@ -1,9 +1,21 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createTemporalFieldSourceDocument, projectTemporalFieldSourceStatus,
   sampleTemporalFieldProbe, sampleTemporalFieldSlice, computeTemporalPathline,
   projectTemporalPathlineStatus, computeTemporalStreakline,
   projectTemporalStreaklineStatus, computeTemporalSpectrum,
   projectTemporalSpectrumStatus, type CurveDocument, type AnalysisResultEnvelope,
+  computeTemporalLyapunovField, projectTemporalLyapunovFieldStatus,
+  computeTemporalSurfaceEvents, classifyTemporalSurfaceEvent,
+  projectTemporalSurfaceEventsStatus,
+  type TemporalLyapunovFieldStudy, type TemporalSurfaceEventStudy,
+  computeTemporalSurfaceLinkage, projectTemporalSurfaceLinkageStatus,
+  type TemporalSurfaceLinkageStudy,
+  computeTemporalSurfaceTransport, projectTemporalSurfaceTransportStatus,
+  type TemporalSurfaceTransportStudy,
+  computeTemporalSurfaceIdentity, projectTemporalSurfaceIdentityStatus,
+  type TemporalSurfaceIdentityStudy,
+  computeTemporalFtleProfile, projectTemporalFtleProfileStatus,
+  type TemporalFtleProfileStudy,
   type TemporalSpectrumResult, type TemporalSpectrumRecipe,
   type Math3DProject, type TemporalFieldSourceDocument, type VerifiedTemporalTransfers,
   type VectorField3DDocument, type VectorField3DIsosurface,
@@ -11,18 +23,41 @@ import { createTemporalFieldSourceDocument, projectTemporalFieldSourceStatus,
 import { loadVerifiedVectorFieldTransfer } from "./loadVerifiedVectorFieldTransfer";
 import { runTemporalMovingIsosurfaces, type TemporalMovingIsosurfaceFrame } from
   "./runTemporalMovingIsosurfaces";
+import { playTemporalMovingIsosurfaces, temporalSurfaceResidentBytes } from
+  "./playTemporalMovingIsosurfaces";
+import { validateTemporalSurfacePair } from "./validateTemporalSurfacePair";
 
 export function VectorField3DTimeSourcePanel({ document, project, onSave, onSavePathline,
-  onSaveStreakline, onSaveSpectrum, onPromoteMovingIsosurface }: {
+  onSaveStreakline, onSaveSpectrum, onOpenSpectrum, onSaveFtLeField,
+  onSaveSurfaceEvents, onSaveSurfaceLinkage, onSaveSurfaceTransport,
+  onSaveSurfaceIdentity,
+  onSaveFtleProfile, onOpenFtleProfile,
+  onPromoteMovingIsosurface,
+  onPreviewMovingIsosurface }: {
   document: VectorField3DDocument; project: Math3DProject | null | undefined;
   onSave?: (temporal: TemporalFieldSourceDocument, transfers?: VerifiedTemporalTransfers) => void;
   onSavePathline?: (curve: CurveDocument, transfers?: VerifiedTemporalTransfers) => void;
   onSaveStreakline?: (curve: CurveDocument, transfers?: VerifiedTemporalTransfers) => void;
   onSaveSpectrum?: (result: AnalysisResultEnvelope,
     transfers?: VerifiedTemporalTransfers) => void;
+  onSaveFtLeField?: (study: TemporalLyapunovFieldStudy,
+    transfers?: VerifiedTemporalTransfers) => void;
+  onSaveSurfaceEvents?: (study: TemporalSurfaceEventStudy,
+    transfers?: VerifiedTemporalTransfers) => void;
+  onSaveSurfaceLinkage?: (study: TemporalSurfaceLinkageStudy,
+    transfers?: VerifiedTemporalTransfers) => void;
+  onSaveSurfaceTransport?: (study: TemporalSurfaceTransportStudy,
+    transfers?: VerifiedTemporalTransfers) => void;
+  onSaveSurfaceIdentity?: (study: TemporalSurfaceIdentityStudy,
+    transfers?: VerifiedTemporalTransfers) => void;
+  onSaveFtleProfile?: (study: TemporalFtleProfileStudy,
+    transfers?: VerifiedTemporalTransfers) => void;
+  onOpenFtleProfile?: (result: AnalysisResultEnvelope) => void;
+  onOpenSpectrum?: (result: AnalysisResultEnvelope) => void;
   onPromoteMovingIsosurface?: (field: VectorField3DDocument,
     surface: VectorField3DIsosurface, temporal: TemporalFieldSourceDocument,
     time: number) => void;
+  onPreviewMovingIsosurface?: (surface: VectorField3DIsosurface | null) => void;
 }) {
   const [secondId, setSecondId] = useState("");
   const [laterTime, setLaterTime] = useState(1);
@@ -50,6 +85,11 @@ export function VectorField3DTimeSourcePanel({ document, project, onSave, onSave
   const [movingFrames, setMovingFrames] = useState<readonly TemporalMovingIsosurfaceFrame[]>([]);
   const movingAbort = useRef<AbortController | null>(null);
   const movingTemporal = useRef<TemporalFieldSourceDocument | null>(null);
+  const playbackAbort = useRef<AbortController | null>(null);
+  const playbackTransfers = useRef<VerifiedTemporalTransfers | undefined>(undefined);
+  const [playbackBusy, setPlaybackBusy] = useState(false);
+  const [playbackStatus, setPlaybackStatus] = useState("");
+  const [interpolateSurfaces, setInterpolateSurfaces] = useState(false);
   const [spectrumComponent, setSpectrumComponent] = useState<"magnitude" | "x" | "y" | "z">("magnitude");
   const [spectrumCount, setSpectrumCount] = useState<16 | 32 | 64>(32);
   const [spectrumWindow, setSpectrumWindow] = useState<"rectangular" | "hann">("hann");
@@ -57,9 +97,43 @@ export function VectorField3DTimeSourcePanel({ document, project, onSave, onSave
   const [spectrumProgress, setSpectrumProgress] = useState("");
   const [spectrumView, setSpectrumView] = useState<TemporalSpectrumResult | null>(null);
   const [spectrumTransfers, setSpectrumTransfers] = useState<VerifiedTemporalTransfers | undefined>();
+  const [ftleBusy, setFtleBusy] = useState(false);
+  const [ftleProgress, setFtleProgress] = useState("");
+  const [ftleStudy, setFtleStudy] = useState<TemporalLyapunovFieldStudy | null>(null);
+  const cancelFtle = useRef(false);
+  const [profileBusy, setProfileBusy] = useState(false);
+  const [profileTolerance, setProfileTolerance] = useState(.02);
+  const [profileView, setProfileView] = useState<TemporalFtleProfileStudy | null>(null);
+  const cancelProfile = useRef(false);
+  const [eventStatus, setEventStatus] = useState("");
+  const [linkageStatus, setLinkageStatus] = useState("");
+  const [transportStatus, setTransportStatus] = useState("");
+  const [identityStatus, setIdentityStatus] = useState("");
   const cancelSpectrum = useRef(false);
   const projectRef = useRef(project);
   projectRef.current = project;
+  useEffect(() => () => { playbackAbort.current?.abort(); movingAbort.current?.abort();
+    onPreviewMovingIsosurface?.(null); }, [onPreviewMovingIsosurface]);
+  useEffect(() => {
+    const temporal = movingTemporal.current;
+    if (!project || !temporal || !playbackTransfers.current) return;
+    const status = projectTemporalFieldSourceStatus(project, temporal,
+      playbackTransfers.current);
+    if (status.status !== "current") {
+      playbackAbort.current?.abort(); onPreviewMovingIsosurface?.(null);
+      setPlaybackStatus(`Playback withheld: ${status.reason}.`);
+    }
+  }, [project, onPreviewMovingIsosurface]);
+  useEffect(() => {
+    const withhold = () => {
+      if (!movingTemporal.current) return;
+      playbackAbort.current?.abort(); playbackTransfers.current = undefined;
+      onPreviewMovingIsosurface?.(null);
+      setPlaybackStatus("Playback withheld until the pinned frames are verified again.");
+    };
+    window.addEventListener("focus", withhold);
+    return () => window.removeEventListener("focus", withhold);
+  }, [onPreviewMovingIsosurface]);
   const candidates = project?.workspace.entries.filter(item => item.module === "vector3d" &&
     item.expected.id !== document.identity.id) ?? [];
   const saved = project?.workspace.timeSources?.filter(item => item.source.frames.some(frame =>
@@ -78,6 +152,30 @@ export function VectorField3DTimeSourcePanel({ document, project, onSave, onSave
     item.provenance.operation.type === "vector3d.temporal-spectrum" &&
     saved.some(source => source.identity.id ===
       (item.provenance.operation.parameters.temporal as { id?: string } | undefined)?.id)) ?? [];
+  const ftleResults = project?.workspace.results.filter(item =>
+    item.provenance.operation.type === "vector3d.temporal-ftle-field" &&
+    saved.some(source => source.identity.id ===
+      item.provenance.operation.parameters.temporalId)) ?? [];
+  const eventResults = project?.workspace.results.filter(item =>
+    item.provenance.operation.type === "vector3d.temporal-surface-events" &&
+    saved.some(source => source.identity.id ===
+      (item.provenance.operation.parameters.lineage as { temporalId?: string } | undefined)?.temporalId)) ?? [];
+  const linkageResults = project?.workspace.results.filter(item =>
+    item.provenance.operation.type === "vector3d.temporal-surface-linkage" &&
+    saved.some(source => source.identity.id ===
+      (item.provenance.operation.parameters.lineage as { temporalId?: string } | undefined)?.temporalId)) ?? [];
+  const transportResults = project?.workspace.results.filter(item =>
+    item.provenance.operation.type === "vector3d.temporal-surface-transport" &&
+    saved.some(source => source.identity.id ===
+      (item.provenance.operation.parameters.lineage as { temporalId?: string } | undefined)?.temporalId)) ?? [];
+  const identityResults = project?.workspace.results.filter(item =>
+    item.provenance.operation.type === "vector3d.temporal-surface-identity" &&
+    saved.some(source => source.identity.id ===
+      item.provenance.operation.parameters.temporalId)) ?? [];
+  const ftleProfiles = project?.workspace.results.filter(item =>
+    item.provenance.operation.type === "vector3d.temporal-ftle-profile" &&
+    saved.some(source => source.identity.id ===
+      item.provenance.operation.parameters.temporalId)) ?? [];
   const loadTransfers = async (ids: readonly string[]): Promise<VerifiedTemporalTransfers> => {
     const transfers = new Map();
     for (const id of ids) {
@@ -166,6 +264,9 @@ export function VectorField3DTimeSourcePanel({ document, project, onSave, onSave
   };
   const runMoving = async () => {
     setError(""); setMessage(""); setMovingProgress(""); setMovingFrames([]);
+    playbackAbort.current?.abort(); setPlaybackStatus("");
+    playbackTransfers.current = undefined;
+    onPreviewMovingIsosurface?.(null);
     movingTemporal.current = null;
     const controller = new AbortController(); movingAbort.current = controller;
     setMovingBusy(true);
@@ -187,6 +288,178 @@ export function VectorField3DTimeSourcePanel({ document, project, onSave, onSave
       setMessage(`Extracted ${frames.length} verified time frames. Choose one to save as a Mesh.`);
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { movingAbort.current = null; setMovingBusy(false); }
+  };
+  const runFtle = async () => {
+    setError(""); setFtleProgress(""); setFtleStudy(null);
+    cancelFtle.current = false; setFtleBusy(true);
+    try {
+      if (!project || !sampleId || !onSaveFtLeField)
+        throw new TypeError("Choose a saved temporal source in a Project.");
+      const temporal = saved.find(item => item.identity.id === sampleId)!;
+      const frameIds = temporal.source.frames.map(frame => frame.documentId);
+      const transfers = await loadTransfers(frameIds);
+      const first = project.workspace.entries.find(item => item.expected.id ===
+        frameIds[0])?.checkpoint;
+      if (first?.format !== "math3d.vector-field3d-document")
+        throw new TypeError("The first time frame is missing.");
+      const study = await computeTemporalLyapunovField(project, temporal,
+        { normalAxis: 2, coordinate: (first.source.axes[2].min +
+            first.source.axes[2].max) / 2,
+          resolution: 2, startTime: temporal.source.frames[0]!.time,
+          endTime: temporal.source.frames.at(-1)!.time,
+          perturbation: Math.min(...first.source.axes.map(axis =>
+            axis.max - axis.min)) * .001,
+          maxSteps: 32, method: "fixed-rk4-cauchy-green" },
+        { transfers, shouldCancel: () => cancelFtle.current,
+          currentProject: () => projectRef.current ?? project,
+          onProgress: (done, total) => setFtleProgress(`${done}/${total} seeds`),
+          verifyBeforePublish: async () => loadTransfers(frameIds) });
+      setFtleStudy(study);
+      if (study.status === "ready") onSaveFtLeField(study, transfers);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { setFtleBusy(false); }
+  };
+  const runFtleProfile = async () => {
+    setError(""); setProfileView(null); cancelProfile.current = false;
+    setProfileBusy(true);
+    try {
+      const current = projectRef.current;
+      if (!current || !sampleId || !onSaveFtleProfile)
+        throw new TypeError("Save a bounded FTLE field first.");
+      const base = [...current.workspace.results].reverse().find(item =>
+        item.provenance.operation.type === "vector3d.temporal-ftle-field" &&
+        item.provenance.operation.parameters.temporalId === sampleId);
+      if (!base) throw new TypeError("Saved FTLE field is missing.");
+      const temporal = saved.find(item => item.identity.id === sampleId)!;
+      const frameIds = temporal.source.frames.map(frame => frame.documentId);
+      const transfers = await loadTransfers(frameIds);
+      const study = await computeTemporalFtleProfile(current,
+        { baseResultId: base.resultId, convergenceTolerance: profileTolerance, profileRow: 0 },
+        { transfers, shouldCancel: () => cancelProfile.current,
+          currentProject: () => projectRef.current ?? current,
+          verifyBeforePublish: async () => loadTransfers(frameIds) });
+      setProfileView(study);
+      if (study.status === "ready") onSaveFtleProfile(study, transfers);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { setProfileBusy(false); }
+  };
+  const saveEvents = async () => {
+    setError(""); setEventStatus("");
+    try {
+      const temporal = movingTemporal.current, current = projectRef.current;
+      if (!temporal || !current || !onSaveSurfaceEvents || movingFrames.length < 2)
+        throw new TypeError("Extract the verified exact frames first.");
+      const transfers = await loadTransfers(temporal.source.frames.map(frame =>
+        frame.documentId));
+      const study = computeTemporalSurfaceEvents(current, temporal, movingFrames,
+        transfers);
+      if (study.status !== "ready") throw new TypeError(study.reason ?? "Events unavailable.");
+      onSaveSurfaceEvents(study, transfers);
+      setEventStatus(`Saved ${study.events.length} exact-frame event records. ` +
+        "Topology-changing interpolation remains unavailable.");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+  };
+  const saveLinkage = async () => {
+    setError(""); setLinkageStatus("");
+    try {
+      const temporal = movingTemporal.current, current = projectRef.current;
+      if (!temporal || !current || !onSaveSurfaceLinkage || movingFrames.length < 2)
+        throw new TypeError("Extract the pinned frames and save GF-52 events first.");
+      const transfers = await loadTransfers(temporal.source.frames.map(frame =>
+        frame.documentId));
+      const candidate = [...current.workspace.results].reverse().find(item =>
+        item.provenance.operation.type === "vector3d.temporal-surface-events" &&
+        (item.provenance.operation.parameters.lineage as
+          { temporalId?: string } | undefined)?.temporalId === temporal.identity.id);
+      if (!candidate) throw new TypeError("Save exact-frame topology events first.");
+      const study = computeTemporalSurfaceLinkage(current, temporal,
+        movingFrames, candidate, transfers);
+      if (study.status !== "ready") throw new TypeError(study.reason ?? "Linkage unavailable.");
+      onSaveSurfaceLinkage(study, transfers);
+      setLinkageStatus(`Saved ${study.links.length} sampled component links; ` +
+        `${String(study.publication!.summary.ambiguousCount)} ambiguous. Exact frames only.`);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+  };
+  const saveTransport = async () => {
+    setError(""); setTransportStatus("");
+    try {
+      const temporal = movingTemporal.current, current = projectRef.current;
+      if (!temporal || !current || !onSaveSurfaceTransport || movingFrames.length < 2)
+        throw new TypeError("Extract verified frames and save component linkage first.");
+      const transfers = await loadTransfers(temporal.source.frames.map(frame =>
+        frame.documentId));
+      const linkage = [...current.workspace.results].reverse().find(item =>
+        item.provenance.operation.type === "vector3d.temporal-surface-linkage" &&
+        (item.provenance.operation.parameters.lineage as
+          { temporalId?: string } | undefined)?.temporalId === temporal.identity.id);
+      if (!linkage) throw new TypeError("Save GF-57 component linkage first.");
+      const span = Math.min(...document.source.axes.map(axis => axis.max - axis.min));
+      const study = computeTemporalSurfaceTransport(current, temporal, movingFrames,
+        linkage, { method: "verified-midpoint-advection", maxStepTime: 4,
+          distanceTolerance: span * .025, witnessesPerComponent: 8 }, transfers);
+      if (study.status !== "ready") throw new TypeError(study.reason ?? "Transport unavailable.");
+      onSaveSurfaceTransport(study, transfers);
+      setTransportStatus(`Saved ${study.witnesses.length} checked region witnesses; ` +
+        `${String(study.publication!.summary.ambiguousCount)} ambiguous. ` +
+        "Material identity and interpolation remain unavailable.");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+  };
+  const saveIdentity = async () => {
+    setError(""); setIdentityStatus("");
+    try {
+      const temporal = movingTemporal.current, current = projectRef.current;
+      if (!temporal || !current || !onSaveSurfaceIdentity || movingFrames.length < 2)
+        throw new TypeError("Extract verified exact frames and save GF-59 transport first.");
+      const transfers = await loadTransfers(temporal.source.frames.map(frame =>
+        frame.documentId));
+      const transport = [...current.workspace.results].reverse().find(item =>
+        item.provenance.operation.type === "vector3d.temporal-surface-transport" &&
+        (item.provenance.operation.parameters.lineage as
+          { temporalId?: string } | undefined)?.temporalId === temporal.identity.id);
+      if (!transport) throw new TypeError("Save GF-59 transport evidence first.");
+      const study = computeTemporalSurfaceIdentity(current, temporal,
+        movingFrames, transport, transfers);
+      if (study.status !== "measured")
+        throw new TypeError(study.reason ?? "Identity evidence unavailable.");
+      onSaveSurfaceIdentity(study, transfers);
+      setIdentityStatus(`Saved ${String((study.publication!.summary.identityLinks as
+        unknown[]).length)} unique directed links and ` +
+        `${String(study.publication!.summary.ambiguousCount)} ambiguous links. ` +
+        "Exact-frame playback; global material identity unverified.");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+  };
+  const playMoving = async () => {
+    setError(""); setPlaybackStatus("");
+    const controller = new AbortController(); playbackAbort.current = controller;
+    setPlaybackBusy(true);
+    try {
+      const temporal = movingTemporal.current, current = projectRef.current;
+      if (!temporal || !current || movingFrames.length < 2)
+        throw new TypeError("Extract the pinned frames before playback.");
+      await playTemporalMovingIsosurfaces(current, temporal, movingFrames, {
+        signal: controller.signal, currentProject: () => projectRef.current ?? current,
+        loadTransfers: async () => { const transfers = await loadTransfers(
+          temporal.source.frames.map(frame => frame.documentId));
+          playbackTransfers.current = transfers; return transfers; },
+        intervalMs: 500, timeBudgetMs: 10_000,
+        memoryBudgetBytes: 64 * 1024 * 1024,
+        interpolate: interpolateSurfaces,
+        onInterpolated: (surface, from, to) => {
+          onPreviewMovingIsosurface?.(surface);
+          setPlaybackStatus(`Validated midpoint between ${from} and ${to} ` +
+            `${temporal.source.timeAxis.unit}; preview only.`);
+        },
+        onInterpolationUnavailable: (index, reason) =>
+          setPlaybackStatus(`Frames ${index + 1}–${index + 2}: exact playback; ${reason}`),
+        onFrame: (frame, index) => {
+          onPreviewMovingIsosurface?.(frame.surface);
+          setPlaybackStatus(`Frame ${index + 1}/${movingFrames.length}: ${frame.time} ` +
+            `${temporal.source.timeAxis.unit}; ${frame.surface.triangleCount} triangles.`);
+        } });
+    } catch (cause) { onPreviewMovingIsosurface?.(null);
+      setPlaybackStatus("Playback withheld.");
+      setError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { playbackAbort.current = null; setPlaybackBusy(false); }
   };
   const promoteMoving = async (frame: TemporalMovingIsosurfaceFrame) => {
     setError("");
@@ -324,6 +597,41 @@ export function VectorField3DTimeSourcePanel({ document, project, onSave, onSave
           Cancel streakline</button>}
         {streaklineProgress && <p role="status">Streakline {streaklineProgress}</p>}
       </div>
+      <div data-testid="gf50-ftle-field">
+        <h6>Finite-time Lyapunov field</h6>
+        <p>Four physical seeds on the central slice; values are finite-time estimates in
+          inverse {document.source.timeUnit} with two-scale numerical uncertainty.</p>
+        <button type="button" disabled={!sampleId || !onSaveFtLeField || ftleBusy}
+          onClick={() => void runFtle()}>Compute and save bounded FTLE field</button>
+        {ftleBusy && <button type="button" onClick={() => { cancelFtle.current = true; }}>
+          Cancel FTLE field</button>}
+        {ftleProgress && <p role="status">FTLE {ftleProgress}</p>}
+        {ftleStudy && <p role="status">{ftleStudy.status === "ready" ?
+          `${ftleStudy.cells.length} finite-time estimates saved; ` +
+            `${ftleStudy.evaluations} velocity samples.` :
+          `FTLE unavailable: ${ftleStudy.reason}.`}</p>}
+        <label>FTLE convergence tolerance (1/{document.source.timeUnit})
+          <input type="number" min="0.00000001" max="0.5" step="any"
+            value={profileTolerance} onChange={event =>
+              setProfileTolerance(Number(event.target.value))} /></label>
+        <button type="button" disabled={!sampleId || !onSaveFtleProfile ||
+          profileBusy || ftleResults.length === 0}
+          onClick={() => void runFtleProfile()}>Refine and save physical FTLE profile</button>
+        {profileBusy && <button type="button" onClick={() => {
+          cancelProfile.current = true;
+        }}>Cancel FTLE refinement</button>}
+        {profileView && <p role="status" data-testid="gf53-profile-status">
+          {profileView.status === "ready" ?
+            `${profileView.publication!.summary.convergedCount} converged cells, ` +
+              `${profileView.publication!.summary.gapCount} unavailable gaps; ` +
+              `${String(profileView.publication!.summary.axisUnit)} → ` +
+              `${String(profileView.publication!.summary.valueUnit)}.` :
+            `FTLE profile unavailable: ${profileView.reason}.`}
+        </p>}
+        {profileView?.status === "ready" && onOpenFtleProfile &&
+          <button type="button" onClick={() => onOpenFtleProfile(profileView.publication!)}>
+            Open refined FTLE profile in Graphs</button>}
+      </div>
       <div data-testid="gf30-moving-isosurfaces">
         <label>Speed level <input type="number" min="0" step="any" value={movingLevel}
           onChange={event => setMovingLevel(Number(event.target.value))} /></label>
@@ -333,11 +641,50 @@ export function VectorField3DTimeSourcePanel({ document, project, onSave, onSave
         {movingBusy && <button type="button" onClick={() => movingAbort.current?.abort()}>
           Cancel moving isosurfaces</button>}
         {movingProgress && <p role="status">Moving isosurfaces {movingProgress}</p>}
+        {movingFrames.length > 0 && <div data-testid="gf33-moving-playback">
+          <p>Exact pinned frames · 500 ms display cadence ·
+            {" "}{temporalSurfaceResidentBytes(movingFrames)} geometry bytes / 64 MiB budget.</p>
+          <label><input type="checkbox" checked={interpolateSurfaces}
+            onChange={event => setInterpolateSurfaces(event.target.checked)} />
+            Show validated midpoints when correspondence is stable</label>
+          {movingFrames.slice(0, -1).map((frame, index) => {
+            const review = validateTemporalSurfacePair(frame.surface,
+              movingFrames[index + 1]!.surface);
+            const event = classifyTemporalSurfaceEvent(frame.surface,
+              movingFrames[index + 1]!.surface, frame.time,
+              movingFrames[index + 1]!.time);
+            return <p key={index} role="status">Frames {index + 1}–{index + 2}: {
+              review.status === "compatible" ? `interpolation available — ${review.reason}` :
+                `exact playback only — ${review.reason}`} Event: {event.kind};
+              {" "}{event.reason}</p>;
+          })}
+          <button type="button" disabled={!onSaveSurfaceEvents}
+            onClick={() => void saveEvents()}>Save exact-frame topology events</button>
+          {eventStatus && <p role="status">{eventStatus}</p>}
+          <button type="button" disabled={!onSaveSurfaceLinkage || !eventResults.length}
+            onClick={() => void saveLinkage()}>Save component-event linkage</button>
+          {linkageStatus && <p role="status" data-testid="gf57-linkage-status">{
+            linkageStatus}</p>}
+          <button type="button" disabled={!onSaveSurfaceTransport || !linkageResults.length}
+            onClick={() => void saveTransport()}>Save checked surface transport evidence</button>
+          {transportStatus && <p role="status" data-testid="gf59-transport-status">{
+            transportStatus}</p>}
+          <button type="button" disabled={!onSaveSurfaceIdentity || !transportResults.length}
+            onClick={() => void saveIdentity()}>Check unique material links</button>
+          {identityStatus && <p role="status" data-testid="gf65-identity-status">{
+            identityStatus}</p>}
+          <button type="button" disabled={playbackBusy || !onPreviewMovingIsosurface}
+            onClick={() => void playMoving()}>Play verified frames</button>
+          {playbackBusy && <button type="button" onClick={() => playbackAbort.current?.abort()}>
+            Stop playback</button>}
+          {playbackStatus && <p role="status">{playbackStatus}</p>}
+        </div>}
         {movingFrames.map(frame => <div key={frame.time}>
           {frame.time} {movingTemporal.current?.source.timeAxis.unit} ·
           {" "}{frame.surface.triangleCount} triangles ·
           {" "}{frame.surface.topology.connectedComponents} components
-          <button type="button" onClick={() => void promoteMoving(frame)}>
+          <button type="button" disabled={frame.surface.triangleCount === 0}
+            onClick={() => void promoteMoving(frame)}>
             Save this frame as Mesh</button>
         </div>)}
       </div>
@@ -368,6 +715,9 @@ export function VectorField3DTimeSourcePanel({ document, project, onSave, onSave
               strokeWidth="2" /></svg>
           <div>Autocorrelation: {String(spectrumView?.publication.summary.autocorrelationStatus)} ·
             {" "}{String(spectrumView?.publication.summary.sampleCount)} samples</div>
+          {onOpenSpectrum && <button type="button" data-testid="gf32-open-spectrum-graphs"
+            onClick={() => onOpenSpectrum(spectrumView!.publication)}>
+            Open PSD and autocorrelation in Graphs</button>}
         </div>}
         {spectrumStatus && spectrumStatus.status !== "current" &&
           <p role="status">Spectrum values withheld: {spectrumStatus.reason}</p>}
@@ -405,6 +755,53 @@ export function VectorField3DTimeSourcePanel({ document, project, onSave, onSave
           {" "}{status.status}{status.reason ? ` (${status.reason})` : ""}
           <button type="button" onClick={() => void showSavedSpectrum(result)}>
             Verify and show PSD</button></li>;
+      })}</ul></details>}
+    {ftleResults.length > 0 && <details><summary>Saved finite-time Lyapunov fields</summary>
+      <ul>{ftleResults.map(result => {
+        const status = projectTemporalLyapunovFieldStatus(project!, result);
+        return <li key={result.resultId}>{String(result.summary.cellCount)} cells,
+          {" "}{String(result.summary.exponentUnit)}: {status.status}
+          {status.reason ? ` (${status.reason})` : ""}. Values require frame verification.</li>;
+      })}</ul></details>}
+    {eventResults.length > 0 && <details><summary>Saved topology events</summary>
+      <ul>{eventResults.map(result => {
+        const status = projectTemporalSurfaceEventsStatus(project!, result);
+        return <li key={result.resultId}>{String(result.summary.eventCount)} exact-frame events:
+          {" "}{status.status}{status.reason ? ` (${status.reason})` : ""}.
+          No topology-changing interpolation.</li>;
+      })}</ul></details>}
+    {linkageResults.length > 0 && <details><summary>Saved component linkage</summary>
+      <ul>{linkageResults.map(result => {
+        const status = projectTemporalSurfaceLinkageStatus(project!, result);
+        return <li key={result.resultId}>{String(result.summary.geometricContinuationCount)}
+          {" "}geometric links, {String(result.summary.ambiguousCount)} ambiguous:
+          {" "}{status.status}{status.reason ? ` (${status.reason})` : ""}.
+          Exact-frame playback only.</li>;
+      })}</ul></details>}
+    {transportResults.length > 0 && <details><summary>Saved transport evidence</summary>
+      <ul>{transportResults.map(result => {
+        const status = projectTemporalSurfaceTransportStatus(project!, result);
+        return <li key={result.resultId}>{String(result.summary.witnesses &&
+          (result.summary.witnesses as unknown[]).length)} region witnesses:
+          {" "}{status.status}{status.reason ? ` (${status.reason})` : ""}.
+          Material identity unverified; exact frames only.</li>;
+      })}</ul></details>}
+    {identityResults.length > 0 && <details><summary>Saved material-link evidence</summary>
+      <ul>{identityResults.map(result => {
+        const status = projectTemporalSurfaceIdentityStatus(project!, result);
+        return <li key={result.resultId}>{String((result.summary.identityLinks as
+          unknown[]).length)} unique links, {String(result.summary.ambiguousCount)} ambiguous:
+          {" "}{status.status}{status.reason ? ` (${status.reason})` : ""}.
+          Exact-frame playback; global identity unverified.</li>;
+      })}</ul></details>}
+    {ftleProfiles.length > 0 && <details><summary>Saved FTLE profiles</summary>
+      <ul>{ftleProfiles.map(result => {
+        const status = projectTemporalFtleProfileStatus(project!, result);
+        return <li key={result.resultId}>{String(result.summary.convergedCount)}
+          {" "}converged, {String(result.summary.gapCount)} gaps:
+          {" "}{status.status}{status.reason ? ` (${status.reason})` : ""}.
+          <button type="button" disabled={!onOpenFtleProfile}
+            onClick={() => onOpenFtleProfile?.(result)}>Open in Graphs</button></li>;
       })}</ul></details>}
   </section>;
 }

@@ -1,0 +1,13 @@
+# SAGE-H02 backend and domain comparison acceptance
+
+Open **CAS → Algebra → Inspector → Compare** (also available in Number Theory) and select two saved Project algebra results. Each column shows the pinned target, operation, coefficient domain, Sage route and version, result hash, execution-certificate scope, Inspector verification and the operation's typed facts. The comparison is derived from saved evidence, so an independent Project import can recreate it without executing code.
+
+**Backend comparison** accepts exact GCD or modular inverse evidence from Docker and local Sage only when the operation, pinned object revision, definition hash and structured input parameters match. Both results pass the existing Project evidence parser and the Inspector's independent exact arithmetic check before the view reports verified agreement. A wrong arithmetic value is marked verification failed. Different inputs or a single route are incompatible. The view compares the mathematical value, not rendered strings or result hashes.
+
+**Domain comparison** accepts one exact QQ matrix dossier and one ZZ Smith/Hermite result for the same canonical integer matrix. It compares typed rank and shows QQ kernel dimension and RREF alongside the ZZ Smith diagonal, free rank and torsion orders. Matching rank is labeled **reported consistency** because the QQ parser checks kernel/image witnesses and canonical RREF structure but does not independently certify full row equivalence. Smith/Hermite transformation status remains visible through each result's Inspector. Mismatched matrices are incompatible. A rank discrepancy is reported as a discrepancy without assigning fault to either backend.
+
+This bounded H02 view does not compare `factor(f)` over QQ with GF(5): the current saved-operation registry has no finite-field factorization result schema. Arbitrary Gröbner algorithms and exact-versus-approximate roots likewise need typed paired contracts before a mathematical comparison can be claimed. The live B08 Docker Sage 10.10 comparison remains open.
+
+Acceptance results (2026-11-06): four focused model tests passed, including independent Project reopen, exact GCD and modular inverse agreement, wrong GCD, tampered result hash, mismatched inputs, and QQ/ZZ rank plus torsion fixtures. The desktop comparison gate passed backend and domain views after a fresh app launch and Project save/reopen; the existing B06 structured Inspector desktop gate also passed. `npm run typecheck:noemit`, `npm run build:core` and a final renderer rebuild passed.
+
+Next: **SAGE-H03**, export a reproducible algebra manifest.

@@ -1,0 +1,23 @@
+.release-gallery { padding: 3rem 0 5rem; }
+.release-gallery-intro { max-width: 75ch; margin-bottom: 2rem; }
+.release-gallery-intro .lead { max-width: 75ch; }
+.release-gallery-note { color: var(--ink-soft); border-left: 3px solid var(--brand); padding-left: 1rem; }
+.release-gallery-controls { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
+.release-gallery-filters { display: flex; flex-wrap: wrap; gap: .5rem; }
+.release-gallery-filters button { font: inherit; font-weight: 700; color: var(--brand-strong); background: #fff; border: 1px solid var(--line); border-radius: 999px; padding: .45rem .75rem; cursor: pointer; }
+.release-gallery-filters button[aria-pressed="true"] { color: #fff; background: var(--brand-strong); border-color: var(--brand-strong); }
+.release-gallery-filters button:focus-visible, .release-gallery-search input:focus-visible, .release-gallery-more:focus-visible, .release-gallery-card a:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.release-gallery-search { display: grid; gap: .25rem; font-size: .85rem; font-weight: 700; }
+.release-gallery-search input { min-width: min(19rem, 90vw); border: 1px solid var(--line); border-radius: 8px; padding: .65rem .75rem; font: inherit; background: #fff; }
+#release-gallery-status { color: var(--ink-soft); margin: .5rem 0 1rem; }
+.release-gallery-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+.release-gallery-card { min-width: 0; margin: 0; overflow: hidden; background: #fff; border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 8px 24px rgba(14,49,84,.08); }
+.release-gallery-card a { display: block; background: #e8eef7; }
+.release-gallery-card img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; object-position: top center; }
+.release-gallery-card figcaption { padding: .8rem 1rem 1rem; }
+.release-gallery-card strong { display: block; font-family: "Space Grotesk", "Segoe UI", sans-serif; line-height: 1.25; }
+.release-gallery-card small { display: block; margin-top: .3rem; color: var(--ink-soft); }
+.release-gallery-more { display: block; margin: 1.5rem auto 0; cursor: pointer; }
+.release-gallery-more[hidden] { display: none; }
+@media (max-width: 850px) { .release-gallery-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 580px) { .release-gallery-grid { grid-template-columns: 1fr; } .release-gallery-controls { display: block; } .release-gallery-search { margin-top: 1rem; } .nav-links { flex-wrap: wrap; justify-content: flex-end; } }

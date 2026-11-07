@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { lstat, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, open, readdir, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, join, resolve, sep } from "node:path";
 import { importQuantumSceneBundle } from "./importer";
 import { sceneFingerprint } from "./recent";
@@ -22,7 +22,21 @@ const exact = (value: unknown, keys: string[]) => !!value && typeof value === "o
 async function checkedFile(path: string, limit: number): Promise<Buffer> {
   const info = await lstat(path);
   if (!info.isFile() || info.isSymbolicLink() || info.size > limit) throw new Error("Invalid portable quantum file or size");
-  return readFile(path);
+  const file = await open(path, "r");
+  try {
+    const actual = await file.stat();
+    if (!actual.isFile() || actual.dev !== info.dev || actual.ino !== info.ino || actual.size !== info.size || actual.size > limit)
+      throw new Error("Portable quantum file changed during open");
+    const bytes = Buffer.alloc(info.size + 1);
+    let count = 0;
+    while (count < bytes.length) {
+      const read = await file.read(bytes, count, bytes.length - count, count);
+      if (!read.bytesRead) break;
+      count += read.bytesRead;
+    }
+    if (count !== info.size) throw new Error("Portable quantum file changed during read");
+    return bytes.subarray(0, count);
+  } finally { await file.close(); }
 }
 function checkedProject(projectJson: string, fingerprints: readonly string[]) {
   if (Buffer.byteLength(projectJson) > MAX_PROJECT) throw new Error("Portable Project exceeds 112 MiB");
@@ -145,6 +159,8 @@ export async function openQuantumProjectPack(directory: string, cacheRoot: strin
   }
   const cache = resolve(cacheRoot);
   await mkdir(cache, { recursive: true });
+  const cacheInfo = await lstat(cache);
+  if (!cacheInfo.isDirectory() || cacheInfo.isSymbolicLink()) throw new Error("Quantum cache root must be a real directory");
   const references: PackReference[] = [];
   for (const scene of pack.scenes) {
     const destination = join(cache, `${scene.fingerprint}.qscene`);

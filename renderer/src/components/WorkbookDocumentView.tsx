@@ -1,6 +1,7 @@
 import React from "react";
 import type { KernelWorkspaceModule, Math3DProject } from "@math3d/core";
-import { inspectNotebookReference, workbookSageCodeOutputText, type NotebookArtifactReader, type Workbook, type WorkbookBlock, type WorkbookStageId } from "@math3d/workbook";
+import { inspectNotebookReference, inspectWorkbookAlgebraObjectCell, workbookSageCodeOutputText,
+  type NotebookArtifactReader, type Workbook, type WorkbookBlock, type WorkbookStageId } from "@math3d/workbook";
 import type { NotebookProjectContext } from "../workbook/notebookProjectContext";
 import { WorkbookAnalysisRerun } from "./WorkbookAnalysisRerun";
 import { WorkbookSnapshotRecord } from "./WorkbookSnapshotRecord";
@@ -18,6 +19,7 @@ import { WorkbookSavedMeshReviewBlock } from "./WorkbookSavedMeshReviewBlock";
 import { WorkbookCoordinateReviewBlock } from "./WorkbookCoordinateReviewBlock";
 import type { SavedMeshTrendTarget } from "../projects/projectSavedMeshTrendPoint";
 import { ScientificSubrectangleWorkbookReport } from "./ScientificSubrectangleWorkbookReport";
+import { WorkbookAlgebraResultCell } from "./WorkbookAlgebraResultCell";
 
 type Props = {
   workbook: Workbook;
@@ -43,6 +45,7 @@ const blockKinds: Record<WorkbookBlock["type"], string> = {
   text: "Text", formula: "Equation", reference: "Project reference", visualize: "Figure",
   compute: "Result", interaction: "Interaction", assert: "Check",
   "sage-code": "Sage code",
+  "algebra-object": "Algebra object",
 };
 
 /** A reading surface over the live Workbook model. Project targets are resolved by ID, never copied. */
@@ -115,6 +118,10 @@ export const WorkbookDocumentView: React.FC<Props> = ({
           {block.documentContent && <div data-testid="workbook-document-content" style={{ minWidth: 0 }} dangerouslySetInnerHTML={{ __html: workbookDocumentContentHtml(block) ?? "" }} />}
           {(block.type === "text" || block.type === "visualize") && <details><summary>Edit document content</summary><WorkbookContentEditor block={block} readOnly={readOnly} onChange={patch => onUpdateBlock(stage.id, block.id, patch)} /></details>}
           {block.type === "reference" && <div style={{ display: "grid", gap: 4 }}>
+            {block.algebraResult && <WorkbookAlgebraResultCell value={block.algebraResult} readOnly={readOnly}
+              getProject={() => context ?? null}
+              onChange={(algebraResult) => onUpdateBlock(stage.id, block.id, { algebraResult, notebookReference: undefined })}
+              onClear={() => onUpdateBlock(stage.id, block.id, { algebraResult: undefined })} />}
             {reference ? <>
               <strong>{reference.kind === "document" ? sourceTitle || source?.module || "Project document" : inspection?.result?.provenance.operation.type || "Project result"}</strong>
               <span>{reference.kind === "document" ? "Document" : "Saved result"} · source revision {reference.source.revision} · {inspection?.status ?? "unresolved"}</span>
@@ -123,7 +130,7 @@ export const WorkbookDocumentView: React.FC<Props> = ({
               {!readOnly && <WorkbookAnalysisRerun context={context ?? null} reference={reference} onRelink={notebookReference => onUpdateBlock(stage.id, block.id, { notebookReference })} />}
               <button type="button" disabled={!projectLive || !source || inspection?.status === "missing" || inspection?.status === "different-project"}
                 onClick={() => source && onOpenDocument(source.expected.id, source.module)} style={{ justifySelf: "start", fontSize: 11 }}>Open source document</button>
-            </> : <span>No Project target linked yet.</span>}
+            </> : !block.algebraResult && <span>No Project target linked yet.</span>}
           </div>}
           {block.scientificRegionReport?.kind === "scientific-subrectangle-report/v1" &&
             <ScientificSubrectangleWorkbookReport project={project} reference={reference} workbookId={workbook.id}
@@ -140,6 +147,19 @@ export const WorkbookDocumentView: React.FC<Props> = ({
               <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: 0 }}>{workbookSageCodeOutputText(block.sageCode.runs.at(-1)!)}</pre>
               <span>Job {block.sageCode.runs.at(-1)?.id} · {block.sageCode.runs.at(-1)?.status}</span>
             </>}
+          </div>}
+          {block.type === "algebra-object" && <div data-testid="workbook-document-algebra-object" style={{ display: "grid", gap: 5 }}>
+            {block.algebraObject ? (() => { const cell = block.algebraObject;
+              const latest = cell.runs.at(-1)!;
+              const inspection = inspectWorkbookAlgebraObjectCell(project, cell);
+              return <>
+                <strong>{latest.output.record.label} · {latest.output.objectKind} @r{latest.output.ref.revision}</strong>
+                <span>{inspection.status} · {inspection.reason}</span>
+                <span>Object {latest.output.ref.objectId} · definition {latest.source.contentHash} · output {latest.outputHash}</span>
+                <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: 0, background: "#f8fafc", padding: 8 }}>
+                  {JSON.stringify(latest.output.record.definition, null, 2)}</pre>
+              </>;
+            })() : <span>Choose a Project algebra object in Block view.</span>}
           </div>}
           {block.type === "visualize" && !block.documentContent && <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {snapshots.length ? snapshots.map((snapshot, index) => <figure key={index} style={{ margin: 0, maxWidth: 260 }}>

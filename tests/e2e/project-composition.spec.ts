@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
 import { projectFreezeFixture, freezeControls } from "./helpers/projectFreeze";
 import { SurfaceDocumentAdapter } from "../../renderer/src/surfaceAnalysis/surfaceDocumentAdapter";
+import { createProjectComparisonTemplate } from "../../packages/core/src/projectComparisonTemplates";
 
 const core = require(resolve("packages/core/src/index.ts"));
 
@@ -79,6 +80,43 @@ test("PC03–PC04 overlays verified Mesh and Geometry without altering their sou
   } finally { await closeSurfaceApp(ctx); }
 });
 
+test("PC03 records a legacy Mesh frame without changing its binary source", async () => {
+  test.setTimeout(180_000);
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    const fixture = projectFreezeFixture();
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const controls = freezeControls(ctx.page);
+    await controls.importOpen(fixture.raw);
+    await controls.save();
+    await controls.panel.getByTestId("project-open-composition").click();
+    const view = ctx.page.getByTestId("project-composition-view");
+    await view.getByTestId("project-composition-source-0").selectOption(fixture.targets.mesh);
+    await view.getByTestId("project-composition-source-1").selectOption(fixture.targets.geometry);
+    await view.getByTestId("project-composition-mode").selectOption("overlay");
+    await view.getByLabel("Shared frame").fill("local xyz");
+    await view.getByLabel("Shared unit").fill("unitless");
+    await view.getByRole("button", { name: "Save composition" }).click();
+    await expect(view.getByText("Composition saved; source documents were not changed.")).toBeVisible();
+    const before = await ctx.page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    await view.getByTestId("project-composition-declare-frame-0").click();
+    await expect.poll(() => ctx!.page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).compositions.length))
+      .toBe(before.compositions.length + 1);
+    const after = await ctx.page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    expect(after.compositions).toHaveLength(before.compositions.length + 1);
+    const oldMesh = before.workspace.entries.find((entry: any) => entry.expected.id === fixture.targets.mesh);
+    const newMesh = after.workspace.entries.find((entry: any) => entry.expected.id === fixture.targets.mesh);
+    expect(newMesh.expected.revision).toBe(oldMesh.expected.revision + 1);
+    expect(newMesh.checkpoint.identity).toEqual(oldMesh.checkpoint.identity);
+    expect(core.retainedMeshGenerationDocuments(newMesh).some((document: any) =>
+      document.identity.structuralHash === oldMesh.expected.structuralHash)).toBe(true);
+    expect(newMesh.checkpoint.source.resource).toEqual(oldMesh.checkpoint.source.resource);
+    await view.getByRole("button", { name: "Close" }).click();
+    await ctx.page.reload();
+    expect(core.parseMath3DProject(await ctx.page.evaluate(() => localStorage.getItem("math3d.project.v1"))).compositions).toHaveLength(after.compositions.length);
+  } finally { await closeSurfaceApp(ctx); }
+});
+
 test("PC05 compares a retained Surface checkpoint with its current generation", async () => {
   test.setTimeout(180_000);
   let ctx: LaunchedSurfaceApp | null = null;
@@ -116,6 +154,106 @@ test("PC05 compares a retained Surface checkpoint with its current generation", 
   } finally { await closeSurfaceApp(ctx); }
 });
 
+test("PC05 refuses camera sync across contradictory declared Surface frames", async () => {
+  test.setTimeout(180_000);
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    const frame = { format: "math3d.coordinate-frame/v1", frame: "local", unit: "m",
+      axes: ["x", "y", "z"], handedness: "right" };
+    const surface = core.createSurfaceDocument({ stableKey: "pc05-camera-frame-conflict", metadata: { title: "Frame conflict Surface" },
+      source: { representation: "parametric", domain: { kind: "parameter",
+        u: { min: 0, max: 1, periodic: false }, v: { min: 0, max: 1, periodic: false } },
+        units: { length: "m" }, orientation: { math3dCoordinateFrame: frame }, parameters: {}, branchPolicy: null,
+        definition: { familyId: "literal", expressions: { x: "u", y: "v", z: "u*v" } } } });
+    const adapter = new SurfaceDocumentAdapter(surface);
+    const current = adapter.commitSource({ ...surface.source, orientation: { math3dCoordinateFrame: { ...frame, frame: "other" } } });
+    const replay = adapter.replayBundle();
+    const workspace = core.createMixedWorkspaceDocument({ entries: [{ module: "surface", checkpoint: replay.checkpoint,
+      expected: current.identity, replay: { format: "math3d.surface-replay.v1", payload: replay } }],
+      activeDocumentIds: [surface.identity.id], constructions: [], relations: [], results: [], artifacts: [], committedSelection: null });
+    let project = core.createMath3DProject(workspace, { stableKey: "pc05-camera-frame-conflict-project" });
+    project = core.upsertMath3DProjectComposition(project, { id: "pc05-camera-frame-conflict", title: "Conflicting Surface frames",
+      mode: "side-by-side", members: [replay.checkpoint, current].map(document => ({ documentId: document.identity.id,
+        expected: document.identity, visible: true, color: "#3976d7", opacity: 1 })) });
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-import-file").setInputFiles({ name: "pc05-camera-conflict.json",
+      mimeType: "application/json", buffer: Buffer.from(core.serializeMath3DProject(project)) });
+    await panel.getByTestId("project-import-save").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Imported into the library");
+    await panel.getByTestId(`project-open-saved-${project.identity.id}`).click();
+    await panel.getByTestId("project-open-composition").click();
+    const view = page.getByTestId("project-composition-view");
+    await view.getByLabel("Saved composition").selectOption({ label: "Conflicting Surface frames" });
+    await expect(view.getByTestId("project-composition-camera-link")).toBeDisabled();
+    await expect(view.getByText(/Independent cameras: source frames/)).toBeVisible();
+  } finally { await closeSurfaceApp(ctx); }
+});
+
+test("PC05 links a declared Surface coordinate to a saved Mesh pane", async () => {
+  test.setTimeout(180_000);
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-template-open-surface-mesh-probe").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Opened supported project");
+    await panel.getByTestId("project-open-composition").click();
+    const view = page.getByTestId("project-composition-view");
+    await view.getByLabel("Saved composition").selectOption({ label: "Surface / Mesh · shared metres" });
+    const surfacePane = view.getByRole("region", { name: /A: Declared metre paraboloid/ });
+    const meshPane = view.getByRole("region", { name: /B: Declared metre Mesh/ });
+    await expect(surfacePane.locator("canvas").first()).toBeVisible();
+    await expect(meshPane.locator("canvas").first()).toBeVisible();
+    const canvas = surfacePane.locator("canvas").first();
+    const bounds = await canvas.boundingBox();
+    if (!bounds) throw new Error("Surface comparison canvas is unavailable.");
+    await canvas.click({ position: { x: bounds.width / 2, y: bounds.height / 2 } });
+    await expect(meshPane.getByTestId("project-composition-linked-coordinate")).toContainText("Coordinate marker only");
+    await expect(view.getByTestId("project-composition-probe-status")).toContainText("local");
+    await expect(surfacePane.getByTestId("project-composition-linked-coordinate")).toHaveCount(0);
+    await view.getByRole("button", { name: "Close" }).click();
+    await page.reload();
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-open-composition").click();
+    await view.getByLabel("Saved composition").selectOption({ label: "Surface / Mesh · shared metres" });
+    await expect(view.getByTestId("project-composition-linked-coordinate")).toHaveCount(0);
+  } finally { await closeSurfaceApp(ctx); }
+});
+
+test("PC05 links a declared Surface coordinate to a saved Geometry pane", async () => {
+  test.setTimeout(180_000);
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-template-open-surface-geometry-probe").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Opened supported project");
+    await panel.getByTestId("project-open-composition").click();
+    const view = page.getByTestId("project-composition-view");
+    await view.getByLabel("Saved composition").selectOption({ label: "Surface / Geometry · shared metres" });
+    const surfacePane = view.getByRole("region", { name: /A: Declared metre paraboloid/ });
+    const geometryPane = view.getByRole("region", { name: /B: Declared metre sphere/ });
+    await expect(surfacePane.locator("canvas").first()).toBeVisible();
+    await expect(geometryPane.locator("canvas").first()).toBeVisible();
+    const canvas = surfacePane.locator("canvas").first();
+    const bounds = await canvas.boundingBox();
+    if (!bounds) throw new Error("Surface comparison canvas is unavailable.");
+    await canvas.click({ position: { x: bounds.width / 2, y: bounds.height / 2 } });
+    await expect(geometryPane.getByTestId("project-composition-linked-coordinate")).toContainText("Coordinate marker only");
+    await expect(view.getByTestId("project-composition-probe-status")).toContainText("local");
+    await view.getByRole("button", { name: "Close" }).click();
+    await page.reload();
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-open-composition").click();
+    await view.getByLabel("Saved composition").selectOption({ label: "Surface / Geometry · shared metres" });
+    await expect(view.getByTestId("project-composition-linked-coordinate")).toHaveCount(0);
+  } finally { await closeSurfaceApp(ctx); }
+});
+
 test("PC03 starter exposes verified, asserted and refused coordinate overlays", async () => {
   test.setTimeout(180_000);
   let ctx: LaunchedSurfaceApp | null = null;
@@ -148,6 +286,11 @@ test("PC03 starter exposes verified, asserted and refused coordinate overlays", 
     await expect(view.getByTestId("project-composition-probe-status")).toContainText("Linked coordinate unavailable");
     await view.getByLabel("Saved composition").selectOption({ label: "Unverified A/D overlay" });
     await expect(view.getByText(/Unverified overlay: at least one source/)).toBeVisible();
+    await view.getByLabel("Shared unit").fill("cm");
+    await expect(view.getByRole("alert")).toContainText("Source coordinate frames, axes, handedness, or units disagree");
+    await expect(view.getByRole("region", { name: /Overlay/ })).toHaveCount(0);
+    await view.getByLabel("Shared unit").fill("mm");
+    await expect(view.getByText(/Unverified overlay: at least one source/)).toBeVisible();
     await view.getByTestId("project-composition-mode").selectOption("side-by-side");
     await expect(view.getByTestId("project-composition-camera-link")).toBeDisabled();
     await view.getByLabel("Saved composition").selectOption({ label: "Unverified A/D overlay" });
@@ -160,6 +303,147 @@ test("PC03 starter exposes verified, asserted and refused coordinate overlays", 
     await view.getByRole("button", { name: "Close" }).click();
     await page.reload();
     expect(core.parseMath3DProject(await page.evaluate(() => localStorage.getItem("math3d.project.v1")))).toEqual(project);
+  } finally { await closeSurfaceApp(ctx); }
+});
+
+test("PC03 records a legacy Geometry frame in its owner and reopens the exact new overlay", async () => {
+  test.setTimeout(180_000);
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-template-open-coordinate-overlay-study").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Opened supported project");
+    if (!await panel.getByTestId("project-save").isVisible()) await panel.getByTestId("project-gallery-layout-toggle").click();
+    await panel.getByTestId("project-save").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Saved");
+    await panel.getByTestId("project-open-composition").click();
+    const view = page.getByTestId("project-composition-view");
+    await view.getByLabel("Saved composition").selectOption({ label: "Unverified A/D overlay" });
+    await expect(view.getByText(/Unverified overlay: at least one source/)).toBeVisible();
+    await view.getByTestId("project-composition-declare-frame-1").click();
+    await expect(view.getByText("Source frame recorded in a new document revision; new exact comparison saved.")).toBeVisible();
+    await expect(view.getByText("Source-declared coordinate frames, axes, handedness, and units match this overlay.")).toBeVisible();
+    await view.getByLabel("Saved composition").selectOption({ label: "Unverified A/D overlay" });
+    await expect(view.getByText(/Unverified overlay: at least one source/)).toBeVisible();
+    await view.getByLabel("Saved composition").selectOption({ label: "A/D overlay · source frame r2" });
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    expect(saved.compositions).toHaveLength(3);
+    const updated = saved.workspace.entries.find((entry: any) => entry.expected.id === saved.compositions[1].members[1].documentId);
+    expect(updated.expected.revision).toBe(updated.checkpoint.identity.revision + 1);
+    expect(updated.checkpoint.source.extensions.math3dCoordinateFrame).toBeUndefined();
+    await view.getByRole("button", { name: "Close" }).click();
+    await page.reload();
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-open-composition").click();
+    await view.getByLabel("Saved composition").selectOption({ label: "A/D overlay · source frame r2" });
+    await expect(view.getByText("Source-declared coordinate frames, axes, handedness, and units match this overlay.")).toBeVisible();
+  } finally { await closeSurfaceApp(ctx); }
+});
+
+test("PC03 records a legacy Geometry frame from a saved side-by-side pair", async () => {
+  test.setTimeout(180_000);
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    const original = createProjectComparisonTemplate("coordinate-overlay-study", "pc03-side-by-side-e2e");
+    const overlay = original.compositions!.find(item => item.title === "Unverified A/D overlay")!;
+    const { alignment: _alignment, ...withoutAlignment } = overlay;
+    const comparison = { ...withoutAlignment, id: "pc03-side-by-side-e2e", title: "A/D side by side", mode: "side-by-side" as const };
+    const project = core.upsertMath3DProjectComposition(original, comparison);
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-import-file").setInputFiles({ name: "legacy-geometry-side.json",
+      mimeType: "application/json", buffer: Buffer.from(core.serializeMath3DProject(project)) });
+    await panel.getByTestId("project-import-save").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Imported into the library");
+    await panel.getByTestId(`project-open-saved-${project.identity.id}`).click();
+    if (!await panel.getByTestId("project-save").isVisible()) await panel.getByTestId("project-gallery-layout-toggle").click();
+    await panel.getByTestId("project-save").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Saved");
+    await panel.getByTestId("project-open-composition").click();
+    const view = page.getByTestId("project-composition-view");
+    await view.getByLabel("Saved composition").selectOption({ label: "A/D side by side" });
+    await expect(view.getByTestId("project-composition-declare-frame-1")).toBeVisible();
+    await view.getByLabel("Declared frame").fill("laboratory xyz");
+    await view.getByLabel("Declared unit").fill("mm");
+    await view.getByTestId("project-composition-declare-frame-1").click();
+    await expect(view.getByText("Source frame recorded in a new document revision; new exact comparison saved.")).toBeVisible();
+    await expect(view.getByTestId("project-composition-probe-status")).toContainText("Linked coordinate unavailable until");
+    await view.getByLabel("Saved composition").selectOption({ label: "A/D side by side" });
+    await expect(view.getByRole("region", { name: /B: D/ })).toContainText("retained checkpoint r1");
+    await view.getByRole("button", { name: "Close" }).click();
+    await page.reload();
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-open-composition").click();
+    await view.getByLabel("Saved composition").selectOption({ label: "A/D side by side · source frame r2" });
+    await expect(view.getByRole("region", { name: /B: D/ })).toContainText("current r2");
+  } finally { await closeSurfaceApp(ctx); }
+});
+
+test("PC05 records a legacy Surface frame in its owner and reopens both exact comparisons", async () => {
+  test.setTimeout(180_000);
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    const frame = { format: "math3d.coordinate-frame/v1", frame: "local", unit: "m",
+      axes: ["x", "y", "z"], handedness: "right" };
+    const surface = (title: string, orientation: object) => core.createSurfaceDocument({ stableKey: ["pc05-surface-frame", title],
+      metadata: { title }, source: { representation: "parametric", domain: { kind: "parameter",
+        u: { min: 0, max: 1, periodic: false }, v: { min: 0, max: 1, periodic: false } },
+        units: { length: "m" }, orientation, parameters: {}, branchPolicy: null,
+        definition: { familyId: "literal", expressions: { x: "u", y: "v", z: "0.3*(u*u+v*v)" } } } });
+    const declared = surface("Declared Surface", { math3dCoordinateFrame: frame });
+    const legacy = surface("Legacy Surface", {});
+    const edited = new SurfaceDocumentAdapter(legacy);
+    const current = edited.commitSource({ ...legacy.source, definition: { ...legacy.source.definition,
+      expressions: { x: "u", y: "v", z: "0.4*(u*u+v*v)" } } });
+    const replay = edited.replayBundle();
+    const workspace = core.createMixedWorkspaceDocument({ entries: [
+      { module: "surface", checkpoint: declared, expected: declared.identity, replay: null },
+      { module: "surface", checkpoint: replay.checkpoint, expected: current.identity,
+        replay: { format: "math3d.surface-replay.v1", payload: replay } }],
+      activeDocumentIds: [declared.identity.id, legacy.identity.id], constructions: [], relations: [], results: [],
+      artifacts: [], committedSelection: null });
+    let project = core.createMath3DProject(workspace, { stableKey: "pc05-surface-frame", title: "Legacy Surface frame" });
+    project = core.upsertMath3DProjectComposition(project, { id: "pc05-surface-frame-pair", title: "Legacy Surface pair",
+      mode: "side-by-side", members: [declared, current].map((document, index) => ({
+        documentId: document.identity.id, expected: document.identity, visible: true,
+        color: index ? "#e8793a" : "#3976d7", opacity: 1 })) });
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-import-file").setInputFiles({ name: "legacy-surface-project.json",
+      mimeType: "application/json", buffer: Buffer.from(core.serializeMath3DProject(project)) });
+    await panel.getByTestId("project-import-save").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Imported into the library");
+    await panel.getByTestId(`project-open-saved-${project.identity.id}`).click();
+    if (!await panel.getByTestId("project-save").isVisible()) await panel.getByTestId("project-gallery-layout-toggle").click();
+    await panel.getByTestId("project-save").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Saved");
+    await panel.getByTestId("project-open-composition").click();
+    const view = page.getByTestId("project-composition-view");
+    await view.getByLabel("Saved composition").selectOption({ label: "Legacy Surface pair" });
+    await expect(view.getByTestId("project-composition-declare-frame-1")).toBeVisible();
+    await view.getByLabel("Declared frame").fill("local");
+    await view.getByTestId("project-composition-declare-frame-1").click();
+    await expect(view.getByText("Source frame recorded in a new document revision; new exact comparison saved.")).toBeVisible();
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    expect(saved.compositions).toHaveLength(2);
+    expect(saved.workspace.entries[1].checkpoint.identity).toEqual(legacy.identity);
+    expect(saved.workspace.entries[1].expected.revision).toBe(current.identity.revision + 1);
+    await view.getByLabel("Saved composition").selectOption({ label: "Legacy Surface pair" });
+    await expect(view.getByRole("region", { name: /B: Legacy Surface/ })).toContainText("retained snapshot r2");
+    await view.getByLabel("Saved composition").selectOption({ label: "Legacy Surface pair · source frame r3" });
+    await expect(view.getByRole("region", { name: /B: Legacy Surface/ })).toContainText("current r3");
+    await view.getByRole("button", { name: "Close" }).click();
+    await page.reload();
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-open-composition").click();
+    await view.getByLabel("Saved composition").selectOption({ label: "Legacy Surface pair" });
+    await expect(view.getByRole("region", { name: /B: Legacy Surface/ })).toContainText("retained snapshot r2");
+    await view.getByLabel("Saved composition").selectOption({ label: "Legacy Surface pair · source frame r3" });
+    await expect(view.getByRole("region", { name: /B: Legacy Surface/ })).toContainText("current r3");
   } finally { await closeSurfaceApp(ctx); }
 });
 

@@ -21,10 +21,38 @@ def compute(operation, **extra):
 
 
 class IdealOperationTests(unittest.TestCase):
+    def test_g06_bounded_invariants_and_exact_fixtures(self):
+        for operation in ("sage.ideal.radical", "sage.ideal.primaryDecomposition",
+                "sage.ideal.hilbertPolynomial"):
+            self.assertIn(operation, OPERATIONS)
+            with self.subTest(operation=operation), self.assertRaisesRegex(ValueError, "budget"):
+                compute(operation)
+        budget = {"budget": IDEAL_BUDGETS["standard"]}
+        radical = compute("sage.ideal.radical", generators=["x^2", "y"], **budget)
+        self.assertEqual(radical["basis"], ["x", "y"])
+        primary = compute("sage.ideal.primaryDecomposition", generators=["x*y"], **budget)
+        self.assertEqual(sorted(primary["components"]), [["x"], ["y"]])
+        self.assertEqual(sorted(primary["associatedPrimes"]), [["x"], ["y"]])
+        hilbert = compute("sage.ideal.hilbertPolynomial", monomialOrder="degrevlex",
+            generators=["x"], target={"objectId": "math3d:algebra:quotient", "revision": 1}, **budget)
+        self.assertEqual((hilbert["hilbertPolynomial"], hilbert["dimension"], hilbert["grading"]),
+            ("1", 1, "standard"))
+        for operation, extra in [
+            ("sage.ideal.primaryDecomposition", {"generators": ["x^9"]}),
+            ("sage.ideal.radical", {"variables": ["x", "y", "z"]}),
+            ("sage.ideal.hilbertPolynomial", {"monomialOrder": "lex"}),
+            ("sage.ideal.hilbertPolynomial", {"generators": ["x+1"]}),
+        ]:
+            with self.subTest(operation=operation, extra=extra), self.assertRaises(ValueError):
+                compute(operation, **extra, **budget)
+
     def test_c06_adapter_kills_job_at_wall_time_deadline(self):
         class SlowProcess:
             killed = False
             returncode = -9
+
+            def poll(self):
+                return self.returncode if self.killed else None
 
             def communicate(self, timeout=None):
                 if timeout is not None:

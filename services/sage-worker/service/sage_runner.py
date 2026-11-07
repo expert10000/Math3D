@@ -1,3 +1,11 @@
+import os
+if os.environ.get("MATH3D_SAGE_WORKER_LIMITS") == "1":
+    import resource
+    cpu_seconds = int(os.environ["MATH3D_SAGE_WORKER_CPU_SECONDS"])
+    memory_bytes = int(os.environ["MATH3D_SAGE_WORKER_MEMORY_BYTES"])
+    resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds + 1))
+    resource.setrlimit(resource.RLIMIT_AS, (memory_bytes, memory_bytes))
+
 import json
 import math
 import re
@@ -6,18 +14,26 @@ import time
 from fractions import Fraction
 from pathlib import Path
 
-from sage.all import ChainComplex, GF, I, QQ, SR, ZZ, PolynomialRing, cos, e, exp, gcd, inverse_mod, latex, log, matrix, pi, sin, solve, sqrt, tan, var
+from sage.all import ChainComplex, GF, I, QQ, SR, ZZ, PolynomialRing, cos, e, exp, gcd, identity_matrix, inverse_mod, latex, log, matrix, pi, sin, solve, sqrt, tan, var
 from sage.env import SAGE_VERSION
 if __package__:
     from .algebra_reconstruction import reconstruct_algebra, inspect_algebra_domains
+    from .finite_field_explorer import explore_finite_field
+    from .padic_workspace import run_padic_workspace
+    from .local_extensions import run_local_extension
+    from .elliptic_curve import run_elliptic_curve
     from .number_field_operations import run_number_field_operation
     from .galois_analysis import analyze_galois
-    from .finite_group_operations import analyze_finite_group, group_capability_available
+    from .finite_group_operations import analyze_finite_group, analyze_group_action, group_capability_available, group_action_capability_available
 else:
     from algebra_reconstruction import reconstruct_algebra, inspect_algebra_domains
+    from finite_field_explorer import explore_finite_field
+    from padic_workspace import run_padic_workspace
+    from local_extensions import run_local_extension
+    from elliptic_curve import run_elliptic_curve
     from number_field_operations import run_number_field_operation
     from galois_analysis import analyze_galois
-    from finite_group_operations import analyze_finite_group, group_capability_available
+    from finite_group_operations import analyze_finite_group, analyze_group_action, group_capability_available, group_action_capability_available
 
 
 ENGINE = "sagemath"
@@ -64,7 +80,7 @@ def _failure(operation, message, elapsed_ms=0):
 
 
 def _validate_expression(expr):
-    text = str(expr or "").strip()
+    text = str(expr if expr is not None and not isinstance(expr, bool) else "").strip()
     if not text:
         raise SageRequestError("Expression is required.")
     if len(text) > MAX_EXPR_LEN:
@@ -298,6 +314,117 @@ def _integer_matrix_forms(operation, params):
     return _success(operation, result, latex(smith))
 
 
+def _module_invariant_factors(operation, params):
+    required = {"format", "schemaVersion", "projectId", "target", "targetHash", "baseRing",
+        "baseRingHash", "ambientRank", "relationRank", "matrix"}
+    if set(params) != required or params.get("format") != "math3d.sage-module-invariant-factors" or \
+            type(params.get("schemaVersion")) is not int or params["schemaVersion"] != 1:
+        raise SageRequestError("Module invariant factors require the versioned pinned ZZ presentation.")
+    n, m, rows = params["ambientRank"], params["relationRank"], params["matrix"]
+    canonical = re.compile(r"^(?:0|-?[1-9][0-9]{0,17})$")
+    if type(n) is not int or not 1 <= n <= 6 or type(m) is not int or not 0 <= m <= 6 or \
+            not isinstance(rows, list) or len(rows) != n or any(not isinstance(row, list) or
+            len(row) != m or any(not isinstance(entry, str) or not canonical.fullmatch(entry)
+                for entry in row) for row in rows):
+        raise SageRequestError("ZZ module relation matrix must have bounded canonical integer rows.")
+    if not all(isinstance(params[key], str) and params[key] for key in ("projectId", "targetHash", "baseRingHash")) or \
+            any(not isinstance(params[key], dict) or set(params[key]) != {"objectId", "revision"} or
+                not isinstance(params[key]["objectId"], str) or type(params[key]["revision"]) is not int or
+                params[key]["revision"] < 1 for key in ("target", "baseRing")):
+        raise SageRequestError("Module and ZZ parent revisions must be pinned.")
+    if m == 0:
+        result = {"format": "math3d.sage-module-invariant-factors-result", "schemaVersion": 1,
+            "coefficientDomain": "ZZ", "freeRank": n, "torsionOrders": [], "smith": None}
+        return _success(operation, result)
+    mat = matrix(ZZ, [[ZZ(entry) for entry in row] for row in rows])
+    smith_raw = mat.smith_form()
+    if not isinstance(smith_raw, tuple) or len(smith_raw) != 3:
+        raise SageRequestError("This Sage runtime did not return Smith transformation witnesses.")
+    smith, left, right = smith_raw
+    if left.det() not in (1, -1) or right.det() not in (1, -1) or left * mat * right != smith:
+        raise SageRequestError("Smith transformations failed U·A·V=D with unimodular U and V.")
+    diagonal = [smith[i, i] for i in range(min(n, m))]
+    nonzero = [entry for entry in diagonal if entry != 0]
+    if any(entry < 0 for entry in diagonal) or any(nonzero[i + 1] % nonzero[i] != 0
+            for i in range(len(nonzero) - 1)) or any(smith[i, j] != 0 for i in range(n)
+                for j in range(m) if i != j):
+        raise SageRequestError("Smith diagonal violates invariant-factor divisibility.")
+    result = {"format": "math3d.sage-module-invariant-factors-result", "schemaVersion": 1,
+        "coefficientDomain": "ZZ", "freeRank": n - len(nonzero),
+        "torsionOrders": [str(entry) for entry in nonzero if entry > 1],
+        "smith": {"form": [[str(x) for x in row] for row in smith.rows()],
+            "diagonal": [str(x) for x in diagonal], "transformations": {"status": "verified",
+                "left": [[str(x) for x in row] for row in left.rows()],
+                "right": [[str(x) for x in row] for row in right.rows()]}}}
+    return _success(operation, result, latex(smith))
+
+
+def _chain_homology(operation, params):
+    required = {"format", "schemaVersion", "projectId", "target", "targetHash", "definition",
+        "dimensions", "boundary1", "boundary2"}
+    if set(params) != required or params.get("format") != "math3d.sage-chain-homology" or \
+            type(params.get("schemaVersion")) is not int or params["schemaVersion"] != 1:
+        raise SageRequestError("Chain homology requires the versioned pinned ZZ schema.")
+    dims = params["dimensions"]
+    if not isinstance(dims, list) or len(dims) != 3 or any(type(n) is not int or not 1 <= n <= 6 for n in dims):
+        raise SageRequestError("Chain groups C0, C1, C2 require ranks 1 to 6.")
+    n0, n1, n2 = dims
+    canonical = re.compile(r"^(?:0|-?[1-9][0-9]{0,17})$")
+    def checked_matrix(value, rows, columns):
+        if not isinstance(value, list) or len(value) != rows or any(not isinstance(row, list) or
+                len(row) != columns or any(not isinstance(entry, str) or not canonical.fullmatch(entry)
+                    for entry in row) for row in value):
+            raise SageRequestError("Chain boundary matrices require exact bounded ZZ entries and compatible dimensions.")
+        return matrix(ZZ, [[ZZ(entry) for entry in row] for row in value])
+    if not isinstance(params["projectId"], str) or not params["projectId"] or \
+            not isinstance(params["targetHash"], str) or not params["targetHash"] or \
+            not isinstance(params["definition"], dict) or params["definition"].get("kind") != "chain-complex" or \
+            not isinstance(params["target"], dict):
+        raise SageRequestError("Chain object and revisions must be pinned.")
+    d1 = checked_matrix(params["boundary1"], n0, n1)
+    d2 = checked_matrix(params["boundary2"], n1, n2)
+    if not (d1 * d2).is_zero():
+        raise SageRequestError("Exact chain condition d1*d2 = 0 failed.")
+    def smith_witness(mat):
+        raw = mat.smith_form()
+        if not isinstance(raw, tuple) or len(raw) != 3:
+            raise SageRequestError("This Sage runtime did not return Smith transformation witnesses.")
+        form, left, right = raw
+        if left.det() not in (1, -1) or right.det() not in (1, -1) or left * mat * right != form:
+            raise SageRequestError("Smith transformation identity failed.")
+        diagonal = [form[i, i] for i in range(min(mat.nrows(), mat.ncols()))]
+        nonzero = [entry for entry in diagonal if entry != 0]
+        if any(entry < 0 for entry in diagonal) or any(nonzero[i + 1] % nonzero[i] != 0
+                for i in range(len(nonzero) - 1)):
+            raise SageRequestError("Smith invariant-factor divisibility failed.")
+        return {"form": [[str(x) for x in row] for row in form.rows()],
+            "diagonal": [str(x) for x in diagonal], "transformations": {"status": "verified",
+                "left": [[str(x) for x in row] for row in left.rows()],
+                "right": [[str(x) for x in row] for row in right.rows()]}}, right
+    d1_smith, right = smith_witness(d1)
+    inverse = right.inverse()
+    if right * inverse != identity_matrix(ZZ, n1) or inverse * right != identity_matrix(ZZ, n1):
+        raise SageRequestError("Smith kernel basis inverse failed.")
+    r1 = d1.rank()
+    transformed = inverse * d2
+    if any(transformed[i, j] != 0 for i in range(r1) for j in range(n2)):
+        raise SageRequestError("d2 is not in the kernel of d1.")
+    k = n1 - r1
+    restricted = matrix(ZZ, [[transformed[i, j] for j in range(n2)] for i in range(r1, n1)]) if k else None
+    restricted_smith, _ = smith_witness(restricted) if restricted is not None else (None, None)
+    r2 = restricted.rank() if restricted is not None else 0
+    def torsion(smith):
+        return [entry for entry in smith["diagonal"] if int(entry) > 1]
+    groups = [{"degree": 0, "freeRank": n0 - r1, "torsionOrders": torsion(d1_smith)},
+        {"degree": 1, "freeRank": k - r2, "torsionOrders": torsion(restricted_smith) if restricted_smith else []},
+        {"degree": 2, "freeRank": n2 - r2, "torsionOrders": []}]
+    result = {"format": "math3d.sage-chain-homology-result", "schemaVersion": 1,
+        "coefficientDomain": "ZZ", "dimensions": dims, "boundary1Smith": d1_smith,
+        "inverseRight": [[str(x) for x in row] for row in inverse.rows()],
+        "restrictedBoundary2Smith": restricted_smith, "groups": groups}
+    return _success(operation, result)
+
+
 def _polynomial_factor(operation, params):
     ring, _variables_list = _polynomial_ring(params)
     poly = ring(_validate_expression(params.get("polynomial") or params.get("expression")))
@@ -403,11 +530,16 @@ def _ideal_operation(operation, params):
         "ambientRing", "ambientHash", "variables", "monomialOrder", "generators"}
     extra = {"sage.ideal.groebner": set(), "sage.ideal.eliminate": {"eliminate"},
         "sage.ideal.membership": {"polynomial"}, "sage.ideal.quotientDimension": set(),
-        "sage.ideal.syzygies": set(), "sage.ideal.hilbertSeries": set()}[operation]
+        "sage.ideal.syzygies": set(), "sage.ideal.hilbertSeries": set(),
+        "sage.ideal.radical": set(), "sage.ideal.primaryDecomposition": set(),
+        "sage.ideal.hilbertPolynomial": set()}[operation]
     _require_exact_fields(params, common | extra | ({"budget"} if "budget" in params else set()), "ideal request")
     if params["format"] != "math3d.sage-ideal-operation" or type(params["schemaVersion"]) is not int or params["schemaVersion"] != 1:
         raise SageRequestError("Ideal request requires the versioned exact schema.")
     budget = params.get("budget")
+    if operation in ("sage.ideal.radical", "sage.ideal.primaryDecomposition",
+            "sage.ideal.hilbertPolynomial") and budget is None:
+        raise SageRequestError("Advanced ideal invariants require an explicit bounded budget profile.")
     if "budget" in params:
         _require_exact_fields(budget, IDEAL_BUDGETS["standard"].keys(), "ideal budget")
         expected = IDEAL_BUDGETS.get(budget.get("profile")) if isinstance(budget.get("profile"), str) else None
@@ -426,7 +558,9 @@ def _ideal_operation(operation, params):
         raise SageRequestError("Ideal operations require one to six distinct generators.")
     if budget is not None and (len(variables) > budget["maxVariables"] or len(generators) > budget["maxGenerators"]):
         raise SageRequestError(f"{budget['profile']} ideal budget exceeded: variables or generators.")
-    if operation in ("sage.ideal.syzygies", "sage.ideal.hilbertSeries") and \
+    if operation in ("sage.ideal.syzygies", "sage.ideal.hilbertSeries",
+            "sage.ideal.radical", "sage.ideal.primaryDecomposition",
+            "sage.ideal.hilbertPolynomial") and \
             (len(variables) > 2 or len(generators) > 3):
         raise SageRequestError("Advanced ideal operations require at most two variables and three generators.")
     ring = PolynomialRing(QQ, variables, order=order)
@@ -449,7 +583,30 @@ def _ideal_operation(operation, params):
     ideal = ring.ideal(polys)
     shared = {"format": "math3d.sage-ideal-result", "schemaVersion": 1,
         "target": params["target"], "targetHash": params["targetHash"], "idealHash": params["idealHash"]}
-    if operation == "sage.ideal.syzygies":
+    if operation == "sage.ideal.radical":
+        radical = ideal.radical()
+        if radical.radical() != radical or not all(generator in radical for generator in polys):
+            raise SageRequestError("Radical validation failed for the pinned ideal.")
+        result = {**shared, "basis": [str(item) for item in radical.groebner_basis()]}
+    elif operation == "sage.ideal.primaryDecomposition":
+        components = ideal.primary_decomposition()
+        if not components or len(components) > 32 or not all(component.is_primary() for component in components):
+            raise SageRequestError("Primary decomposition is unavailable or exceeds its component cap.")
+        intersection = components[0]
+        for component in components[1:]:
+            intersection = intersection.intersection(component)
+        if intersection != ideal:
+            raise SageRequestError("Primary components do not reconstruct the pinned ideal.")
+        result = {**shared,
+            "components": [[str(item) for item in component.groebner_basis()] for component in components],
+            "associatedPrimes": [[str(item) for item in component.radical().groebner_basis()]
+                for component in components]}
+    elif operation == "sage.ideal.hilbertPolynomial":
+        if order == "lex" or not ideal.is_homogeneous():
+            raise SageRequestError("Hilbert polynomial requires a graded monomial order and a homogeneous ideal.")
+        result = {**shared, "hilbertPolynomial": str(ideal.hilbert_polynomial()),
+            "dimension": int(ideal.dimension()), "grading": "standard"}
+    elif operation == "sage.ideal.syzygies":
         module = ideal.syzygy_module()
         rows = [[str(value) for value in row] for row in module.rows()]
         if module.ncols() != len(polys) or any(sum(row[index] * polys[index]
@@ -488,6 +645,11 @@ def _ideal_operation(operation, params):
         raise SageRequestError("Syzygy output exceeds the bounded result budget.")
     if "series" in result and (len(result["series"]) > 1024 or len(result["numerator"]) > 1024):
         raise SageRequestError("Hilbert output exceeds the bounded result budget.")
+    if "hilbertPolynomial" in result and len(result["hilbertPolynomial"]) > 1024:
+        raise SageRequestError("Hilbert polynomial exceeds the bounded result budget.")
+    if "components" in result and any(len(basis) > 128 or any(len(item) > 1024 for item in basis)
+            for collection in (result["components"], result["associatedPrimes"]) for basis in collection):
+        raise SageRequestError("Primary decomposition exceeds the bounded result budget.")
     if len(json.dumps(result, ensure_ascii=False).encode("utf-8")) > (budget["maxResultBytes"] if budget else 65536):
         raise SageRequestError("Ideal result exceeds the bounded output budget.")
     return _success(operation, result)
@@ -794,6 +956,10 @@ def _ideal_capability_available(method):
 
 OPERATIONS = {
     "sage.algebra.reconstruct": lambda op, params: _success(op, reconstruct_algebra(params)),
+    "sage.finiteField.explore": lambda op, params: _success(op, explore_finite_field(params)),
+    "sage.numberTheory.padic": lambda op, params: _success(op, run_padic_workspace(params)),
+    "sage.numberField.localExtensions": lambda op, params: _success(op, run_local_extension(params)),
+    "sage.ellipticCurve.dossier": lambda op, params: _success(op, run_elliptic_curve(params)),
     "sage.algebra.inspectDomains": lambda op, params: _success(op, inspect_algebra_domains(params)),
     "sage.numberField.elementDossier": lambda op, params: _success(op, run_number_field_operation(op, params)),
     "sage.numberField.primeDecomposition": lambda op, params: _success(op, run_number_field_operation(op, params)),
@@ -809,6 +975,8 @@ OPERATIONS = {
     "sage.matrix.charpoly": _matrix_charpoly,
     "sage.matrix.linear_dossier": _matrix_linear_dossier,
     "sage.matrix.integer_forms": _integer_matrix_forms,
+    "sage.module.invariantFactors": _module_invariant_factors,
+    "sage.chain.homology": _chain_homology,
     "sage.polynomial.roots_exact": _polynomial_roots_exact,
     "sage.polynomial.factor": _polynomial_factor,
     "sage.polynomial.dossier": _polynomial_dossier,
@@ -827,8 +995,16 @@ if _ideal_capability_available("syzygy_module"):
 if _ideal_capability_available("is_homogeneous") and _ideal_capability_available("hilbert_series") and \
         _ideal_capability_available("hilbert_numerator"):
     OPERATIONS["sage.ideal.hilbertSeries"] = _ideal_operation
+if _ideal_capability_available("radical"):
+    OPERATIONS["sage.ideal.radical"] = _ideal_operation
+if _ideal_capability_available("primary_decomposition") and _ideal_capability_available("is_primary"):
+    OPERATIONS["sage.ideal.primaryDecomposition"] = _ideal_operation
+if _ideal_capability_available("is_homogeneous") and _ideal_capability_available("hilbert_polynomial"):
+    OPERATIONS["sage.ideal.hilbertPolynomial"] = _ideal_operation
 if group_capability_available():
     OPERATIONS["sage.group.dossier"] = lambda op, params: _success(op, analyze_finite_group(params))
+if group_action_capability_available():
+    OPERATIONS["sage.group.actionCharacters"] = lambda op, params: _success(op, analyze_group_action(params))
 
 
 def run_payload(payload):

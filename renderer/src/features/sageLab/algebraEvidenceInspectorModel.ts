@@ -78,6 +78,10 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
         fact("Base generator image coordinates", tower.baseGeneratorImage),
         fact("Degree product", "2 × 2 = 4"));
     }
+  } else if (source?.definition.kind === "elliptic-curve") {
+    structure.push(fact("Base field", formatRef(source.definition.baseField)),
+      fact("Model", "Short Weierstrass"), fact("Coefficient a", source.definition.a),
+      fact("Coefficient b", source.definition.b));
   } else if (source?.definition.kind === "ideal") {
     structure.push(fact("Ambient ring", formatRef(source.definition.ambientRing)),
       fact("Generators", source.definition.generators));
@@ -90,6 +94,14 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
       fact("Generators", group.representation === "permutation"
         ? group.generators.map((item) => `${item.name}: (${item.images.join(", ")})`)
         : group.generators.map((name, index) => `${name}: C${group.invariantFactors[index]}`)));
+  } else if (source?.definition.kind === "module") {
+    structure.push(fact("Base ring", formatRef(source.definition.baseRing)),
+      fact("Ambient generators", source.definition.generators),
+      fact("Relation matrix", source.definition.relationMap.matrix));
+  } else if (source?.definition.kind === "chain-complex") {
+    structure.push(fact("Coefficient ring", formatRef(source.definition.coefficientRing)),
+      fact("Chain modules C0, C1, C2", source.definition.modules.map(formatRef)),
+      fact("Boundary maps d1, d2", source.definition.boundaries.map(formatRef)));
   }
   const result = evidence.result as unknown as Record<string, unknown>;
   const params = evidence.request.params;
@@ -104,6 +116,109 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
     mode = "FAILED";
   }
   switch (operation) {
+    case "sage.ellipticCurve.dossier": {
+      facts.push(fact("Discriminant", text(result.discriminant)),
+        fact("j-invariant", text(result.jInvariant)),
+        fact("Characteristic", text(result.characteristic)),
+        fact("Sample point", result.point ? list(result.point) : "None"),
+        fact("Doubled point", result.point ? result.doublePoint ? list(result.doublePoint) : "Point at infinity" : "None"));
+      checks.push(check("Elliptic curve arithmetic", "checked",
+        "The pinned short Weierstrass discriminant is nonzero; exact j and any point doubling are independently checked."));
+      if (mode !== "FAILED") mode = "CHECKED";
+      break;
+    }
+    case "sage.numberField.localExtensions": {
+      const branches = result.branches as Record<string, unknown>[];
+      facts.push(fact("Prime", text(result.prime)), fact("Base precision digits", text(result.precision)),
+        fact("Global field discriminant", text(result.fieldDiscriminant)),
+        fact("Prime behavior", text(result.splitting)),
+        fact("Local branches", branches.map((branch, index) =>
+          `P${index + 1}: e=${text(branch.ramificationIndex)}, f=${text(branch.residueDegree)}, ` +
+          `degree=${text(branch.localDegree)}, residue order=${text(branch.residueOrder)}`)),
+        fact("Prime ideals", branches.map((branch) => text(branch.ideal))),
+        fact("Uniformizers", branches.map((branch) => text(branch.uniformizer))));
+      checks.push(check("Quadratic local data", "checked",
+        "The pinned field discriminant determines split, inert or ramified behavior; e·f, ideal norms, residue orders, base-prime valuations and any split roots are checked exactly."));
+      if (mode !== "FAILED") mode = "CHECKED";
+      break;
+    }
+    case "sage.numberTheory.padic": {
+      const entries = result.entries as Record<string, Record<string, unknown>>;
+      facts.push(fact("Domain", `${text(result.domain)}(${text(result.prime)})`),
+        fact("Requested precision digits", text(result.precision)));
+      for (const key of ["a", "b", "sum", "product"]) {
+        const entry = entries[key];
+        facts.push(fact(`${key} display`, text(entry.text)),
+          fact(`${key} valuation`, text(entry.valuation)),
+          fact(`${key} absolute precision`, entry.absolutePrecision === null ? "∞" : text(entry.absolutePrecision)),
+          fact(`${key} relative precision`, text(entry.relativePrecision)),
+          fact(`${key} zero status`, text(entry.zeroStatus)),
+          fact(`${key} unit digits`, list(entry.digits)));
+      }
+      if (result.hensel) {
+        const root = result.hensel as Record<string, unknown>;
+        facts.push(fact("Hensel root residue", text(root.rootResidue)),
+          fact("Hensel modulus", text(root.modulus)),
+          fact("Hensel absolute precision", text(root.absolutePrecision)));
+      }
+      checks.push(check("p-adic precision and congruence", "checked",
+        "Exact rational sources, unit digits, valuations, finite-precision zero labels and any Hensel root congruence are independently checked."));
+      if (mode !== "FAILED") mode = "CHECKED";
+      break;
+    }
+    case "sage.finiteField.explore": {
+      const selected = result.selected as Record<string, unknown>;
+      facts.push(fact("Field", `GF(${text(result.characteristic)}^${text(result.degree)})`),
+        fact("Order", text(result.order)), fact("Generator", text(result.generator)),
+        fact("Defining polynomial coefficients", result.definingPolynomial === null ? "Prime field" : list(result.definingPolynomial)),
+        fact("Selected element coefficients", list(selected.coefficients)),
+        fact("Frobenius orbit", matrix(selected.frobeniusOrbit)),
+        fact("Trace", text(selected.trace)), fact("Norm", text(selected.norm)),
+        fact("Minimal polynomial coefficients", list(selected.minimalPolynomial)),
+        fact("Multiplicative order", text(selected.multiplicativeOrder)),
+        fact("Primitive", selected.primitive ? "Yes" : "No"),
+        fact("Enumerated elements", String((result.elements as unknown[]).length)));
+      checks.push(check("Exact finite-field arithmetic", "checked",
+        "The saved modulus, element enumeration, Frobenius orbit, trace, norm, primitive list and bounded multiplication table were independently checked."));
+      if (mode !== "FAILED") mode = "CHECKED";
+      break;
+    }
+    case "sage.chain.homology": {
+      const groups = result.groups as { degree: number; freeRank: number; torsionOrders: string[] }[];
+      const notation = (group: typeof groups[number]) => {
+        const parts = [...Array.from({ length: group.freeRank }, () => "ZZ"),
+          ...group.torsionOrders.map((order) => `ZZ/${order}ZZ`)];
+        return parts.length ? parts.join(" ⊕ ") : "0";
+      };
+      facts.push(...groups.map((group) => fact(`H${group.degree}`, notation(group))),
+        fact("Chain ranks C0, C1, C2", list(result.dimensions)),
+        fact("Boundary ranks d1, d2", [
+          String((result.boundary1Smith as { diagonal: string[] }).diagonal.filter((entry) => entry !== "0").length),
+          String((result.restrictedBoundary2Smith as { diagonal: string[] } | null)?.diagonal.filter((entry) => entry !== "0").length ?? 0)]),
+        fact("Boundary d1 Smith diagonal", (result.boundary1Smith as { diagonal: string[] }).diagonal),
+        fact("Restricted d2 Smith diagonal", (result.restrictedBoundary2Smith as { diagonal: string[] } | null)?.diagonal ?? "Zero kernel rank"));
+      checks.push(check("Exact chain condition", "checked", "Pinned integer boundary matrices satisfy d1·d2=0."),
+        check("Homology witnesses", "checked", "Unimodular Smith matrices, kernel-basis inverse, restricted image, free ranks and torsion factors verify exactly."));
+      if (mode !== "FAILED") mode = "CHECKED";
+      break;
+    }
+    case "sage.module.invariantFactors": {
+      const torsion = result.torsionOrders as string[];
+      const smith = result.smith as { form: string[][]; diagonal: string[] } | null;
+      const freeRank = result.freeRank as number;
+      const summands = [...Array.from({ length: freeRank }, () => "ZZ"),
+        ...torsion.map((order) => `ZZ/${order}ZZ`)];
+      facts.push(fact("Decomposition", summands.length ? summands.join(" ⊕ ") : "0"),
+        fact("Free rank", String(freeRank)),
+        fact("Torsion invariant factors", torsion.length ? torsion : "None"),
+        fact("Smith diagonal", smith?.diagonal ?? "No relations"),
+        fact("Smith form", smith?.form ?? []));
+      checks.push(check("Module classification", "checked", smith
+        ? "Exact unimodular U and V verify U·A·V=D; diagonal divisibility and the free and torsion summands match."
+        : "The pinned relation map has zero columns, so the module is free."));
+      if (mode !== "FAILED") mode = "CHECKED";
+      break;
+    }
     case "sage.group.dossier": {
       const subgroups = result.subgroups as { members: number[]; normal: boolean }[];
       facts.push(fact("Group order", text(result.order)), fact("Action degree", text(result.actionDegree)),
@@ -115,6 +230,32 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
       checks.push(check("Finite group invariants", "checked",
         "The app independently rebuilds the exact action, center, conjugacy partition and complete bounded subgroup list."));
       if (mode !== "FAILED") mode = "CHECKED";
+      break;
+    }
+    case "sage.group.actionCharacters": {
+      const matrices = result.generatorMatrices as number[][][];
+      facts.push(fact("Group order", text(result.order)), fact("Action degree", text(result.actionDegree)),
+        fact("Selected point", text(result.point)), fact("Orbit", list(result.orbit)),
+        fact("Stabilizer element indices", list(result.stabilizer)),
+        fact("Generator permutation matrices", matrices.map((rows, index) =>
+          `M${index + 1} = [${rows.map((row) => row.join(", ")).join("; ")}]`)),
+        fact("Permutation character by element index", list(result.permutationCharacter)),
+        fact("Conjugacy classes", (result.conjugacyClasses as number[][]).map((items) => items.join(", "))),
+        fact("GAP version", text(result.gapVersion)));
+      checks.push(check("Orbit, stabilizer and matrices", "checked",
+        "The app reconstructs the natural permutation action and verifies orbit size × stabilizer size = group order."),
+        check("Permutation character", "checked",
+          "Each character value equals the exact number of points fixed by its group element."));
+      if (result.characterStatus === "integer-table") {
+        facts.push(fact("Irreducible character rows", matrix(result.irreducibleCharacters)),
+          fact("Permutation representation multiplicities", list(result.multiplicities)));
+        checks.push(check("Integer character table", "reported",
+          "GAP supplied the irreducible rows; the app checks row orthogonality, degree squares and decomposition multiplicities."));
+      } else {
+        facts.push(fact("Irreducible character table", "Unavailable in this bounded integer-valued view"));
+        checks.push(check("Nonintegral characters", "unavailable",
+          "This group has nonintegral character values. The exact action and permutation character remain available."));
+      }
       break;
     }
     case "sage.algebra.reconstruct":
@@ -283,6 +424,23 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
       checks.push(check("Grading and Hilbert computation", "reported",
         "The pinned generators passed the conservative homogeneous syntax gate; Sage checked homogeneity and computed the standard graded quotient series."));
       break;
+    case "sage.ideal.radical":
+      facts.push(fact("Ideal generators", list(params.generators)), fact("Radical Gröbner basis", list(result.basis)));
+      checks.push(check("Radical computation", "reported",
+        "Sage checked that the returned ideal is radical and contains the pinned generators; the app checks its shape and identity."));
+      break;
+    case "sage.ideal.primaryDecomposition":
+      facts.push(fact("Primary components", matrix(result.components)),
+        fact("Associated primes", matrix(result.associatedPrimes)));
+      checks.push(check("Primary decomposition", "reported",
+        "Sage checked each component is primary and their intersection equals the pinned ideal. Associated primes are the component radicals."));
+      break;
+    case "sage.ideal.hilbertPolynomial":
+      facts.push(fact("Standard graded quotient", "R/I"),
+        fact("Hilbert polynomial", text(result.hilbertPolynomial)), fact("Krull dimension", text(result.dimension)));
+      checks.push(check("Grading and Hilbert computation", "reported",
+        "The pinned generators passed the conservative homogeneous syntax gate; Sage checked homogeneity and computed the Hilbert polynomial."));
+      break;
     case "sage.matrix.linear_dossier":
       facts.push(fact("Source matrix", matrix(result.sourceMatrix)), fact("Rank", text(result.rank)),
         fact("RREF", matrix(result.reducedRowEchelonForm)),
@@ -320,6 +478,25 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
     fact("Warnings", evidence.runtime.warnings.length ? evidence.runtime.warnings : "None"),
     fact("Algorithm", "Not reported"), fact("Proof settings", "Not recorded"),
   ];
+  const certificate = evidence.certificate;
+  if (certificate) execution.push(
+    fact("Certificate", `v${certificate.schemaVersion} · ${certificate.contentHash}`),
+    fact("Input schema", certificate.operation.inputSchema),
+    fact("Request hash", certificate.requestHash),
+    fact("Pinned sources", certificate.sources.map((source) =>
+      `${source.objectId}@${source.revision} · ${source.contentHash}`)),
+    fact("Input size", `${certificate.inputBytes} bytes`),
+    fact("Output size", `${certificate.outputBytes} bytes`),
+    fact("Outcome", `${certificate.outcome.status} · ${certificate.outcome.representation} representation`),
+    fact("Certificate checks", certificate.verifier.checks),
+    fact("Mathematical proof", "Not claimed by this execution certificate"),
+    fact("Subsystem", certificate.runtime.subsystem
+      ? `${certificate.runtime.subsystem} ${certificate.runtime.subsystemVersion ?? ""}`.trim() : "Not reported"),
+    fact("Peak memory", certificate.runtime.peakMemoryBytes === null ? "Not measured" : `${certificate.runtime.peakMemoryBytes} bytes`),
+    fact("Recorded limits", certificate.limits
+      ? `${certificate.limits.profile} · ${certificate.limits.wallTimeMs} ms · ${certificate.limits.maxResultBytes} bytes output`
+      : "Not recorded"));
+  else execution.push(fact("Certificate", "Legacy evidence · no execution certificate"));
   if (operation.startsWith("sage.ideal.")) {
     const budget = params.budget as Record<string, unknown> | undefined;
     execution.push(fact("Ideal budget", budget ? text(budget.profile) : "Legacy fixed worker limits"));

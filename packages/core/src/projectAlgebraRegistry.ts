@@ -1,6 +1,10 @@
 import { parseAlgebraObjectRecord, type AlgebraObjectRecord, type AlgebraObjectRef } from "./algebraObjects";
 import { parseIdealGenerator } from "./algebraIdealGenerators";
 import { analyzeBiquadraticExtensionFromDefinition } from "./biquadraticFieldTower";
+import { validateModuleMatrixScalars, type ModuleScalarRing } from "./modulePresentations";
+import { resolveChainComplex } from "./chainComplex";
+import { ellipticCurveFacts } from "./ellipticCurve";
+import { validateSchemeGeometryRecord } from "./schemeGeometry";
 import { createStableDocumentId, isStableDocumentId, type CanonicalJsonValue, type StableDocumentId } from "./documentIdentity";
 import type { Math3DProject } from "./math3dProject";
 
@@ -75,6 +79,29 @@ export const validateProjectAlgebraRegistry = (input: unknown): readonly Project
     if (visiting.has(key)) throw new TypeError(`Cyclic algebra object dependency at ${key}.`);
     if (visited.has(key)) return;
     visiting.add(key);
+    if (record.definition.kind === "module-map") {
+      const source = byId.get(record.definition.sourceModule.objectId)
+        ?.revisions[record.definition.sourceModule.revision - 1];
+      const target = byId.get(record.definition.targetModule.objectId)
+        ?.revisions[record.definition.targetModule.revision - 1];
+      if (source?.definition.kind !== "module" || target?.definition.kind !== "module" ||
+          source.definition.relationMap.domainRank !== 0 || target.definition.relationMap.domainRank !== 0)
+        throw new TypeError(`Module map ${key} requires pinned free-module source and target.`);
+      if (source.definition.baseRing.objectId !== target.definition.baseRing.objectId ||
+          source.definition.baseRing.revision !== target.definition.baseRing.revision)
+        throw new TypeError(`Module map ${key} requires the same pinned base ring on both sides.`);
+      if (record.definition.domainRank !== source.definition.ambientRank ||
+          record.definition.codomainRank !== target.definition.ambientRank)
+        throw new TypeError(`Module map ${key} has dimensions inconsistent with its pinned free modules.`);
+      const ring = byId.get(source.definition.baseRing.objectId)
+        ?.revisions[source.definition.baseRing.revision - 1];
+      if (!ring || !["integer-ring", "rational-field", "polynomial-ring"].includes(ring.kind))
+        throw new TypeError(`Module map ${key} has an unsupported base ring.`);
+      validateModuleMatrixScalars(record.definition.matrix, ring.definition as ModuleScalarRing);
+    }
+    if (record.definition.kind === "chain-complex") resolveChainComplex(record.definition, entries);
+    if (["affine-scheme", "projective-scheme", "scheme-chart", "scheme-map"].includes(record.kind))
+      validateSchemeGeometryRecord(record, entries);
     for (const ref of record.dependencies) {
       const parent = byId.get(ref.objectId)?.revisions[ref.revision - 1];
       if (!parent || parent.revision !== ref.revision) {
@@ -82,6 +109,16 @@ export const validateProjectAlgebraRegistry = (input: unknown): readonly Project
       }
       if (record.definition.kind === "number-field" && parent.kind !== "rational-field")
         throw new TypeError(`Number field ${key} requires a pinned QQ base field.`);
+      if (record.definition.kind === "elliptic-curve") {
+        const field = parent.definition;
+        if (field.kind !== "rational-field" && (field.kind !== "finite-field" || field.degree !== 1 ||
+            field.characteristic < 5 || field.characteristic > 1009))
+          throw new TypeError(`Elliptic curve ${key} requires pinned QQ or prime GF(p), 5 ≤ p ≤ 1009.`);
+        ellipticCurveFacts(record.definition.a, record.definition.b,
+          field.kind === "finite-field" ? field.characteristic : 0);
+      }
+      if (record.definition.kind === "finite-group" && parent.kind !== "polynomial-ring")
+        throw new TypeError(`Finite group ${key} requires a pinned polynomial source ring.`);
       if (record.definition.kind === "field-extension") {
         if (parent.definition.kind !== "number-field")
           throw new TypeError(`Field extension ${key} requires a pinned quadratic number-field parent.`);
@@ -109,6 +146,17 @@ export const validateProjectAlgebraRegistry = (input: unknown): readonly Project
             ideal.definition.ambientRing.objectId !== ring.id ||
             ideal.definition.ambientRing.revision !== ring.revision)
           throw new TypeError(`Quotient ${key} requires an ideal in its pinned polynomial ambient ring.`);
+      }
+      if (record.definition.kind === "module") {
+        if (!["integer-ring", "rational-field", "polynomial-ring"].includes(parent.kind))
+          throw new TypeError(`Module ${key} requires pinned ZZ, QQ or QQ polynomial base ring.`);
+        if (parent.definition.kind === "polynomial-ring") {
+          const coefficient = byId.get(parent.definition.coefficientDomain.objectId)
+            ?.revisions[parent.definition.coefficientDomain.revision - 1];
+          if (coefficient?.kind !== "rational-field" || parent.definition.variables.length > 3)
+            throw new TypeError(`Module ${key} requires a QQ polynomial ring with at most three variables.`);
+        }
+        validateModuleMatrixScalars(record.definition.relationMap.matrix, parent.definition as ModuleScalarRing);
       }
       visit(parent);
     }

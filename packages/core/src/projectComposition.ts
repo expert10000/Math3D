@@ -1,6 +1,8 @@
 import { isDocumentIdentity, type DocumentIdentity } from "./documentIdentity";
 import type { MixedWorkspaceDocument, KernelWorkspaceDocument } from "./mixedWorkspace";
 import { retainedMeshGenerationDocuments } from "./retainedMeshGenerations";
+import { retainedGeometryGenerationDocuments } from "./retainedGeometryGenerations";
+import { retainedSurfaceGenerationDocuments } from "./retainedSurfaceGenerations";
 
 /** A view of existing Project documents. No source bytes or edited document state live here. */
 export type ProjectCompositionMember = Readonly<{
@@ -38,12 +40,21 @@ export type ProjectCoordinateFrameRead = Readonly<{ status: "missing" | "invalid
 export const readProjectCoordinateFrame = (document: KernelWorkspaceDocument): ProjectCoordinateFrameRead => {
   const marker = document.format === "math3d.mesh-document" ?
     (record(document.source.origin) ? document.source.origin.math3dCoordinateFrame : undefined) :
-    document.format === "math3d.geometry-document" ? document.source.extensions.math3dCoordinateFrame : undefined;
+    document.format === "math3d.geometry-document" ? document.source.extensions.math3dCoordinateFrame :
+    document.format === "math3d.surface-document" && record(document.source.orientation) ?
+      document.source.orientation.math3dCoordinateFrame : undefined;
   if (marker === undefined) return { status: "missing" };
   if (!record(marker) || !exact(marker, ["format", "frame", "unit", "axes", "handedness"]) ||
     marker.format !== "math3d.coordinate-frame/v1" || !label(marker.frame, 80) || !label(marker.unit, 40) ||
     !Array.isArray(marker.axes) || marker.axes.length !== 3 || !marker.axes.every(axis => label(axis, 32)) ||
     new Set(marker.axes).size !== 3 || !["right", "left"].includes(String(marker.handedness))) return { status: "invalid" };
+  if (document.format === "math3d.surface-document" && marker.unit !== (document.source.units as { length: string }).length)
+    return { status: "invalid" };
+  if (document.format === "math3d.mesh-document" && record(document.source.origin) &&
+    document.source.origin.units !== undefined) {
+    const units = document.source.origin.units;
+    if (!record(units) || !label(units.length, 40) || marker.unit !== units.length) return { status: "invalid" };
+  }
   return { status: "declared", value: marker as ProjectCoordinateFrame };
 };
 export const sameProjectCoordinateFrame = (a: ProjectCoordinateFrame, b: ProjectCoordinateFrame): boolean =>
@@ -51,8 +62,11 @@ export const sameProjectCoordinateFrame = (a: ProjectCoordinateFrame, b: Project
 export const qualifyProjectOverlayCoordinates = (a: ProjectCoordinateFrameRead, b: ProjectCoordinateFrameRead,
   alignment: Readonly<{ frame: string; unit: string }>): "verified" | "asserted" | "invalid" | "mismatch" => {
   if (a.status === "invalid" || b.status === "invalid") return "invalid";
-  if (a.value && b.value) return sameProjectCoordinateFrame(a.value, b.value) &&
-    a.value.frame === alignment.frame && a.value.unit === alignment.unit ? "verified" : "mismatch";
+  // A missing declaration cannot verify the overlay, but it must not conceal a
+  // contradiction in a declaration that is present on the other source.
+  if ([a, b].some(source => source.value &&
+    (source.value.frame !== alignment.frame || source.value.unit !== alignment.unit))) return "mismatch";
+  if (a.value && b.value) return sameProjectCoordinateFrame(a.value, b.value) ? "verified" : "mismatch";
   return "asserted";
 };
 
@@ -83,7 +97,7 @@ export const inspectProjectComposition = (composition: ProjectComposition, works
     return entry.expected.revision === member.expected.revision && entry.expected.structuralHash === member.expected.structuralHash ? "current" : "historical";
   });
 
-export type ProjectCompositionAvailability = "current" | "retained-checkpoint" | "retained-mesh" | "unavailable-generation" | "missing";
+export type ProjectCompositionAvailability = "current" | "retained-checkpoint" | "retained-mesh" | "retained-geometry" | "retained-surface" | "unavailable-generation" | "missing";
 /** Metadata availability only; callers must still replay-verify and check resource sidecars. */
 export const inspectProjectCompositionAvailability = (composition: ProjectComposition, workspace: MixedWorkspaceDocument): readonly ProjectCompositionAvailability[] =>
   composition.members.map(member => {
@@ -96,6 +110,16 @@ export const inspectProjectCompositionAvailability = (composition: ProjectCompos
       const retained = retainedMeshGenerationDocuments(entry).some(document =>
         document.identity.revision === member.expected.revision && document.identity.structuralHash === member.expected.structuralHash);
       if (retained) return "retained-mesh";
+    }
+    if (entry.module === "geometry") {
+      const retained = retainedGeometryGenerationDocuments(entry).some(document =>
+        document.identity.revision === member.expected.revision && document.identity.structuralHash === member.expected.structuralHash);
+      if (retained) return "retained-geometry";
+    }
+    if (entry.module === "surface") {
+      const retained = retainedSurfaceGenerationDocuments(entry).some(document =>
+        document.identity.revision === member.expected.revision && document.identity.structuralHash === member.expected.structuralHash);
+      if (retained) return "retained-surface";
     }
     return "unavailable-generation";
   });

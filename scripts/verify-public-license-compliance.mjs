@@ -51,7 +51,7 @@ requireText(".github/workflows/release.yml", "Generate Windows release SBOM");
 requireText(".github/workflows/release.yml", "Generate Linux release SBOM");
 requireText(".github/workflows/mobile-android-production-aab.yml", "Generate Android release SBOM");
 requireText(".github/workflows/mobile-android-production-aab.yml", "Math3D-mobile-*-release.cdx.json");
-requireText(".github/workflows/release.yml", "python -m pip install pyinstaller -r python/worker/requirements.freeze.txt");
+requireText(".github/workflows/release.yml", "python -m pip install -r python/worker/build-requirements.freeze.txt -r python/worker/requirements.freeze.txt");
 requireText(".github/workflows/release.yml", 'MATH3D_REQUIRE_PYGALMESH: "1"');
 requireText(".github/workflows/release.yml", 'MATH3D_REQUIRE_CGAL: "1"');
 

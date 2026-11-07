@@ -20,6 +20,7 @@ export type WorkbookBlockType =
   | "visualize"
   | "compute"
   | "sage-code"
+  | "algebra-object"
   | "assert"
   | "interaction";
 export type WorkbookValueType =
@@ -37,7 +38,8 @@ export type WorkbookValueType =
   | "selection"
   | "scalar"
   | "vector"
-  | "points";
+  | "points"
+  | "algebra-object";
 
 export type WorkbookPort = {
   id: string;
@@ -320,10 +322,12 @@ export type WorkbookBlock = {
   text?: string;
   sageEvidence?: import("./workbookSageEvidence").WorkbookSageEvidence;
   sageCode?: { code: string; runs: import("./workbookSageCode").WorkbookSageCodeRun[] };
+  algebraObject?: import("./workbookAlgebraObject").WorkbookAlgebraObjectCell;
   formula?: string;
   documentContent?: WorkbookDocumentContent;
   claim?: WorkbookClaim;
   notebookReference?: NotebookReference;
+  algebraResult?: import("./workbookAlgebraResult").WorkbookAlgebraResult;
   scientificRegionReport?: { schemaVersion: 1; kind: "scientific-subrectangle-report/v1" |
     "scientific-trajectory-report/v1" | "scientific-equilibrium-report/v1";
     previousResultId?: string };
@@ -615,6 +619,7 @@ const buildBlockFromSpec = (spec: WorkbookTemplateBlockSpec, makeId: () => strin
       },
     };
   if (spec.type === "sage-code") return { ...base, sageCode: { code: spec.sageCode ?? "", runs: [] } };
+  if (spec.type === "algebra-object") return base;
   if (spec.type === "interaction")
     return {
       ...base,

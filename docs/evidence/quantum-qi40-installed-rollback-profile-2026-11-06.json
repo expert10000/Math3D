@@ -1,0 +1,72 @@
+{
+  "schema": "math3d/stable-quantum-installed-rollback/v1",
+  "checkedAtUtc": "2026-11-06T10:26:08.2022753Z",
+  "environment": "fresh Windows rollback VM",
+  "status": "passed",
+  "candidate": {
+    "commit": "49485e816fcfc7b46d5da1634c6746a631343f8e",
+    "version": "1.7.0",
+    "installerSha256": "63442950be85edb6f90f0321a37781650bde2c16cf4b32923aa64a3ae2cb6535",
+    "manifestSha256": "b704d1bce3fa8446908584b74c7cbcdc4b2463f178ca092b24bcacaa71ee5472"
+  },
+  "rollback": {
+    "commit": "55a0196fe63ca16f49c97ff1aead7e41105e0ede",
+    "version": "1.7.0",
+    "installerSha256": "b515f926f0794679f19b4cbe3adb5133b3d15b95f2b31e3856ff14ee5a4b46ac",
+    "manifestSha256": "dd96dd7b01d2ed9dc803fe65edd0b71c37cdfab0883dc8e28fa6a68439b193ae"
+  },
+  "checks": {
+    "exactBytes": "passed",
+    "candidateInstall": "passed",
+    "candidateProfileSeed": "passed",
+    "candidateQec": "passed",
+    "candidateUninstall": "passed",
+    "rollbackInstall": "passed",
+    "rollbackProfileRetained": "passed",
+    "v1v2Readers": "passed"
+  },
+  "failure": null,
+  "profileSeed": {
+    "schema": "math3d/installed-rollback-profile-phase/v1",
+    "phase": "seed",
+    "version": "1.7.0",
+    "projectTitle": "QI40 rollback Graph",
+    "savedProjectVisible": true,
+    "commandPreviewOverlaysOff": true
+  },
+  "candidateScene": {
+    "schema": "math3d/installed-quantum-rollback-phase/v1",
+    "phase": "candidate",
+    "opened": [
+      {
+        "id": "saved-ideal-qec",
+        "schema": "quantum-scene/v1",
+        "fingerprint": "e879c0f3e5033429ef0b89fdf59536099d51d61bd346e44ea29651c9a01a2391"
+      }
+    ]
+  },
+  "profileVerify": {
+    "schema": "math3d/installed-rollback-profile-phase/v1",
+    "phase": "verify",
+    "version": "1.7.0",
+    "projectTitle": "QI40 rollback Graph",
+    "savedProjectVisible": true,
+    "commandPreviewOverlaysOff": true
+  },
+  "rollbackScenes": {
+    "schema": "math3d/installed-quantum-rollback-phase/v1",
+    "phase": "rolled-back",
+    "opened": [
+      {
+        "id": "qwz-curvature",
+        "schema": "quantum-scene/v1",
+        "fingerprint": "a0c0e7947516f2f4132b15155096b9711b3c7eae207f805e9a066371035570b3"
+      },
+      {
+        "id": "rice-mele-bands",
+        "schema": "quantum-scene/v2",
+        "fingerprint": "bddb5db99912697430c34d77518d2703153a4e5d04f6d478402cb27362b3225c"
+      }
+    ]
+  }
+}

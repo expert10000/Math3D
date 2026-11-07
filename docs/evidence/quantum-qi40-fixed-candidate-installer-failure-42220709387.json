@@ -1,0 +1,94 @@
+{
+  "schema": "math3d/qi40-installer-probe/v1",
+  "checkedAtUtc": "2026-11-06T13:45:48.5692146Z",
+  "environment": "clean Windows runner",
+  "scope": "both apps",
+  "imageVersion": "20261103.298.1",
+  "osVersion": "10.0.26100",
+  "status": "failed",
+  "candidate": {
+    "buildRunId": "42220709387",
+    "manifestSha256": "02532ff5b049867049cfe315ac259f1412b5b55a9fe93a09e46dfee7e354f64c",
+    "math3dCommit": "276a265bbfc6f884531e69e5a698c2bc332c1ec2",
+    "theoryLabCommit": "38842c8ca927720e9a0f39bd6a04f0e366073996",
+    "math3dInstallerSha256": "284dc30f2c6a46cbc470c26b60b93894970adaf9eb460cfdee6bdf0cb2790e81",
+    "theoryLabInstallerSha256": "dcf48b6e1b6662155f0e30666187ee505a0ab718e035b34b434076aed56a6ccd"
+  },
+  "checks": {
+    "exactBytes": "passed",
+    "math3dInstall": "passed",
+    "theoryLabInstall": "pending",
+    "packagedWorkers": "pending"
+  },
+  "failure": "Theory Lab installer exited with code -1073741819 (0xC0000005)",
+  "debugger": {
+    "cdbAvailable": true,
+    "dumpAnalysis": "no stack frames parsed"
+  },
+  "crashDump": {
+    "configured": true,
+    "dumpType": "mini",
+    "configuredFor": [
+      "Math3D Setup 1.7.0.exe",
+      "Quantum-Hamiltonian-Lab-Setup-0.1.0.exe"
+    ],
+    "files": [
+      {
+        "name": "Quantum-Hamiltonian-Lab-Setup-0.1.0.exe.4020.dmp",
+        "bytes": 2874027,
+        "sha256": "0e324eeac66b0ed34afd1f6a2f119ef8927b854f2f112776d3c670fa35b0a1ef"
+      }
+    ],
+    "stackSummary": {
+      "status": "no stack frames parsed",
+      "exceptionCode": "c0000005",
+      "frames": [],
+      "stackLineCount": 0,
+      "moduleTokens": [
+        "ntdll!NtWaitForMultipleObjects+0xc",
+        "System!Store+0x000004a0",
+        "System!Store+0x4a0",
+        "System!Call+0x7f",
+        "Quantum_Hamiltonian_Lab_Setup_0_1_0+0x20c0",
+        "Quantum_Hamiltonian_Lab_Setup_0_1_0+0x13a8",
+        "Quantum_Hamiltonian_Lab_Setup_0_1_0+0x21005c",
+        "Quantum_Hamiltonian_Lab_Setup_0_1_0+0x1f005c"
+      ],
+      "commandMarkers": {
+        "begin": true,
+        "end": true
+      },
+      "diagnosticTags": [
+        "Unable to",
+        "Stack unwind",
+        "Symbol search path"
+      ],
+      "stdoutChars": 4886,
+      "stderrChars": 0,
+      "debuggerExitCode": 0
+    }
+  },
+  "installerFailure": {
+    "phase": "Theory Lab",
+    "installerName": "Quantum-Hamiltonian-Lab-Setup-0.1.0.exe",
+    "processId": 4020,
+    "startedUtc": "2026-11-06T13:46:56.1877533Z",
+    "endedUtc": "2026-11-06T13:47:12.6157220Z",
+    "exitCode": -1073741819,
+    "exitCodeHex": "0xC0000005",
+    "applicationErrors": [
+      {
+        "timeUtc": "2026-11-06T13:47:07.8885796Z",
+        "faultingApplication": "Quantum-Hamiltonian-Lab-Setup-0.1.0.exe",
+        "applicationVersion": "0.1.0.0",
+        "faultingModule": "System.dll",
+        "moduleVersion": "0.0.0.0",
+        "exceptionCode": "c0000005",
+        "faultOffset": "00001581",
+        "modulePathName": "System.dll",
+        "eventRecordId": 3886
+      }
+    ],
+    "werEvents": []
+  }
+}

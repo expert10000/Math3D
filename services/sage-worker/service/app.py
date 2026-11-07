@@ -4,7 +4,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from .sage_adapter import cancel_sage_job, run_sage_operation
+from .sage_adapter import (MAX_CPU_SECONDS, MAX_INPUT_BYTES, MAX_MEMORY_BYTES,
+                           MAX_OUTPUT_BYTES, MAX_QUEUED_JOBS, MAX_QUEUE_WAIT_SECONDS,
+                           MAX_RUNNING_JOBS, MAX_WALL_SECONDS, cancel_sage_job,
+                           run_sage_operation)
 from .sage_runner import OPERATIONS, SAGE_VERSION
 
 
@@ -53,6 +56,17 @@ def health():
         "engineVersion": str(SAGE_VERSION),
         "available": True,
         "operations": sorted(OPERATIONS.keys()),
+        "workerPolicy": {
+            "schemaVersion": 1,
+            "maxRunning": MAX_RUNNING_JOBS,
+            "maxQueued": MAX_QUEUED_JOBS,
+            "queueWaitMs": MAX_QUEUE_WAIT_SECONDS * 1000,
+            "wallTimeMs": MAX_WALL_SECONDS * 1000,
+            "cpuTimeSeconds": MAX_CPU_SECONDS,
+            "maxMemoryBytes": MAX_MEMORY_BYTES,
+            "maxInputBytes": MAX_INPUT_BYTES,
+            "maxOutputBytes": MAX_OUTPUT_BYTES,
+        },
     }
 
 

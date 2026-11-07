@@ -19,6 +19,7 @@ import type { GeometryScene } from "../geometry/types";
 import type { VerifiedProjectResources } from "./projectResources";
 
 import { capturedCurveKey } from "./capturedCurveSources";
+import { independentQuantumPrimitiveCopy } from "./nativeGeometryRestore";
 import { supportsSavedSurfaceResolution, validateSurfaceStudyResolution } from "./surfaceStudyResolution";
 
 export type AdditionalDocument = CurveDocument | SurfaceDocument | GeometryDocument | TopologyDocument;
@@ -240,7 +241,7 @@ export const additionalRepresentationView = (document: AdditionalDocument, conte
   } else if(document.format==="math3d.geometry-document") {
     if(document.source.objects.length||document.source.surfaces.length||document.display.overlays.length||document.display.cameras.length)fail("This combined Geometry scene needs an additional render adapter.");
     const saved=geometryDocumentToSceneDocument(document);scene=JSON.parse(JSON.stringify(saved.geometry??{}));
-    const values=Object.values(scene).flat() as unknown[];if(values.length>512||document.source.constructions.length>256||document.source.relationships.length>512)fail("Geometry scene exceeds the native bound.");
+    const values=Object.values(scene).flat() as unknown[];if(values.length>(independentQuantumPrimitiveCopy(document)?5000:512)||document.source.constructions.length>256||document.source.relationships.length>512)fail("Geometry scene exceeds the native bound.");
     const pointMap=new Map((scene.points??[]).filter((p)=>p.id).map((p)=>[p.id!,p]));
     const evaluated=evaluateDerivedConstructionObjects([...document.source.constructions],pointMap,[...document.source.relationships]);
     if(evaluated.errors.length)fail(evaluated.errors.join(" "));

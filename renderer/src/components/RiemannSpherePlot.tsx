@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { disposeOrbitControls } from "../utils/disposeOrbitControls";
 import { sphereToStereographic } from "../math/riemannSphere";
 import AxisGizmo from "./AxisGizmo";
 import { applyCameraOrientation, CAMERA_ORIENTATION_LABEL, orbitCameraAroundTarget, type CameraOrientation } from "./cameraOrientation";
@@ -195,7 +196,7 @@ const RiemannSpherePlot: React.FC<RiemannSpherePlotProps> = ({
       if (frameRef.current) cancelAnimationFrame(frameRef.current);
       observer.disconnect();
       controls.removeEventListener("start", handleControlsStart);
-      controls.dispose();
+      disposeOrbitControls(controls);
       scene.traverse(disposeObject3D);
       renderer.setAnimationLoop(null);
       renderer.renderLists.dispose();

@@ -27,12 +27,23 @@ test("promoted geometry saves beside its verified quantum source", async () => {
     const reference = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).quantumScenes[0]);
     await projects.getByTestId(`quantum-promote-geometry-${reference.sceneFingerprint}`).click();
     await expect(projects.getByTestId("project-quantum-scene-message")).toContainText("geometry copy staged");
+    await expect(projects.getByTestId("project-quantum-scene-message")).toContainText("pre-QEC rollback still shows a compatibility preview");
     await projects.getByTestId("project-save").click();
     await expect(projects.getByTestId("project-message")).toContainText("with 9 documents", { timeout: 60_000 });
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     expect(saved.workspace.entries.some((entry: { module: string }) => entry.module === "geometry")).toBe(true);
     expect(saved.workspace.entries.some((entry: { module: string }) => entry.module === "quantum")).toBe(true);
     expect(saved.workspace.relations.some((relation: { operation: string }) => relation.operation === "quantum.promote-geometry")).toBe(true);
+    const promoted = saved.workspace.entries.find((entry: { module: string; checkpoint: { source?: { extensions?: Record<string, unknown> } } }) =>
+      entry.module === "geometry" && entry.checkpoint.source?.extensions?.["quantum.promotion/v1"]);
+    expect(promoted).toBeTruthy();
+    await page.reload();
+    await page.getByTestId("projects-toggle").click();
+    await page.getByTestId(`project-open-saved-${saved.identity.id}`).click();
+    const promotedDocument = page.getByTestId(`project-tree-document-${promoted.expected.id}`);
+    await expect(promotedDocument).toBeEnabled();
+    await promotedDocument.click();
+    await expect(page.getByTestId("workspace-nav-geometry")).toHaveAttribute("aria-pressed", "true");
   } finally {
     await app.close();
     if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-qi21-ui-")) throw new Error("Unsafe QI-21 cleanup path");

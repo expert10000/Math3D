@@ -1,6 +1,7 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { disposeOrbitControls } from "../utils/disposeOrbitControls";
 import type { SurfaceMeshData } from "../mesh/surfaceMesh";
 import { pickedMeshVertex } from "./savedMeshExploration";
 
@@ -59,7 +60,7 @@ export const SavedMeshStudyView = forwardRef<SavedMeshStudyViewHandle, { mesh: S
     renderer.domElement.addEventListener("pointerup", pointerUp);
     renderer.domElement.addEventListener("keydown", keyDown);
     runtime.current = { geometry, material, overlays, radius, fit, render, capture: () => { render(); return renderer.domElement.toDataURL("image/png"); } }; resize(); fit();
-    return () => { runtime.current = null; observer.disconnect(); controls.dispose(); renderer.domElement.removeEventListener("pointerdown", pointerDown); renderer.domElement.removeEventListener("pointerup", pointerUp); renderer.domElement.removeEventListener("keydown", keyDown); disposeOverlays(overlays); geometry.dispose(); material.dispose(); renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove(); };
+    return () => { runtime.current = null; observer.disconnect(); disposeOrbitControls(controls); renderer.domElement.removeEventListener("pointerdown", pointerDown); renderer.domElement.removeEventListener("pointerup", pointerUp); renderer.domElement.removeEventListener("keydown", keyDown); disposeOverlays(overlays); geometry.dispose(); material.dispose(); renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove(); };
   }, [mesh]);
   useEffect(() => {
     const view = runtime.current; if (!view) return;

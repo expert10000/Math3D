@@ -35,8 +35,8 @@ def _input(params):
 def analyze_galois(params):
     variable, expression, polynomial = _input(params)
     root_group = polynomial.galois_group()
-    if root_group.order() > 8:
-        raise ValueError("Galois group order exceeds the complete-lattice limit of eight; no partial lattice was saved.")
+    if root_group.order() > 16:
+        raise ValueError("Galois group order exceeds the bounded partial-lattice limit of sixteen.")
     group = NumberField(polynomial, "a").galois_group()
     splitting = group.splitting_field()
     order = int(group.order())
@@ -53,8 +53,15 @@ def analyze_galois(params):
         members = sorted(indexes[tuple(int(i) for i in element.tuple())] for element in subgroup.list())
         raw_subgroups.append((members, subgroup))
     raw_subgroups.sort(key=lambda item: (len(item[0]), item[0]))
-    if len(raw_subgroups) > 16:
+    if order <= 8 and len(raw_subgroups) > 16:
         raise ValueError("Galois subgroup count exceeds the complete-lattice limit of 16.")
+    partial = order > 8
+    omitted_count = 0
+    if partial:
+        # Keep the trivial and whole groups, plus a deterministic bounded sample.
+        shown = min(8, len(raw_subgroups) - 1)
+        omitted_count = len(raw_subgroups) - shown
+        raw_subgroups = raw_subgroups[:shown - 1] + [raw_subgroups[-1]]
     subgroups = []
     for index, (members, subgroup) in enumerate(raw_subgroups):
         fixed, embedding = subgroup.fixed_field()
@@ -73,7 +80,7 @@ def analyze_galois(params):
         subgroups.append({"id": f"H{index}", "members": members, "order": len(members),
             "normal": bool(subgroup.is_normal(group)), "fixedField": field})
     dihedral = order == 8 and bool(root_group.is_isomorphic(DihedralGroup(4)))
-    return {"format": "math3d.sage-galois-analysis-result", "schemaVersion": 1,
+    result = {"format": "math3d.sage-galois-analysis-result", "schemaVersion": 1,
         "sourcePolynomial": expression, "variable": variable, "coefficientDomain": "QQ",
         "irreducible": True, "squareFree": True,
         "splittingField": {"degree": order, "definingPolynomial": str(splitting.defining_polynomial())},
@@ -83,4 +90,8 @@ def analyze_galois(params):
             "convention": "D4 = symmetries of a square, order 8" if dihedral else "",
             "solvable": bool(group.is_solvable()), "elements": [list(item) for item in tuples],
             "generators": generators},
-        "subgroups": subgroups, "complete": True}
+        "subgroups": subgroups, "complete": not partial}
+    if partial:
+        result["partialReason"] = "Group order exceeds the reviewed complete-lattice bound of eight. Displayed edges are restricted to the saved subgroup sample."
+        result["omittedCount"] = omitted_count
+    return result

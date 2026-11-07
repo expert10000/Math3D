@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "field.probe-to-graph.v1",
+  "sourceModule": "vector3d",
+  "targetModule": "graph2d",
+  "selectionKind": "point",
+  "sourceFrame": {
+    "kind": "cartesian",
+    "frameId": "field-meters",
+    "axes": [
+      { "name": "x", "dimension": "length", "unit": "m" },
+      { "name": "y", "dimension": "length", "unit": "m" },
+      { "name": "z", "dimension": "length", "unit": "m" }
+    ]
+  },
+  "targetFrame": {
+    "kind": "cartesian",
+    "frameId": "graph-profile-meters",
+    "axes": [
+      { "name": "x", "dimension": "length", "unit": "m" },
+      { "name": "speed", "dimension": "speed", "unit": "m/s" }
+    ]
+  },
+  "mapping": { "id": "field.probe-profile", "version": 1, "accuracy": "interpolated" },
+  "requiredFacilities": [],
+  "workerOperationId": "field.derived-profile"
+}

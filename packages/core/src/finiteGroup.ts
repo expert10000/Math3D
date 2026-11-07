@@ -1,12 +1,16 @@
+import type { AlgebraObjectRef } from "./algebraObjects";
+
 /** Bounded finite groups with exact, portable generators. No GAP call is needed to validate E01 records. */
+export type FiniteGroupSource = Readonly<{ ring: AlgebraObjectRef; polynomial: string;
+  evidenceId: string; splittingPolynomial: string }>;
 export type GroupWordTerm = Readonly<{ generator: string; exponent: number }>;
 export type GroupRelation = Readonly<{ label: string; word: readonly GroupWordTerm[] }>;
 export type FiniteGroupDefinition =
   | Readonly<{ kind: "finite-group"; representation: "permutation"; degree: number;
       generators: readonly Readonly<{ name: string; images: readonly number[] }>[];
-      relations: readonly GroupRelation[] }>
+      relations: readonly GroupRelation[]; source?: FiniteGroupSource }>
   | Readonly<{ kind: "finite-group"; representation: "abelian"; invariantFactors: readonly number[];
-      generators: readonly string[] }>;
+      generators: readonly string[]; source?: FiniteGroupSource }>;
 export type FiniteGroupFacts = Readonly<{ order: number; representation: "permutation" | "abelian";
   generatorOrders: readonly Readonly<{ name: string; order: number }>[];
   presentation: string; checkedRelations: readonly string[]; elementCount: number; involutionCount: number }>;
@@ -17,6 +21,21 @@ const exact = (value: Record<string, unknown>, keys: readonly string[]) =>
   Object.keys(value).sort().join("|") === [...keys].sort().join("|");
 const name = (value: unknown): value is string => typeof value === "string" &&
   /^[A-Za-z][A-Za-z0-9_]{0,15}$/.test(value);
+const parseSource = (value: unknown): FiniteGroupSource => {
+  if (!object(value) || !exact(value, ["ring", "polynomial", "evidenceId", "splittingPolynomial"]) ||
+      !object(value.ring) || !exact(value.ring, ["objectId", "revision"]) ||
+      typeof value.ring.objectId !== "string" || !value.ring.objectId.startsWith("math3d:algebra:") ||
+      !Number.isSafeInteger(value.ring.revision) || (value.ring.revision as number) < 1 ||
+      typeof value.polynomial !== "string" || !value.polynomial || value.polynomial.length > 120 ||
+      !/^[A-Za-z0-9_+\-*/^()\s]+$/.test(value.polynomial) ||
+      typeof value.evidenceId !== "string" || !value.evidenceId || value.evidenceId.length > 200 ||
+      typeof value.splittingPolynomial !== "string" || !value.splittingPolynomial ||
+      value.splittingPolynomial.length > 4096)
+    throw new TypeError("Finite group source must pin polynomial, ring revision, evidence and splitting field.");
+  return { ring: { objectId: value.ring.objectId as AlgebraObjectRef["objectId"],
+    revision: value.ring.revision as number }, polynomial: value.polynomial,
+    evidenceId: value.evidenceId, splittingPolynomial: value.splittingPolynomial };
+};
 const perm = (value: unknown, degree: number): value is number[] => Array.isArray(value) &&
   value.length === degree && value.every((item) => Number.isSafeInteger(item) && item >= 1 && item <= degree) &&
   new Set(value).size === degree;
@@ -40,8 +59,9 @@ const orderOf = (a: readonly number[]): number => {
 
 export const parseFiniteGroupDefinition = (value: unknown): FiniteGroupDefinition => {
   if (!object(value) || value.kind !== "finite-group") throw new TypeError("Finite group definition is invalid.");
+  const source = "source" in value ? { source: parseSource(value.source) } : {};
   if (value.representation === "abelian") {
-    if (!exact(value, ["kind", "representation", "invariantFactors", "generators"]) ||
+    if (!exact(value, ["kind", "representation", "invariantFactors", "generators", ...Object.keys(source)]) ||
         !Array.isArray(value.invariantFactors) || value.invariantFactors.length < 1 ||
         value.invariantFactors.length > 4 || !value.invariantFactors.every((item) =>
           Number.isSafeInteger(item) && item >= 2 && item <= 64) ||
@@ -50,10 +70,10 @@ export const parseFiniteGroupDefinition = (value: unknown): FiniteGroupDefinitio
         !Array.isArray(value.generators) || value.generators.length !== value.invariantFactors.length ||
         !value.generators.every(name) || new Set(value.generators).size !== value.generators.length)
       throw new TypeError("Finite abelian group requires invariant factors in a divisibility chain, order at most 256, and distinct generators.");
-    return { kind: "finite-group", representation: "abelian",
+    return { kind: "finite-group", representation: "abelian", ...source,
       invariantFactors: [...value.invariantFactors], generators: [...value.generators] };
   }
-  if (value.representation !== "permutation" || !exact(value, ["kind", "representation", "degree", "generators", "relations"]) ||
+  if (value.representation !== "permutation" || !exact(value, ["kind", "representation", "degree", "generators", "relations", ...Object.keys(source)]) ||
       !Number.isSafeInteger(value.degree) || (value.degree as number) < 2 || (value.degree as number) > 8 ||
       !Array.isArray(value.generators) || value.generators.length < 1 || value.generators.length > 3 ||
       !value.generators.every((item) => object(item) && exact(item, ["name", "images"]) &&
@@ -80,7 +100,7 @@ export const parseFiniteGroupDefinition = (value: unknown): FiniteGroupDefinitio
   }
   if (new Set(relations.map((item) => (item as GroupRelation).label)).size !== relations.length)
     throw new TypeError("Finite group relation labels must be distinct.");
-  const parsed: FiniteGroupDefinition = { kind: "finite-group", representation: "permutation",
+  const parsed: FiniteGroupDefinition = { kind: "finite-group", representation: "permutation", ...source,
     degree: value.degree as number, generators: generators.map((item) => ({ name: item.name, images: [...item.images] })),
     relations: relations.map((item) => ({ label: (item as GroupRelation).label,
       word: (item as GroupRelation).word.map((term) => ({ ...term })) })) };

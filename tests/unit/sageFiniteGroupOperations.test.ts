@@ -29,6 +29,8 @@ describe("SAGE-E02 GAP group dossier", () => {
     expect(reopened.algebraObjects?.[0].revisions[0]).toEqual(record);
     expect(reopened.algebraEvidence?.[0].result).toEqual(d4Result);
     expect(reopened.algebraEvidence?.[0].request.params.targetHash).toBe(record.contentHash);
+    expect(reopened.algebraEvidence?.[0].certificate?.runtime).toMatchObject({
+      subsystem: "GAP", subsystemVersion: d4Result.gapVersion, algorithm: null });
     expect((reopened.algebraEvidence?.[0].result as typeof d4Result).subgroups).toHaveLength(10);
   });
 

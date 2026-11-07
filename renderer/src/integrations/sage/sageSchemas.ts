@@ -15,6 +15,13 @@ export type SageOperation =
   | "sage.polynomial.dossier"
   | "sage.galois.analyze"
   | "sage.group.dossier"
+  | "sage.group.actionCharacters"
+  | "sage.module.invariantFactors"
+  | "sage.chain.homology"
+  | "sage.finiteField.explore"
+  | "sage.numberTheory.padic"
+  | "sage.numberField.localExtensions"
+  | "sage.ellipticCurve.dossier"
   | "sage.groebner.compute"
   | "sage.numberTheory.gcd"
   | "sage.numberTheory.modInverse"
@@ -29,16 +36,27 @@ export type SageOperation =
   | "sage.ideal.membership"
   | "sage.ideal.quotientDimension"
   | "sage.ideal.syzygies"
-  | "sage.ideal.hilbertSeries";
+  | "sage.ideal.hilbertSeries"
+  | "sage.ideal.radical"
+  | "sage.ideal.primaryDecomposition"
+  | "sage.ideal.hilbertPolynomial";
 
 export type SageSymbolicOperation = Exclude<SageOperation, "sage.topology.integer_homology" | "sage.complex.analyze" |
   "sage.algebra.reconstruct" | "sage.algebra.inspectDomains" | "sage.polynomial.dossier" |
   "sage.galois.analyze" |
   "sage.group.dossier" |
+  "sage.group.actionCharacters" |
+  "sage.module.invariantFactors" |
+  "sage.chain.homology" |
+  "sage.finiteField.explore" |
+  "sage.numberTheory.padic" |
+  "sage.numberField.localExtensions" |
+  "sage.ellipticCurve.dossier" |
   "sage.numberField.elementDossier" | "sage.numberField.primeDecomposition" |
   "sage.matrix.linear_dossier" | "sage.matrix.integer_forms" |
   "sage.ideal.groebner" | "sage.ideal.eliminate" | "sage.ideal.membership" | "sage.ideal.quotientDimension" |
-  "sage.ideal.syzygies" | "sage.ideal.hilbertSeries">;
+  "sage.ideal.syzygies" | "sage.ideal.hilbertSeries" | "sage.ideal.radical" |
+  "sage.ideal.primaryDecomposition" | "sage.ideal.hilbertPolynomial">;
 
 export type SageHealthResponse = {
   status: string;
@@ -47,6 +65,9 @@ export type SageHealthResponse = {
   available: boolean;
   operations: SageOperation[];
   limits?: { maxInputBytes: number; maxConcurrent: number; maxRequestsPerMinute: number; timeoutMs: number };
+  workerPolicy?: { schemaVersion: 1; maxRunning: number; maxQueued: number; queueWaitMs: number;
+    wallTimeMs: number; cpuTimeSeconds: number; maxMemoryBytes: number;
+    maxInputBytes: number; maxOutputBytes: number };
 };
 
 export type SageRunRequest = {
@@ -91,6 +112,13 @@ export const SAGE_OPERATIONS: SageOperation[] = [
   "sage.polynomial.dossier",
   "sage.galois.analyze",
   "sage.group.dossier",
+  "sage.group.actionCharacters",
+  "sage.module.invariantFactors",
+  "sage.chain.homology",
+  "sage.finiteField.explore",
+  "sage.numberTheory.padic",
+  "sage.numberField.localExtensions",
+  "sage.ellipticCurve.dossier",
   "sage.matrix.linear_dossier",
   "sage.matrix.integer_forms",
   "sage.algebra.reconstruct",
@@ -103,6 +131,9 @@ export const SAGE_OPERATIONS: SageOperation[] = [
   "sage.ideal.quotientDimension",
   "sage.ideal.syzygies",
   "sage.ideal.hilbertSeries",
+  "sage.ideal.radical",
+  "sage.ideal.primaryDecomposition",
+  "sage.ideal.hilbertPolynomial",
   "sage.topology.integer_homology",
   "sage.complex.analyze",
 ];
@@ -136,6 +167,12 @@ export const normalizeSageHealth = (payload: unknown): SageHealthResponse => {
     available: data.available,
     operations,
     ...(data.limits && typeof data.limits === "object" ? { limits: data.limits } : {}),
+    ...(data.workerPolicy && typeof data.workerPolicy === "object" &&
+      data.workerPolicy.schemaVersion === 1 &&
+      ["maxRunning", "maxQueued", "queueWaitMs", "wallTimeMs", "cpuTimeSeconds",
+        "maxMemoryBytes", "maxInputBytes", "maxOutputBytes"].every((key) =>
+        Number.isFinite(data.workerPolicy?.[key as keyof typeof data.workerPolicy]))
+      ? { workerPolicy: data.workerPolicy } : {}),
   };
 };
 

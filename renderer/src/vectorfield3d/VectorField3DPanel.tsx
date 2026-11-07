@@ -95,6 +95,9 @@ import { VectorField3DDerivedOperationsPanel } from "./VectorField3DDerivedOpera
 import { VectorField3DDerivedIsosurfacePanel } from "./VectorField3DDerivedIsosurfacePanel";
 import { VectorField3DMultiIsosurfacePanel } from "./VectorField3DMultiIsosurfacePanel";
 import { VectorField3DLocalTopologyPanel } from "./VectorField3DLocalTopologyPanel";
+import { VectorField3DTopologyStudiesPanel } from "./VectorField3DTopologyStudiesPanel";
+import { VectorField3DAdvancedTopologyPanel } from "./VectorField3DAdvancedTopologyPanel";
+import { VectorField3DTensorGlyphPanel } from "./VectorField3DTensorGlyphPanel";
 import { VectorField3DComparisonPanel } from "./VectorField3DComparisonPanel";
 import { VectorField3DFrameUnitPanel } from "./VectorField3DFrameUnitPanel";
 import { VectorField3DTimeSourcePanel } from "./VectorField3DTimeSourcePanel";
@@ -148,9 +151,23 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   onSaveRegionIntegralSelection, onSaveRegionIntegralResult,
   onSaveTrajectorySeeds, onPromoteTrajectoryCurve, onPromoteLocalSeparatrix,
   onSaveComparisonResult, onOpenComparisonProfile,
+  onSaveTopologyStudy, onOpenPoincare, onSavePoincareReturn,
+  onOpenPoincareReturn, onSaveLyapunov, onPromoteManifoldPatch,
   onSaveTemporalSource, onSaveTemporalPathline, onSaveTemporalStreakline,
-  onSaveTemporalSpectrum, onRebaseDerivedSource,
+  onSaveTemporalSpectrum, onSaveTemporalFtLeField,
+  onSaveTemporalSurfaceEvents, onSaveTemporalSurfaceLinkage, onSaveTemporalSurfaceTransport,
+  onSaveTemporalSurfaceIdentity,
+  onPromoteManifoldContinuation,
+  onPromoteExtendedManifold,
+  onPromoteManifoldAtlas,
+  onValidateAtlasCoverage,
+  onValidateAtlasSeams,
+  onValidateAtlasRefinement,
+  onSaveTemporalFtleProfile, onOpenTemporalFtleProfile,
+  onRebaseDerivedSource,
+  onOpenTemporalSpectrum,
   onAppendDerivedOperation, onPromoteDerivedIsosurface,
+  onSaveTensorGlyphs,
   libraryEntries = [], libraryBusy = false, libraryError = "", onBrowseLibraryScene,
   onOpenLibraryExample, onOpenLibraryEntry, onRemoveLibraryScene, onRecheckLibraryScene,
   fieldLayer, linkedProbe = null, onLinkedProbeChange, onOpenFieldDetails,
@@ -211,6 +228,18 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   onSaveComparisonResult?: (result: AnalysisResultEnvelope,
     transfers: import("@math3d/core").VectorField3DComparisonTransfers) => void;
   onOpenComparisonProfile?: (result: AnalysisResultEnvelope) => void;
+  onSaveTopologyStudy?: (result: AnalysisResultEnvelope) => void;
+  onOpenPoincare?: (result: AnalysisResultEnvelope) => void;
+  onSavePoincareReturn?: (study: import("@math3d/core").PoincareReturnStudy) => void;
+  onOpenPoincareReturn?: (result: AnalysisResultEnvelope) => void;
+  onSaveLyapunov?: (study: import("@math3d/core").LyapunovStudy) => void;
+  onPromoteManifoldPatch?: (patch: import("@math3d/core").LocalManifoldPatch) => void;
+  onPromoteManifoldContinuation?: (study: import("@math3d/core").ManifoldContinuationStudy) => void;
+  onPromoteExtendedManifold?: (study: import("@math3d/core").ExtendedManifoldStudy) => void;
+  onPromoteManifoldAtlas?: (study: import("@math3d/core").ManifoldAtlasStudy) => void;
+  onValidateAtlasCoverage?: (baseResultId: string, refinedResultId: string) => Promise<import("@math3d/core").ManifoldSurfaceCoverageStudy>;
+  onValidateAtlasSeams?: (coverageResultId: string) => Promise<import("@math3d/core").AtlasSeamEvidence>;
+  onValidateAtlasRefinement?: (seamsResultId: string) => Promise<import("@math3d/core").AtlasRefinementEvidence>;
   onSaveTemporalSource?: (source: import("@math3d/core").TemporalFieldSourceDocument,
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
   onSaveTemporalPathline?: (curve: import("@math3d/core").CurveDocument,
@@ -219,10 +248,26 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
   onSaveTemporalSpectrum?: (result: import("@math3d/core").AnalysisResultEnvelope,
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
+  onSaveTemporalFtLeField?: (study: import("@math3d/core").TemporalLyapunovFieldStudy,
+    transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
+  onSaveTemporalSurfaceEvents?: (study: import("@math3d/core").TemporalSurfaceEventStudy,
+    transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
+  onSaveTemporalSurfaceLinkage?: (study: import("@math3d/core").TemporalSurfaceLinkageStudy,
+    transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
+  onSaveTemporalSurfaceTransport?: (study: import("@math3d/core").TemporalSurfaceTransportStudy,
+    transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
+  onSaveTemporalSurfaceIdentity?: (study: import("@math3d/core").TemporalSurfaceIdentityStudy,
+    transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
+  onSaveTemporalFtleProfile?: (study: import("@math3d/core").TemporalFtleProfileStudy,
+    transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
+  onOpenTemporalFtleProfile?: (result: AnalysisResultEnvelope) => void;
+  onOpenTemporalSpectrum?: (result: AnalysisResultEnvelope) => void;
   onRebaseDerivedSource?: (replacement: VectorField3DDocument,
     transfer: import("@math3d/core").VerifiedVectorFieldTransfer) => void;
   onAppendDerivedOperation?: (inputId: string, operation: import("@math3d/core").DerivedFieldOperation,
     options: { stableKey: string; title: string; secondaryInputId?: string }) => void;
+  onSaveTensorGlyphs?: (study: import("@math3d/core").TensorGlyphStudy,
+    transfers: ReadonlyMap<string, import("@math3d/core").VerifiedVectorFieldTransfer>) => void;
   onPromoteDerivedIsosurface?: (surface: import("@math3d/core").DerivedScalarIsosurface) => void;
   onOpenProjectResults?: (resultId: string) => void;
   onPromoteIsosurface?: (document: VectorField3DDocument,
@@ -2032,6 +2077,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
     {!fieldLayer && <VectorField3DLICPanel document={document} slice={visibleRegionSlice ?? slice} />}
     {!fieldLayer && <VectorField3DDerivedOperationsPanel document={document} project={project}
       onAppend={onAppendDerivedOperation} />}
+    {!fieldLayer && <VectorField3DTensorGlyphPanel document={document} project={project}
+      onSave={onSaveTensorGlyphs} />}
     {!fieldLayer && <VectorField3DDerivedIsosurfacePanel document={document} project={project}
       onPromote={onPromoteDerivedIsosurface} />}
     {!fieldLayer && <VectorField3DMultiIsosurfacePanel document={document}
@@ -2787,6 +2834,18 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
       <VectorField3DLocalTopologyPanel document={document} search={equilibriumSearch}
         selectedIndex={selectedEquilibrium} project={project}
         onPromote={onPromoteLocalSeparatrix} />
+      <VectorField3DTopologyStudiesPanel document={document} project={project}
+        onSave={onSaveTopologyStudy} onOpenPoincare={onOpenPoincare} />
+      <VectorField3DAdvancedTopologyPanel document={document} project={project}
+        onSaveReturn={onSavePoincareReturn} onOpenReturn={onOpenPoincareReturn}
+        onSaveLyapunov={onSaveLyapunov}
+        onPromoteManifold={onPromoteManifoldPatch}
+        onPromoteContinuation={onPromoteManifoldContinuation}
+        onPromoteExtended={onPromoteExtendedManifold}
+        onPromoteAtlas={onPromoteManifoldAtlas}
+        onValidateAtlasCoverage={onValidateAtlasCoverage}
+        onValidateAtlasSeams={onValidateAtlasSeams}
+        onValidateAtlasRefinement={onValidateAtlasRefinement} />
       <VectorField3DComparisonPanel document={document} project={project}
         onSave={onSaveComparisonResult} onOpenProfile={onOpenComparisonProfile} />
       <VectorField3DFrameUnitPanel document={document} />
@@ -2794,6 +2853,15 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
         onSave={onSaveTemporalSource} onSavePathline={onSaveTemporalPathline}
         onSaveStreakline={onSaveTemporalStreakline}
         onSaveSpectrum={onSaveTemporalSpectrum}
+        onSaveFtLeField={onSaveTemporalFtLeField}
+        onSaveSurfaceEvents={onSaveTemporalSurfaceEvents}
+        onSaveSurfaceLinkage={onSaveTemporalSurfaceLinkage}
+        onSaveSurfaceTransport={onSaveTemporalSurfaceTransport}
+        onSaveSurfaceIdentity={onSaveTemporalSurfaceIdentity}
+        onSaveFtleProfile={onSaveTemporalFtleProfile}
+        onOpenFtleProfile={onOpenTemporalFtleProfile}
+        onOpenSpectrum={onOpenTemporalSpectrum}
+        onPreviewMovingIsosurface={setIsosurface}
         onPromoteMovingIsosurface={onPromoteIsosurface} />
     </section>
     {normalAxis !== undefined && <section aria-label="Slice appearance and verification" data-gf06-section="layer">

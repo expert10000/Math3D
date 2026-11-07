@@ -1,0 +1,11 @@
+# SAGE-G04 elliptic curve objects acceptance
+
+Open **Number Theory or CAS → Structures → + New curve**. Select a saved current `QQ` or prime `GF(p)` base field, enter a name and integer coefficients `a,b` for `y²=x³+ax+b`, then validate and save. The bounded model accepts coefficients from −4096 to 4096 over `QQ`; over `GF(p)` it accepts canonical residues and 5 ≤ p ≤ 1009. Characteristic 2 and 3 require other Weierstrass forms and are excluded. Zero discriminant in the pinned base field is rejected, including models that become singular only after reduction modulo `p`.
+
+The Project record has schema version 1, a stable ID and revision, a pinned field reference, model identity and exact coefficients. The Structures dossier shows its discriminant and `j` invariant. **Operations → Elliptic curve invariants and doubling** runs the versioned Docker Sage operation with an optional verified integer-coordinate sample point. Saved evidence retains the exact source closure, Sage version and result hash. On import, the result parser independently checks the discriminant, `j`, point membership and group-law doubling against the pinned model.
+
+Exact fixtures: `E/QQ: y²=x³−x+1` has `Δ=−368`, `j=−6912/23`, and `2(0,1)=(1/4,−7/8)`; `E/GF(5): y²=x³+x+1` has `Δ=4`, `j=2`, and `2(0,1)=(4,2)`. Singular models, off-curve points, unsupported base fields and forged result values are rejected. The desktop gate creates the `QQ` curve through the UI, saves evidence, exports its Project, and independently reopens the same curve and calculation.
+
+Acceptance results (2026-11-06): WSL Sage 9.5 and Docker Sage 10.10 each passed four live curve tests, including a two-torsion point that doubles to infinity. The Docker `/run` route returned the exact `QQ` and `GF(5)` fixture invariants and doubled points. The core and broker Vitest selection passed 75 tests; `npm run typecheck:noemit` and `npm run build:core` passed. The desktop Playwright test saved the curve and its calculation, then independently reopened both in a fresh profile. Sage 10.10 raises `ArithmeticError` for a singular reduced curve where the older route surfaces `ValueError`; the worker normalizes both to the same validation error. No exact-result difference was found.
+
+Next: **SAGE-G05**, real and finite-field elliptic curve visualizations with distinct geometry labels.

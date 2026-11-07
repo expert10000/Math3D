@@ -37,6 +37,13 @@ export type Math3DWorkerOperationId =
   | "polynomial.dossier"
   | "galois.analyze"
   | "group.dossier"
+  | "group.action-characters"
+  | "module.invariant-factors"
+  | "chain.homology"
+  | "finite-field.explore"
+  | "number-theory.padic"
+  | "number-field.local-extensions"
+  | "elliptic-curve.dossier"
   | "polynomial.roots.exact"
   | "matrix.eigen.exact"
   | "matrix.charpoly"
@@ -53,6 +60,9 @@ export type Math3DWorkerOperationId =
   | "ideal.quotient-dimension"
   | "ideal.syzygies"
   | "ideal.hilbert-series"
+  | "ideal.radical"
+  | "ideal.primary-decomposition"
+  | "ideal.hilbert-polynomial"
   | "number-theory.gcd"
   | "number-theory.mod-inverse"
   | "sage.console.execute";
@@ -327,6 +337,34 @@ const definitions = [
     method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
   },
   {
+    id: "group.action-characters", title: "Bounded finite-group action and characters", canonicalOwner: "sage",
+    method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
+  },
+  {
+    id: "module.invariant-factors", title: "Exact ZZ module invariant factors", canonicalOwner: "sage",
+    method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
+  },
+  {
+    id: "chain.homology", title: "Pinned ZZ chain-complex homology", canonicalOwner: "sage",
+    method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
+  },
+  {
+    id: "finite-field.explore", title: "Pinned bounded finite-field explorer", canonicalOwner: "sage",
+    method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
+  },
+  {
+    id: "number-theory.padic", title: "Precision-explicit p-adic study", canonicalOwner: "sage",
+    method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
+  },
+  {
+    id: "number-field.local-extensions", title: "Quadratic Qp local models and ramification", canonicalOwner: "sage",
+    method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
+  },
+  {
+    id: "elliptic-curve.dossier", title: "Exact elliptic curve invariants and point doubling", canonicalOwner: "sage",
+    method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
+  },
+  {
     id: "polynomial.roots.exact",
     title: "Exact polynomial roots",
     canonicalOwner: "sage",
@@ -428,6 +466,18 @@ const definitions = [
   {
     id: "ideal.hilbert-series",
     title: "Graded quotient Hilbert series",
+    canonicalOwner: "sage", method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
+  },
+  {
+    id: "ideal.radical", title: "Saved ideal radical",
+    canonicalOwner: "sage", method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
+  },
+  {
+    id: "ideal.primary-decomposition", title: "Saved ideal primary decomposition",
+    canonicalOwner: "sage", method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
+  },
+  {
+    id: "ideal.hilbert-polynomial", title: "Graded quotient Hilbert polynomial",
     canonicalOwner: "sage", method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
   },
   {

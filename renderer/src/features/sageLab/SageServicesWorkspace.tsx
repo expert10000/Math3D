@@ -13,6 +13,7 @@ export type SageStructuresSlot = {
   explorer: ReactNode;
   dossier: ReactNode;
   inspector: ReactNode;
+  comparison?: ReactNode;
   operations?: ReactNode;
   recipes?: ReactNode;
   evidence?: Readonly<{ focusKey: string; result: ReactNode; structure: ReactNode;
@@ -35,15 +36,19 @@ type Props = SageServicesWorkspaceProps & {
   description: string;
   testId: string;
   onOpenConsole?: () => void;
+  topPanel?: ReactNode;
+  requestedLeftTab?: Readonly<{ tab: "structures" | "operations" | "recipes"; token: number }> | null;
+  requestedRightTab?: Readonly<{ tab: "runtimes"; token: number }> | null;
 };
 
 const button = { border: "1px solid #b9cce3", borderRadius: 7, background: "#fff", color: "#183b70", padding: "6px 10px", cursor: "pointer", fontSize: 12 } as const;
 
 /** Shared workspace surface over the Sage catalog, result cards, and runtime registry. */
 export default function SageServicesWorkspace({ context, title, description, testId, record, onResult,
-  onSaveWorkbook, onOpenWorkbook, onOpenConsole, onOpenComputeRuntimes, onClose, structures }: Props) {
+  onSaveWorkbook, onOpenWorkbook, onOpenConsole, onOpenComputeRuntimes, onClose, structures, topPanel,
+  requestedLeftTab, requestedRightTab }: Props) {
   const [leftTab, setLeftTab] = useState<"structures" | "operations" | "recipes">(structures?.projectId ? "structures" : "operations");
-  const [rightTab, setRightTab] = useState<"results" | "structure" | "verification" | "execution" | "runtimes">(structures?.projectId ? "structure" : "results");
+  const [rightTab, setRightTab] = useState<"results" | "structure" | "verification" | "execution" | "compare" | "runtimes">(structures?.projectId ? "structure" : "results");
   const [resultSource, setResultSource] = useState<"evidence" | "freeform">("evidence");
   useEffect(() => {
     if (!structures) return;
@@ -53,6 +58,8 @@ export default function SageServicesWorkspace({ context, title, description, tes
   useEffect(() => { if (structures?.selectionKey) setRightTab("structure"); }, [structures?.selectionKey]);
   useEffect(() => { if (structures?.evidence?.focusKey) { setResultSource("evidence"); setRightTab("results"); }
   }, [structures?.evidence?.focusKey]);
+  useEffect(() => { if (requestedLeftTab) setLeftTab(requestedLeftTab.tab); }, [requestedLeftTab?.token]);
+  useEffect(() => { if (requestedRightTab) setRightTab(requestedRightTab.tab); }, [requestedRightTab?.token]);
   return <main data-testid={testId} aria-label={`${title} workspace`}
     style={{ position: "fixed", inset: 0, zIndex: 2100, background: "#f3f7fc", color: "#172b4d", display: "flex", flexDirection: "column", overflow: "auto" }}>
     <header style={{ padding: "16px 20px", display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center", borderBottom: "1px solid #cbd5e1", background: "#fff" }}>
@@ -71,6 +78,7 @@ export default function SageServicesWorkspace({ context, title, description, tes
     <div style={{ padding: "12px 20px", fontSize: 12, color: "#526477" }}>
       Services use bounded operations. Sage code runs only after explicit trust in the local Console or a Workbook code cell.
     </div>
+    {topPanel && <div style={{ padding: "0 20px" }}>{topPanel}</div>}
     <div className={`sage-workspace-grid${structures ? " sage-workspace-grid-structures" : ""}`}>
       <section aria-label={`${title} ${structures ? "Tools" : "Services"}`} className="sage-workspace-card">
         {structures ? <nav aria-label={`${title} sections`} className="sage-workspace-tabs">
@@ -94,6 +102,7 @@ export default function SageServicesWorkspace({ context, title, description, tes
           <nav aria-label={`${title} Inspector sections`} style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             <button type="button" style={button} aria-pressed={rightTab === "results"} onClick={() => setRightTab("results")}>Results</button>
             {structures && <button type="button" style={button} aria-pressed={rightTab === "structure"} onClick={() => setRightTab("structure")}>Structure</button>}
+            {structures?.comparison && <button type="button" style={button} aria-pressed={rightTab === "compare"} onClick={() => setRightTab("compare")}>Compare</button>}
             {structures?.evidence && <button type="button" style={button} aria-pressed={rightTab === "verification"} onClick={() => setRightTab("verification")}>Verification</button>}
             {structures?.evidence && <button type="button" style={button} aria-pressed={rightTab === "execution"} onClick={() => setRightTab("execution")}>Execution</button>}
             <button type="button" style={button} aria-pressed={rightTab === "runtimes"} onClick={() => setRightTab("runtimes")}>Runtimes</button>
@@ -103,6 +112,7 @@ export default function SageServicesWorkspace({ context, title, description, tes
           ? <SageSymbolicAnalysisCard record={record} sourceStatus="unlinked" onSaveWorkbook={() => onSaveWorkbook(record)} />
           : <div role="status" data-testid={`${context}-empty-result`} style={{ color: "#64748b", fontSize: 12 }}>Run a Sage operation to inspect its exact result, warnings, and diagnostics.</div>)
           : rightTab === "structure" ? structures?.evidence?.structure ?? structures?.inspector
+          : rightTab === "compare" ? structures?.comparison
           : rightTab === "verification" ? structures?.evidence?.verification
           : rightTab === "execution" ? structures?.evidence?.execution
           : <div data-testid={`${context}-runtime-view`} style={{ display: "grid", gap: 10 }}>

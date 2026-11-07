@@ -10,7 +10,7 @@ import { closeSurfaceApp, launchSurfaceApp, openLastSavedProject,
   resetSurfaceAppState } from "./helpers/surfaceAppHarness";
 
 test("GF-30–31 pinned-time surfaces and saved spectra", async () => {
-  test.setTimeout(240_000);
+  test.setTimeout(360_000);
   const root = await mkdtemp(join(tmpdir(), "m3d-gf30-31-"));
   const bundle = join(root, "source.sscene");
   await cp(resolve("tests/fixtures/scientific-scene/vortex-volume.sscene"),
@@ -78,6 +78,15 @@ test("GF-30–31 pinned-time surfaces and saved spectra", async () => {
       return panel.getByTestId("gf30-moving-isosurfaces")
         .getByRole("button", { name: "Save this frame as Mesh" }).count();
     }, { timeout: 75_000 }).toBe(2);
+    await expect(panel.getByTestId("gf33-moving-playback"))
+      .toContainText("Frames 1–2:");
+    await panel.getByRole("checkbox", { name: "Show validated midpoints when correspondence is stable" })
+      .check();
+    await panel.getByTestId("gf33-moving-playback")
+      .getByRole("button", { name: "Play verified frames" }).click();
+    await expect(panel.getByTestId("gf33-moving-playback"))
+      .toContainText("Frame 2/2: 1 s", { timeout: 15_000 });
+    await expect(page.getByTestId("vector-field3d-isosurface")).toBeVisible();
     await panel.getByTestId("gf30-moving-isosurfaces")
       .getByRole("button", { name: "Save this frame as Mesh" }).first().click();
     await expect(page.getByTestId("scientific-mesh-source-status"))

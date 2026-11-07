@@ -91,13 +91,13 @@ test("SAGE-D02–D04 shares Project refs across workspaces and reopens number-fi
     const cas = ctx.page.getByTestId("cas-algebra-workspace");
     await expect(cas.getByTestId("cas-structures-explorer")).toContainText("K");
     await expect(cas.getByTestId("cas-structures-explorer")).toContainText("I");
-    await cas.getByRole("button", { name: /K @1/ }).click();
+    await cas.locator(".sage-structure-list").getByRole("button", { name: /K @1/ }).click();
     await expect(cas.getByTestId("cas-structure-inspector")).toContainText(k.id);
     await cas.getByRole("button", { name: "Back to workspace" }).click();
     await ctx.page.getByTestId("workspace-nav-number_theory").click();
     const nt = ctx.page.getByTestId("number-theory-workspace");
     await expect(nt.getByTestId("cas-structures-explorer")).toContainText("I");
-    await nt.getByRole("button", { name: /K @1/ }).click();
+    await nt.locator(".sage-structure-list").getByRole("button", { name: /K @1/ }).click();
     await expect(nt.getByTestId("cas-structure-inspector")).toContainText(k.id);
     await nt.getByRole("button", { name: "Operations", exact: true }).click();
     await nt.getByRole("button", { name: "Select Norm, trace and embeddings" }).click();
@@ -130,7 +130,7 @@ test("SAGE-D02–D04 shares Project refs across workspaces and reopens number-fi
     await install(exported);
     await ctx.page.getByTestId("workspace-nav-number_theory").click();
     const reopened = ctx.page.getByTestId("number-theory-workspace");
-    await reopened.getByRole("button", { name: /K @1/ }).click();
+    await reopened.locator(".sage-structure-list").getByRole("button", { name: /K @1/ }).click();
     await expect(reopened.getByTestId("cas-structure-inspector")).toContainText(k.contentHash);
     await reopened.getByRole("button", { name: "Operations", exact: true }).click();
     await expect(reopened.getByTestId("cas-object-operations")).toContainText("Saved evidence for this structure (5)");

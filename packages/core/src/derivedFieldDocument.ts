@@ -20,6 +20,7 @@ export type DerivedFieldOperation =
   | Readonly<{ kind: "scalar-gradient" | "scalar-hessian" |
       "vector-jacobian" | "jacobian-symmetric" | "jacobian-antisymmetric" |
       "vorticity" | "helicity" | "enstrophy" |
+      "q-criterion" | "lambda2" | "swirling-strength" |
       "vector-dot" | "vector-cross" | "vector-difference" }>
   | Readonly<{ kind: "directional-derivative";
       direction: readonly [number, number, number] }>
@@ -79,6 +80,7 @@ const validOperation = (value: unknown): value is DerivedFieldOperation =>
   record(value) && (value.kind === "vector-magnitude" && exact(value, ["kind"]) ||
     ["scalar-gradient", "scalar-hessian", "vector-jacobian", "jacobian-symmetric",
       "jacobian-antisymmetric", "vorticity", "helicity", "enstrophy",
+      "q-criterion", "lambda2", "swirling-strength",
       "vector-dot", "vector-cross", "vector-difference"].includes(String(value.kind)) &&
       exact(value, ["kind"]) ||
     value.kind === "directional-derivative" && exact(value, ["kind", "direction"]) &&
@@ -129,10 +131,17 @@ export const deriveFieldOutput = (input: DerivedFieldShape,
       scalar(`${input.unit}/${axisUnit}`);
   }
   if (["vector-jacobian", "jacobian-symmetric", "jacobian-antisymmetric",
-    "vorticity", "helicity", "enstrophy"].includes(operation.kind)) {
+    "vorticity", "helicity", "enstrophy", "q-criterion", "lambda2",
+    "swirling-strength"].includes(operation.kind)) {
     if (!uniformAxes || !uniformVector)
       throw new TypeError("Vector derivatives need matching component and coordinate units.");
+    if (["q-criterion", "lambda2", "swirling-strength"].includes(operation.kind) &&
+        input.axes.some((axis, index) => axis.name !== ["x", "y", "z"][index]))
+      throw new TypeError("Advanced tensor measures require Cartesian orthonormal axes.");
     const derivativeUnit = `${input.unit}/${axisUnit}`;
+    if (operation.kind === "q-criterion" || operation.kind === "lambda2")
+      return scalar(`${derivativeUnit}²`);
+    if (operation.kind === "swirling-strength") return scalar(derivativeUnit);
     if (operation.kind === "vorticity") return vector(derivativeUnit);
     if (operation.kind === "helicity") return scalar(`${input.unit}·${derivativeUnit}`);
     if (operation.kind === "enstrophy") return scalar(`${derivativeUnit}²`);

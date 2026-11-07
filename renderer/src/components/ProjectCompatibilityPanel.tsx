@@ -1,15 +1,29 @@
-import React from "react";
+import React, { useState } from "react";
+import type { PlatformFacilityStatus } from "@math3d/core";
 import type { ProjectCompatibility } from "../projects/projectTransfer";
+import { probeRendererPlatformCapabilities } from "../kernel/rendererPlatformCapabilities";
 
+export const projectImportControls = (preview: Pick<ProjectCompatibility, "canOpenWorkspace" | "reasons">,
+  storage: PlatformFacilityStatus, canRestore: boolean, busy: boolean) => ({
+    canSave: storage.available && !busy,
+    canOpen: storage.available && canRestore && preview.canOpenWorkspace && !busy,
+    reason: !storage.available ? storage.reason ?? "Persistent Project storage is unavailable on this host." :
+      !canRestore ? "This host cannot restore a Project workspace." :
+      !preview.canOpenWorkspace ? preview.reasons.join(" ") || "This Project is preview-only on this host." : null,
+  });
 export const ProjectCompatibilityPanel: React.FC<{ preview: ProjectCompatibility & { inputKind: string }; onCancel: () => void; onImport: () => void; onOpen: () => void; canOpen: boolean; busy?: boolean }> =
-  ({ preview, onCancel, onImport, onOpen, canOpen, busy = false }) => <section data-testid="project-import-preview" style={{ marginTop: 12, padding: 8, border: "1px solid #64748b", borderRadius: 6, overflowWrap: "anywhere" }}>
+  ({ preview, onCancel, onImport, onOpen, canOpen, busy = false }) => {
+    const [storage] = useState(() => probeRendererPlatformCapabilities().facilities.persistentStorage);
+    const controls = projectImportControls(preview, storage, canOpen, busy);
+    return <section data-testid="project-import-preview" style={{ marginTop: 12, padding: 8, border: "1px solid #64748b", borderRadius: 6, overflowWrap: "anywhere" }}>
     <strong>{preview.inputKind === "Independent starter project" ? "Starter project ready" : "Import preview"}: {preview.project.metadata.title}</strong>
     <p>{preview.inputKind} · project revision {preview.project.identity.revision}. Nothing has been opened or saved yet. Open project saves it and switches the workspace; saving to the library keeps the current workspace open.</p>
     <div style={{ display: "flex", flexWrap: "wrap", gap: 5, margin: "8px 0 12px" }}>
-      <button type="button" data-testid="project-import-open" disabled={!canOpen || !preview.canOpenWorkspace} onClick={onOpen}>Open project</button>
-      <button type="button" data-testid="project-import-save" disabled={busy} onClick={onImport}>Save to library</button>
+      <button type="button" data-testid="project-import-open" disabled={!controls.canOpen} onClick={onOpen}>Open project</button>
+      <button type="button" data-testid="project-import-save" disabled={!controls.canSave} onClick={onImport}>Save to library</button>
       <button type="button" data-testid="project-import-cancel" disabled={busy} onClick={onCancel}>Cancel</button>
     </div>
+    {controls.reason && <p role="status" data-testid="project-import-limit" style={{ color: "#9a3412" }}>{controls.reason}</p>}
     <strong>Document compatibility</strong>
     {preview.documents.map((document) => <div key={document.id}>{document.module} · revision {document.revision} · replay verified · {document.readOnly ? "read-only document; external source re-verified before open" : document.editable ? "editor supported" : "preview only"}</div>)}
     <strong style={{ display: "block", marginTop: 8 }}>Required Graph capabilities</strong>
@@ -24,3 +38,4 @@ export const ProjectCompatibilityPanel: React.FC<{ preview: ProjectCompatibility
     <p>Project JSON includes resource references. Export with resources transfers verified Math3D source bytes and undo/redo buffers, not external quantum scenes; optional analysis caches and thumbnails remain local.</p>
     {preview.reasons.map((reason, index) => <div key={index}>{reason}</div>)}
   </section>;
+  };

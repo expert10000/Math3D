@@ -1,6 +1,7 @@
 import {
   createScientificJobRequest,
   createStableDocumentId,
+  canonicalJsonStringify,
   structuralHash,
   parseSageAlgebraReconstructionInput,
   parseSageAlgebraDomainInput,
@@ -9,6 +10,13 @@ import {
   parseSageNumberFieldInput,
   parseSageGaloisInput,
   parseSageFiniteGroupInput,
+  parseSageGroupActionInput,
+  parseSageModuleInvariantInput,
+  parseSageChainHomologyInput,
+  parseSageFiniteFieldInput,
+  parseSagePadicInput,
+  parseSageLocalExtensionInput,
+  parseSageEllipticCurveInput,
   type CanonicalJsonValue,
   type ScientificSourceGeneration,
 } from "@math3d/core";
@@ -50,6 +58,13 @@ export const SAGE_JOB_OPERATIONS = {
   "sage.numberField.primeDecomposition": { type: "number-field.prime-decomposition", label: "prime ideal decomposition", cancelled: "Sage number-field job cancelled." },
   "sage.galois.analyze": { type: "galois.analyze", label: "Galois analysis", cancelled: "Sage Galois job cancelled." },
   "sage.group.dossier": { type: "group.dossier", label: "GAP group invariants", cancelled: "Sage GAP job cancelled." },
+  "sage.group.actionCharacters": { type: "group.action-characters", label: "group action and characters", cancelled: "Sage GAP action job cancelled." },
+  "sage.module.invariantFactors": { type: "module.invariant-factors", label: "ZZ module invariant factors", cancelled: "Sage module job cancelled." },
+  "sage.chain.homology": { type: "chain.homology", label: "ZZ chain homology", cancelled: "Sage chain job cancelled." },
+  "sage.finiteField.explore": { type: "finite-field.explore", label: "finite-field explorer", cancelled: "Sage finite-field job cancelled." },
+  "sage.numberTheory.padic": { type: "number-theory.padic", label: "p-adic precision study", cancelled: "Sage p-adic job cancelled." },
+  "sage.numberField.localExtensions": { type: "number-field.local-extensions", label: "quadratic local extensions", cancelled: "Sage local-field job cancelled." },
+  "sage.ellipticCurve.dossier": { type: "elliptic-curve.dossier", label: "elliptic curve dossier", cancelled: "Sage curve job cancelled." },
   "sage.algebra.reconstruct": { type: "algebra.reconstruct", label: "algebra object reconstruction", cancelled: "Sage algebra reconstruction cancelled." },
   "sage.algebra.inspectDomains": { type: "algebra.domains.inspect", label: "algebra parent inspection", cancelled: "Sage algebra domain inspection cancelled." },
   "sage.ideal.groebner": { type: "ideal.groebner", label: "saved ideal Gröbner basis", cancelled: "Sage ideal job cancelled." },
@@ -58,6 +73,9 @@ export const SAGE_JOB_OPERATIONS = {
   "sage.ideal.quotientDimension": { type: "ideal.quotient-dimension", label: "quotient dimension", cancelled: "Sage quotient job cancelled." },
   "sage.ideal.syzygies": { type: "ideal.syzygies", label: "generator syzygies", cancelled: "Sage syzygy job cancelled." },
   "sage.ideal.hilbertSeries": { type: "ideal.hilbert-series", label: "quotient Hilbert series", cancelled: "Sage Hilbert job cancelled." },
+  "sage.ideal.radical": { type: "ideal.radical", label: "ideal radical", cancelled: "Sage radical job cancelled." },
+  "sage.ideal.primaryDecomposition": { type: "ideal.primary-decomposition", label: "primary decomposition", cancelled: "Sage decomposition job cancelled." },
+  "sage.ideal.hilbertPolynomial": { type: "ideal.hilbert-polynomial", label: "quotient Hilbert polynomial", cancelled: "Sage Hilbert job cancelled." },
 } as const;
 export type BrokeredSageOperation = keyof typeof SAGE_JOB_OPERATIONS;
 export const isBrokeredSageOperation = (operation: string): operation is BrokeredSageOperation =>
@@ -84,12 +102,73 @@ export const SAGE_CONSOLE_OPERATION = "sage.console.execute";
 export const SAGE_CONSOLE_LIMITS = { maxInputBytes: 16 * 1024, maxOutputBytes: 64 * 1024,
   maxMemoryBytes: 4 * 1024 * 1024 * 1024, maxWorkUnits: 1 } as const;
 
+export type SageCapabilityManifest = Readonly<{
+  schemaVersion: 1; kind: "sage-capability-manifest/v1"; engine: "sagemath";
+  route: SageBackend; backendId: string; adapterVersion: "1"; sageVersion: string | null;
+  availability: "available" | "unavailable"; unavailableReason: string | null;
+  reportedOperations: readonly string[];
+  operations: readonly Readonly<{ id: string; operationType: string;
+    mode: "bounded" | "trusted-code"; supported: boolean;
+    reasonCode: "runtime-unavailable" | "route-excluded" | "worker-unadvertised" | "console-unavailable" | null;
+    reason: string | null; limits: Readonly<{ maxInputBytes: number; maxOutputBytes: number;
+      maxMemoryBytes: number; maxWorkUnits: number }> | null }>[];
+  contentHash: string;
+}>;
+
+/** Derived from a live health probe and this adapter's route policy; no static support claims. */
+export const createSageCapabilityManifest = (backend: SageBackend, health: SageHealthResponse,
+  consoleAvailable = false): SageCapabilityManifest => {
+  const limits = backend === "private" ? PRIVATE_SAGE_LIMITS : SAGE_LIMITS;
+  const available = health.available && health.engine === "sagemath";
+  const unavailableReason = available ? null : health.engine !== "sagemath"
+    ? `Unexpected runtime engine ${health.engine}.` : health.status;
+  const reportedOperations = [...new Set(health.operations)].sort();
+  const definitions: { id: BrokeredSageOperation | typeof SAGE_CONSOLE_OPERATION;
+    operationType: string; mode: "bounded" | "trusted-code" }[] = [
+    ...Object.entries(SAGE_JOB_OPERATIONS).map(([id, item]) =>
+      ({ id: id as BrokeredSageOperation, operationType: item.type, mode: "bounded" as const })),
+    { id: SAGE_CONSOLE_OPERATION, operationType: SAGE_CONSOLE_OPERATION, mode: "trusted-code" },
+  ];
+  definitions.sort((a, b) => a.id.localeCompare(b.id));
+  const operations = definitions.map((item) => {
+    const routeAllowed = item.id === SAGE_CONSOLE_OPERATION ? backend === "local"
+      : backend === "docker" || backend === "local" && isLocalSageOperation(item.id)
+        || backend === "private" && item.id.startsWith("sage.numberTheory.");
+    const reasonCode = !available ? "runtime-unavailable" as const
+      : !routeAllowed ? "route-excluded" as const
+      : item.id === SAGE_CONSOLE_OPERATION && !consoleAvailable ? "console-unavailable" as const
+      : item.id !== SAGE_CONSOLE_OPERATION && !reportedOperations.includes(item.id)
+        ? "worker-unadvertised" as const : null;
+    const reason = reasonCode === "runtime-unavailable" ? `Runtime unavailable: ${unavailableReason}`
+      : reasonCode === "route-excluded" ? `${backend} route does not offer ${item.id}.`
+      : reasonCode === "console-unavailable" ? "Trusted local desktop Console is unavailable."
+      : reasonCode === "worker-unadvertised" ? `Worker did not advertise ${item.id}.` : null;
+    return { ...item, supported: reasonCode === null, reasonCode, reason,
+      limits: reasonCode === null ? item.mode === "trusted-code" ? SAGE_CONSOLE_LIMITS : limits : null };
+  });
+  const body = { schemaVersion: 1 as const, kind: "sage-capability-manifest/v1" as const,
+    engine: "sagemath" as const, route: backend, backendId: sageBackendId(backend),
+    adapterVersion: "1" as const, sageVersion: health.engineVersion ?? null,
+    availability: available ? "available" as const : "unavailable" as const,
+    unavailableReason, reportedOperations, operations };
+  return { ...body, contentHash: structuralHash(body as CanonicalJsonValue) };
+};
+
+export const validateSageCapabilityManifest = (manifest: unknown,
+  backend: SageBackend, health: SageHealthResponse, consoleAvailable = false): SageCapabilityManifest => {
+  const expected = createSageCapabilityManifest(backend, health, consoleAvailable);
+  if (canonicalJsonStringify(manifest) !== canonicalJsonStringify(expected))
+    throw new TypeError("Sage capability manifest differs from the probed runtime or route policy.");
+  return expected;
+};
+
 export type SageRuntimeProbe = Readonly<{
   backend: Backend;
   backendId: string;
   backendVersion: string;
   transport: "worker" | "remote";
   health: SageHealthResponse;
+  manifest: SageCapabilityManifest;
   limits: typeof SAGE_LIMITS | typeof PRIVATE_SAGE_LIMITS;
   operations: readonly ScientificOperationCapability[];
 }>;
@@ -135,6 +214,20 @@ const validateSageJob = (request: SageRunRequest & { operation: BrokeredSageOper
       ? request.backend === "docker" && !!parseSageGaloisInput(params)
     : request.operation === "sage.group.dossier"
       ? request.backend === "docker" && !!parseSageFiniteGroupInput(params)
+    : request.operation === "sage.group.actionCharacters"
+      ? request.backend === "docker" && !!parseSageGroupActionInput(params)
+    : request.operation === "sage.module.invariantFactors"
+      ? request.backend === "docker" && !!parseSageModuleInvariantInput(params)
+    : request.operation === "sage.chain.homology"
+      ? request.backend === "docker" && !!parseSageChainHomologyInput(params)
+    : request.operation === "sage.finiteField.explore"
+      ? request.backend === "docker" && !!parseSageFiniteFieldInput(params)
+    : request.operation === "sage.numberTheory.padic"
+      ? request.backend === "docker" && !!parseSagePadicInput(params)
+    : request.operation === "sage.numberField.localExtensions"
+      ? request.backend === "docker" && !!parseSageLocalExtensionInput(params)
+    : request.operation === "sage.ellipticCurve.dossier"
+      ? request.backend === "docker" && !!parseSageEllipticCurveInput(params)
     : request.operation === "sage.matrix.linear_dossier"
       ? request.backend === "docker" && !!parseSageMatrixDossierInput(params)
     : request.operation === "sage.matrix.integer_forms"
@@ -262,20 +355,15 @@ export class SageExecutionRegistry {
       health = { engine: "sagemath", available: false, operations: [],
         status: error instanceof Error ? error.message : "SageMath state check failed." };
     }
-    const operations: ScientificOperationCapability[] = (Object.entries(SAGE_JOB_OPERATIONS) as [BrokeredSageOperation, typeof SAGE_JOB_OPERATIONS[BrokeredSageOperation]][])
-      .filter(([operation]) => health.available && health.operations.includes(operation) && (backend === "docker" ||
-        (backend === "private" && operation.startsWith("sage.numberTheory.")) ||
-        (backend === "local" && isLocalSageOperation(operation))))
-      .map(([, definition]) => ({ operationType: definition.type, retrySafety: "never" as const,
-        ...(backend === "private" ? PRIVATE_SAGE_LIMITS : SAGE_LIMITS) }))
-      .sort((left, right) => left.operationType.localeCompare(right.operationType));
-    if (backend === "local" && health.available && this.#consoleAvailable()) {
-      operations.push({ operationType: SAGE_CONSOLE_OPERATION, retrySafety: "never", ...SAGE_CONSOLE_LIMITS });
-    }
+    const manifest = createSageCapabilityManifest(backend, health,
+      backend === "local" && health.available && this.#consoleAvailable());
+    const operations: ScientificOperationCapability[] = manifest.operations.filter((item) => item.supported)
+      .map((item) => ({ operationType: item.operationType, retrySafety: "never" as const,
+        ...item.limits! })).sort((left, right) => left.operationType.localeCompare(right.operationType));
     return {
       backend, backendId: sageBackendId(backend),
       backendVersion: "1", transport: backend === "local" ? "worker" : "remote",
-      health, limits: backend === "private" ? PRIVATE_SAGE_LIMITS : SAGE_LIMITS, operations,
+      health, manifest, limits: backend === "private" ? PRIVATE_SAGE_LIMITS : SAGE_LIMITS, operations,
     };
   }
 
