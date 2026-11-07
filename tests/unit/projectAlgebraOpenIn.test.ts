@@ -40,6 +40,22 @@ describe("Project Algebra Open in Geometry", () => {
     expect(() => resolveProjectAlgebraCasHandoff(archived, target, choice)).toThrow(/source changed/);
     expect(projectAlgebraCasHandoff(project, { objectId: project.algebraObjects![0]!.id, revision: 1 }))
       .toMatchObject({ enabled: false, disabledReason: expect.stringContaining("polynomial ring or ideal") });
+    const qq = project.algebraObjects![0]!.revisions[0]!;
+    const ideal = createAlgebraObjectRecord({ id: createProjectAlgebraObjectId(project.identity.id, "I"),
+      revision: 1, label: "I", definition: { kind: "ideal", ambientRing: target,
+        generators: ["x^2+y^2-1"] } });
+    const withIdeal = upsertMath3DProjectAlgebraObject(project, ideal);
+    const idealTarget = { objectId: ideal.id, revision: 1 };
+    const idealChoice = projectAlgebraCasHandoff(withIdeal, idealTarget);
+    expect(idealChoice.enabled).toBe(true);
+    const changedParent = upsertMath3DProjectAlgebraObject(withIdeal,
+      createAlgebraObjectRecord({ id: target.objectId, revision: 2, label: "R revised",
+        definition: { kind: "polynomial-ring", coefficientDomain: { objectId: qq.id, revision: 1 },
+          variables: ["x", "y"], monomialOrder: "lex" } }));
+    expect(projectAlgebraCasHandoff(changedParent, idealTarget)).toMatchObject({ enabled: false,
+      disabledReason: expect.stringContaining("stale dependencies") });
+    expect(() => resolveProjectAlgebraCasHandoff(changedParent, idealTarget, idealChoice))
+      .toThrow(/source changed/);
   });
   it("separates exact contract and bounded sample actions through save and reopen", () => {
     const { project, target, scene } = fixture();

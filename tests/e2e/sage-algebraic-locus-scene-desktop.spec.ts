@@ -42,9 +42,19 @@ test("SAGE-F01/F02 saves exact-source contract and bounded sphere/plane plot, th
     await ctx.page.reload();
     await ctx.page.getByTestId("projects-toggle").click();
     await ctx.page.getByTestId(`project-open-saved-${project.identity.id}`).click();
-    await ctx.page.getByTestId("workspace-nav-cas").click();
+    const projectPanel = ctx.page.getByTestId("project-explorer-panel");
+    await expect(projectPanel.getByTestId("project-view-mode")).toContainText("Current workspace");
+    await projectPanel.getByTestId("project-gallery-layout-toggle").click();
+    const detailToggle = projectPanel.getByTestId("project-detail-toggle");
+    if (await detailToggle.getAttribute("aria-pressed") === "false") await detailToggle.click();
+    await projectPanel.getByTestId("project-detail-tab-documents").click();
+    const algebraMenu = projectPanel.getByTestId(`project-algebra-open-in-${ideal.id}`);
+    await algebraMenu.locator("summary").click();
+    await expect(algebraMenu.getByRole("button", { name: "Open locus in Geometry" })).toBeDisabled();
+    await algebraMenu.getByRole("button", { name: "Prepare locus in CAS" }).click();
     const cas = ctx.page.getByTestId("cas-algebra-workspace");
-    await cas.getByTestId("cas-structures-explorer").getByRole("button", { name: /I @1/ }).click();
+    await expect(cas.getByTestId("cas-structures-explorer").getByRole("button", { name: /I @1/ }))
+      .toHaveAttribute("aria-current", "true");
     const builder = cas.getByTestId("cas-locus-builder");
     const destinations = builder.getByTestId("cas-open-in-geometry");
     await expect(destinations.getByRole("button", { name: "Open exact locus in Geometry" })).toBeDisabled();
