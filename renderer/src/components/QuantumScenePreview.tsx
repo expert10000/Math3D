@@ -102,7 +102,7 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
     void window.quantumScenes.timeFrames(opened.reference)
       .then(frames => { if (active) {
         const cursor = scientificCursorBus.snapshot();
-        if (cursor?.timePoint && cursor.originViewId !== opened.reference.sceneFingerprint) {
+        if (cursor?.kind === "quantum" && cursor.timePoint && cursor.originViewId !== opened.reference.sceneFingerprint) {
           const projected = projectTimeCursor(cursor, { runId: scene.provenance.runId,
             resultSha256: scene.provenance.resultSha256, unit: timeline.unit,
             frameIds: timeline.frameIds, values: frames.map(frame => frame.time) });
@@ -286,19 +286,22 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
     let active = true;
     const originViewId = opened.reference.sceneFingerprint;
     const unsubscribe = scientificCursorBus.subscribe(cursor => {
-      if (!active || !cursor.reciprocalPoint || cursor.originViewId === originViewId ||
+      if (!active || cursor.kind !== "quantum" || !cursor.reciprocalPoint || cursor.originViewId === originViewId ||
           cursor.runId !== scene.provenance.runId || cursor.resultSha256 !== scene.provenance.resultSha256) return;
       const quantity = scene.topology?.quantities.find(item => item.object === "berry-curvature");
       if (!window.quantumScenes?.projectQwzCursor || qwzRole === "curvature" && !quantity) return;
+      setPickedBandSample(null); setPickedTopologySample(null);
+      setCursorStatus("Verifying linked reciprocal-space sample…");
       void window.quantumScenes.projectQwzCursor({ fingerprint: originViewId, runId: cursor.runId,
         resultSha256: cursor.resultSha256, k: cursor.reciprocalPoint.k,
         basisId: cursor.reciprocalPoint.basisId }).then(async projection => {
+        if (!active || scientificCursorBus.snapshot()?.sequence !== cursor.sequence) return;
         if (projection.target !== qwzRole) throw new TypeError("Cursor target changed during projection.");
         const sample = qwzRole === "bands" ? await window.quantumScenes!.bandSample({ fingerprint: originViewId,
           objectId: "band-0", sampleIndex: projection.sampleIndex }) :
           await window.quantumScenes!.topologySample({ fingerprint: originViewId,
             quantityId: quantity!.id, sampleIndex: projection.sampleIndex });
-        if (!active) return;
+        if (!active || scientificCursorBus.snapshot()?.sequence !== cursor.sequence) return;
         const k = "k" in sample ? sample.k : sample.position;
         if (Math.abs(k[0] - projection.k[0]) > 1e-8 || Math.abs(k[1] - projection.k[1]) > 1e-8)
           throw new TypeError("Projected k-point differs from the exact target sample.");
@@ -307,7 +310,8 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
           `offset ${projection.distance.toPrecision(4)} ${scene.coordinates.units[0]}. ` +
           (projection.candidateCount > 1 ? `${projection.candidateCount} equally near samples; lowest index selected.` :
             "Unique nearest sample."));
-      }).catch(error => { if (active) setCursorStatus(`Cursor withheld: ${String((error as Error).message)}`); });
+      }).catch(error => { if (active && scientificCursorBus.snapshot()?.sequence === cursor.sequence)
+        setCursorStatus(`Cursor withheld: ${String((error as Error).message)}`); });
     });
     return () => { active = false; unsubscribe(); };
   }, [opened.reference.sceneFingerprint, qwzRole]);

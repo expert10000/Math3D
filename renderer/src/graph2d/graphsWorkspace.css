@@ -596,6 +596,8 @@ html[data-theme="dark"] .graph2d-draft-plot-preview { --graph2d-chart-bg:#182231
 .graph2d-probe-marker circle:first-child { fill: var(--panel-strong); stroke: #f59e0b; stroke-width: 2; }
 .graph2d-probe-marker circle:last-child { fill: #f59e0b; }
 .graph2d-probe-hover { opacity: .65; }
+.graph2d-probe-linked circle:first-child { stroke: #06b6d4; }
+.graph2d-probe-linked circle:last-child { fill: #06b6d4; }
 .graph2d-viewer-message { text-align: center; padding: 24px; max-width: 400px; position: relative; z-index: 1; border:1px solid var(--border); border-radius: 12px; background: var(--panel-strong); box-shadow: 0 8px 28px #0f172a16; }
 .graph2d-viewer-message h2 { margin: 0 0 8px; }
 .graph2d-viewer-message p { margin: 0 0 8px; }
