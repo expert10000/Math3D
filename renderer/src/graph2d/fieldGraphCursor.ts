@@ -1,4 +1,5 @@
-import { canonicalJsonStringify, sampleVectorField3DAnalyticLine,
+import { canonicalJsonStringify, matchesScientificSourceGeneration, sampleVectorField3DAnalyticLine,
+  viewerSourceFromDocument,
   type Graph2DAnalyticFieldOrigin, type Graph2DPointRow, type Graph2DProbe,
   type ValidationResult, type VectorField3DDocument } from "@math3d/core";
 import type { CursorProjection, ProjectCursorDraft, ProjectScientificCursor } from "../components/scientificCursor";
@@ -18,12 +19,15 @@ const near = (left: number, right: number): boolean =>
 /** Only a recorded analytic Field line with one exact saved row can receive the cursor. */
 export function projectFieldCursorToAnalyticLine(cursor: ProjectScientificCursor,
   origin: Graph2DAnalyticFieldOrigin, objectId: string,
-  rows: readonly Graph2DPointRow[] | null): CursorProjection<Graph2DProbe> {
+  rows: readonly Graph2DPointRow[] | null,
+  currentField: VectorField3DDocument | null): CursorProjection<Graph2DProbe> {
   if (cursor.sourceModule !== "vector3d" || !sameFrame(cursor) ||
       cursor.source.documentId !== origin.documentId || cursor.source.revision !== origin.revision ||
       cursor.source.generation !== origin.revision || cursor.source.structuralHash !== origin.structuralHash ||
       origin.xName !== VECTOR3D_CURSOR_FRAME.axes[origin.varyingAxis]?.name || origin.xUnit !== "m")
     return { status: "incompatible-source", reason: "Field source, revision, or physical frame differs from this Graph line." };
+  if (!currentField || !matchesScientificSourceGeneration(cursor.source, viewerSourceFromDocument(currentField)))
+    return { status: "incompatible-source", reason: "Current Field document is unavailable or has changed." };
   if (cursor.position.length !== 3 || origin.fixedCoordinates.length !== 3 ||
       origin.fixedCoordinates.some((fixed, axis) => axis === origin.varyingAxis ? fixed !== null :
         fixed === null || !near(cursor.position[axis]!, fixed)))
@@ -35,6 +39,13 @@ export function projectFieldCursorToAnalyticLine(cursor: ProjectScientificCursor
   const row = matches[0];
   if (!row || row.y === null || !Number.isFinite(row.y))
     return { status: "mismatched-grid", reason: "No finite exact saved Graph row exists at this coordinate." };
+  try {
+    const fresh = sampleVectorField3DAnalyticLine(currentField, origin.component, origin.varyingAxis,
+      cursor.position as [number, number, number]);
+    if (canonicalJsonStringify(fresh.origin) !== canonicalJsonStringify(origin) ||
+        canonicalJsonStringify(fresh.rows) !== canonicalJsonStringify(rows))
+      return { status: "mismatched-grid", reason: "Saved Graph rows differ from the current Field calculation." };
+  } catch { return { status: "mismatched-grid", reason: "Current Field line could not be verified." }; }
   return { status: "matched", value: { objectId, x: row.x, y: row.y, rowId: row.id } };
 }
 

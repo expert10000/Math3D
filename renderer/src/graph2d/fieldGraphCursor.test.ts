@@ -14,8 +14,9 @@ const line = sampleVectorField3DAnalyticLine(document, "speed", 0, [0, 2, 3]);
 const draft = vectorFieldCursorDraft(document, [1, 2, 3], "field-view");
 if (!draft.ok) throw Error(draft.errors.join(" "));
 const cursor = new ScientificCursorBus().publishProject(draft.value, draft.value.source);
-const map = (input = cursor, rows: typeof line.rows | null = line.rows) =>
-  projectFieldCursorToAnalyticLine(input, line.origin, "speed-line", rows);
+const map = (input = cursor, rows: typeof line.rows | null = line.rows,
+  currentField: typeof document | null = document) =>
+  projectFieldCursorToAnalyticLine(input, line.origin, "speed-line", rows, currentField);
 
 describe("M3D20-03 exact Field-to-Graphs cursor projection", () => {
   it("uses one finite saved row on the recorded physical line", () => {
@@ -35,7 +36,10 @@ describe("M3D20-03 exact Field-to-Graphs cursor projection", () => {
     expect(map(cursor, [...line.rows, line.rows[80]!]).status).toBe("ambiguous");
     expect(map(cursor, line.rows.map(row => row.x === 1 ? { ...row, y: null } : row)).status)
       .toBe("mismatched-grid");
+    expect(map(cursor, line.rows.map(row => row.x === 1 ? { ...row, y: row.y! + 1 } : row)).status)
+      .toBe("mismatched-grid");
     expect(map(cursor, null).status).toBe("mismatched-grid");
+    expect(map(cursor, line.rows, null).status).toBe("incompatible-source");
   });
   it("returns a selected Graph row only after recalculating the complete current Field line", () => {
     const row = line.rows[80]!;

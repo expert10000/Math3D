@@ -2002,8 +2002,9 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   const selectedObject = document.source.objects.find((item) => item.id === document.selection.objectId);
   const fieldCursorProjection = useMemo(() => fieldCursor && selectedObject?.kind === "point-series" &&
     selectedObject.analyticOrigin ? projectFieldCursorToAnalyticLine(fieldCursor,
-      selectedObject.analyticOrigin, selectedObject.id, pointTableStore.resolve(selectedObject.table)) : null,
-  [fieldCursor, selectedObject]);
+      selectedObject.analyticOrigin, selectedObject.id, pointTableStore.resolve(selectedObject.table),
+      readFieldExplorerSession() ?? vectorField3DDocument ?? savedVectorField3D ?? null) : null,
+  [fieldCursor, selectedObject, vectorField3DDocument, savedVectorField3D]);
   const selectedProjectProfile = selectedObject?.kind === "point-series" ?
     selectedObject.projectProfileOrigin : undefined;
   const selectedComparisonProfile = selectedObject?.kind === "point-series" ?
