@@ -957,6 +957,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **14a guide prepared:** The [first-run Project/Study guide](FIRST_RUN_PROJECT_STUDY.md) walks through the built-in Graph/Curve/Surface starter, recorded evidence, save/reopen, and the distinction between a study workflow and the planned persistent StudyDocument. Installed 2.0 steps await the exact candidate gate.
 
+**14b guide prepared:** The [scientific result guide](SCIENCE_CONVENTIONS.md) separates method status from source freshness, explains units and numerical/statistical qualifications, and gives a five-question check for evidence-backed Project results.
+
 **Exit:** a new user can complete flagship journeys without reading source-code architecture documents.
 
 ### M3D20-15 — Release Gallery and communication (P0)

@@ -19,6 +19,7 @@ nav:
       - VTK + CGAL + three.js Pipeline: vtk-cgal-threejs-pipeline.md
   - Guides:
       - First run with Projects and studies: releases/2.0.0/FIRST_RUN_PROJECT_STUDY.md
+      - Scientific results and uncertainty: releases/2.0.0/SCIENCE_CONVENTIONS.md
       - Theory Lab and Python Scene Walkthrough: theory-lab-python-scene-walkthrough.md
       - Traceability Scenarios: scenarios.md
       - Playwright E2E Tests: playwright-e2e-tests.md
