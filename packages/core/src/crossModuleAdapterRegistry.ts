@@ -28,13 +28,14 @@ export type CrossModuleAdapter = Readonly<{
 }>;
 export type AdapterSelectionReference = Readonly<{
   source: ScientificSourceGeneration;
+  sourceModule: KernelWorkspaceModule;
   resourceSha256: string | null;
   kind: AdapterSelectionKind;
   frame: AdapterFrame;
 }>;
-export type AdapterDisabledCode = "unknown-adapter" | "invalid-selection" | "wrong-kind" |
+export type AdapterDisabledCode = "unknown-adapter" | "invalid-selection" | "wrong-kind" | "wrong-module" |
   "source-unavailable" | "stale-source" | "source-frame-mismatch" | "target-frame-mismatch" |
-  "facility-unavailable" | "resource-unavailable" | "operation-unavailable";
+  "facility-unavailable" | "resource-unavailable" | "operation-unavailable" | "mapping-unavailable";
 export type AdapterQualification = Readonly<{
   enabled: boolean;
   adapterId: string;
@@ -114,20 +115,25 @@ const sameFrame = (left: AdapterFrame, right: AdapterFrame): boolean =>
 export const qualifyCrossModuleAdapter = (registry: CrossModuleAdapterRegistry, input: {
   adapterId: string;
   selection: AdapterSelectionReference;
+  targetModule: KernelWorkspaceModule;
   currentSource: ScientificSourceGeneration | null;
   targetFrame: AdapterFrame;
   platform: PlatformCapabilitySnapshot;
   resourceAvailable?: (sha256: string) => boolean;
   operationAvailable?: (id: Math3DWorkerOperationId) => boolean;
+  mappingAvailable?: (id: string, version: number) => boolean;
 }): AdapterQualification => {
   const adapter = registry.get(input.adapterId);
   const disabled: { code: AdapterDisabledCode; reason: string }[] = [];
   if (!adapter) disabled.push({ code: "unknown-adapter", reason: `Adapter '${input.adapterId}' is not registered.` });
   if (!record(input.selection) || !isScientificSourceGeneration(input.selection.source) ||
+      !KERNEL_WORKSPACE_MODULES.includes(input.selection.sourceModule) ||
       !kinds.includes(input.selection.kind) || !normalizeAdapterFrame(input.selection.frame).ok ||
       !(input.selection.resourceSha256 === null || sha256(input.selection.resourceSha256)))
     disabled.push({ code: "invalid-selection", reason: "Selection reference is invalid." });
   if (adapter && !disabled.some(item => item.code === "invalid-selection")) {
+    if (adapter.sourceModule !== input.selection.sourceModule || adapter.targetModule !== input.targetModule)
+      disabled.push({ code: "wrong-module", reason: "Selection or target module does not match the adapter." });
     if (adapter.selectionKind !== input.selection.kind)
       disabled.push({ code: "wrong-kind", reason: `Adapter requires a ${adapter.selectionKind} selection.` });
     if (!sameFrame(adapter.sourceFrame, input.selection.frame))
@@ -148,6 +154,8 @@ export const qualifyCrossModuleAdapter = (registry: CrossModuleAdapterRegistry, 
     }
     if (adapter.workerOperationId && !input.operationAvailable?.(adapter.workerOperationId))
       disabled.push({ code: "operation-unavailable", reason: `Operation '${adapter.workerOperationId}' is unavailable on this host.` });
+    if (!input.mappingAvailable?.(adapter.mapping.id, adapter.mapping.version))
+      disabled.push({ code: "mapping-unavailable", reason: `Mapping '${adapter.mapping.id}' v${adapter.mapping.version} is not implemented on this host.` });
   }
   return { enabled: disabled.length === 0, adapterId: input.adapterId,
     mapping: adapter?.mapping ?? null, disabled };

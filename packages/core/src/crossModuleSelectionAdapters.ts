@@ -5,11 +5,13 @@ import { isScientificSourceGeneration, matchesScientificSourceGeneration,
 import { normalizeScientificSelection, type ScientificSelection } from "./scientificSelection";
 import { normalizeViewerCommittedSelection, type ViewerCommittedSelection } from "./viewerProvenance";
 import type { ValidationResult } from "./validation";
+import { KERNEL_WORKSPACE_MODULES, type KernelWorkspaceModule } from "./mixedWorkspace";
 
 /** Bind a saved v1 selection to the workspace's exact current generation before linking. */
 export const referenceFromScientificSelection = (
   selection: ScientificSelection,
   currentSource: ScientificSourceGeneration | null,
+  sourceModule: KernelWorkspaceModule,
   frame: AdapterFrame,
   kind: AdapterSelectionKind,
 ): ValidationResult<AdapterSelectionReference> => {
@@ -17,6 +19,8 @@ export const referenceFromScientificSelection = (
   if (!normalized.ok) return { ok: false, errors: normalized.errors };
   if (!normalizeAdapterFrame(frame).ok)
     return { ok: false, errors: ["Declared adapter frame is invalid."] };
+  if (!KERNEL_WORKSPACE_MODULES.includes(sourceModule))
+    return { ok: false, errors: ["Source module is invalid."] };
   if (normalized.value.source?.kind !== "document" || !normalized.value.source.checkpoint)
     return { ok: false, errors: ["Saved selection has no pinned document checkpoint."] };
   if (!currentSource || !isScientificSourceGeneration(currentSource))
@@ -33,12 +37,14 @@ export const referenceFromScientificSelection = (
       frame.axes.some((axis, index) => axis.name !== normalized.value.frame.axes[index]?.name ||
         axis.unit !== normalized.value.frame.axes[index]?.unit))
     return { ok: false, errors: ["Declared frame axes do not match the saved selection."] };
-  return { ok: true, value: { source: { ...currentSource }, resourceSha256: null, kind, frame: structuredClone(frame) } };
+  return { ok: true, value: { source: { ...currentSource }, sourceModule,
+    resourceSha256: null, kind, frame: structuredClone(frame) } };
 };
 
 /** Viewer entity IDs have no coordinate mapping; the caller must declare a frame explicitly. */
 export const referenceFromViewerCommittedSelection = (
   selection: ViewerCommittedSelection,
+  sourceModule: KernelWorkspaceModule,
   frame: AdapterFrame,
 ): ValidationResult<AdapterSelectionReference> => {
   const normalized = normalizeViewerCommittedSelection(selection);
@@ -46,8 +52,10 @@ export const referenceFromViewerCommittedSelection = (
     return { ok: false, errors: ["A committed viewer selection with entity IDs is required."] };
   if (!normalizeAdapterFrame(frame).ok)
     return { ok: false, errors: ["Declared adapter frame is invalid."] };
+  if (!KERNEL_WORKSPACE_MODULES.includes(sourceModule))
+    return { ok: false, errors: ["Source module is invalid."] };
   if (!isScientificSourceGeneration(normalized.source) || !matchesScientificSourceGeneration(normalized.source, selection.source))
     return { ok: false, errors: ["Viewer source generation is invalid."] };
-  return { ok: true, value: { source: { ...normalized.source }, resourceSha256: null,
+  return { ok: true, value: { source: { ...normalized.source }, sourceModule, resourceSha256: null,
     kind: "entity", frame: structuredClone(frame) } };
 };
