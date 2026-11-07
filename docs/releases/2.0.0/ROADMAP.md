@@ -944,6 +944,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **13c test prepared:** The [upgrade gate](INSTALL_UPGRADE_GATE.md) pins the published 1.7.0 installer by digest, seeds a Graph Project and setting in 1.7, backs up the profile, and checks exact saved bytes and reopen behavior in 2.0. Execution awaits a signed 2.0 candidate.
 
+**13d build gate prepared:** The [release integrity gate](RELEASE_INTEGRITY_GATE.md) signs the frozen worker before packaging and rejects a 2.0 Windows release with unexpected signer, incomplete attribution, mismatched asset checksums or SBOM file coverage. Exact candidate signoff awaits a 2.0 build and signing identity.
+
 **Exit:** distributable tested without source checkout; all required resource identities recorded for exact release assets.
 
 ### M3D20-14 — Documentation and help (P0)
