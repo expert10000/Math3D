@@ -41,6 +41,7 @@ export * from "./sageFiniteGroupScenes";
 export * from "./sageAlgebraicLocusScene";
 export * from "./sageAlgebraicLocusSampling";
 export * from "./projectAlgebraOpenIn";
+export * from "./projectSavedAlgebraOpenIn";
 export * from "./sageAlgebraicSingularity";
 export * from "./modulePresentations";
 export * from "./sageNumberFieldOperations";
