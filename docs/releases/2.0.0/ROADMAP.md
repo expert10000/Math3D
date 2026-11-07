@@ -878,6 +878,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **Field–Graphs slice (2026-11-07):** An analytic Field line can receive a cursor only at one finite saved Graph row on its recorded physical plane. The Graph marker stays separate from its local selection. Selecting that row can return a point to the exact current Field document after the full line is recalculated and compared with saved rows. A desktop round trip covers the return, no cursor feedback, and stale-source refusal. Other cross-module mappings remain open.
 
+**Quantum cursor hardening (2026-11-08):** Quantum events now require complete coordinate identity and snapshot their payload at publication. QWZ reciprocal projections and field samples ignore responses superseded by a later cursor; the field verifies the returned grid point before displaying it. The QWZ desktop journey covers the bands-to-curvature-to-bands return and exact source refusal. Curve, Surface and Mesh adapters and the full multi-view matrix remain open.
+
 **Exit:** no feedback loops, qualified coordinate mapping and exact return; local selection works even if linked target is unavailable.
 
 ### M3D20-04 — StudyDocument (P0; bounded flagship)
