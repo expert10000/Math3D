@@ -57,6 +57,9 @@ jobs:
             if (jobs.filter(job => job.name === name && job.conclusion === 'success').length !== 1)
               throw new Error(`Required build/signoff job did not pass exactly once: ${name}`);
           }
+          const installerProbes = jobs.filter(job => job.name.startsWith('installer-reliability-gate ('));
+          if (installerProbes.length !== 12 || installerProbes.some(job => job.conclusion !== 'success'))
+            throw new Error('All 12 exact-file installer reliability probes must pass');
           if (jobs.filter(job => job.name.startsWith('mobile-release-gate / ') && job.conclusion === 'success').length !== 1)
             throw new Error('Mobile regression prerequisite did not pass');
           NODE
