@@ -927,6 +927,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **12a matrix drafted:** [Platform capabilities](PLATFORM_CAPABILITIES.md) records journey-level support and explicit unverified deployment/device/package gates. Subsequent 12b–c work must attach representative evidence before promoting a claim.
 
+**12b–c prepared for review:** source-build Windows and local-browser Project package reopen tests, mobile model preview tests, and a browser blocked-storage control test are present. Hosted deployment, physical Android and installed Linux evidence remain open; the matrix does not claim those gates passed.
+
 **Exit:** advertised parity exactly matches tested capabilities, including view-only fallbacks.
 
 ### M3D20-13 — Install, upgrade and binary integrity (P0)
@@ -935,6 +937,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 - `M3D20-13b test(installer): fresh Windows install and first-use scientific study`.
 - `M3D20-13c test(upgrade): 1.7→2.0 with preserved data and settings`.
 - `M3D20-13d build(security): SBOM, attributions, signatures and SHA-256 manifest`.
+
+**13a prepared for review:** Electron, electron-builder and better-sqlite3 resolve to exact package versions; the frozen worker checks installed runtime and PyInstaller pins before packaging. The existing native CGAL distribution gate remains blocked pending public source-bundle integration. Installer and upgrade qualification remain 13b–d work.
 
 **Exit:** distributable tested without source checkout; all required resource identities recorded for exact release assets.
 

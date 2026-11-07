@@ -6,6 +6,9 @@
 
 ## Reproducible build commands
 
+The freeze checks installed runtime versions against `requirements.freeze.txt` and PyInstaller against `build-requirements.freeze.txt` before packaging. Optional CGAL/pygalmesh may be absent in a development build; release jobs require both and fail on a missing or mismatched version.
+The source-level native CGAL helper has a separate pinned `native/cgal-worker/dependency-manifest.json` and remains excluded from installers by the distribution gate. Exact dependency versions identify inputs, while M3D20-13b–d must still verify the built executable, installer, SBOM and hashes.
+
 - Build only:
   - or `npm run build:python-worker`
   - direct: `python python/worker/freeze.py`

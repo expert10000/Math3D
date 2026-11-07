@@ -1,0 +1,2 @@
+# Build tool; excluded from the worker runtime SBOM inventory.
+pyinstaller==6.19.0

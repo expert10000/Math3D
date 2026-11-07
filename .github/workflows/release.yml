@@ -174,7 +174,7 @@ jobs:
         run: |
           ./scripts/setup-cgal-python-worker.ps1 -Python (Get-Command python).Source -VcpkgCommit 52fd90f2b7798d9fe6fef18fc1787db44574d704 -FrozenRequirements
           $workerPython = Join-Path $PWD ".venv-worker/Scripts/python.exe"
-          & $workerPython -m pip install pyinstaller mkdocs -r python/worker/requirements.freeze.txt
+          & $workerPython -m pip install mkdocs -r python/worker/build-requirements.freeze.txt -r python/worker/requirements.freeze.txt
           if ($LASTEXITCODE -ne 0) { throw "Pinned worker dependencies failed." }
           "MATH3D_PYTHON=$workerPython" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           (Join-Path $PWD ".venv-worker/Scripts") | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
@@ -425,7 +425,7 @@ jobs:
       - name: Install Python dependencies for frozen worker
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pyinstaller -r python/worker/requirements.freeze.txt
+          python -m pip install -r python/worker/build-requirements.freeze.txt -r python/worker/requirements.freeze.txt
 
       - name: Build app before Ubuntu smoke
         run: npm run build:core
