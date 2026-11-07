@@ -1,0 +1,63 @@
+{
+  "schema": "math3d/stable-upgrade-two-app/v1",
+  "checkedAtUtc": "2026-11-07T17:16:39.2203179Z",
+  "environment": "fresh Windows upgrade VM",
+  "status": "passed",
+  "oldInstaller": {
+    "name": "Math3D-Setup-1.6.0.exe",
+    "version": "1.6.0",
+    "sha256": "5a785909352816e80995f203b1bb28263ed4f9423abf76664c5eec4813c36341"
+  },
+  "candidate": {
+    "buildRunId": "42393464404",
+    "manifestSha256": "0b0a49b5f6bfc2d5229064bd36e5dcb9c2df9612dea4469154dc4332c58cfa03",
+    "math3d": {
+      "version": "1.7.0",
+      "commit": "7d478ca2cbdd1138b685f4cdc05b5bc94616e638",
+      "channel": "stable",
+      "installerName": "Math3D Setup 1.7.0.exe",
+      "installerSha256": "61dc89c1e9d70af04f524a3a19ee610c0aaa137df274a82379bce4676c3e08c9"
+    },
+    "theoryLab": {
+      "version": "0.1.0",
+      "commit": "38842c8ca927720e9a0f39bd6a04f0e366073996",
+      "installerName": "Quantum-Hamiltonian-Lab-Setup-0.1.0.exe",
+      "installerSha256": "567155d0cbc9babdfae421ee9df0af74a93904f9c90dcd14e45b390a93652118"
+    }
+  },
+  "checks": {
+    "exactBytes": "passed",
+    "oldInstall": "passed",
+    "oldProjectAndSetting": "passed",
+    "inPlaceUpgrade": "passed",
+    "retainedProjectAndSetting": "passed",
+    "installedUiRoundtrip": "passed"
+  },
+  "failure": null,
+  "seed": {
+    "schema": "math3d/upgrade-project-settings-phase/v1",
+    "phase": "seed",
+    "version": "1.6.0",
+    "projectTitle": "Upgrade Graph from v1.6.0",
+    "savedProjectVisible": true,
+    "commandPreviewOverlaysOff": true
+  },
+  "beforeUpgradeProcesses": null,
+  "migration": "registered-v1.6.0-overlay",
+  "verify": {
+    "schema": "math3d/upgrade-project-settings-phase/v1",
+    "phase": "verify",
+    "version": "1.7.0",
+    "projectTitle": "Upgrade Graph from v1.6.0",
+    "savedProjectVisible": true,
+    "commandPreviewOverlaysOff": true
+  },
+  "uiRun": {
+    "schema": "math3d/stable-two-app-ui-result/v1",
+    "runId": "run-5d134eb543fe45e99c18566dc2f868af",
+    "resultSha256": "4f92df30b1884312c3b0c43c7fe72a6727ee90890065c5956a133a6aceef6e6c",
+    "sceneBundle": "run-5d134eb543fe45e99c18566dc2f868af.qscene",
+    "sceneProvenanceVerified": true,
+    "installedMath3DOpenedExactRun": true
+  }
+}

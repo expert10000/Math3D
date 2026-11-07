@@ -48,6 +48,7 @@ $evidence = [ordered]@{
     candidateQec = 'pending';
     candidateUninstall = 'pending';
     rollbackInstall = 'pending'; rollbackProfileRetained = 'pending'; v1v2Readers = 'pending' }
+  rollbackInstallerAttempts = @()
   failure = $null
 }
 
@@ -178,7 +179,27 @@ try {
   if ($active.Count -gt 0) { throw 'Candidate Math3D still running before rollback installer' }
   Invoke-CandidateUninstall
   $evidence.checks.candidateUninstall = 'passed'
-  Invoke-Installer $rollback 'Pre-QEC rollback'
+  for ($attempt = 1; $attempt -le 3; $attempt++) {
+    $evidence.installerFailure = $null
+    try {
+      Invoke-Installer $rollback 'Pre-QEC rollback'
+      $evidence.rollbackInstallerAttempts += [ordered]@{ attempt = $attempt; status = 'passed' }
+      break
+    } catch {
+      $failure = $evidence.installerFailure
+      $evidence.rollbackInstallerAttempts += [ordered]@{
+        attempt = $attempt; status = 'failed'; installerFailure = $failure
+      }
+      $knownOldPluginCrash = $null -ne $failure -and $failure.phase -eq 'Pre-QEC rollback' -and
+        $failure.exitCodeHex -eq '0xC0000005' -and
+        @($failure.applicationErrors | Where-Object { $_.faultingModule -eq 'System.dll' }).Count -gt 0
+      if (-not $knownOldPluginCrash -or $attempt -eq 3 -or
+          (Test-Path -LiteralPath $executable -PathType Leaf)) { throw }
+      Write-Warning "Pinned old rollback installer crashed in System.dll on attempt $attempt; retrying exact file"
+      Start-Sleep -Seconds 3
+    }
+  }
+  $evidence.installerFailure = $null
   if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) { throw 'Rolled-back Math3D executable missing' }
   $evidence.checks.rollbackInstall = 'passed'
   $evidence.profileVerify = Invoke-ProfilePhase 'verify' (Join-Path $root 'profile-verify.json')

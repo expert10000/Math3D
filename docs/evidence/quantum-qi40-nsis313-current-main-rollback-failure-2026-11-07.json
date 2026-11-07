@@ -1,0 +1,29 @@
+{
+  "schema": "math3d/stable-quantum-installed-rollback/v1",
+  "checkedAtUtc": "2026-11-07T16:47:01.0692702Z",
+  "environment": "fresh Windows rollback VM",
+  "status": "failed",
+  "candidate": {
+    "commit": "43a066c9a4ae6ee0e7ad0cdb2382d08269e3698a",
+    "version": "1.7.0",
+    "installerSha256": "8b547ab138159a92424889b551042d4941b82cead3b1e6fdd6b63f7a75da42fa",
+    "manifestSha256": "3c1ba1c7f93c538674aa4cb486c59071fa079ef5f9cda5d5b1d447e911326abf"
+  },
+  "rollback": {
+    "commit": "55a0196fe63ca16f49c97ff1aead7e41105e0ede",
+    "version": "1.7.0",
+    "installerSha256": "b515f926f0794679f19b4cbe3adb5133b3d15b95f2b31e3856ff14ee5a4b46ac",
+    "manifestSha256": "dd96dd7b01d2ed9dc803fe65edd0b71c37cdfab0883dc8e28fa6a68439b193ae"
+  },
+  "checks": {
+    "exactBytes": "passed",
+    "candidateInstall": "passed",
+    "candidateProfileSeed": "pending",
+    "candidateQec": "pending",
+    "candidateUninstall": "pending",
+    "rollbackInstall": "pending",
+    "rollbackProfileRetained": "pending",
+    "v1v2Readers": "pending"
+  },
+  "failure": "Installed rollback profile seed failed (exit 1)"
+}

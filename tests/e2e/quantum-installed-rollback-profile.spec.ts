@@ -92,6 +92,10 @@ test("installed QEC rollback retains a saved Graph Project and setting", async (
         row.sceneFingerprint === riceMele.fingerprint)).toBe(true);
       await projects.getByTestId(`quantum-promote-graph2d-${riceMele.fingerprint}`).click();
       await expect(projects.getByTestId("project-quantum-scene-message")).toContainText("graph2d copy staged");
+      if (!await projects.getByTestId("project-save").isVisible()) {
+        await projects.getByTestId("project-gallery-layout-toggle").first().click();
+      }
+      await expect(projects.getByTestId("project-save")).toBeVisible();
       await projects.getByTestId("project-save").click();
       await expect.poll(() => page.evaluate(() =>
         JSON.parse(localStorage.getItem("math3d.project.v1") || "null")?.workspace?.relations?.some(
