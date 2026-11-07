@@ -940,6 +940,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **13a prepared for review:** Electron, electron-builder and better-sqlite3 resolve to exact package versions; the frozen worker checks installed runtime and PyInstaller pins before packaging. The existing native CGAL distribution gate remains blocked pending public source-bundle integration. Installer and upgrade qualification remain 13b–d work.
 
+**13b test prepared:** [Installed candidate gate](INSTALL_UPGRADE_GATE.md) requires exact signed 2.0.0 bytes, a clean Windows VM, worker smoke without Python, and a first-use scientific starter reopened after restart. The source-build UI journey passes; no 2.0 installed-candidate signoff is claimed.
+
 **Exit:** distributable tested without source checkout; all required resource identities recorded for exact release assets.
 
 ### M3D20-14 — Documentation and help (P0)
