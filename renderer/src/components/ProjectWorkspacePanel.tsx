@@ -16,7 +16,7 @@ import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, 
   type ProjectNote,
   type Math3DProject, type MixedWorkspaceDocument, type KernelWorkspaceModule, type QuantumSceneDocument, type ViewerProvenanceEvidence } from "@math3d/core";
 import { deriveProjectOpenIn, projectOpenInActions, projectOpenInReturn,
-  type ProjectOpenInAction } from "@math3d/core";
+  matchesScientificSourceGeneration, type ProjectOpenInAction } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { findProjectStarterCopy, importLibraryProject, loadLibraryProject, MAX_PROJECT_THUMBNAIL_BYTES, orderProjectLibrary, parseProjectLibrary, PROJECT_LIBRARY_KEY,
   PROJECT_STORAGE_KEY, readProjectThumbnail, isAutomaticProjectThumbnail, saveLibraryProject, updateLibraryActivity, type ProjectLibrary } from "../projects/projectLibrary";
@@ -25,6 +25,7 @@ import { ProjectGalleryFrame, type ProjectPlacement } from "./ProjectGalleryFram
 import { ProjectTemplatesPanel, StarterArtwork } from "./ProjectTemplatesPanel";
 import { ProjectDocumentActions, type ProjectDocumentAction } from "./ProjectDocumentActions";
 import { ProjectOpenInMenu } from "./ProjectOpenInMenu";
+import { createSavedSurfaceMesh } from "../projects/savedSurfaceMesh";
 import { inspectProjectDependencies } from "../projects/projectDependencies";
 import { presentProjectFreshness, presentProjectRelationFreshness } from "../projects/projectFreshnessPresentation";
 import { projectDependencyRefreshOptions, refreshProjectDependency, projectAnalysisRefreshOptions, recomputeProjectAnalysis } from "../projects/projectDependencyRefresh";
@@ -1526,6 +1527,32 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     if (busy || preview || managed || !project || !onRestoreWorkspace) return;
     try {
       const current = liveProject();
+      if (choice.id === "surface.tessellate-saved") {
+        const entry = current.workspace.entries.find(item => item.expected.id === choice.source.documentId);
+        if (!choice.enabled || entry?.checkpoint.format !== "math3d.surface-document" ||
+          !matchesScientificSourceGeneration(viewerSourceFromDocument(entry.checkpoint), choice.source))
+          throw new TypeError("The Surface source changed; review Open in destinations again.");
+        const analysis = analyses.get(entry.expected.id);
+        if (analysis?.route !== "surface" && analysis?.route !== "surface-mesh")
+          throw new TypeError(analysis?.reason ?? "The saved Surface sampler is unavailable.");
+        const made = createSavedSurfaceMesh(current.workspace, entry.checkpoint,
+          { documents: verifyMixedWorkspaceReplay(current.workspace), resources: resourceSession.current });
+        const next = replaceMath3DProjectWorkspace(current, made.workspace);
+        const mesh = made.adapter.document();
+        const bytes = made.adapter.resources.bytes(mesh.source.resource);
+        if (!bytes) throw new TypeError("The sampled Mesh source buffers are unavailable.");
+        const resources = captureProjectResources(next, item => item.kind === "mesh-buffers" &&
+          item.id === mesh.source.resource.id ? bytes : resourceBytes()(item));
+        if (!made.existing) onRestoreWorkspace(next.workspace, resources, next);
+        resourceSession.current = resources; resourceSessionId.current = next.identity.id;
+        display(next, false);
+        setViewingDocumentId(mesh.identity.id);
+        setViewerCompanion(true); setQuick(true); setDetailView(true);
+        onNavigateDocument?.(mesh.identity.id, "mesh");
+        setMessage(made.existing ? "Opened the existing exact sampled Mesh." :
+          "Created a source-linked sampled Mesh. Save the Project to retain it.");
+        return;
+      }
       const result = deriveProjectOpenIn(current, choice);
       if (!result.existing) onRestoreWorkspace(result.project.workspace, resourceSession.current, result.project);
       display(result.project, false);
@@ -2129,14 +2156,18 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               style={{ maxWidth: "100%", overflowWrap: "anywhere", textAlign: "left", opacity: preview || document.archived || !canNavigateDocument?.(document.id, document.module) ? 0.55 : 1 }}>{document.title}</button>
             <button type="button" data-testid={`project-view-${document.id}`} disabled={preview || document.archived || !onNavigateDocument || !canNavigateDocument?.(document.id, document.module)} onClick={() => viewBesideProject(document.id, document.module)}>View with Project</button>
             {project && <ProjectOpenInMenu documentId={document.id}
-              actions={projectOpenInActions(project, document.id)}
+              actions={projectOpenInActions(project, document.id, { surfaceMesh: {
+                available: analyses.get(document.id)?.route === "surface" || analyses.get(document.id)?.route === "surface-mesh",
+                reason: analyses.get(document.id)?.reason ?? "The saved Surface sampler is unavailable on this host.",
+              } })}
               canDerive={!busy && !preview && !managed && !!onRestoreWorkspace}
               unavailableReason={preview ? "Open the saved Project first." : managed ?
                 "Open the Project workspace before deriving a companion." : !onRestoreWorkspace ?
                   "Project workspace restoration is unavailable on this host." : busy ? "Project is busy." : null}
               onChoose={openInDestination} returnLink={projectOpenInReturn(project, document.id)}
-              canReturn={!preview && !!canNavigateDocument?.(projectOpenInReturn(project, document.id)?.sourceDocumentId ?? "", "graph2d")}
-              onReturn={sourceId => viewBesideProject(sourceId, "graph2d")} />}
+              canReturn={!preview && !!canNavigateDocument?.(projectOpenInReturn(project, document.id)?.sourceDocumentId ?? "",
+                projectOpenInReturn(project, document.id)?.sourceModule ?? "graph2d")}
+              onReturn={(sourceId, module) => viewBesideProject(sourceId, module)} />}
             {document.module === "vector3d" && <button type="button"
               data-testid={`project-open-field-explorer-${document.id}`}
               disabled={busy || document.archived || !onNavigateDocument || !onRestoreWorkspace}

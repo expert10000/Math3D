@@ -60,13 +60,16 @@ describe("M3D20-02 qualified Open in", () => {
     expect(projectOpenInReturn(historical, targetId)).toMatchObject({ exact: false });
   });
 
-  it("reports surface, mesh, field, and quantum destinations as unavailable until qualified", () => {
+  it("qualifies Surface only with a host sampler and keeps other routes explicit", () => {
     const mixed = mobileMixedProjectFixture().project;
-    for (const module of ["surface", "mesh"] as const) {
-      const entry = mixed.workspace.entries.find(item => item.module === module)!;
-      expect(projectOpenInActions(mixed, entry.expected.id)).toMatchObject([{ enabled: false,
-        sourceModule: module, disabledReason: expect.stringContaining("qualified") }]);
-    }
+    const surface = mixed.workspace.entries.find(item => item.module === "surface")!;
+    expect(projectOpenInActions(mixed, surface.expected.id)).toMatchObject([{ enabled: false,
+      disabledReason: expect.stringContaining("sampler") }]);
+    expect(projectOpenInActions(mixed, surface.expected.id, { surfaceMesh: { available: true, reason: null } }))
+      .toMatchObject([{ id: "surface.tessellate-saved", enabled: true, targetModule: "mesh" }]);
+    const mesh = mixed.workspace.entries.find(item => item.module === "mesh")!;
+    expect(projectOpenInActions(mixed, mesh.expected.id)).toMatchObject([{ enabled: false,
+      sourceModule: "mesh", disabledReason: expect.stringContaining("qualified") }]);
     const legacy = parseMath3DProject(readFileSync(new URL("../fixtures/scientific-selection/gf01-legacy-project.math3d", import.meta.url), "utf8"));
     const field = legacy.workspace.entries.find(item => item.module === "vector3d")!;
     expect(projectOpenInActions(legacy, field.expected.id)).toMatchObject([{ enabled: false,

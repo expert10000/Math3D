@@ -4,7 +4,8 @@ import { viewerSourceFromDocument } from "./viewerProvenance";
 import type { ScientificSourceGeneration } from "./scientificJobs";
 
 export const PROJECT_OPEN_IN_ACTION_SCHEMA_VERSION = 1 as const;
-export type ProjectOpenInActionId = "graph2d.promote-curve" | "graph2d.promote-geometry";
+export type ProjectOpenInActionId = "graph2d.promote-curve" | "graph2d.promote-geometry" |
+  "surface.tessellate-saved";
 export type ProjectOpenInAction = Readonly<{
   schemaVersion: typeof PROJECT_OPEN_IN_ACTION_SCHEMA_VERSION;
   id: ProjectOpenInActionId | "unavailable";
@@ -27,11 +28,21 @@ const unavailable = (source: ScientificSourceGeneration, sourceModule: KernelWor
 });
 
 /** Lists only bounded transformations whose existing producers retain exact source lineage. */
-export const projectOpenInActions = (project: Math3DProject, sourceDocumentId: string): readonly ProjectOpenInAction[] => {
+export const projectOpenInActions = (project: Math3DProject, sourceDocumentId: string,
+  options: { surfaceMesh?: Readonly<{ available: boolean; reason: string | null }> } = {}): readonly ProjectOpenInAction[] => {
   const entry = project.workspace.entries.find(item => item.expected.id === sourceDocumentId);
   if (!entry) return [];
   const source = viewerSourceFromDocument(entry.checkpoint);
   const archived = !!project.metadata.documents?.[sourceDocumentId]?.archived;
+  if (entry.module === "surface" && entry.checkpoint.format === "math3d.surface-document") {
+    const reason = archived ? "Restore this archived source first." :
+      options.surfaceMesh?.available ? null : options.surfaceMesh?.reason ??
+        "The saved Surface sampler is unavailable on this host.";
+    return [{ schemaVersion: PROJECT_OPEN_IN_ACTION_SCHEMA_VERSION, id: "surface.tessellate-saved",
+      source, sourceModule: "surface", sourceObjectId: null, targetModule: "mesh",
+      label: "Open in Mesh Analysis", preview: "Creates a saved sampled Mesh snapshot with exact Surface lineage and verified source buffers. Sampling is numerical.",
+      enabled: reason === null, disabledReason: reason }];
+  }
   if (entry.module !== "graph2d" || entry.checkpoint.format !== "math3d.graph2d-document") {
     const target = entry.module === "surface" ? "mesh" : entry.module === "mesh" ? "geometry" :
       entry.module === "vector3d" || entry.module === "field" ? "graph2d" :

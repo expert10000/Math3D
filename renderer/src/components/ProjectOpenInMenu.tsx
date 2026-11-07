@@ -1,5 +1,6 @@
 import React from "react";
 import type { ProjectOpenInAction, ProjectOpenInReturn } from "@math3d/core";
+import type { KernelWorkspaceModule } from "@math3d/core";
 
 type Props = {
   documentId: string;
@@ -9,7 +10,7 @@ type Props = {
   onChoose: (action: ProjectOpenInAction) => void;
   returnLink: ProjectOpenInReturn | null;
   canReturn: boolean;
-  onReturn: (sourceDocumentId: string) => void;
+  onReturn: (sourceDocumentId: string, module: KernelWorkspaceModule) => void;
 };
 
 export const ProjectOpenInMenu: React.FC<Props> = ({ documentId, actions, canDerive,
@@ -29,8 +30,8 @@ export const ProjectOpenInMenu: React.FC<Props> = ({ documentId, actions, canDer
   </details>
   {returnLink && <div data-testid={`project-open-in-return-${documentId}`}>
     <button type="button" disabled={!returnLink.exact || !canReturn}
-      title={returnLink.reason ?? "Return to the exact source Graph generation"}
-      onClick={() => onReturn(returnLink.sourceDocumentId)}>Return to source Graph</button>
+      title={returnLink.reason ?? "Return to the exact source generation"}
+      onClick={() => onReturn(returnLink.sourceDocumentId, returnLink.sourceModule)}>Return to source {returnLink.sourceModule === "graph2d" ? "Graph" : "Surface"}</button>
     {returnLink.reason && <small style={{ display: "block" }}>{returnLink.reason}</small>}
   </div>}
 </div>;

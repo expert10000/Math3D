@@ -5,6 +5,7 @@ import { projectOpenInActions, type ProjectOpenInAction } from "./projectOpenInA
 import { matchesScientificSourceGeneration, type ScientificSourceGeneration } from "./scientificJobs";
 import { viewerSourceFromDocument } from "./viewerProvenance";
 import type { DocumentRelationId } from "./documentRelations";
+import type { KernelWorkspaceModule } from "./mixedWorkspace";
 
 export type ProjectOpenInDerivation = Readonly<{
   project: Math3DProject;
@@ -54,7 +55,7 @@ export const deriveProjectOpenIn = (project: Math3DProject, choice: ProjectOpenI
 
 export type ProjectOpenInReturn = Readonly<{
   sourceDocumentId: string;
-  sourceModule: "graph2d";
+  sourceModule: KernelWorkspaceModule;
   recordedSource: ScientificSourceGeneration;
   exact: boolean;
   reason: string | null;
@@ -68,13 +69,15 @@ export const projectOpenInReturn = (project: Math3DProject, targetDocumentId: st
   const relation = project.workspace.relations.find(item => item.target.type === "document" &&
     item.target.generation.documentId === targetDocumentId &&
     matchesScientificSourceGeneration(item.target.generation, viewerSourceFromDocument(target.checkpoint)) &&
-    (item.operation === "graph2d.promote-curve" || item.operation === "graph2d.promote-geometry") &&
+    (item.operation === "graph2d.promote-curve" || item.operation === "graph2d.promote-geometry" ||
+      item.operation === "surface.tessellate-saved") &&
     item.sources.length === 1);
   if (!relation) return null;
   const recordedSource = relation.sources[0]!;
-  const source = project.workspace.entries.find(item => item.expected.id === recordedSource.documentId && item.module === "graph2d");
+  const sourceModule: KernelWorkspaceModule = relation.operation === "surface.tessellate-saved" ? "surface" : "graph2d";
+  const source = project.workspace.entries.find(item => item.expected.id === recordedSource.documentId && item.module === sourceModule);
   const exact = !!source && matchesScientificSourceGeneration(viewerSourceFromDocument(source.checkpoint), recordedSource);
-  return { sourceDocumentId: recordedSource.documentId, sourceModule: "graph2d", recordedSource,
-    exact, reason: exact ? null : source ? "The original Graph generation is historical. Open its current version from the Project navigator." :
-      "The original Graph is unavailable in this Project.", relationId: relation.relationId };
+  return { sourceDocumentId: recordedSource.documentId, sourceModule, recordedSource,
+    exact, reason: exact ? null : source ? "The original source generation is historical. Open its current version from the Project navigator." :
+      "The original source is unavailable in this Project.", relationId: relation.relationId };
 };
