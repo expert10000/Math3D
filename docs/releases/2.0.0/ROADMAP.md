@@ -971,6 +971,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 - `M3D20-15b docs(site): accurate platform and runtime capability claims`.
 - `M3D20-15c test(site): screenshots tied to release build and scene evidence`.
 
+**15a source prepared:** The public-site home page now presents the Surface, Quantum, and Algebra flagship journeys with existing-source imagery or an explicit diagram and labels the unfinished 2.0 release gates. It does not publish a 2.0 download or claim candidate screenshots.
+
 **Exit:** gallery, docs and real distribution all describe the same capabilities/build.
 
 ### M3D20-16 — RC1 feature freeze (P0)

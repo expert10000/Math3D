@@ -431,6 +431,34 @@ h1 {
   grid-column: 1 / -1;
 }
 
+.release20-section { scroll-margin-top: 5rem; }
+.release20-workflows { display: grid; gap: 1rem; margin-top: 1.25rem; }
+.release20-workflow {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  gap: 1.3rem;
+  align-items: center;
+  padding: clamp(1rem, 2.5vw, 1.6rem);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: linear-gradient(145deg, #fff, #f1f7ff);
+  box-shadow: 0 8px 24px rgba(14, 49, 84, 0.08);
+}
+.release20-workflow:nth-child(even) .release20-workflow-copy { order: 2; }
+.release20-number { color: var(--brand-strong); font-size: 0.77rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
+.release20-workflow h3 { margin-top: 0.45rem; font-size: clamp(1.3rem, 3vw, 1.8rem); }
+.release20-workflow-copy > p { color: var(--ink-soft); max-width: 65ch; }
+.release20-steps { display: flex; flex-wrap: wrap; gap: 0.45rem; margin: 1rem 0; padding: 0; list-style: none; counter-reset: step; }
+.release20-steps li { counter-increment: step; padding: 0.4rem 0.6rem; border-radius: 8px; border: 1px solid #c4d9f2; background: #f7fbff; font-size: 0.82rem; font-weight: 600; }
+.release20-steps li::before { content: counter(step) ". "; color: var(--brand-strong); }
+.release20-workflow-copy .release20-state { margin-bottom: 0; padding-top: 0.7rem; border-top: 1px solid var(--line); font-size: 0.85rem; }
+.release20-workflow-visual { margin: 0; }
+.release20-workflow-visual img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; border: 1px solid #d5e2f0; border-radius: 14px; }
+.release20-workflow-visual figcaption { margin-top: 0.45rem; color: #4a607b; font-size: 0.78rem; }
+.release20-diagram { display: grid; justify-items: center; gap: 0.35rem; padding: 1.2rem; border-radius: 14px; border: 1px solid #c4d9f2; background: radial-gradient(circle at 50% 0, #e3f1ff, #f8fbff 70%); }
+.release20-diagram span:nth-child(odd) { width: min(100%, 17rem); padding: 0.6rem; text-align: center; border-radius: 9px; background: #fff; border: 1px solid #b8d2ef; font-weight: 700; color: var(--brand-strong); }
+.release20-diagram span:nth-child(even) { color: var(--accent); font-weight: 700; }
+
 .shot-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -598,6 +626,9 @@ h1 {
   .panel-grid {
     grid-template-columns: 1fr;
   }
+
+  .release20-workflow { grid-template-columns: 1fr; }
+  .release20-workflow:nth-child(even) .release20-workflow-copy { order: 0; }
 }
 
 @media (max-width: 680px) {
@@ -608,6 +639,8 @@ h1 {
   .nav-links {
     gap: 0.8rem;
     font-size: 0.9rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 
   .feature-grid {
