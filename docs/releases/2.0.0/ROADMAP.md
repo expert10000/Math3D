@@ -2,11 +2,30 @@
 
 **Product roadmap · Architecture / UX / Scientific interoperability / Release engineering**<br>
 **Prepared:** 2026-11-05<br>
+**Updated:** 2026-11-07<br>
 **Target:** Math3D 2.0.0 General Availability (GA)<br>
-**Status:** Proposed consolidation and release plan; implementation state must be verified against the release candidate<br>
+**Status:** Architecture, workflow, documentation, and release-gate work is merged to `main`; RC1, RC2, and GA are not declared. Root and renderer packages still report 1.7.0, and no `v2.0.0` tag exists.<br>
 **Primary product claim:** *Construct, compute, analyze, compare, document, and publish connected mathematical objects in one scientific workspace.*
 
 > **Release principle.** Version 2.0.0 is not another sequence of independent scientific-module expansions. It is the release that makes the already substantial Geometry, Curves, Surfaces, Mesh, Volume, Graphs, Field Explorer, Topology, CAS/Sage, Projects, Workbooks, and Quantum capabilities behave as **one integrated, reproducible scientific application**.
+
+---
+
+## Delivery snapshot — 2026-11-07
+
+| Milestone | On `main` | Still required for 2.0 acceptance |
+|---|---|---|
+| 01–02 · Contracts and handoffs | Adapter registry, compatibility fixtures, bounded `Open in…` actions, and saved return navigation | Architecture approval and all three complete flagship journeys |
+| 03–10 · Integrated product | Existing module, selection, Project, Workbook, runtime, and gallery capabilities described below | General shared cursor and Study model, coherent result/runtime UI, flagship evidence, and performance acceptance where advertised |
+| 11–12 · Migration and hosts | Source-format migration/transfer fixtures and scoped Windows, local-browser, and mobile-model tests | Published 1.x corpus and installed/hosted/device/package evidence for each claimed host |
+| 13–15 · Distribution and communication | Pinning and integrity checks, clean-install/upgrade scripts, user guides, capability page, and source gallery provenance | Exact signed 2.0 candidate, installed tests, candidate captures, and matching public claims |
+| 16 · RC1 | Freeze verifier, repeatable source acceptance runner, and blocker register | Reviewed 2.0 integration commit, clean freeze manifest, full CI and defect disposition |
+| 17 · RC2 | Pinned source migration corpus, independent resource transfers, timed soak runner, and exact-candidate rehearsal verifier | Two-hour soak, exact-artifact install/upgrade, host-specific receipts, and written sign-off for one commit and manifest |
+| 18 · GA | Legacy 1.x publish-path guard, reviewed sign-off verifier, immutable asset staging, and uploaded-download audit | Approved zero-blocker receipt, `v2.0.0` tag, publication, final downloaded install, and remote-byte audit |
+
+The gate scripts and source tests are **preparation**, not evidence that a 2.0 installer or release has passed. The local source checkout remains version 1.7.0. Keep installer execution at the final qualification stage; only promote a capability or checklist item after evidence names the exact candidate commit and artifact hash.
+
+**Next release path:** close or explicitly limit the shared cursor/Study and three flagship journeys; resolve the native CGAL source-bundle blocker; choose and review a 2.0 integration baseline; run the RC1 freeze and acceptance matrix; then qualify the signed candidate, migration, soak, gallery, and host claims. GA sign-off, tagging, staging, publication, and verification of downloaded bytes follow that evidence.
 
 ---
 
