@@ -170,6 +170,7 @@ export * from "./scientificSelection";
 export * from "./crossModuleAdapterRegistry";
 export * from "./crossModuleSelectionAdapters";
 export * from "./projectOpenInActions";
+export * from "./projectOpenInDerivation";
 export * from "./scientificSelectionLegacy";
 export * from "./projectScientificSelections";
 export * from "./vectorField3DLineIntegral";
