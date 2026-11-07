@@ -91,6 +91,8 @@ import { SageSymbolicAnalysisCard } from "../features/sageLab/SageSymbolicAnalys
 import type { SymbolicResultRecord } from "../features/sageLab/SageSymbolicPanel";
 import { graphSageSource } from "../features/sageLab/graphSageSource";
 import { Graph2DPlot } from "./Graph2DPlot";
+import { scientificCursorBus, type ProjectScientificCursor } from "../components/scientificCursor";
+import { projectFieldCursorToAnalyticLine } from "./fieldGraphCursor";
 import { ScientificFieldPlane } from "./ScientificFieldPlane";
 import { ScientificFieldVectorPlane } from "./ScientificFieldVectorPlane";
 import { ScientificFieldVolume } from "./ScientificFieldVolume";
@@ -397,6 +399,9 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   const projectProfileRef = useRef(project);
   projectProfileRef.current = project;
   const [profileActionError, setProfileActionError] = useState("");
+  const [fieldCursor, setFieldCursor] = useState<ProjectScientificCursor | null>(null);
+  useEffect(() => scientificCursorBus.subscribe(event =>
+    setFieldCursor(event.kind === "project" && event.sourceModule === "vector3d" ? event : null)), []);
   const [spectrumVerified, setSpectrumVerified] = useState<Record<string,
     VerifiedTemporalTransfers>>({});
   const [ftleVerified, setFtleVerified] = useState<Record<string,
@@ -1994,6 +1999,10 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   };
   const selectedSeries = series.find((item) => item.objectId === document.selection.objectId);
   const selectedObject = document.source.objects.find((item) => item.id === document.selection.objectId);
+  const fieldCursorProjection = useMemo(() => fieldCursor && selectedObject?.kind === "point-series" &&
+    selectedObject.analyticOrigin ? projectFieldCursorToAnalyticLine(fieldCursor,
+      selectedObject.analyticOrigin, selectedObject.id, pointTableStore.resolve(selectedObject.table)) : null,
+  [fieldCursor, selectedObject]);
   const selectedProjectProfile = selectedObject?.kind === "point-series" ?
     selectedObject.projectProfileOrigin : undefined;
   const selectedComparisonProfile = selectedObject?.kind === "point-series" ?
@@ -3379,6 +3388,10 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
       <strong>{inspected.label}</strong>
       <span>{inspected.probe ? `Probe (${inspected.probe.x.toPrecision(5)}, ${inspected.probe.y.toPrecision(5)})` :
         "Select a point or run an analysis below."}</span>
+      {fieldCursorProjection && <span data-testid="graph2d-linked-field-cursor" role="status">{
+        fieldCursorProjection.status === "matched" ?
+          `Linked Field row ${fieldCursorProjection.value.rowId}: (${fieldCursorProjection.value.x}, ${fieldCursorProjection.value.y})` :
+          `Linked Field point withheld: ${fieldCursorProjection.reason}`}</span>}
       <button type="button" disabled={!selectedObject || !onAuthoringCommit} onClick={() => {
         if (selectedObject) setEditRequest(previous => ({ objectId: selectedObject.id, sequence: (previous?.sequence ?? 0) + 1 }));
       }}>Edit graph</button>
@@ -4866,6 +4879,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           probeMarkers={probeMarkers}
           regression={!parameterPreviewActive && document.display.objects.find(s => s.objectId === currentRegression?.objectId)?.visible ? currentRegression : null}
           selectedProbe={parameterPreviewActive ? null : focusedNumericalProbe ?? document.selection.probe}
+          linkedCursorProbe={fieldCursorProjection?.status === "matched" ? fieldCursorProjection.value : null}
           hoverProbe={parameterPreviewActive ? null : hoverSelection?.probe} overlays={parameterPreviewActive ? [] : differentialOverlays}
           intervals={!parameterPreviewActive && intervals && isGraph2DIntervalAnalysisCurrent(intervals, document) ? intervals : null}
           focusedIntervalId={focusedInterval && focusedInterval.resultId === intervals?.resultId ?

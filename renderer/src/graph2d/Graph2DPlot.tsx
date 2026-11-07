@@ -39,6 +39,7 @@ type Props = { display: Graph2DDisplay; size: Graph2DScreenSize; series: readonl
   constructions?: Graph2DConstructionArtifact | null;
   probeMarkers?: ReturnType<typeof projectGraph2DProbeMarkers>;
   selectedProbe?: Graph2DProbe | null; hoverProbe?: Graph2DProbe | null;
+  linkedCursorProbe?: Graph2DProbe | null;
   selectedPhaseSeed?: { objectId: string; index: number } | null;
   linkedRegionHighlight?: Graph2DLinkedRegionHighlight | null;
   overlays?: readonly Graph2DLineOverlay[]; intervals?: Graph2DIntervalAnalysis | null;
@@ -47,7 +48,7 @@ type Props = { display: Graph2DDisplay; size: Graph2DScreenSize; series: readonl
   derivativeCurve?: Graph2DDerivativeCurve | null;
   unresolvedIntervals?: readonly Graph2DUnresolvedInterval[] };
 
-export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, regression, constructions, selectedProbe, hoverProbe, selectedPhaseSeed, linkedRegionHighlight, overlays = [], intervals, focusedIntervalId, area, intersections, derivativeCurve, unresolvedIntervals = [], probeMarkers = [] }: Props) {
+export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, regression, constructions, selectedProbe, hoverProbe, linkedCursorProbe, selectedPhaseSeed, linkedRegionHighlight, overlays = [], intervals, focusedIntervalId, area, intersections, derivativeCurve, unresolvedIntervals = [], probeMarkers = [] }: Props) {
   if (graph2DHasLogScale(display.viewport)) { overlays = []; area = null; intervals = null; }
   const clipId = useId();
   const grid = projectGraph2DGrid(display.viewport, size, display.axes.gridOptions);
@@ -62,7 +63,7 @@ export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, re
   const radialStep = grid.verticalMajor.length >= 2 ?
     Math.abs(grid.verticalMajor[1]!.value - grid.verticalMajor[0]!.value) : Math.max(xSpan, ySpan) / 8;
   const radialCount = Math.min(24, Math.ceil(polarMaxRadius / radialStep));
-  const marker = (probe: Graph2DProbe | null | undefined, kind: "selected" | "hover") => {
+  const marker = (probe: Graph2DProbe | null | undefined, kind: "selected" | "hover" | "linked") => {
     if (!probe) return null;
     const screen = graph2DWorldToScreen(display.viewport, size, probe);
     if (!Number.isFinite(screen.x) || !Number.isFinite(screen.y) || screen.x < 0 || screen.x > size.width || screen.y < 0 || screen.y > size.height) return null;
@@ -417,6 +418,7 @@ export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, re
         </g>)}
       </g>
       {marker(selectedProbe, "selected")}
+      {marker(linkedCursorProbe, "linked")}
     </svg>
   );
 });

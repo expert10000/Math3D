@@ -6,6 +6,14 @@ import { formatGraph2DTick, projectGraph2DGrid } from "./gridProjection";
 import { Graph2DPlot } from "./Graph2DPlot";
 
 describe("Graph2D render projection", () => {
+  it("shows a linked Field row independently of the local selected probe", () => {
+    const display = createEmptyGraph2DDocument("linked-cursor").display;
+    const svg = renderToStaticMarkup(<Graph2DPlot display={display} size={{ width: 640, height: 480 }}
+      series={[]} selectedProbe={{ objectId: "local", x: 1, y: 1 }}
+      linkedCursorProbe={{ objectId: "field-line", x: 0, y: 0, rowId: "row_65" }} />);
+    expect(svg).toContain("graph2d-probe-selected");
+    expect(svg).toContain("graph2d-probe-linked");
+  });
   it("produces stable major/minor ticks and readable labels", () => {
     const grid = projectGraph2DGrid({ xMin: -4, xMax: 4, yMin: -3, yMax: 3, aspect: "free" }, { width: 800, height: 600 });
     expect(grid.verticalMajor.map((tick) => tick.label)).toEqual(["-4", "-3", "-2", "-1", "0", "1", "2", "3", "4"]);
