@@ -1000,6 +1000,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **17c reliability preparation:** The [source reliability soak](RC2_SOAK_GATE.md) describes a repeatable run covering Projects, scientific results, quantum, and a desktop first-use Study restart. `--run` requires a matching 2.0 freeze manifest and at least 120 minutes, records every cycle and stops on a failed check. It has not run on the current 1.7 checkout and does not qualify an installed candidate.
 
+**17d release rehearsal:** The [exact-candidate rehearsal gate](RC2_REHEARSAL_GATE.md) checks that the source freeze, signed Windows install and upgrade receipts, source soak, verified assets, three gallery captures, public license metadata, and locally staged site all refer to one 2.0 commit and installer hash. It remains pending real candidate artifacts and installed evidence.
+
 - Fresh-machine installer and upgrade pass.
 - Full migration corpus and independent export/import.
 - Multi-hour representative reliability soak where practical.
