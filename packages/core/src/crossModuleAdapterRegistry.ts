@@ -1,5 +1,5 @@
 import { KERNEL_WORKSPACE_MODULES, type KernelWorkspaceModule } from "./mixedWorkspace";
-import { PLATFORM_FACILITIES, PLATFORM_CAPABILITY_SCHEMA_VERSION,
+import { createPlatformCapabilitySnapshot, PLATFORM_FACILITIES, PLATFORM_CAPABILITY_SCHEMA_VERSION,
   type PlatformCapabilitySnapshot, type PlatformFacility } from "./platformCapabilities";
 import { getMath3DWorkerOperation, type Math3DWorkerOperationId } from "./workerOperationRegistry";
 import { isScientificSourceGeneration, matchesScientificSourceGeneration,
@@ -125,6 +125,13 @@ export const qualifyCrossModuleAdapter = (registry: CrossModuleAdapterRegistry, 
 }): AdapterQualification => {
   const adapter = registry.get(input.adapterId);
   const disabled: { code: AdapterDisabledCode; reason: string }[] = [];
+  let validPlatform = false;
+  try {
+    const { schemaVersion, ...snapshot } = input.platform;
+    validPlatform = schemaVersion === PLATFORM_CAPABILITY_SCHEMA_VERSION &&
+      !!createPlatformCapabilitySnapshot(snapshot);
+  } catch { /* Invalid host evidence disables cross-module propagation. */ }
+  if (!validPlatform) disabled.push({ code: "facility-unavailable", reason: "Host capability snapshot is invalid or unavailable." });
   if (!adapter) disabled.push({ code: "unknown-adapter", reason: `Adapter '${input.adapterId}' is not registered.` });
   if (!record(input.selection) || !isScientificSourceGeneration(input.selection.source) ||
       !KERNEL_WORKSPACE_MODULES.includes(input.selection.sourceModule) ||
@@ -147,7 +154,7 @@ export const qualifyCrossModuleAdapter = (registry: CrossModuleAdapterRegistry, 
     if (input.selection.resourceSha256 && !input.resourceAvailable?.(input.selection.resourceSha256))
       disabled.push({ code: "resource-unavailable", reason: "Pinned source resource is unavailable or unverified." });
     for (const facility of adapter.requiredFacilities) {
-      const status = input.platform?.schemaVersion === PLATFORM_CAPABILITY_SCHEMA_VERSION ?
+      const status = validPlatform ?
         input.platform.facilities?.[facility] : null;
       if (!status?.available) disabled.push({ code: "facility-unavailable",
         reason: `Facility '${facility}' is unavailable: ${status?.reason ?? "no verified host probe"}.` });

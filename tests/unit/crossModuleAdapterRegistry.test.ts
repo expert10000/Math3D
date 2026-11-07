@@ -91,6 +91,8 @@ describe("M3D20-01 cross-module adapter compatibility", () => {
     ] } }).disabled.map(item => item.code)).toContain("target-frame-mismatch");
     expect(qualification({ mappingAvailable: undefined }).disabled.map(item => item.code)).toContain("mapping-unavailable");
     expect(qualification({ operationAvailable: undefined }).disabled.map(item => item.code)).toContain("operation-unavailable");
+    expect(qualification({ platform: { ...platform, schemaVersion: 2 } as typeof platform }).disabled.map(item => item.code))
+      .toContain("facility-unavailable");
   });
 
   it("keeps absent resource and host facility reasons explicit", () => {
