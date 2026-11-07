@@ -925,6 +925,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 - `M3D20-12b test(platform): run exact representative journeys per supported host`.
 - `M3D20-12c fix(ui): truthful offline/limited-capability controls`.
 
+**12a matrix drafted:** [Platform capabilities](PLATFORM_CAPABILITIES.md) records journey-level support and explicit unverified deployment/device/package gates. Subsequent 12b–c work must attach representative evidence before promoting a claim.
+
 **Exit:** advertised parity exactly matches tested capabilities, including view-only fallbacks.
 
 ### M3D20-13 — Install, upgrade and binary integrity (P0)
