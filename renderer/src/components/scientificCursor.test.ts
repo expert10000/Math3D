@@ -41,6 +41,20 @@ describe("Scientific Cursor", () => {
     expect(seen).toEqual([1, 1]);
     expect(bus.snapshot()?.originViewId).toBe("bands");
   });
+  it("rejects incomplete Quantum identity and snapshots the published coordinates", () => {
+    const bus = new ScientificCursorBus();
+    const k: [number, number] = [0.2, -0.4];
+    const draft = { runId: "qwz", resultSha256: hash, datasetId: "k-grid",
+      reciprocalPoint: { k, basisId: "qwz:rad/a", sampleIndex: 12 }, originViewId: "bands" };
+    const cursor = bus.publish(draft);
+    k[0] = 99;
+    expect(cursor.reciprocalPoint?.k).toEqual([0.2, -0.4]);
+    expect(() => bus.publish({ ...draft, datasetId: "" })).toThrow();
+    expect(() => bus.publish({ ...draft, reciprocalPoint: { ...draft.reciprocalPoint, basisId: "" } })).toThrow();
+    expect(() => bus.publish({ ...draft, reciprocalPoint: { ...draft.reciprocalPoint, sampleIndex: -1 } })).toThrow();
+    expect(() => bus.publish({ ...draft, reciprocalPoint: { ...draft.reciprocalPoint, sampleIndex: 1.5 } })).toThrow();
+    expect(bus.snapshot()).toEqual(cursor);
+  });
   it("requires aligned physical k coordinates and source identity", () => {
     const cursor = new ScientificCursorBus().publish({ runId: "qwz", resultSha256: hash, datasetId: "k-grid",
       reciprocalPoint: { k: [0.2, -0.4], basisId: "qwz:rad/a", sampleIndex: 12 }, originViewId: "bands" });

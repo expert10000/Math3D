@@ -37,16 +37,21 @@ export class ScientificCursorBus {
   private listeners = new Set<Listener>();
 
   publish(draft: CursorDraft): ScientificCursor {
-    if (!draft.runId || !/^[a-f0-9]{64}$/.test(draft.resultSha256) || !draft.originViewId ||
+    if (!draft.runId || !/^[a-f0-9]{64}$/.test(draft.resultSha256) || !draft.datasetId || !draft.originViewId ||
         Number(draft.reciprocalPoint !== undefined) + Number(draft.spatialPoint !== undefined) +
         Number(draft.timePoint !== undefined) !== 1)
       throw new TypeError("Invalid scientific cursor identity or coordinates.");
     const coordinates = draft.reciprocalPoint?.k ?? draft.spatialPoint?.xyz ??
       (draft.timePoint ? [draft.timePoint.value] : undefined);
-    if (!coordinates?.every(Number.isFinite) || draft.timePoint &&
+    if (!coordinates || coordinates.length !== (draft.spatialPoint ? 3 : 1 + Number(Boolean(draft.reciprocalPoint))) ||
+        !coordinates.every(Number.isFinite) ||
+        draft.reciprocalPoint && (!draft.reciprocalPoint.basisId ||
+          !Number.isSafeInteger(draft.reciprocalPoint.sampleIndex) || draft.reciprocalPoint.sampleIndex < 0 ||
+          draft.reciprocalPoint.bandId === "") ||
+        draft.spatialPoint && !draft.spatialPoint.coordinateSystemId || draft.timePoint &&
         (!draft.timePoint.unit || !draft.timePoint.frameId || !Number.isSafeInteger(draft.timePoint.sampleIndex) || draft.timePoint.sampleIndex < 0))
       throw new TypeError("Scientific cursor coordinates must be finite.");
-    const cursor: ScientificCursor = { ...draft, kind: "quantum", sequence: ++this.sequence };
+    const cursor: ScientificCursor = { ...structuredClone(draft), kind: "quantum", sequence: ++this.sequence };
     this.current = cursor;
     for (const listener of this.listeners) listener(cursor);
     return cursor;
