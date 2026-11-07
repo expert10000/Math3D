@@ -959,6 +959,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **14b guide prepared:** The [scientific result guide](SCIENCE_CONVENTIONS.md) separates method status from source freshness, explains units and numerical/statistical qualifications, and gives a five-question check for evidence-backed Project results.
 
+**14c guide prepared:** The [runtime guide](RUNTIME_AND_PLATFORMS.md) maps installed desktop, source, browser, mobile, and Linux routes to concrete storage, graphics, worker, Sage, and resource diagnostics without extending unsupported host claims.
+
 **Exit:** a new user can complete flagship journeys without reading source-code architecture documents.
 
 ### M3D20-15 — Release Gallery and communication (P0)
