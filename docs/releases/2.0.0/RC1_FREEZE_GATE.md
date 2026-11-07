@@ -1,0 +1,9 @@
+# M3D20-16 — RC1 freeze preparation
+
+RC1 has **not** been declared. This checkout still has root and renderer version 1.7.0, no reviewed 2.0 integration baseline, and no signed candidate. The freeze verifier exists so a later RC1 cannot be declared from a loosely identified branch or drifting dependency and schema inputs.
+
+After the 2.0 integration baseline is reviewed, branch from that exact commit. Store the freeze manifest outside the checkout and run `node scripts/verify-release20-freeze.mjs <freeze-manifest>`. The command requires a clean working tree, manifest source commit equal to `HEAD`, and version 2.0.0 in root, renderer, and root npm lockfile. It checks exact SHA-256 bytes of both npm lockfiles and the frozen worker/runtime requirements, exact resolved Electron, electron-builder, and better-sqlite3 versions, and the known Project, mixed-workspace, and saved-result contract source files, formats, and schema versions.
+
+The manifest shape is `math3d/release20-rc1-freeze/v1` with `status: "frozen"`, `version: "2.0.0"`, a full `sourceCommit`, and maps named `lockfiles`, `dependencies`, and `contracts`. Each `lockfiles` entry maps the required relative path to its SHA-256. Each `contracts` entry holds `sha256`, `format` (or `null` for analysis results), and `schemaVersion`. The verifier requires the exact key sets listed in `scripts/verify-release20-freeze.mjs`; it refuses missing or extra entries. Re-run it after any dependency or schema edit. Any drift needs a new reviewed baseline and manifest.
+
+The freeze check is one prerequisite. It does not prove the general Study model, full CI, mathematical fixtures, installer, migration, website captures, or release signoff. The [RC1 acceptance gate](RC1_ACCEPTANCE_GATE.md) records those separately. The fixture test `node scripts/test-release20-freeze.mjs` checks a synthetic 2.0 baseline and rejects lockfile drift and a 1.7 version.
