@@ -15,6 +15,9 @@ import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, 
   type ProjectComposition, type ProjectSavedMeshComparison,
   type ProjectNote,
   type Math3DProject, type MixedWorkspaceDocument, type KernelWorkspaceModule, type QuantumSceneDocument, type ViewerProvenanceEvidence } from "@math3d/core";
+import { deriveProjectOpenIn, deriveProjectMeshGeometry, linkProjectFieldProfileGraph,
+  projectOpenInActions, projectOpenInReturn,
+  matchesScientificSourceGeneration, type ProjectOpenInAction } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { findProjectStarterCopy, importLibraryProject, loadLibraryProject, MAX_PROJECT_THUMBNAIL_BYTES, orderProjectLibrary, parseProjectLibrary, PROJECT_LIBRARY_KEY,
   PROJECT_STORAGE_KEY, readProjectThumbnail, isAutomaticProjectThumbnail, saveLibraryProject, updateLibraryActivity, type ProjectLibrary } from "../projects/projectLibrary";
@@ -22,6 +25,8 @@ import { ProjectCommandAdapter } from "../projects/projectCommandAdapter";
 import { ProjectGalleryFrame, type ProjectPlacement } from "./ProjectGalleryFrame";
 import { ProjectTemplatesPanel, StarterArtwork } from "./ProjectTemplatesPanel";
 import { ProjectDocumentActions, type ProjectDocumentAction } from "./ProjectDocumentActions";
+import { ProjectOpenInMenu } from "./ProjectOpenInMenu";
+import { createSavedSurfaceMesh } from "../projects/savedSurfaceMesh";
 import { inspectProjectDependencies } from "../projects/projectDependencies";
 import { presentProjectFreshness, presentProjectRelationFreshness } from "../projects/projectFreshnessPresentation";
 import { projectDependencyRefreshOptions, refreshProjectDependency, projectAnalysisRefreshOptions, recomputeProjectAnalysis } from "../projects/projectDependencyRefresh";
@@ -735,9 +740,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     return () => { window.clearTimeout(timer); backupStageSequence.current++; };
   }, [open]);
   const collectResources = (next: Math3DProject, extra = resourceSession.current, allowMissing = false, workbook?: { id: string; bytes: Uint8Array }) => captureProjectResources(next, resourceBytes(extra, workbook), allowMissing);
-  const promoteQuantumScene = async (reference: ProjectQuantumSceneReference, target: QuantumNativeTarget) => {
+  const promoteQuantumScene = async (reference: ProjectQuantumSceneReference, target: QuantumNativeTarget,
+    expectedSource?: ProjectOpenInAction["source"]): Promise<string | null> => {
     const current = projectStateRef.current;
-    if (!current || busy || !window.quantumScenes?.openReference) return;
+    if (!current || busy || !window.quantumScenes?.openReference) return null;
     const before = serializeMath3DProject(current);
     setBusy(true);
     try {
@@ -747,6 +753,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       if (!projectStateRef.current || serializeMath3DProject(projectStateRef.current) !== before)
         throw new Error("Project changed during quantum promotion");
       const source = quantumSceneDocumentFromVerifiedOpen(opened);
+      if (expectedSource && !matchesScientificSourceGeneration(viewerSourceFromDocument(source), expectedSource))
+        throw new Error("The verified Quantum scene differs from the selected source generation.");
       const promotion = promoteQuantumNative(opened, target, rows => pointTableStore.publish(rows));
       const entries = [...current.workspace.entries];
       if (!entries.some(entry => entry.expected.id === source.identity.id))
@@ -771,10 +779,18 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           ...promotion.documents.map(document => document.identity.id)].filter((id, index, all) => all.indexOf(id) === index) });
       const next = replaceMath3DProjectWorkspace(current, workspace);
       if (promotion.meshBytes) quantumPromotionMeshBytes.current.set(promotion.meshBytes.id, promotion.meshBytes.bytes);
-      setProject(next); setExplorer(buildProjectExplorer(next, verifyMixedWorkspaceReplay(next.workspace)));
+      const resources = collectResources(next);
+      onRestoreWorkspace?.(next.workspace, resources, next);
+      resourceSession.current = resources; resourceSessionId.current = next.identity.id;
+      display(next, false);
+      const primary = promotion.documents.at(-1)!;
+      setViewingDocumentId(primary.identity.id);
+      setViewerCompanion(true); setQuick(true); setDetailView(true);
+      onNavigateDocument?.(primary.identity.id, target);
       setQuantumSceneMessage(`${target} copy staged with exact quantum source relation. Save Project to retain it.` +
         (target === "geometry" ? " This bounded copy opens in the current Project source editor; pinned pre-QEC rollback still shows a compatibility preview." : ""));
-    } catch (error) { setQuantumSceneMessage(`Native promotion refused: ${String((error as Error).message)}`); }
+      return primary.identity.id;
+    } catch (error) { setQuantumSceneMessage(`Native promotion refused: ${String((error as Error).message)}`); return null; }
     finally { setBusy(false); }
   };
   const stageQuantumStudyTemplate = (anchor: QuantumSceneDocument, templateId: QuantumStudyTemplateId) => {
@@ -1519,6 +1535,107 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     setViewerCompanion(true);
     setQuick(true);
   };
+  const meshGeometryAvailability = (id: string) => {
+    const entry = project?.workspace.entries.find(item => item.expected.id === id);
+    if (!project || entry?.module !== "mesh" || entry.checkpoint.format !== "math3d.mesh-document")
+      return { available: false, reason: "The Mesh source is unavailable." };
+    const resourceId = entry.checkpoint.source.resource.id;
+    const requirement = projectResourceInventory(project).find(item => item.kind === "mesh-buffers" &&
+      item.id === resourceId);
+    return { available: !!(requirement && resourceBytes()(requirement)),
+      reason: "The verified Mesh source buffers are unavailable on this host." };
+  };
+  const openInDestination = async (choice: ProjectOpenInAction) => {
+    if (busy || preview || managed || !project || !onRestoreWorkspace) return;
+    try {
+      const current = liveProject();
+      if (choice.id === "vector3d.open-profile-graph") {
+        if (!choice.enabled || !choice.targetDocumentId ||
+            !canNavigateDocument?.(choice.targetDocumentId, "graph2d"))
+          throw new TypeError("The saved Graph profile is unavailable on this host.");
+        const linked = linkProjectFieldProfileGraph(current, choice);
+        const resources = collectResources(linked.project);
+        if (!linked.existing) onRestoreWorkspace(linked.project.workspace, resources, linked.project);
+        resourceSession.current = resources; resourceSessionId.current = linked.project.identity.id;
+        display(linked.project, false);
+        setViewingDocumentId(linked.targetDocumentId);
+        setViewerCompanion(true); setQuick(true); setDetailView(true);
+        onNavigateDocument?.(linked.targetDocumentId, "graph2d");
+        setMessage(linked.existing ? "Opened the existing exact Field profile Graph." :
+          "Linked the saved Field profile Graph. Save the Project to retain its return path.");
+        return;
+      }
+      if (choice.id === "mesh.promote-geometry") {
+        const entry = current.workspace.entries.find(item => item.expected.id === choice.source.documentId);
+        const resourceId = entry?.checkpoint.format === "math3d.mesh-document" ?
+          entry.checkpoint.source.resource.id : null;
+        const requirement = entry?.checkpoint.format === "math3d.mesh-document" ?
+          projectResourceInventory(current).find(item => item.kind === "mesh-buffers" &&
+            item.id === resourceId) : null;
+        const bytes = requirement ? resourceBytes()(requirement) : null;
+        if (!choice.enabled || !bytes) throw new TypeError("The verified Mesh source buffers are unavailable.");
+        const made = deriveProjectMeshGeometry(current, choice.source, bytes);
+        const resources = captureProjectResources(made.project, resourceBytes());
+        if (!made.existing) onRestoreWorkspace(made.project.workspace, resources, made.project);
+        resourceSession.current = resources; resourceSessionId.current = made.project.identity.id;
+        display(made.project, false);
+        setViewingDocumentId(made.targetDocumentId);
+        setViewerCompanion(true); setQuick(true); setDetailView(true);
+        onNavigateDocument?.(made.targetDocumentId, "geometry");
+        setMessage(made.existing ? "Opened the existing exact Mesh Geometry copy." :
+          "Created a source-linked Mesh Geometry copy. Save the Project to retain it.");
+        return;
+      }
+      if (choice.id === "quantum.promote-graph2d" || choice.id === "quantum.promote-curve") {
+        const entry = current.workspace.entries.find(item => item.expected.id === choice.source.documentId);
+        const scene = entry?.checkpoint.format === "math3d.quantum-scene-document" ? entry.checkpoint : null;
+        const reference = scene ? current.quantumScenes?.find(item =>
+          item.sceneFingerprint === scene.source.sceneFingerprint) : null;
+        if (!choice.enabled || !reference || !entry ||
+          !matchesScientificSourceGeneration(viewerSourceFromDocument(entry.checkpoint), choice.source))
+          throw new TypeError("The Quantum source changed or its verified scene link is unavailable.");
+        const target = choice.id === "quantum.promote-graph2d" ? "graph2d" : "curve";
+        const targetId = await promoteQuantumScene(reference, target, choice.source);
+        setMessage(targetId ? `Created a source-linked Quantum ${target === "curve" ? "Curve" : "Graph"}. Save the Project to retain it.` :
+          "Open in refused. See the Quantum scene status for details.");
+        return;
+      }
+      if (choice.id === "surface.tessellate-saved") {
+        const entry = current.workspace.entries.find(item => item.expected.id === choice.source.documentId);
+        if (!choice.enabled || entry?.checkpoint.format !== "math3d.surface-document" ||
+          !matchesScientificSourceGeneration(viewerSourceFromDocument(entry.checkpoint), choice.source))
+          throw new TypeError("The Surface source changed; review Open in destinations again.");
+        const analysis = analyses.get(entry.expected.id);
+        if (analysis?.route !== "surface" && analysis?.route !== "surface-mesh")
+          throw new TypeError(analysis?.reason ?? "The saved Surface sampler is unavailable.");
+        const made = createSavedSurfaceMesh(current.workspace, entry.checkpoint,
+          { documents: verifyMixedWorkspaceReplay(current.workspace), resources: resourceSession.current });
+        const next = replaceMath3DProjectWorkspace(current, made.workspace);
+        const mesh = made.adapter.document();
+        const bytes = made.adapter.resources.bytes(mesh.source.resource);
+        if (!bytes) throw new TypeError("The sampled Mesh source buffers are unavailable.");
+        const resources = captureProjectResources(next, item => item.kind === "mesh-buffers" &&
+          item.id === mesh.source.resource.id ? bytes : resourceBytes()(item));
+        if (!made.existing) onRestoreWorkspace(next.workspace, resources, next);
+        resourceSession.current = resources; resourceSessionId.current = next.identity.id;
+        display(next, false);
+        setViewingDocumentId(mesh.identity.id);
+        setViewerCompanion(true); setQuick(true); setDetailView(true);
+        onNavigateDocument?.(mesh.identity.id, "mesh");
+        setMessage(made.existing ? "Opened the existing exact sampled Mesh." :
+          "Created a source-linked sampled Mesh. Save the Project to retain it.");
+        return;
+      }
+      const result = deriveProjectOpenIn(current, choice);
+      if (!result.existing) onRestoreWorkspace(result.project.workspace, resourceSession.current, result.project);
+      display(result.project, false);
+      setViewingDocumentId(result.targetDocumentId);
+      setViewerCompanion(true); setQuick(true); setDetailView(true);
+      onNavigateDocument?.(result.targetDocumentId, result.targetModule);
+      setMessage(result.existing ? "Opened the existing exact companion." :
+        "Created a source-linked companion. Save the Project to retain it.");
+    } catch (error) { setMessage(`Open in refused: ${(error as Error).message}`); }
+  };
   const viewerDocuments = explorer?.groups.flatMap(group => group.documents).filter(document => !document.archived && canNavigateDocument?.(document.id, document.module)) ?? [];
   const dashboardDocuments = explorer?.groups.flatMap(group => group.documents).filter(document => !document.archived) ?? [];
   const savedProjectEntry = project ? library.entries.find(entry => entry.id === project.identity.id) : undefined;
@@ -2111,6 +2228,24 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               title={document.archived ? "Archived document" : preview ? "Open saved project first" : !canNavigateDocument?.(document.id, document.module) ? "Document unavailable in the active workspace; inspect dependencies or open the saved project" : `Open ${document.title}`} onClick={() => navigate(document.id, document.module)}
               style={{ maxWidth: "100%", overflowWrap: "anywhere", textAlign: "left", opacity: preview || document.archived || !canNavigateDocument?.(document.id, document.module) ? 0.55 : 1 }}>{document.title}</button>
             <button type="button" data-testid={`project-view-${document.id}`} disabled={preview || document.archived || !onNavigateDocument || !canNavigateDocument?.(document.id, document.module)} onClick={() => viewBesideProject(document.id, document.module)}>View with Project</button>
+            {project && <ProjectOpenInMenu documentId={document.id}
+              actions={projectOpenInActions(project, document.id, { surfaceMesh: {
+                available: analyses.get(document.id)?.route === "surface" || analyses.get(document.id)?.route === "surface-mesh",
+                reason: analyses.get(document.id)?.reason ?? "The saved Surface sampler is unavailable on this host.",
+              }, quantumGraph: { available: !!window.quantumScenes?.openReference,
+                reason: "Verified Quantum scene opening is unavailable on this host." },
+                meshGeometry: meshGeometryAvailability(document.id),
+                fieldGraph: { available: !!onNavigateDocument,
+                  reason: "The saved Graph profile is unavailable on this host.",
+                  canOpen: id => !!canNavigateDocument?.(id, "graph2d") } })}
+              canDerive={!busy && !preview && !managed && !!onRestoreWorkspace}
+              unavailableReason={preview ? "Open the saved Project first." : managed ?
+                "Open the Project workspace before deriving a companion." : !onRestoreWorkspace ?
+                  "Project workspace restoration is unavailable on this host." : busy ? "Project is busy." : null}
+              onChoose={openInDestination} returnLink={projectOpenInReturn(project, document.id)}
+              canReturn={!preview && !!canNavigateDocument?.(projectOpenInReturn(project, document.id)?.sourceDocumentId ?? "",
+                projectOpenInReturn(project, document.id)?.sourceModule ?? "graph2d")}
+              onReturn={(sourceId, module) => viewBesideProject(sourceId, module)} />}
             {document.module === "vector3d" && <button type="button"
               data-testid={`project-open-field-explorer-${document.id}`}
               disabled={busy || document.archived || !onNavigateDocument || !onRestoreWorkspace}
