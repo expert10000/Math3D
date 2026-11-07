@@ -1017,6 +1017,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **18b sign-off gate:** The [GA sign-off identity check](GA_SIGNOFF_GATE.md) requires a reviewed, zero-blocker receipt outside the source checkout, bound by SHA-256 to the exact candidate, RC2 report, and final 2.0 release notes.
 
+**18c staging gate:** The [GA asset staging check](GA_STAGING_GATE.md) requires the exact signed-off tag and copies verified Windows assets, optional approved Linux assets, and review receipts without changing bytes. Its asset map supports later uploaded-download verification.
+
 - Tag exact signed-off commit `v2.0.0`.
 - Produce signed builds and immutable hashes.
 - Publish GitHub release notes, changes, compatibility matrix, known limitations, migration guidance and SBOM/attributions.
