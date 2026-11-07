@@ -824,6 +824,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **01a complete (inventory):** [Existing contract inventory](CONTRACT_INVENTORY.md) maps the current owners, enforced invariants, and overlapping models at baseline `372b367d`. It does not close 01b–d or approve the architecture freeze.
 
+**01b–d prepared for review:** Core now has a versioned declarative [cross-module adapter registry](../../../packages/core/src/crossModuleAdapterRegistry.ts) with source/target frame and unit metadata, exact-generation qualification, host/operation/mapping availability checks, and explicit disabled reasons. Selection adapters bind pinned v1 scientific selections and committed viewer entities. [Compatibility fixtures and focused tests](../../../tests/unit/crossModuleAdapterRegistry.test.ts) cover current/legacy Project reopen and invalid inputs. The [architecture freeze proposal](ARCHITECTURE_FREEZE.md) records ownership, migration, and extension rules. Architecture approval and release-candidate acceptance evidence remain open.
+
 **Exit:** contract document approved, schema compatibility tests pass, known partial areas explicitly listed.
 
 ### M3D20-02 — Cross-module `Open in…` (P0)
