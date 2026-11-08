@@ -32,17 +32,21 @@ export function QuantumFieldSlice({ fingerprint, fields, axes, units, runId, res
   const canvas = useRef<HTMLCanvasElement>(null);
   const sourcePixels = useRef<Uint8Array | null>(null);
   const generation = useRef(0);
+  const cursorGeneration = useRef(0);
   const safeIndex = field ? Math.min(index, field.grid.shape[axis] - 1) : 0;
   const safeQuantity = field?.kind === "scalar-field" ? "real" : quantity;
 
   useEffect(() => scientificCursorBus.subscribe(cursor => {
-    if (!cursor.spatialPoint || !field) return;
+    if (cursor.kind !== "quantum" || !cursor.spatialPoint || !field) return;
     const projected = projectSpatialCursor(cursor, { runId, resultSha256, coordinateSystemId,
       shape: field.grid.shape, origin: field.grid.origin, spacing: field.grid.spacing });
     if (projected.status === "matched") {
-      setCursorGrid(projected.value); setIndex(projected.value[axis]);
+      cursorGeneration.current++;
+      setSample(null); setCursorGrid(projected.value); setIndex(projected.value[axis]);
       setCursorStatus("Spatial cursor matched an exact verified field sample.");
     } else if (cursor.runId === runId && cursor.resultSha256 === resultSha256) {
+      cursorGeneration.current++;
+      setSample(null);
       setCursorGrid(null); setCursorStatus(`Cursor withheld: ${projected.reason}`);
     }
   }), [fingerprint, field?.id, axis, runId, resultSha256, coordinateSystemId]);
@@ -67,10 +71,18 @@ export function QuantumFieldSlice({ fingerprint, fields, axes, units, runId, res
         slice.fieldId !== field.id || !window.quantumScenes?.fieldSample) return;
     const plane = [0, 1, 2].filter(candidate => candidate !== axis);
     const current = generation.current;
+    const cursorRequest = cursorGeneration.current;
     void window.quantumScenes.fieldSample({ fingerprint, fieldId: field.id, axis, index: cursorGrid[axis],
       quantity: safeQuantity, u: cursorGrid[plane[0]], v: cursorGrid[plane[1]] }).then(result => {
-      if (generation.current === current) setSample(result);
-    }).catch(error => { if (generation.current === current) setCursorStatus(`Cursor withheld: ${String((error as Error).message)}`); });
+      if (generation.current !== current || cursorGeneration.current !== cursorRequest) return;
+      if (!result.grid.every((value, coordinate) => value === cursorGrid[coordinate]) ||
+          !result.position.every((value, coordinate) =>
+            Math.abs(value - (field.grid.origin[coordinate] + cursorGrid[coordinate] * field.grid.spacing[coordinate])) <= 1e-8)) {
+        setCursorStatus("Cursor withheld: verified sample differs from the selected grid point."); return;
+      }
+      setSample(result);
+    }).catch(error => { if (generation.current === current && cursorGeneration.current === cursorRequest)
+      setCursorStatus(`Cursor withheld: ${String((error as Error).message)}`); });
   }, [cursorGrid, slice, field?.id, axis, safeQuantity, fingerprint]);
 
   const viewport: [number, number, number, number] | null = slice && fitToField ? slice.fitBounds : null;
@@ -101,6 +113,7 @@ export function QuantumFieldSlice({ fingerprint, fields, axes, units, runId, res
     const v = Math.min(maxV - 1, Math.max(minV, minV + Math.floor((1 - (event.clientY - bounds.top) / bounds.height) * (maxV - minV))));
     const request: FieldSampleRequest = { fingerprint, fieldId: field.id, axis, index: safeIndex, quantity: safeQuantity, u, v };
     const current = generation.current;
+    cursorGeneration.current++;
     setCursorGrid(null);
     void window.quantumScenes.fieldSample(request).then(result => {
       if (generation.current === current) {
