@@ -11,7 +11,7 @@ import { meshDocumentEditable } from "./projects/nativeMeshRestore";
 import { createMeshDocument, canonicalJsonStringify, parseMath3DProject, upsertMath3DProjectAlgebraObject,
   addMath3DProjectAlgebraEvidence, upsertMath3DProjectAlgebraRecipe, installAlgebraGalleryExample,
   type ProjectScientificSceneReference } from "@math3d/core";
-import { resolveProjectAlgebraSingularityInspection,
+import { resolveProjectAlgebraLocusInspection,
   type ProjectAlgebraLocusReturn } from "@math3d/core";
 import { VerifiedProjectResources, type ProjectResourceReader, type ProjectResourceRequirement } from "./projects/projectResources";
 import type { MeshReplayBundle } from "./mesh/meshReplay";
@@ -80548,10 +80548,11 @@ case "mobius":
               entry?.revisions[target.revision - 1]?.contentHash !== contentHash)
             throw new TypeError("The selected algebra source is unavailable in the active Project.");
           if (evidence) {
-            const analysis = resolveProjectAlgebraSingularityInspection(current, evidence);
-            if (analysis.scene.source.target.id !== target.objectId ||
-                analysis.scene.source.target.revision !== target.revision)
-              throw new TypeError("The saved tangent analysis belongs to another algebra source.");
+            resolveProjectAlgebraLocusInspection(current, evidence);
+            if (evidence.source.objectId !== target.objectId ||
+                evidence.source.revision !== target.revision ||
+                evidence.source.contentHash !== contentHash)
+              throw new TypeError("The saved locus view belongs to another algebra source.");
           }
           setCasSourceRequest(previous => ({ projectId, target, contentHash, evidence: evidence ?? null,
             token: (previous?.token ?? 0) + 1 }));

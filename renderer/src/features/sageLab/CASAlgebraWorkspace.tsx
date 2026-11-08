@@ -139,7 +139,7 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
   }, [requestedSelection?.token, project?.identity.id]);
   const chosen = selectedStructure(project, selection);
   const savedTangent = useMemo(() => {
-    if (!requestedSelection?.evidence) return null;
+    if (!requestedSelection?.evidence?.analysisHash) return null;
     if (!project) return { analysis: null, error: "The saved tangent Project is unavailable." };
     try { return { analysis: resolveProjectAlgebraSingularityInspection(project, requestedSelection.evidence),
       error: null }; }

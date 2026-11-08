@@ -1684,8 +1684,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     try {
       const source = resolveProjectAlgebraLocusReturn(liveProject(), choice);
       if (!onOpenAlgebra) throw new TypeError("CAS navigation is unavailable on this host.");
-      onOpenAlgebra(source.projectId, source.target, source.contentHash,
-        choice.analysisHash ? choice : undefined);
+      onOpenAlgebra(source.projectId, source.target, source.contentHash, choice);
       onOpenChange(false);
     } catch (error) { setMessage(`Return to CAS refused: ${(error as Error).message}`); }
   };
