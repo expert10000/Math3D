@@ -1,4 +1,4 @@
-import { matchesScientificSourceGeneration, structuralHash,
+import { matchesScientificSourceGeneration, structuralHash, viewerSourceFromDocument,
   type AnalysisResultEnvelope, type Math3DProject } from "@math3d/core";
 
 export type ProjectResultReference = Readonly<{ kind: "note" | "study" | "workbook";
@@ -20,5 +20,27 @@ export function resultNoteReferences(project: Math3DProject,
       status: exact ? "current" as const : "historical" as const,
       reason: exact ? "Exact result anchor or value binding." :
         "The Note records this result ID with a different source generation or result hash." }];
+  });
+}
+
+/** A Study backlink is current only when its member and Project source match the recorded result. */
+export function resultStudyReferences(project: Math3DProject,
+  result: AnalysisResultEnvelope): readonly ProjectResultReference[] {
+  return (project.workspace.studies ?? []).flatMap(study => {
+    if (study.projectId !== project.identity.id) return [];
+    const members = study.members.filter(member => member.resultId === result.resultId);
+    if (!members.length) return [];
+    const exact = members.some(member => {
+      const entry = project.workspace.entries.find(item => item.expected.id === member.documentId);
+      return member.documentId === result.provenance.source.documentId && !!entry &&
+        matchesScientificSourceGeneration(viewerSourceFromDocument({ identity: member.expected }),
+          result.provenance.source) &&
+        matchesScientificSourceGeneration(viewerSourceFromDocument({ identity: entry.expected }),
+          result.provenance.source);
+    });
+    return [{ kind: "study" as const, id: study.id, title: study.title,
+      status: exact ? "current" as const : "historical" as const,
+      reason: exact ? "Study member and Project source match the saved result generation." :
+        "The Study references this result ID but its member or current source generation differs." }];
   });
 }
