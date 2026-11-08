@@ -228,15 +228,15 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [scientificSceneMessage, setScientificSceneMessage] = useState("");
   const [analysisError, setAnalysisError] = useState<{ id: string; message: string } | null>(null);
   const [project, setProject] = useState<Math3DProject | null>(null);
-  const algebraLoci = useMemo(() => project?.algebraObjects?.filter(entry => {
-    const kind = entry.revisions.at(-1)?.definition.kind;
-    return kind === "polynomial-ring" || kind === "ideal";
-  }).map(entry => {
-    const record = entry.revisions.at(-1)!;
-    const target = { objectId: entry.id, revision: record.revision };
-    return { entry, record, target, actions: projectSavedAlgebraOpenInActions(project, target),
-      casAction: projectAlgebraCasHandoff(project, target) };
-  }) ?? [], [project]);
+  const algebraLoci = useMemo(() => project?.algebraObjects?.flatMap(entry =>
+    [...entry.revisions].reverse().filter(record => record.definition.kind === "polynomial-ring" ||
+      record.definition.kind === "ideal").map(record => {
+      const target = { objectId: entry.id, revision: record.revision };
+      return { entry, record, target, actions: projectSavedAlgebraOpenInActions(project, target),
+        casAction: projectAlgebraCasHandoff(project, target),
+        menuId: record.revision === entry.revisions.length ? entry.id : `${entry.id}-revision-${record.revision}` };
+    }).filter(item => item.record.revision === entry.revisions.length ||
+      item.actions.some(action => action.documentId))) ?? [], [project]);
   const algebraReturns = useMemo(() => new Map<string, ProjectAlgebraLocusReturn>((project?.workspace.entries ?? [])
     .map(entry => project ? projectAlgebraLocusReturn(project, entry.expected.id) : null)
     .filter((action): action is ProjectAlgebraLocusReturn => action !== null)
@@ -2338,11 +2338,11 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       {algebraLoci.length > 0 && <section data-testid="project-group-algebra" style={{ marginTop: 12 }}>
         <strong>Algebra loci</strong>
         <ul className="project-document-list">
-          {algebraLoci.map(({ entry, record, target, actions, casAction }) => {
-            return <li key={entry.id}>
+          {algebraLoci.map(({ entry, record, target, actions, casAction, menuId }) => {
+            return <li key={menuId}>
               <strong>{record.label}</strong><small> · {record.definition.kind} · revision {record.revision}
-                {entry.archived ? " · archived" : ""}</small>
-              <ProjectAlgebraOpenInMenu objectId={entry.id}
+                {entry.archived ? " · archived" : ""}{record.revision !== entry.revisions.length ? " · historical" : ""}</small>
+              <ProjectAlgebraOpenInMenu objectId={menuId}
                 actions={actions}
                 casAction={casAction}
                 canPrepare={!busy && !preview && !managed && !!onOpenAlgebra &&
