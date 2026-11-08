@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { analyzeBiquadraticExtensionFromDefinition, analyzeFiniteGroup, analyzeQuadraticNumberField,
   ellipticCurveFacts,
   createGaloisGroupObject, inspectProjectAlgebraFreshness,
-  projectSavedAlgebraLocusEvidence, resolveProjectAlgebraLocusInspection,
+  compareProjectAlgebraLocusEvidence, projectSavedAlgebraLocusEvidence,
+  resolveProjectAlgebraLocusInspection,
   type AlgebraObjectRecord, type AlgebraObjectRef,
   type AlgebraRecipeGraph, type Math3DProject, type ProjectAlgebraEvidence,
   type ProjectAlgebraLocusReturn, type ProjectAlgebraLocusInspection,
@@ -82,6 +83,7 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       ? requestedSelection.target : readSavedSelection(project)));
   const [selectedSavedChoice, setSelectedSavedChoice] = useState<ProjectAlgebraLocusReturn | null>(
     requestedSelection?.evidence ?? null);
+  const [comparisonChoice, setComparisonChoice] = useState<ProjectAlgebraLocusReturn | null>(null);
   const [handoffError, setHandoffError] = useState("");
   const [handoffNotice, setHandoffNotice] = useState("");
   const [selectionFocus, setSelectionFocus] = useState(0);
@@ -108,11 +110,13 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
     if (evidence && evidence.request.target.objectId !== selection?.objectId)
       setSelection(evidence.request.target);
   }, [project?.identity.revision, selectedEvidenceId]);
-  useEffect(() => { setSelectedSavedChoice(requestedSelection?.evidence ?? null); },
+  useEffect(() => { setSelectedSavedChoice(requestedSelection?.evidence ?? null);
+    setComparisonChoice(null); },
     [requestedSelection?.token, project?.identity.id]);
 
   const select = (ref: AlgebraObjectRef) => {
     setSelection(ref);
+    setComparisonChoice(null);
     setCommandOperation(null);
     setCommandRecipe(null);
     setSelectionFocus((value) => value + 1);
@@ -162,6 +166,13 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
     savedScene.source.target.id === chosen.record.id &&
     savedScene.source.target.revision === chosen.record.revision
     ? savedLocus!.inspection : null;
+  const comparison = useMemo(() => {
+    if (!project || !selectedSavedChoice || !comparisonChoice || !activeSavedLocus) return null;
+    try { return { value: compareProjectAlgebraLocusEvidence(project,
+      selectedSavedChoice, comparisonChoice), error: null }; }
+    catch (error) { return { value: null,
+      error: `The saved locus comparison changed: ${(error as Error).message}` }; }
+  }, [project, selectedSavedChoice, comparisonChoice, activeSavedLocus]);
   const chooseCommand = (command: SagePaletteAction) => {
     const token = ++commandSequence.current;
     if (command.kind === "operation") { setCommandOperation({ id: command.id, token });
@@ -388,20 +399,42 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       style={{ display: "grid", gap: 6, border: "1px solid #c7d9ed", borderRadius: 8, padding: 10 }}>
       <strong>Saved locus evidence</strong>
       <small>Inspect a saved Project checkpoint. Opening it does not run a new calculation.</small>
-      {savedEvidenceChoices.map(choice => <button type="button" key={choice.documentId}
+      {savedEvidenceChoices.map(choice => <div key={choice.documentId} style={{ display: "flex", gap: 6,
+        alignItems: "center", flexWrap: "wrap" }}><button type="button"
         data-testid={`cas-saved-locus-choice-${choice.documentId}`}
         aria-pressed={selectedSavedChoice?.documentId === choice.documentId &&
           selectedSavedChoice.documentHash === choice.documentHash}
         style={{ ...action, textAlign: "left" }} onClick={() => {
           try {
             resolveProjectAlgebraLocusInspection(project, choice);
-            setHandoffError(""); setSelectedSavedChoice(choice);
+            setHandoffError(""); setSelectedSavedChoice(choice); setComparisonChoice(null);
           } catch (error) { setHandoffError(`Saved locus could not open: ${String(error)}`); }
         }}>
         {choice.analysisHash ? `Exact tangent at (${choice.inspectionPoint?.join(", ")})` :
           choice.sampleHash ? "Bounded numerical sample" : "Uncomputed exact contract"}
         {` · ${choice.sourceStatus} · ${choice.documentId.slice(-8)}`}
-      </button>)}
+      </button>{activeSavedLocus && selectedSavedChoice?.documentId !== choice.documentId &&
+        <button type="button" style={action} data-testid={`cas-saved-locus-compare-${choice.documentId}`}
+          onClick={() => setComparisonChoice(choice)}>Compare with selected</button>}</div>)}
+    </section>}
+    {comparison?.error && <div role="alert">{comparison.error}</div>}
+    {comparison?.value && <section data-testid="cas-saved-locus-comparison"
+      style={{ display: "grid", gap: 5, border: "1px solid #c7d9ed", borderRadius: 8, padding: 10 }}>
+      <strong>Saved locus contract comparison</strong>
+      <div>{comparison.value.left.label} ↔ {comparison.value.right.label}</div>
+      <div>Source revision: {comparison.value.sameSourceRevision ? "same" : "different"} ·
+        exact equations: {comparison.value.sameEquations ? "same" : "different"}</div>
+      <div>Real bounds: {comparison.value.sameRealBounds ? "same" : "different"} ·
+        precision: {comparison.value.samePrecision ? "same" : "different"} ·
+        exact scene: {comparison.value.sameExactScene ? "same" : "different"}</div>
+      <div>Left: {comparison.value.left.kind}{comparison.value.left.method
+        ? ` · ${comparison.value.left.method} · ${comparison.value.left.sampleCount} evaluations` : ""}
+        {` · ${comparison.value.left.sourceStatus}`}</div>
+      <div>Right: {comparison.value.right.kind}{comparison.value.right.method
+        ? ` · ${comparison.value.right.method} · ${comparison.value.right.sampleCount} evaluations` : ""}
+        {` · ${comparison.value.right.sourceStatus}`}</div>
+      <small>This compares saved contracts and evidence metadata; it does not claim equal loci or numerical overlap.</small>
+      <button type="button" style={action} onClick={() => setComparisonChoice(null)}>Close comparison</button>
     </section>}
     {activeSavedLocus && selectedSavedChoice && <section
       data-testid={activeSavedLocus.kind === "singularity" ? "cas-saved-tangent-inspection" :
