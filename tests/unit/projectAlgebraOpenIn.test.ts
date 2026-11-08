@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildSageAlgebraicLocusScene, createAlgebraObjectRecord, createMath3DProject,
   createMixedWorkspaceDocument, createProjectAlgebraObjectId, parseMath3DProject,
   projectAlgebraCasHandoff, projectAlgebraOpenInActions, resolveProjectAlgebraCasHandoff,
-  resolveProjectAlgebraOpenIn, sampleSageAlgebraicLocus,
+  resolveProjectAlgebraOpenIn, resolveProjectAlgebraPreparedLocus, sampleSageAlgebraicLocus,
   setMath3DProjectAlgebraObjectArchived,
   serializeMath3DProject, upsertMath3DProjectAlgebraObject,
   upsertMath3DProjectAlgebraicLocusSample, upsertMath3DProjectAlgebraicLocusScene } from "@math3d/core";
@@ -26,6 +26,25 @@ const fixture = () => {
 };
 
 describe("Project Algebra Open in Geometry", () => {
+  it("requalifies a prepared locus before local CAS work", () => {
+    const { project, target, scene } = fixture();
+    const choice = projectAlgebraCasHandoff(project, target);
+    expect(resolveProjectAlgebraPreparedLocus(project, target, scene, choice).sceneHash)
+      .toBe(scene.sceneHash);
+    const archived = setMath3DProjectAlgebraObjectArchived(project, target.objectId, true);
+    expect(() => resolveProjectAlgebraPreparedLocus(archived, target, scene, choice))
+      .toThrow(/source changed/);
+    const revised = createAlgebraObjectRecord({ id: target.objectId, revision: 2, label: "R revised",
+      definition: { kind: "polynomial-ring", coefficientDomain: {
+        objectId: project.algebraObjects![0]!.id, revision: 1 }, variables: ["x", "y"],
+        monomialOrder: "lex" } });
+    const historical = upsertMath3DProjectAlgebraObject(project, revised);
+    expect(() => resolveProjectAlgebraPreparedLocus(historical, target, scene, choice))
+      .toThrow(/source changed/);
+    expect(() => resolveProjectAlgebraPreparedLocus(project,
+      { objectId: project.algebraObjects![0]!.id, revision: 1 }, scene, choice))
+      .toThrow(/source changed/);
+  });
   it("hands a current QQ polynomial source to CAS and refuses an outdated choice", () => {
     const { project, target } = fixture();
     const choice = projectAlgebraCasHandoff(project, target);

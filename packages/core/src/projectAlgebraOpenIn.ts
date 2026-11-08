@@ -72,6 +72,19 @@ export const resolveProjectAlgebraCasHandoff = (project: Math3DProject, target: 
   return target;
 };
 
+/** Recheck the selected source and its prepared exact scene before local CAS work. */
+export const resolveProjectAlgebraPreparedLocus = (project: Math3DProject, target: AlgebraObjectRef,
+  scene: SageAlgebraicLocusScene, choice: ProjectAlgebraCasHandoff): SageAlgebraicLocusScene => {
+  resolveProjectAlgebraCasHandoff(project, target, choice);
+  const checked = parseSageAlgebraicLocusScene(scene, project);
+  if (checked.source.target.id !== target.objectId ||
+      checked.source.target.revision !== target.revision ||
+      checked.source.target.contentHash !== choice.source.contentHash ||
+      sageAlgebraicLocusSceneStatus(checked, project) !== "current")
+    throw new TypeError("The prepared locus source changed; validate it again.");
+  return checked;
+};
+
 /** Exact algebra is kept separate from its bounded numerical visualization. */
 export const projectAlgebraOpenInActions = (project: Math3DProject, target: AlgebraObjectRef,
   scene: SageAlgebraicLocusScene | null, sample: SageAlgebraicLocusSample | null):
