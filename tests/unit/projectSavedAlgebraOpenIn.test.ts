@@ -87,6 +87,8 @@ describe("saved Project algebra locus Open in", () => {
     extensions[SAGE_LOCUS_SINGULARITY_EXTENSION] = {
       ...analysis, local: { ...analysis.local, jacobian: ["7", "0"] } };
     expect(projectAlgebraLocusReturn(altered, checkpoint.identity.id)).toBeNull();
+    expect(() => resolveProjectAlgebraSingularityInspection(altered,
+      projectAlgebraLocusReturn(saved, checkpoint.identity.id)!)).toThrow(/changed/);
     expect(projectSavedAlgebraOpenInActions(altered, target)).toHaveLength(1);
   });
 

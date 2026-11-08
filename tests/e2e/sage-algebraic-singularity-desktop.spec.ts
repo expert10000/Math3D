@@ -114,5 +114,12 @@ test("SAGE-F03 distinguishes cusp and node tangent views, then independently reo
       .getByRole("button", { name: "Return to algebra source in CAS" }).click();
     await expect(ctx.page.getByTestId("cas-algebra-workspace").getByTestId("cas-structures-explorer")
       .getByRole("button", { name: /R @1/ })).toHaveAttribute("aria-current", "true");
+    const savedInspection = ctx.page.getByTestId("cas-saved-tangent-inspection");
+    await expect(savedInspection).toContainText("Saved exact tangent evidence · read-only");
+    await expect(savedInspection).toContainText("Ordinary cusp");
+    await expect(savedInspection).toContainText("Jacobian at point");
+    await expect(ctx.page.getByTestId("cas-locus-preview")).toHaveCount(0);
+    await savedInspection.getByRole("button", { name: "Open saved tangent Geometry" }).click();
+    await expect(ctx.page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id", cuspDocumentId);
   } finally { await closeSurfaceApp(ctx); }
 });
