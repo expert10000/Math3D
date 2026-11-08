@@ -11,6 +11,7 @@ import { VECTOR_FIELD3D_POINT_RESULT_TYPE, VECTOR_FIELD3D_REGION_RESULT_TYPE,
   type Math3DProject } from "@math3d/core";
 import type { ProjectDependencyInspection } from "../projects/projectDependencies";
 import { presentProjectResultCard } from "../projects/projectResultCard";
+import { createProjectResultEvidence } from "../projects/projectResultEvidence";
 import type { SavedRegionSourceStatus } from "../vectorfield3d/checkSavedRegionResultSources";
 import { isScientificSubrectangle } from
   "../projects/scientificSubrectangleWorkbook";
@@ -110,6 +111,17 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
       return <span data-testid="project-result-source-historical">{title} · recorded r{recorded.revision} g{recorded.generation}; current r{entry.expected.revision} g{entry.expected.generation}</span>;
     return <button type="button" disabled={!canOpen(id, entry.module)} onClick={() => onOpen(id, entry.module)}>{title}</button>;
   };
+  const exportEvidence = () => {
+    if (!result || !resultCard) return;
+    const evidence = createProjectResultEvidence(result, resultCard, resultStatus);
+    const url = URL.createObjectURL(new Blob([JSON.stringify(evidence, null, 2) + "\n"],
+      { type: "application/json" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `result-${result.resultId.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 80)}.evidence.json`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
 
   return <div className="project-results-browser" data-testid="project-results-browser">
     <label className="project-results-search">Search saved outputs
@@ -158,6 +170,8 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
                   {resultCard[axis].label}</span>{" "}{resultCard[axis].detail}
               </p>)}
           </div>}
+          <button type="button" data-testid="project-result-export-evidence" onClick={exportEvidence}>
+            Export result evidence JSON</button>
           {meshResult && <div data-testid="project-saved-mesh-evidence" style={{ border: "1px solid #cbd5e1", borderRadius: 8, padding: 10 }}>
             <strong>Exact saved Mesh evidence</strong>
             {meshVerification?.checked ? <><p>Result {meshResult.resultId} · hash {meshVerification.checked.resultHash}<br />
