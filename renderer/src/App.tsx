@@ -774,6 +774,7 @@ import { VolumeIsosurfaceScientificJob } from "./volume/volumeScientificJob";
 import { CurveConstructionRealizer, locateCurveConstructionVertex, type CurveConstructionGeometry } from "./curveAnalysis/curveConstructionGeometry";
 import { curveConstructionSourceStatus, type CurveConstructionRecord } from "./curveAnalysis/curveConstructionKernel";
 import { CurveResultLifecyclePanel } from "./components/CurveResultLifecyclePanel";
+import { qualifyCurveResult } from "./curveAnalysis/resultQualification";
 import {
   createCurveResultLifecycleState,
   deriveCurveResultCards,
@@ -12312,6 +12313,8 @@ const App: React.FC = () => {
     ? curveResultCards.find((card) => card.resultKey === curveResultPresentation.selectedResultKey) ?? null
     : null,
   [curveResultCards, curveResultPresentation.selectedResultKey]);
+  const curveSelectedResultQualification = curveSelectedResultCard
+    ? qualifyCurveResult(curveSelectedResultCard, activeCanonicalCurveDefinition) : null;
   const curveHasViewportEvidence = (kind: CurveViewportEvidenceKind) => !curveHasCurrentAnalysisPreset || curveResultPresentation.viewportEvidence.includes(kind);
   const curveAnalysisMarkers = useMemo(() => {
     if (!curveHasCurrentAnalysisPreset) return [];
@@ -92023,6 +92026,9 @@ case "mobius":
                         <div>State: {curveSelectedResultCard?.state ?? activeCurveDefinitionResult?.state ?? "queued"}</div>
                         <div>Method: {curveSelectedResultCard?.method ?? activeCurveDefinitionMethod}</div>
                         {curveSelectedResultCard && <div>{curveSelectedResultCard.valueUnit} · {curveSelectedResultCard.backend} · result v{curveSelectedResultCard.resultVersion}</div>}
+                        {curveSelectedResultQualification && <div data-testid="curve-inspector-result-qualification">
+                          {curveSelectedResultQualification.claim} · {curveSelectedResultQualification.status} · {curveSelectedResultQualification.verification}
+                        </div>}
                         <div>Samples: {curveRenderState.samplePoints.length}</div>
                         <div>Length: {fmt(curveRenderState.arcLength)} {activeCanonicalCurveDefinition.units.position}</div>
                         {curveDifferentialField && <div>Differential field: {curveDifferentialField.points.length} points · {curveDifferentialField.provenance.method}</div>}
