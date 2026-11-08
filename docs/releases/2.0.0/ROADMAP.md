@@ -906,6 +906,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 - `M3D20-04d feat(project): Study create/fork/rename/reopen and source navigation`.
 - `M3D20-04e test(study): portable round-trip, missing member, leak and offline cases`.
 
+**Foundation (2026-11-08):** A bounded `math3d.study/v1` record now belongs to a Project workspace and stores exact document references, panes, link declarations and pinned selection IDs without copying source documents or results. Project save, import and live editor merge retain it; ownership, size, uniqueness and pane endpoints are validated. The Project dashboard can create, rename, fork and cold-reopen a reference layout and navigate to each owning document. Changed and missing members are classified from saved identity references, and document deletion is blocked while a Study depends on it. Lazy hosted viewers, executable qualified links, QWZ quad assembly and the remaining portability/offline gates are still open.
+
 **Exit:** QWZ quad Study saves, cold-reopens and round-trips without copying source ownership or triggering unauthorized recomputation.
 
 ### M3D20-05 — Result Cards and Inspector convergence (P0)

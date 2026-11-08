@@ -12,6 +12,7 @@ import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, 
   relinkMath3DProjectScientificScene, upsertMath3DProjectScientificScene, type ProjectScientificSceneReference,
   upsertMath3DProjectComposition, upsertMath3DProjectSavedMeshComparison, inspectProjectCompositionAvailability,
   migrateProjectScientificSelections,
+  createProjectStudyFromDocuments, renameProjectStudy, forkProjectStudy,
   type ProjectComposition, type ProjectSavedMeshComparison,
   type ProjectNote,
   type Math3DProject, type MixedWorkspaceDocument, type KernelWorkspaceModule, type QuantumSceneDocument, type ViewerProvenanceEvidence } from "@math3d/core";
@@ -41,6 +42,7 @@ import { projectDependencyRefreshOptions, refreshProjectDependency, projectAnaly
 import { ProjectDependenciesPanel } from "./ProjectDependenciesPanel";
 import { ProjectRelationshipMap } from "./ProjectRelationshipMap";
 import { ProjectCursorInspector } from "./ProjectCursorInspector";
+import { ProjectStudiesPanel } from "./ProjectStudiesPanel";
 const ProjectCompositionView = React.lazy(() => import("./ProjectCompositionView").then(module => ({ default: module.ProjectCompositionView })));
 const QuantumNativeOverlayView = React.lazy(() => import("./QuantumNativeOverlayView").then(module => ({ default: module.QuantumNativeOverlayView })));
 const ProjectSavedMeshResultComparisonView = React.lazy(() => import("./ProjectSavedMeshResultComparisonView").then(module => ({ default: module.ProjectSavedMeshResultComparisonView })));
@@ -1700,6 +1702,11 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     setQuick(true);
     window.dispatchEvent(new CustomEvent("math3d:project-dock-visible", { detail: placement }));
   };
+  const stageStudy = (change: (source: Math3DProject) => Math3DProject, success: string) => {
+    if (!project || busy || preview || managed) return;
+    try { setProject(change(project)); setMessage(`${success} Save Project to keep it.`); }
+    catch (error) { setMessage(`Study change refused: ${(error as Error).message}`); }
+  };
   const renderNotesPanel = (layout: "floating" | "page") => <ProjectNotesPanel layout={layout} project={notesProject} workspace={notesWorkspace} readResource={comparisonResource} drafts={noteDrafts} busy={busy} message={notesMessage} focusNoteId={selectedNoteId ?? noteRequest?.id}
     selectionAvailable={Boolean(captureNoteSelection?.())} workbooks={noteWorkbooks}
     onClose={() => setNotesOpen(false)} onOpenProjects={() => { setNotesOpen(false); if (layout === "floating") { setDetailView(true); onOpenChange(true); } }} onRefresh={refreshNotes}
@@ -1938,6 +1945,13 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               </div>}
             </aside>
             <ProjectCursorInspector project={project} />
+            <ProjectStudiesPanel project={project} documents={dashboardDocuments} editable={!preview && !managed && !busy}
+              onCreate={(studyTitle, ids) => stageStudy(source => createProjectStudyFromDocuments(source,
+                crypto.randomUUID(), studyTitle, ids), "Study created.")}
+              onRename={(id, studyTitle) => stageStudy(source => renameProjectStudy(source, id, studyTitle), "Study renamed.")}
+              onFork={(id, studyTitle) => stageStudy(source => forkProjectStudy(source, id,
+                crypto.randomUUID(), studyTitle), "Study forked.")}
+              onOpenDocument={(id, module) => viewBesideProject(id, module)} />
           </div>}
           {!quick && detailView && project && <ProjectRelationshipMap project={project} titles={documentTitles}
             preview={preview} inspection={dashboardDependencies} canOpen={(id, module) => !!canNavigateDocument?.(id, module)} onOpen={viewBesideProject} />}

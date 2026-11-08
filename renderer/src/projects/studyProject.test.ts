@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { instantiateMath3DProjectTemplate } from "./projectTemplates";
-import { createMixedWorkspaceDocument } from "./mixedWorkspace";
-import { normalizeMath3DProject, parseMath3DProject, replaceMath3DProjectWorkspace,
-  serializeMath3DProject } from "./math3dProject";
-import { createStudyRecordV1 } from "./studyRecord";
-import { createStableDocumentId } from "./documentIdentity";
+import { createMixedWorkspaceDocument, createStableDocumentId, createStudyRecordV1,
+  instantiateMath3DProjectTemplate, normalizeMath3DProject, parseMath3DProject,
+  replaceMath3DProjectWorkspace, serializeMath3DProject } from "@math3d/core";
 
 const project = instantiateMath3DProjectTemplate("derivative-study", "study-project-roundtrip");
 const entry = project.workspace.entries[0]!;

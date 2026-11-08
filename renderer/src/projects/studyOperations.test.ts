@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { instantiateMath3DProjectTemplate } from "./projectTemplates";
-import { deleteProjectDocument, inspectProjectDocumentDelete } from "./projectOperations";
-import { createProjectStudyFromDocuments, forkProjectStudy, inspectProjectStudyMembers,
-  renameProjectStudy } from "./studyOperations";
-import { parseMath3DProject, serializeMath3DProject } from "./math3dProject";
+import { createProjectStudyFromDocuments, deleteProjectDocument, forkProjectStudy,
+  inspectProjectDocumentDelete, inspectProjectStudyMembers, instantiateMath3DProjectTemplate,
+  parseMath3DProject, renameProjectStudy, serializeMath3DProject } from "@math3d/core";
 
 const project = instantiateMath3DProjectTemplate("derivative-study", "study-operations");
 const ids = project.workspace.entries.slice(0, 2).map(entry => entry.expected.id);

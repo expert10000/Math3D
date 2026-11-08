@@ -64,6 +64,7 @@ export function normalizeStudyRecordV1(value: unknown): ValidationResult<StudyRe
     if (links.some(link => !record(link) || !exact(link,
       ["id", "kind", "sourcePaneId", "targetPaneId", "mappingId", "direction"]) ||
         !token(link.id) || !["cursor", "parameter", "time", "camera"].includes(String(link.kind)) ||
+        !token(link.sourcePaneId) || !token(link.targetPaneId) ||
         !paneIds.has(link.sourcePaneId) || !paneIds.has(link.targetPaneId) ||
         link.sourcePaneId === link.targetPaneId || !token(link.mappingId) ||
         !["one-way", "two-way"].includes(String(link.direction))) ||

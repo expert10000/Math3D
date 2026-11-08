@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { instantiateMath3DProjectTemplate } from "./projectTemplates";
-import { createStudyRecordV1, normalizeStudyRecordV1 } from "./studyRecord";
+import { createStudyRecordV1, instantiateMath3DProjectTemplate, normalizeStudyRecordV1 } from "@math3d/core";
 
 const project = instantiateMath3DProjectTemplate("derivative-study", "study-record-contract");
 const [graph, curve] = project.workspace.entries;
