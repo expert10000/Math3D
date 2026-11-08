@@ -39,6 +39,13 @@ describe("saved Project algebra locus Open in", () => {
     expect(resolveProjectAlgebraLocusReturn(saved, action).target).toEqual(target);
     expect(() => resolveProjectAlgebraLocusReturn(saved,
       { ...action, analysisHash: `sha256:${"0".repeat(64)}` })).toThrow(/changed/);
+    const destination = projectSavedAlgebraOpenInActions(saved, target)[0]!;
+    expect(destination).toMatchObject({ id: "algebra.singularity-geometry", enabled: true,
+      documentId, analysisHash: analysis.analysisHash, inspectionPoint: ["1", "0"],
+      preview: expect.stringContaining("Jacobian evidence and source remain pinned") });
+    expect(resolveProjectSavedAlgebraOpenIn(saved, target, destination)).toBe(documentId);
+    expect(() => resolveProjectSavedAlgebraOpenIn(saved, target,
+      { ...destination, inspectionPoint: ["0", "0"] })).toThrow(/destination changed/);
   });
 
   it("returns from exact and sampled Geometry to the pinned algebra revision", () => {
