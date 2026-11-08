@@ -45,7 +45,8 @@ describe("Curve scientific result lifecycle", () => {
     expect(cards).toHaveLength(2);
     expect(cards[0]).toMatchObject({ state: "ready", method: "numerical-derivatives", units: { position: "m" }, backend: "Math3D Curve Core", computeTimeMs: 0, layer: { visible: true } });
     expect(cards[0].statistics?.validCount).toBeGreaterThan(0);
-    expect(cards[0].uncertainty).toMatchObject({ kind: "exact", absolute: 0 });
+    expect(cards[0].uncertainty).toMatchObject({ kind: "unknown", absolute: null });
+    expect(cards[0].uncertainty?.note).toMatch(/sampling tolerance is not a proven/);
     expect(cards[0].dependencies).toHaveLength(1);
   });
 

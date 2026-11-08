@@ -132,7 +132,8 @@ const buildLayerPayload = (definition: CanonicalCurveDefinition, layer: CurvePre
     }
     return segment[index];
   });
-  const uncertainty = definition.derivatives.second === "exact" ? { kind: "exact" as const, absolute: 0, note: "Exact derivative capability." } : { kind: "bounded" as const, absolute: definition.sampling.tolerance ?? null, note: "Bounded by the active sampling tolerance." };
+  const uncertainty = { kind: "unknown" as const, absolute: null,
+    note: "Computed from sampled positions; the sampling tolerance is not a proven result error bound." };
   return { version: 1, kind: "scientific-layer", label: layer.label, method: layer.method, unit: layer.unit.replace("position-unit", definition.units.position), statistics: summarize(value), uncertainty, warnings: [...definition.warnings, ...(points.length < 3 ? ["At least three samples are required for differential evidence."] : [])], series: { parameter, value, valid: value.map(finite) } };
 };
 
