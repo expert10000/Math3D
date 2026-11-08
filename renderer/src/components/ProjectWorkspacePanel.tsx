@@ -175,6 +175,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [quick, setQuick] = useState(false), [detailView, setDetailView] = useState(false), [viewerCompanion, setViewerCompanion] = useState(false), [collection, setCollection] = useState("All projects");
   const [detailPage, setDetailPage] = useState<"overview" | "documents" | "relations" | "results" | "history" | "settings" | "transfer">("overview");
   const [resultFocus, setResultFocus] = useState<{ id: string; token: number } | null>(null);
+  const [studyFocus, setStudyFocus] = useState<{ id: string; token: number } | null>(null);
   const [viewingDocumentId, setViewingDocumentId] = useState<string | null>(null);
   const [preferences, setPreferences] = useState(() => projectUiPreferences(localStorage.getItem(PROJECT_UI_KEY)));
   const [projectPlacement, setProjectPlacement] = useState<ProjectPlacement>(preferences.placement);
@@ -1997,6 +1998,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
             </aside>
             <ProjectCursorInspector project={project} />
             <ProjectStudiesPanel project={project} documents={dashboardDocuments} resources={resourceSession.current}
+              focusStudy={studyFocus}
               editable={!preview && !managed && !busy}
               onCreate={(studyTitle, ids) => stageStudy(source => createProjectStudyFromDocuments(source,
                 crypto.randomUUID(), studyTitle, ids), "Study created.")}
@@ -2089,6 +2091,12 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           {project && <ProjectResultsBrowser key={project.identity.id} project={project} inspection={dashboardDependencies} titles={documentTitles}
             readResource={comparisonResource}
             regionResultStatuses={regionResultStatuses}
+            workbookBytes={projectWorkbookBytes}
+            onOpenWorkbookBlock={busy ? undefined : (id, stageId, blockId) => {
+              void openProjectWorkbook(id, true, stageId, blockId); }}
+            onOpenNote={preview || busy ? undefined : id => openProjectNotes(id)}
+            onOpenStudy={id => { setStudyFocus(previous => ({ id, token: (previous?.token ?? 0) + 1 }));
+              setQuick(false); setDetailView(true); openDetailPage("overview"); }}
             onCreateScientificReport={busy || preview || managed ? undefined :
               createSubrectangleWorkbook} onExportScientificReport={exportSubrectangleReport}
             canOpen={(id, module) => !preview && !!canNavigateDocument?.(id, module)} onOpen={viewBesideProject} focusResult={resultFocus} />}

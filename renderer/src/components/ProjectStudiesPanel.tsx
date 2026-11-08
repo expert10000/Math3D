@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { inspectProjectStudyMembers, qualifyProjectQwzPair, qualifyProjectQwzQuadStudy,
   type KernelWorkspaceModule, type Math3DProject, type ProjectQuantumSceneReference } from "@math3d/core";
 import type { VerifiedProjectResources } from "../projects/projectResources";
@@ -11,6 +11,7 @@ const StudyPanePreview = lazy(() => import("./StudyPanePreview").then(module => 
 type DocumentChoice = Readonly<{ id: string; title: string; module: KernelWorkspaceModule }>;
 type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoice[]; editable: boolean;
   resources?: VerifiedProjectResources;
+  focusStudy?: Readonly<{ id: string; token: number }> | null;
   onCreate: (title: string, ids: readonly string[]) => void; onRename: (id: string, title: string) => void;
   onFork: (id: string, title: string) => void; onLink: (id: string) => void;
   onCreateQwz: (quantumStudyId: string) => void;
@@ -20,14 +21,21 @@ type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoi
   onOpenDocument: (id: string, module: KernelWorkspaceModule) => void }>;
 
 /** A Study is a saved layout of references; opening a pane delegates to its owning document. */
-export function ProjectStudiesPanel({ project, documents, editable, resources, onCreate, onRename, onFork,
+export function ProjectStudiesPanel({ project, documents, editable, resources, focusStudy, onCreate, onRename, onFork,
   onLink, onCreateQwz, onPinQwz, onUnpinQwz, onOpenQuantumSource, onOpenDocument }: Props) {
   const [selected, setSelected] = useState<string[]>([]);
   const [title, setTitle] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [visiblePaneId, setVisiblePaneId] = useState<string | null>(null);
+  const viewRef = useRef<HTMLDivElement>(null);
   const studies = project.workspace.studies ?? [];
+  useEffect(() => {
+    const study = studies.find(item => item.id === focusStudy?.id);
+    if (!study) return;
+    setOpenId(study.id); setEditTitle(study.title); setVisiblePaneId(null);
+    window.requestAnimationFrame(() => viewRef.current?.scrollIntoView({ block: "nearest" }));
+  }, [focusStudy?.token, project.identity.id]);
   const open = studies.find(study => study.id === openId) ?? null;
   const graphCurvePair = open ? qualifyStudyGraphCurveLink(project, open) : null;
   const graphCurveLinked = !!open && !!graphCurvePair && studyHasQualifiedGraphCurveLink(open, graphCurvePair);
@@ -60,7 +68,7 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, o
         setOpenId(study.id); setEditTitle(study.title); setVisiblePaneId(null);
       }}>{study.title}</button> · {study.layout.mode} · {study.members.length} members
     </li>)}</ul>
-    {open && <div data-testid="project-study-view" data-study-id={open.id}>
+    {open && <div ref={viewRef} data-testid="project-study-view" data-study-id={open.id}>
       <h5>{open.title}</h5>
       {editable && <div><label>Rename Study <input aria-label="Rename Study" value={editTitle}
         onChange={event => setEditTitle(event.target.value)} /></label>
