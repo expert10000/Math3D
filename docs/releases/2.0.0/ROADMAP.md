@@ -936,6 +936,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **QWZ pinned-selection and source gate (2026-11-08):** A Study can now pin one band sample with its source fingerprint. Cold restart reopens both saved bundles and restores the linked curvature readout only after exact source and sample verification. The source button opens the verified scene viewer; closing it returns to the open quad with the pin intact. A changed source is refused by both the source viewer and linked Study readout while the saved pin remains. The relocated Project pack test also retains and requalifies the pinned selection with the worker unavailable. Additional Study mappings and a verified publication snapshot remain open.
 
+**QWZ evidence export (2026-11-08):** The pin can be replaced or removed while unrelated Study selections remain intact. A QWZ Study can export a deterministic JSON evidence snapshot after independently reopening both scene bundles and verifying the exact band sample, curvature target and reciprocal projection. The snapshot records source fingerprints, run/result identity, producer invariants, values and projection offset without copying scene arrays. If a pin is absent or source bytes change, it exports an explicit omissions manifest with quantitative fields withheld. The desktop test covers verified and tampered exports after cold restart; broader Workbook publication and additional Study mappings remain open.
+
 **Exit:** QWZ quad Study saves, cold-reopens and round-trips without copying source ownership or triggering unauthorized recomputation.
 
 ### M3D20-05 — Result Cards and Inspector convergence (P0)
@@ -944,6 +946,10 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 - `M3D20-05b feat(ui): standardized result card and action placement`.
 - `M3D20-05c feat(project): result/provenance deep links and cross-reference navigation`.
 - `M3D20-05d test(results): verification strength, stale/missing states and units`.
+
+**Result card foundation (2026-11-08):** Project Results now presents execution, source integrity and mathematical authority as separate axes. A numerical producer result with matching Project generations is labeled as recorded, while external scientific sources require their result-specific byte recheck before the card says “Source verified.” Changed, missing and historical sources retain metadata without claiming a current result; source navigation refuses to substitute a newer generation. The selected card can export a JSON record with its source, operation, producer and qualified summary or explicit omission. Export labels values as recorded because it does not reopen external bytes at export time. Module-level Inspector convergence and the wider Result action matrix remain open.
+
+**Result reverse navigation (2026-11-08):** A selected Project Result now lists structured Note anchors and value bindings, Study members, and citations read from checksum-qualified Workbook payloads. Each backlink reports whether its saved result and source generation still match. A missing or altered Workbook resource yields no inferred citation. The desktop journey opens an exact Note and its cited Workbook block from the Result, and a resource-package round trip retains both links. Study focus is wired from the Result card; broader module-level Inspector convergence remains open.
 
 **Exit:** Surface/Mesh/Graph/Field/CAS/Quantum share the same result semantics; engine success cannot masquerade as scientific verification.
 

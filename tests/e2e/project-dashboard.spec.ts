@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, resizeSurfaceAppWindow, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
 
@@ -120,11 +121,64 @@ test("Catenoid Project Details shows freshness for its saved Mesh analysis", asy
       .toHaveAttribute("data-scope", "not-checked");
     await expect(detail).toContainText(result.provenance.operation.algorithm);
     await expect(detail).toContainText(`Revision ${result.provenance.source.revision} · generation ${result.provenance.source.generation}`);
+    await expect(detail.getByTestId("project-result-card-axes")).toContainText("Recorded");
+    const evidencePath = test.info().outputPath("project-result-evidence.json");
+    await ctx.app.evaluate(({ session }, path) => session.defaultSession.once("will-download",
+      (_event, item) => item.setSavePath(path)), evidencePath);
+    await detail.getByTestId("project-result-export-evidence").click();
+    await expect.poll(async () => {
+      try { return JSON.parse(await readFile(evidencePath, "utf8")); } catch { return null; }
+    }, { timeout: 60_000 }).not.toBeNull();
+    const evidence = JSON.parse(await readFile(evidencePath, "utf8"));
+    expect(evidence.schema).toBe("math3d.project-result-evidence/v1");
+    expect(evidence.resultId).toBe(result.resultId);
+    expect(evidence.source).toEqual(result.provenance.source);
+    expect(evidence.assessment.mathematics).toMatch(/^Recorded /);
+    if (evidence.assessment.status === "withheld") expect(evidence.summary).toBeNull();
+    else expect(evidence.summary).toEqual(result.summary);
     await browser.getByRole("searchbox", { name: "Search saved outputs" }).fill("no such output");
     await expect(browser.getByText("No matching results.")).toBeVisible();
     await browser.getByRole("searchbox", { name: "Search saved outputs" }).fill("");
     await detail.getByRole("button", { name: project.metadata.documents[result.provenance.source.documentId].title }).click();
     await expect(page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id", result.provenance.source.documentId);
+  } finally { await closeSurfaceApp(ctx); }
+});
+
+test("Project Result opens its exact Note and cited Workbook block", async () => {
+  test.setTimeout(180_000);
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp();
+    await resetSurfaceAppState(ctx.page);
+    const page = ctx.page;
+    await page.getByTestId("projects-toggle").click();
+    await page.getByTestId("project-template-open-catenoid-evidence").click();
+    await expect(page.getByTestId("project-source-editor")).toBeVisible();
+    await page.getByTestId("project-gallery-layout-toggle").click();
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("math3d.project.v1")),
+      { timeout: 60_000 }).not.toBeNull();
+    const project = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const resultNote = project.notes.find((note: { anchor?: { kind?: string } }) =>
+      note.anchor?.kind === "result");
+    await page.getByTestId("project-detail-tab-documents").click();
+    await page.getByTestId("project-research-links")
+      .getByTestId(`project-research-note-${resultNote.identity.id}`)
+      .locator(".project-research-target").first()
+      .getByRole("button", { name: "Inspect result" }).click();
+    await expect(page.getByTestId("project-detail-tab-results")).toHaveAttribute("aria-current", "page");
+    const backlinks = page.getByTestId("project-result-backlinks");
+    await expect(backlinks).toContainText("Exact reference");
+    const noteLink = backlinks.locator('[data-testid^="project-result-backlink-note-"]').first();
+    const workbookLink = backlinks.locator('[data-testid^="project-result-backlink-workbook-"]').first();
+    await expect(noteLink).toContainText(resultNote.title);
+    await expect(workbookLink).toContainText(project.workbooks[0].title);
+    await noteLink.getByRole("button", { name: "Open note" }).click();
+    const notes = page.getByTestId("project-notes-panel");
+    await expect(notes.getByTestId(`project-note-${resultNote.identity.id}`)).toBeVisible();
+    await notes.getByRole("button", { name: "Back to Project" }).click();
+    await expect(backlinks).toBeVisible();
+    await workbookLink.getByRole("button", { name: "Open block" }).click();
+    await expect(page.getByTestId("project-middle-workbook")).toBeVisible({ timeout: 60_000 });
   } finally { await closeSurfaceApp(ctx); }
 });
 
