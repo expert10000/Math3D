@@ -283,7 +283,7 @@ test("saved exact locus opens read-only in CAS and returns to its Geometry check
 });
 
 test("saved two-circle sample promotes a chosen contour with Curve lineage", async () => {
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
   let ctx: LaunchedSurfaceApp | null = null;
   try {
     const workspace = core.createMixedWorkspaceDocument({ entries: [], activeDocumentIds: [],
@@ -343,16 +343,32 @@ test("saved two-circle sample promotes a chosen contour with Curve lineage", asy
     await ctx.page.reload();
     await ctx.page.getByTestId("projects-toggle").click();
     await ctx.page.getByTestId(`project-open-saved-${project.identity.id}`).click();
+    await expect(ctx.page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id",
+      expected.curve.identity.id);
+    await ctx.page.getByTestId("projects-toggle").click();
     const panel = ctx.page.getByTestId("project-explorer-panel");
+    await panel.getByTestId("project-gallery-layout-toggle").click();
+    const details = panel.getByTestId("project-detail-toggle");
+    if (await details.getAttribute("aria-pressed") === "false") await details.click();
+    await panel.getByTestId("project-detail-tab-documents").click();
     await expect(panel.getByTestId("project-view-mode")).toContainText("Current workspace");
     const sourceStatus = panel.getByTestId(`project-contour-source-${expected.curve.identity.id}`);
     await expect(sourceStatus).toContainText("Saved contour source: current");
+    const casReturn = sourceStatus.getByTestId(`project-contour-return-cas-${expected.curve.identity.id}`);
+    await expect(casReturn).toBeEnabled({ timeout: 90_000 });
     await ctx.page.evaluate(id => {
       const button = document.querySelector<HTMLButtonElement>(
-        `[data-testid="project-contour-return-${id}"]`);
-      if (!button) throw new Error("Curve source return is unavailable.");
+        `[data-testid="project-contour-return-cas-${id}"]`);
+      if (!button || button.disabled) throw new Error("Contour CAS return is unavailable.");
       button.click();
     }, expected.curve.identity.id);
+    const returnedCas = ctx.page.getByTestId("cas-algebra-workspace");
+    await expect(returnedCas.getByTestId("cas-structures-explorer")
+      .getByRole("button", { name: /R @1/ })).toHaveAttribute("aria-current", "true");
+    await expect(returnedCas.getByTestId("cas-saved-locus-inspection")
+      .getByTestId("cas-locus-plot")).toBeVisible();
+    await returnedCas.getByTestId("cas-saved-locus-inspection")
+      .getByRole("button", { name: "Open saved sampled Geometry" }).click();
     await expect(ctx.page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id",
       choice.documentId);
   } finally { await closeSurfaceApp(ctx); }
