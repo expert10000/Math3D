@@ -97,6 +97,8 @@ describe("Surface persistent curve and feature layers", () => {
     const selected = updateSurfaceResultLayer([a, b], b.layerId, { selected: true, visible: false });
     expect(selected.map((layer) => [layer.layerId, layer.selected, layer.visible])).toEqual([[a.layerId, false, true], [b.layerId, true, false]]);
     expect(removeSurfaceResultLayer(selected, a.layerId)).toHaveLength(1);
+    expect(updateSurfaceResultLayer(selected, "missing", { selected: true }))
+      .toEqual(selected);
   });
 
   it("compares layer kind, geometry and warning changes", () => {

@@ -194,7 +194,12 @@ export const updateSurfaceResultLayer = <T extends SurfaceCurveResultLayer | Sur
   layers: readonly T[] | readonly SurfaceCurveResultLayer[] | readonly SurfaceFeatureResultLayer[],
   layerId: string,
   patch: Partial<Pick<T, "visible" | "selected">>
-): Array<SurfaceCurveResultLayer | SurfaceFeatureResultLayer> => layers.map((layer) => layer.layerId === layerId ? { ...layer, ...patch } : patch.selected ? { ...layer, selected: false } : layer);
+): Array<SurfaceCurveResultLayer | SurfaceFeatureResultLayer> => {
+  if (!layers.some(layer => layer.layerId === layerId)) return [...layers];
+  return layers.map((layer) => layer.layerId === layerId
+    ? { ...layer, ...patch }
+    : patch.selected ? { ...layer, selected: false } : layer);
+};
 
 export const removeSurfaceResultLayer = (
   layers: readonly SurfaceCurveResultLayer[] | readonly SurfaceFeatureResultLayer[],
