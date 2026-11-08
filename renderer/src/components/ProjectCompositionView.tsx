@@ -24,6 +24,7 @@ import { resolveLinkedCoordinateProbe, resolveSavedCoordinateProbe, type LinkedC
 import { resolveExactProjectCompositionSource } from "../projects/projectCompositionSource";
 import { compositionCursorDraft, compositionCursorProbe } from "./compositionCursor";
 import { scientificCursorBus } from "./scientificCursor";
+import { projectCurveSurfaceParameter } from "../curveAnalysis/curveSurfaceCursor";
 
 type RenderMesh = SurfaceMeshData & { id: string; color: number; opacity: number; transform?: {
   position: { x: number; y: number; z: number }; rotation: { x: number; y: number; z: number }; scale: { x: number; y: number; z: number };
@@ -195,9 +196,10 @@ export const qualifyProjectCameraPair = (members: readonly RenderMember[]): "sha
 export const ComparisonPane: React.FC<{ members: RenderMember[]; label: string; onPick: (pick: Pick) => void; height?: number;
   captureToken?: number; onCaptureThumbnail?: (dataUrl: string | null) => void;
   linkedUV?: { u: number; v: number } | null; linkedToken?: number;
+  curveParameterProbe?: boolean;
   coordinateProbe?: LinkedCoordinateProbe | null;
   onCameraSync?: (state: CameraSyncState) => void; cameraOverride?: CameraSyncState | null; cameraOverrideToken?: number }> =
-  ({ members, label, onPick, height = 520, captureToken, onCaptureThumbnail, linkedUV, linkedToken, coordinateProbe, onCameraSync, cameraOverride, cameraOverrideToken }) => {
+  ({ members, label, onPick, height = 520, captureToken, onCaptureThumbnail, linkedUV, linkedToken, curveParameterProbe, coordinateProbe, onCameraSync, cameraOverride, cameraOverrideToken }) => {
   const meshes = useMemo(() => members.flatMap(member => member.meshes), [members]);
   const points = useMemo(() => [...members.flatMap(member => member.points),
     ...(coordinateProbe ? [{ points: [coordinateProbe.point], color: 0xffbd2e, size: 0.2, opacity: 1 }] : [])],
@@ -213,6 +215,10 @@ export const ComparisonPane: React.FC<{ members: RenderMember[]; label: string; 
       <small>From {coordinateProbe.source.slot === 0 ? "A" : "B"} · {coordinateProbe.source.id} r{coordinateProbe.source.revision} · {coordinateProbe.source.hash.slice(0, 16)}…<br />
         ({coordinateProbe.point.x.toPrecision(5)}, {coordinateProbe.point.y.toPrecision(5)}, {coordinateProbe.point.z.toPrecision(5)}) {coordinateProbe.unit}.
         Coordinate marker only; no target element or value inferred.</small>
+    </div>}
+    {curveParameterProbe && linkedUV && <div data-testid="project-composition-curve-parameter" style={{ position: "absolute", zIndex: 30, right: 10, bottom: 10,
+      background: "#fff", padding: "5px 8px", borderRadius: 4 }}>
+      Curve on Surface chart · u={linkedUV.u.toPrecision(5)}, v={linkedUV.v.toPrecision(5)}
     </div>}
     {members.length === 1 && members[0]!.param ? <ParamSurfaceViewer surfaceId="custom" documentBinding={members[0]!.param.binding}
       customX={members[0]!.param.x} customY={members[0]!.param.y} customZ={members[0]!.param.z} paramDomain={members[0]!.param.domain}
@@ -264,6 +270,7 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
   const [pick, setPick] = useState<Pick | null>(null), [message, setMessage] = useState("");
   const [cursorLinked, setCursorLinked] = useState(true);
   const [externalCursorProbe, setExternalCursorProbe] = useState<LinkedCoordinateProbe | null>(null);
+  const [externalCurveProbe, setExternalCurveProbe] = useState<{ slot: 0 | 1; uv: { u: number; v: number }; token: number } | null>(null);
   const [cursorStatus, setCursorStatus] = useState("");
   const cursorOriginViewId = `project-composition:${project.identity.id}`;
   const [observationTitle, setObservationTitle] = useState("Comparison observation");
@@ -342,10 +349,21 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
   const savedProbe = savedProbeId ? savedProbes.find(item => item.note.identity.id === savedProbeId) : savedProbes.at(-1);
   useEffect(() => {
     if (!cursorLinked || resolved.error || mode !== "side-by-side") {
-      setExternalCursorProbe(null); return;
+      setExternalCursorProbe(null); setExternalCurveProbe(null); return;
     }
     return scientificCursorBus.subscribe(event => {
       if (event.kind !== "project" || event.originViewId === cursorOriginViewId) return;
+      if (event.sourceModule === "curve") {
+        const matched = resolved.members.find(member => member.slot !== undefined && member.param && member.generation === "current" &&
+          projectCurveSurfaceParameter(event, project, member.id).status === "matched");
+        const projection = matched ? projectCurveSurfaceParameter(event, project, matched.id) : null;
+        setExternalCurveProbe(current => projection?.status === "matched" && matched?.slot !== undefined ?
+          { slot: matched.slot, uv: projection.value, token: (current?.token ?? 0) + 1 } : null);
+        setCursorStatus(projection?.status === "matched" ? "Linked exact Curve parameter to its saved Surface chart." :
+          "Cursor withheld: Curve parameter has no current bounded Surface chart in this comparison.");
+        return;
+      }
+      setExternalCurveProbe(null);
       const projected = compositionCursorProbe(project, resolved.members, event);
       setExternalCursorProbe(projected);
       if (projected) setCursorStatus("Linked exact source coordinate; no target element inferred.");
@@ -442,7 +460,9 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
         composition?.members.map((member, index) => <ComparisonPane key={`${index}:${member.documentId}`} members={resolved.members.filter(item => item.slot === index)}
           label={`${index === 0 ? "A" : "B"}: ${titleOf(project, member.documentId)} · r${member.expected.revision}`} onPick={onPick}
           captureToken={report.captureToken} onCaptureThumbnail={report.onCapture(index)}
-          linkedUV={linkable ? linked?.uv : null} linkedToken={linked?.token}
+          linkedUV={linkable && linked?.uv || (externalCurveProbe?.slot === index ? externalCurveProbe.uv : null)}
+          linkedToken={linkable && linked?.uv ? linked.token : externalCurveProbe?.slot === index ? externalCurveProbe.token : undefined}
+          curveParameterProbe={!(linkable && linked?.uv) && externalCurveProbe?.slot === index}
           coordinateProbe={displayedProbe?.target.slot === index ? displayedProbe : null}
           onCameraSync={cameraLinked && index === cameraLeader ? onLeaderCamera : undefined}
           cameraOverride={cameraLinked && index !== cameraLeader ? cameraPose?.state : null}
