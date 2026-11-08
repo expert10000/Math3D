@@ -5,6 +5,7 @@ import { createMixedWorkspaceDocument } from "./mixedWorkspace";
 import { parseMath3DProject, replaceMath3DProjectWorkspace, serializeMath3DProject,
   type Math3DProject } from "./math3dProject";
 import { projectAlgebraLocusReturn, resolveProjectAlgebraLocusInspection,
+  resolveProjectAlgebraLocusReturn,
   type ProjectAlgebraLocusReturn } from
   "./projectAlgebraLocusReturn";
 import type { SageAlgebraicLocusSample } from "./sageAlgebraicLocusSampling";
@@ -215,4 +216,14 @@ export const resolveProjectAlgebraLocusCurveSource = (project: Math3DProject,
   if (!status.sourceDocumentId || status.status === "invalid" || status.status === "missing")
     throw new TypeError(status.reason ?? "The saved contour source is unavailable.");
   return status.sourceDocumentId;
+};
+
+/** Returns the pinned CAS inspection only after verifying Curve and Geometry evidence. */
+export const resolveProjectAlgebraLocusCurveAlgebraReturn = (project: Math3DProject,
+  curve: CurveDocument): ProjectAlgebraLocusReturn => {
+  const geometryId = resolveProjectAlgebraLocusCurveSource(project, curve);
+  const choice = projectAlgebraLocusReturn(project, geometryId);
+  if (!choice?.enabled) throw new TypeError("The contour's algebra source is unavailable.");
+  resolveProjectAlgebraLocusReturn(project, choice);
+  return choice;
 };

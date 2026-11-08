@@ -3,6 +3,7 @@ import { buildSageAlgebraicLocusScene, createAlgebraObjectRecord, createMath3DPr
   createMixedWorkspaceDocument, createProjectAlgebraObjectId, orderedLocusCurvePoints,
   locusCurveComponents, parseMath3DProject, projectAlgebraLocusReturn, promoteSavedAlgebraLocusCurve,
   projectAlgebraLocusCurveSourceStatus, resolveProjectAlgebraLocusCurveSource,
+  resolveProjectAlgebraLocusCurveAlgebraReturn,
   sampleSageAlgebraicLocus, serializeMath3DProject, upsertMath3DProjectAlgebraObject,
   upsertMath3DProjectAlgebraicLocusSample, upsertMath3DProjectAlgebraicLocusScene,
   upsertProjectAlgebraLocusCurve } from "@math3d/core";
@@ -51,6 +52,8 @@ describe("saved algebra locus to Curve", () => {
     expect(projectAlgebraLocusCurveSourceStatus(reopened, curve)).toMatchObject({
       status: "current", sourceDocumentId: choice.documentId, reason: null });
     expect(resolveProjectAlgebraLocusCurveSource(reopened, curve)).toBe(choice.documentId);
+    expect(resolveProjectAlgebraLocusCurveAlgebraReturn(reopened, curve).source)
+      .toEqual(choice.source);
   });
 
   it("refuses multiple contours and stale or forged saved choices", () => {
@@ -118,6 +121,8 @@ describe("saved algebra locus to Curve", () => {
     expect(projectAlgebraLocusCurveSourceStatus(historical, promoted.curve).status)
       .toBe("historical");
     expect(resolveProjectAlgebraLocusCurveSource(historical, promoted.curve)).toBe(choice.documentId);
+    expect(resolveProjectAlgebraLocusCurveAlgebraReturn(historical, promoted.curve))
+      .toMatchObject({ sourceStatus: "historical", source: choice.source });
     const replacedSample = upsertMath3DProjectAlgebraicLocusScene(promoted.project, exact);
     expect(projectAlgebraLocusCurveSourceStatus(replacedSample, promoted.curve).status)
       .toBe("invalid");
@@ -126,6 +131,8 @@ describe("saved algebra locus to Curve", () => {
     const noRelation = { ...promoted.project, workspace: { ...promoted.project.workspace,
       relations: [] } };
     expect(projectAlgebraLocusCurveSourceStatus(noRelation, promoted.curve).status).toBe("invalid");
+    expect(() => resolveProjectAlgebraLocusCurveAlgebraReturn(noRelation, promoted.curve))
+      .toThrow(/relation/);
     const altered = structuredClone(promoted.curve);
     (altered.source.definition.points as number[][])[0]![0] += 0.25;
     expect(projectAlgebraLocusCurveSourceStatus(promoted.project, altered).status).toBe("invalid");
