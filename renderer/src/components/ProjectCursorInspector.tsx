@@ -65,7 +65,7 @@ export function ProjectCursorInspector({ project }: { project: Math3DProject }) 
   const [linked, setLinked] = useState(true);
   const [cursor, setCursor] = useState<ProjectScientificCursor | null>(null);
   const [message, setMessage] = useState("");
-  const points = useMemo(() => listProjectScientificSelections(project).filter(item => {
+  const points = useMemo(() => listProjectScientificSelections(project, verifyMixedWorkspaceReplay(project.workspace)).filter(item => {
     if (item.identity.kind !== "authored" || item.geometry.kind !== "point" || item.source?.kind !== "document") return false;
     const documentId = item.source.documentId;
     return project.workspace.entries.some(entry => entry.expected.id === documentId &&

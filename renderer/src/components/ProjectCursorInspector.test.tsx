@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { listProjectScientificSelections, migrateProjectScientificSelections,
   parseMath3DProject, upsertProjectScientificSelection, viewerSourceFromDocument,
-  createStableDocumentId, type ScientificSelection } from "@math3d/core";
+  createStableDocumentId, createMath3DProject, instantiateMath3DProjectTemplate, type ScientificSelection } from "@math3d/core";
+import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { ProjectCursorInspector, projectPointCursorFrame, vectorPointCursorAvailability } from "./ProjectCursorInspector";
 import { instantiateMeshComparisonStarter } from "../projects/meshComparisonStarter";
 import { projectCursorFromSavedPoint } from "./projectCursorAdapter";
@@ -76,4 +77,18 @@ describe("M3D20-03 declared Surface and Mesh point eligibility", () => {
       checkpoint: { ...selection.source.checkpoint, revision: selection.source.checkpoint.revision + 1 } } }).reason)
       .toMatch(/stale/);
   });
+});
+
+it("opens the cursor inspector for a replay-backed Graph Project without materialized selections", () => {
+  const starter = instantiateMath3DProjectTemplate("derivative-study", "replay-cursor-inspector");
+  const graph = starter.workspace.entries.find(item => item.module === "graph2d")!.checkpoint;
+  if (graph.format !== "math3d.graph2d-document") throw Error("Fixture");
+  const replay = new Graph2DCommandAdapter(graph).exportReplay();
+  const { scientificSelections: _selections, ...base } = starter.workspace;
+  const workspace = { ...base,
+    entries: starter.workspace.entries.map(item => item.expected.id === graph.identity.id ?
+      { ...item, checkpoint: replay.checkpoint.document, expected: graph.identity,
+        replay: { format: "math3d.graph2d-replay.v1" as const, payload: replay } } : item) };
+  const current = createMath3DProject(workspace, { stableKey: "replay-cursor-inspector" });
+  expect(renderToStaticMarkup(<ProjectCursorInspector project={current} />)).toContain('data-testid="project-cursor-inspector"');
 });
