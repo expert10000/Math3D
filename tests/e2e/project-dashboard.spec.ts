@@ -115,6 +115,9 @@ test("Catenoid Project Details shows freshness for its saved Mesh analysis", asy
     await expect(detail).toContainText(resultNote.anchor.resultId);
     await expect(browser.getByTestId(`project-result-select-${result.resultId}`)).toBeVisible();
     await browser.getByTestId(`project-result-select-${result.resultId}`).click();
+    await expect(detail.getByTestId("project-result-claim")).toContainText("Recorded");
+    await expect(detail.getByTestId("project-result-verification"))
+      .toHaveAttribute("data-scope", "not-checked");
     await expect(detail).toContainText(result.provenance.operation.algorithm);
     await expect(detail).toContainText(`Revision ${result.provenance.source.revision} · generation ${result.provenance.source.generation}`);
     await browser.getByRole("searchbox", { name: "Search saved outputs" }).fill("no such output");

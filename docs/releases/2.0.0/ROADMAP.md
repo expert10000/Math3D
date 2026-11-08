@@ -947,6 +947,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **Exit:** Surface/Mesh/Graph/Field/CAS/Quantum share the same result semantics; engine success cannot masquerade as scientific verification.
 
+**Saved Project results slice (2026-11-08):** The Results browser now labels the producer's recorded mathematical claim separately from Project freshness and the scope of any independent check. Retained saved Mesh byte/generation checks, Field source checks, and unchecked results have distinct explanations; failed, cancelled, and unsupported records do not display summary fields as completed values. Result and artifact source links open a current editor only when its exact revision, generation and hash match the recorded source. Historical and missing sources remain visible as evidence without linking to a newer editor. Unit and desktop checks cover claim strength, missing and historical source links, units, and the catenoid analysis's explicit unchecked scope. This is a bounded Project Results implementation; Surface, Curve, Graph, Field, CAS and Quantum Inspector convergence and common card actions remain open.
+
 ### M3D20-06 — Runtime Center (P0)
 
 - `M3D20-06a feat(runtime): aggregate local/remote capability reports`.
