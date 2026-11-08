@@ -89,6 +89,22 @@ test("Lab QWZ study handoff stages both exact scenes in a new Math3D Project", a
     await expect(reopenedStudies.getByTestId("project-study-panes")).toHaveAttribute("data-layout", "quad");
     await expect(reopenedStudies.getByTestId("project-study-qwz-pin-status")).toContainText("Pinned band sample 0");
     await expect(reopenedStudies.getByTestId("project-study-qwz-cursor-status")).toContainText("Berry curvature", { timeout: 60_000 });
+    const exportEvidence = async (name: string) => {
+      const target = join(root, name);
+      await app.evaluate(({ session }, path) => session.defaultSession.once("will-download",
+        (_event, item) => item.setSavePath(path)), target);
+      await reopenedStudies.getByTestId("project-study-export-qwz-evidence").click();
+      await expect.poll(async () => {
+        try { return JSON.parse(await readFile(target, "utf8")); } catch { return null; }
+      }, { timeout: 60_000 }).not.toBeNull();
+      return JSON.parse(await readFile(target, "utf8"));
+    };
+    const verifiedEvidence = await exportEvidence("qwz-verified-evidence.json");
+    expect(verifiedEvidence.schema).toBe("math3d.qwz-study-evidence/v1");
+    expect(verifiedEvidence.source.resultSha256).toBe(scenes[0].resultSha256);
+    expect(verifiedEvidence.verification).toMatchObject({ status: "verified", omissions: [],
+      selection: { band: { sampleIndex: 0 }, curvature: { sampleIndex: expect.any(Number) },
+        projection: { strategy: "nearest-lowest-index" } } });
     await reopenedStudies.getByTestId("project-study-open-source-curvature").click();
     await expect(reopenedPage.getByTestId("quantum-scene-preview")).toBeVisible({ timeout: 60_000 });
     await reopenedPage.getByTestId("quantum-scene-close").click();
@@ -110,6 +126,10 @@ test("Lab QWZ study handoff stages both exact scenes in a new Math3D Project", a
     await expect(reopenedStudies.getByTestId("project-study-qwz-cursor-status")).toContainText("withheld", { timeout: 60_000 });
     await expect(reopenedStudies.getByTestId("project-study-qwz-pin-status")).toContainText("Pinned band sample 0");
     await expect(reopenedStudies.getByTestId("project-study-panes")).toHaveAttribute("data-layout", "quad");
+    const withheldEvidence = await exportEvidence("qwz-withheld-evidence.json");
+    expect(withheldEvidence.source).toEqual(verifiedEvidence.source);
+    expect(withheldEvidence.verification).toMatchObject({ status: "withheld", selection: null,
+      invariants: null, omissions: ["band energy", "Berry curvature", "reciprocal projection", "topology invariants"] });
     await writeFile(blob, original);
   } finally {
     await app.close();
