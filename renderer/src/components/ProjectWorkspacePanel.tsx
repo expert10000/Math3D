@@ -1992,6 +1992,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               onCreateQwz={id => { void stageQwzQuadStudy(id); }}
               onPinQwz={(id, sampleIndex) => stageStudy(source => pinProjectQwzSample(source, id, sampleIndex),
                 "QWZ k selection pinned in Study.")}
+              onOpenQuantumSource={openLinkedQuantumScene}
               onOpenDocument={(id, module) => viewBesideProject(id, module)} />
           </div>}
           {!quick && detailView && project && <ProjectRelationshipMap project={project} titles={documentTitles}
