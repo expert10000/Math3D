@@ -32,9 +32,12 @@ export const projectSavedAlgebraOpenInActions = (project: Math3DProject, target:
     if (entry.module !== "geometry" || entry.checkpoint.format !== "math3d.geometry-document" ||
         !(SAGE_LOCUS_GEOMETRY_EXTENSION in entry.checkpoint.source.extensions)) continue;
     const sampled = SAGE_LOCUS_SAMPLE_EXTENSION in entry.checkpoint.source.extensions;
-    const parsed = sampled
-      ? parseSampledAlgebraicLocusGeometryDocument(entry.checkpoint, project)
-      : parseAlgebraicLocusGeometryDocument(entry.checkpoint, project);
+    let parsed;
+    try {
+      parsed = sampled
+        ? parseSampledAlgebraicLocusGeometryDocument(entry.checkpoint, project)
+        : parseAlgebraicLocusGeometryDocument(entry.checkpoint, project);
+    } catch { continue; }
     const scene = "sample" in parsed ? parsed.sample.scene : parsed.scene;
     if (scene.source.target.id !== target.objectId || scene.source.target.revision !== target.revision)
       continue;

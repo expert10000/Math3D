@@ -4,7 +4,7 @@ import { algebraicLocusGeometryDocument, buildSageAlgebraicLocusScene,
   createMixedWorkspaceDocument, createProjectAlgebraObjectId, parseMath3DProject,
   projectAlgebraLocusReturn, projectSavedAlgebraOpenInActions,
   resolveProjectAlgebraLocusReturn, resolveProjectSavedAlgebraOpenIn,
-  sampleSageAlgebraicLocus, serializeMath3DProject, setMath3DProjectAlgebraObjectArchived,
+  sampleSageAlgebraicLocus, SAGE_LOCUS_GEOMETRY_EXTENSION, serializeMath3DProject, setMath3DProjectAlgebraObjectArchived,
   upsertMath3DProjectAlgebraObject,
   upsertMath3DProjectAlgebraicLocusSample, upsertMath3DProjectAlgebraicLocusScene } from "@math3d/core";
 
@@ -77,6 +77,18 @@ describe("saved Project algebra locus Open in", () => {
     expect(() => resolveProjectSavedAlgebraOpenIn(sampledProject, target,
       { ...sampled, documentHash: `sha256:${"0".repeat(64)}` }))
       .toThrow(/destination changed/);
+  });
+
+  it("ignores an invalid saved locus checkpoint instead of breaking Project navigation", () => {
+    const { project, target, scene } = fixture();
+    const saved = upsertMath3DProjectAlgebraicLocusScene(project, scene);
+    const invalid = structuredClone(saved);
+    const checkpoint = invalid.workspace.entries[0]!.checkpoint;
+    if (checkpoint.format !== "math3d.geometry-document") throw new Error("Expected Geometry fixture");
+    (checkpoint.source.extensions as Record<string, unknown>)[SAGE_LOCUS_GEOMETRY_EXTENSION] = {};
+    expect(projectAlgebraLocusReturn(invalid, checkpoint.identity.id)).toBeNull();
+    expect(projectSavedAlgebraOpenInActions(invalid, target)).toMatchObject([
+      { enabled: false, documentId: null }]);
   });
 
   it("disables historical algebra sources and never substitutes another object's locus", () => {

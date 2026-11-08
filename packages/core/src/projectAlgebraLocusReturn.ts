@@ -31,9 +31,12 @@ export const projectAlgebraLocusReturn = (project: Math3DProject, documentId: st
   if (!(SAGE_LOCUS_GEOMETRY_EXTENSION in extensions)) return null;
   const sampled = SAGE_LOCUS_SAMPLE_EXTENSION in extensions;
   if (Object.keys(extensions).length !== (sampled ? 2 : 1)) return null;
-  const parsed = sampled
-    ? parseSampledAlgebraicLocusGeometryDocument(entry.checkpoint, project)
-    : parseAlgebraicLocusGeometryDocument(entry.checkpoint, project);
+  let parsed;
+  try {
+    parsed = sampled
+      ? parseSampledAlgebraicLocusGeometryDocument(entry.checkpoint, project)
+      : parseAlgebraicLocusGeometryDocument(entry.checkpoint, project);
+  } catch { return null; }
   const scene = "sample" in parsed ? parsed.sample.scene : parsed.scene;
   const status = sageAlgebraicLocusSceneStatus(scene, project);
   return { schemaVersion: PROJECT_ALGEBRA_LOCUS_RETURN_SCHEMA_VERSION,
