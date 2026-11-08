@@ -12,16 +12,21 @@ export function resultNoteReferences(project: Math3DProject,
   result: AnalysisResultEnvelope): readonly ProjectResultReference[] {
   const hash = structuralHash(result);
   return (project.notes ?? []).flatMap(note => {
+    if (note.projectId !== project.identity.id) return [];
     const anchors = [note.anchor?.kind === "result" ? note.anchor : null,
       ...(note.valueBindings ?? []).filter(binding => binding.kind === "result")];
     const linked = anchors.filter(anchor => anchor?.resultId === result.resultId);
     if (!linked.length) return [];
-    const exact = linked.some(anchor => anchor?.resultHash === hash &&
+    const entry = project.workspace.entries.find(item =>
+      item.expected.id === result.provenance.source.documentId);
+    const current = entry && matchesScientificSourceGeneration(
+      viewerSourceFromDocument({ identity: entry.expected }), result.provenance.source);
+    const exact = !!current && linked.some(anchor => anchor?.resultHash === hash &&
       matchesScientificSourceGeneration(anchor.source, result.provenance.source));
     return [{ kind: "note" as const, id: note.identity.id, title: note.title,
       status: exact ? "current" as const : "historical" as const,
       reason: exact ? "Exact result anchor or value binding." :
-        "The Note records this result ID with a different source generation or result hash." }];
+        "The Note records this result ID with a different hash or a historical source generation." }];
   });
 }
 
