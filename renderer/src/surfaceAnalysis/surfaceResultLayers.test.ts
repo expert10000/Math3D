@@ -16,6 +16,13 @@ describe("Surface persistent curve and feature layers", () => {
     expect(first.policy.periodicDomain).toBe(true);
   });
 
+  it("splits invalid spans instead of drawing a fabricated bridge", () => {
+    const layer = createSurfaceCurveLayer({ definition: smooth, layerKind: "geodesic",
+      polylines: [[[0, 0, 0], [1, 0, 0], [Number.NaN, 0, 0], [10, 0, 0], [11, 0, 0]]] });
+    expect(layer.polylines).toEqual([[[0, 0, 0], [1, 0, 0]], [[10, 0, 0], [11, 0, 0]]]);
+    expect(layer.statistics).toMatchObject({ curveCount: 2, pointCount: 4, totalLength: 2 });
+  });
+
   it("labels discrete geometry mesh-approximation even when analytic is requested", () => {
     expect(surfaceLayerMethod(mesh, "analytic")).toBe("mesh-approximation");
     expect(createSurfaceFeatureLayer({ definition: mesh, method: "analytic", layerKind: "ridge", points: [[0, 0, 0]] }).method).toBe("mesh-approximation");

@@ -42,7 +42,16 @@ const hash = (value: unknown): string => {
 };
 const finitePoint = (point: Vec3) => point.length === 3 && point.every(Number.isFinite);
 const distance = (a: Vec3, b: Vec3) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
-const cleanLines = (lines: ReadonlyArray<ReadonlyArray<Vec3>>): Vec3[][] => lines.map((line) => line.filter(finitePoint)).filter((line) => line.length >= 2);
+const cleanLines = (lines: ReadonlyArray<ReadonlyArray<Vec3>>): Vec3[][] => lines.flatMap(line => {
+  const runs: Vec3[][] = [];
+  let run: Vec3[] = [];
+  for (const point of line) {
+    if (finitePoint(point)) run.push(point);
+    else { if (run.length >= 2) runs.push(run); run = []; }
+  }
+  if (run.length >= 2) runs.push(run);
+  return runs;
+});
 const lineStatistics = (lines: ReadonlyArray<ReadonlyArray<Vec3>>) => {
   const lengths = lines.map((line) => line.slice(1).reduce((sum, point, index) => sum + distance(line[index], point), 0));
   return {
