@@ -2,8 +2,9 @@ import type { AlgebraObjectRef } from "./algebraObjects";
 import type { StableDocumentId, StructuralHash } from "./documentIdentity";
 import type { Math3DProject } from "./math3dProject";
 import { parseAlgebraicLocusGeometryDocument, sageAlgebraicLocusSceneStatus,
-  SAGE_LOCUS_GEOMETRY_EXTENSION } from "./sageAlgebraicLocusScene";
-import { parseSampledAlgebraicLocusGeometryDocument, SAGE_LOCUS_SAMPLE_EXTENSION } from
+  SAGE_LOCUS_GEOMETRY_EXTENSION, type SageAlgebraicLocusScene } from "./sageAlgebraicLocusScene";
+import { parseSampledAlgebraicLocusGeometryDocument, SAGE_LOCUS_SAMPLE_EXTENSION,
+  type SageAlgebraicLocusSample } from
   "./sageAlgebraicLocusSampling";
 import { parseAlgebraicSingularityGeometryDocument, SAGE_LOCUS_SINGULARITY_EXTENSION,
   type SageAlgebraicSingularityScene } from
@@ -99,4 +100,32 @@ export const resolveProjectAlgebraSingularityInspection = (project: Math3DProjec
       JSON.stringify(analysis.point) !== JSON.stringify(choice.inspectionPoint))
     throw new TypeError("The saved exact tangent analysis changed; review its Geometry checkpoint again.");
   return analysis;
+};
+
+export type ProjectAlgebraLocusInspection =
+  | Readonly<{ kind: "exact"; scene: SageAlgebraicLocusScene }>
+  | Readonly<{ kind: "sampled"; sample: SageAlgebraicLocusSample }>
+  | Readonly<{ kind: "singularity"; analysis: SageAlgebraicSingularityScene }>;
+
+/** Reads one immutable saved locus view after checking its exact Project checkpoint. */
+export const resolveProjectAlgebraLocusInspection = (project: Math3DProject,
+  choice: ProjectAlgebraLocusReturn): ProjectAlgebraLocusInspection => {
+  resolveProjectAlgebraLocusReturn(project, choice);
+  if (choice.analysisHash)
+    return { kind: "singularity", analysis: resolveProjectAlgebraSingularityInspection(project, choice) };
+  if (choice.inspectionPoint)
+    throw new TypeError("The saved locus inspection point has no exact tangent analysis.");
+  const entry = project.workspace.entries.find(item => item.expected.id === choice.documentId);
+  if (entry?.checkpoint.format !== "math3d.geometry-document")
+    throw new TypeError("The saved locus Geometry checkpoint is unavailable.");
+  if (choice.sampleHash) {
+    const sample = parseSampledAlgebraicLocusGeometryDocument(entry.checkpoint, project).sample;
+    if (sample.resultHash !== choice.sampleHash || sample.scene.sceneHash !== choice.sceneHash)
+      throw new TypeError("The saved bounded sample changed; review its Geometry checkpoint again.");
+    return { kind: "sampled", sample };
+  }
+  const scene = parseAlgebraicLocusGeometryDocument(entry.checkpoint, project).scene;
+  if (scene.sceneHash !== choice.sceneHash)
+    throw new TypeError("The saved exact locus changed; review its Geometry checkpoint again.");
+  return { kind: "exact", scene };
 };

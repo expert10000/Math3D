@@ -4,7 +4,8 @@ import { algebraicLocusGeometryDocument, algebraicSingularityGeometryDocument,
   createAlgebraObjectRecord, createMath3DProject,
   createMixedWorkspaceDocument, createProjectAlgebraObjectId, parseMath3DProject,
   projectAlgebraLocusReturn, projectSavedAlgebraOpenInActions,
-  resolveProjectAlgebraLocusReturn, resolveProjectAlgebraSingularityInspection,
+  resolveProjectAlgebraLocusInspection, resolveProjectAlgebraLocusReturn,
+  resolveProjectAlgebraSingularityInspection,
   resolveProjectSavedAlgebraOpenIn,
   sampleSageAlgebraicLocus, SAGE_LOCUS_GEOMETRY_EXTENSION, SAGE_LOCUS_SINGULARITY_EXTENSION,
   serializeMath3DProject, setMath3DProjectAlgebraObjectArchived,
@@ -40,6 +41,7 @@ describe("saved Project algebra locus Open in", () => {
       sampleHash: null, analysisHash: analysis.analysisHash, inspectionPoint: ["1", "0"] });
     expect(resolveProjectAlgebraLocusReturn(saved, action).target).toEqual(target);
     expect(resolveProjectAlgebraSingularityInspection(saved, action)).toEqual(analysis);
+    expect(resolveProjectAlgebraLocusInspection(saved, action)).toEqual({ kind: "singularity", analysis });
     expect(() => resolveProjectAlgebraLocusReturn(saved,
       { ...action, analysisHash: `sha256:${"0".repeat(64)}` })).toThrow(/changed/);
     expect(() => resolveProjectAlgebraSingularityInspection(saved,
@@ -99,6 +101,7 @@ describe("saved Project algebra locus Open in", () => {
     const exact = projectAlgebraLocusReturn(exactProject, documentId)!;
     expect(exact).toMatchObject({ enabled: true, sourceStatus: "current", sampleHash: null });
     expect(resolveProjectAlgebraLocusReturn(exactProject, exact).target).toEqual(target);
+    expect(resolveProjectAlgebraLocusInspection(exactProject, exact)).toEqual({ kind: "exact", scene });
     expect(() => resolveProjectAlgebraSingularityInspection(exactProject, exact))
       .toThrow(/no saved exact tangent analysis/);
     const sample = sampleSageAlgebraicLocus(scene);
@@ -106,6 +109,7 @@ describe("saved Project algebra locus Open in", () => {
     const sampled = projectAlgebraLocusReturn(sampledProject, documentId)!;
     expect(sampled).toMatchObject({ enabled: true, sampleHash: sample.resultHash,
       documentId, sourceStatus: "current" });
+    expect(resolveProjectAlgebraLocusInspection(sampledProject, sampled)).toEqual({ kind: "sampled", sample });
     expect(() => resolveProjectAlgebraLocusReturn(sampledProject, exact)).toThrow(/changed/);
     expect(resolveProjectAlgebraLocusReturn(sampledProject, sampled)).toMatchObject({
       projectId: project.identity.id, target, contentHash: ring.contentHash });
