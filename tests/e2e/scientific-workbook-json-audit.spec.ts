@@ -38,7 +38,13 @@ test("SCI-19 JSON audit rechecks a reopened combined Workbook and withholds chan
   await cp(resolve("examples/scientific-scenes/vortex-volume.sscene"), scene,
     { recursive: true });
   const app = await launchSurfaceApp();
+  let diagnosticTraceStarted = false;
   try {
+    if (process.env.M3D20_AUDIT_TRACE === "1") {
+      await app.app.context().tracing.start({ screenshots: true, snapshots: true, sources: true });
+      diagnosticTraceStarted = true;
+      app.page.on("pageerror", error => console.error("M3D20_AUDIT_PAGEERROR", error.message));
+    }
     const page = app.page;
     await resetSurfaceAppState(page);
     await page.getByTestId("workspace-nav-graphs").click();
@@ -103,7 +109,13 @@ test("SCI-19 JSON audit rechecks a reopened combined Workbook and withholds chan
     await expect(resultsTab).toHaveAttribute("aria-current", "page");
     const outputs = projects.getByTestId("project-results-browser");
     await expect(outputs).toBeVisible();
+    if (diagnosticTraceStarted) {
+      await page.screenshot({ path: test.info().outputPath("before-result-click.png"), timeout: 10_000 })
+        .catch(error => console.warn("M3D20_AUDIT_SCREENSHOT", String(error)));
+      console.log("M3D20_AUDIT_RESULT_CLICK_START", new Date().toISOString(), result.resultId);
+    }
     await outputs.getByTestId(`project-result-select-${result.resultId}`).click();
+    if (diagnosticTraceStarted) console.log("M3D20_AUDIT_RESULT_CLICK_END", new Date().toISOString());
     await outputs.getByTestId("project-create-subrectangle-workbook")
       .evaluate(element => { setTimeout(() => (element as HTMLButtonElement).click(), 0); });
     await expect.poll(() => page.evaluate(id => {
@@ -172,6 +184,9 @@ test("SCI-19 JSON audit rechecks a reopened combined Workbook and withholds chan
       expect(byKey(key).profiles).toBeTruthy();
     }
   } finally {
+    if (diagnosticTraceStarted) await app.app.context().tracing.stop({
+      path: test.info().outputPath("electron-context-trace.zip"),
+    }).catch(error => console.warn("M3D20_AUDIT_TRACE_STOP", String(error)));
     await closeSurfaceApp(app);
     if (!root.startsWith(resolve(tmpdir()) + sep) ||
         !root.includes("m3d-scientific-json-audit-"))
