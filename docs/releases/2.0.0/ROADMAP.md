@@ -894,6 +894,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **Graph promotion cursor (2026-11-08):** A saved `graph2d.promote-curve` relation now qualifies Curve parameters against the current Graph object and Curve generation. The adapter regenerates the promotion input to verify its mathematical source, evaluates the original Graph expression inside its recorded domain, and marks the Graph plot without replacing the local selection. The Graph Inspector can return a selected probe only after its parameter and full coordinates verify against that forward map. Wrong objects, stale sources, incompatible frames, excluded endpoints and off-trace probes are refused. General unrelated Graph/Curve mappings remain open.
 
+**Saved Curve cursor round trip (2026-11-08):** Native restored Curve editing and both saved Project Curve viewers can now receive an exact parameter from the shared cursor and share one from their current document. The saved viewer checks document generation, parameter frame and domain before adopting a return; the Graph still checks its recorded promotion relation before drawing the linked point. A desktop journey covers Graph probe → promoted Curve → a new Curve parameter → Graph plot, while preserving the Graph's local probe. This closes the saved Graph/Curve promotion path only; the broader Scientific Cursor milestone remains open.
+
 **Exit:** no feedback loops, qualified coordinate mapping and exact return; local selection works even if linked target is unavailable.
 
 ### M3D20-04 — StudyDocument (P0; bounded flagship)

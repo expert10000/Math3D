@@ -38,8 +38,11 @@ export function projectCurveSurfaceParameter(cursor: ProjectScientificCursor, pr
   const t = cursor.position[0]!;
   if (!Number.isFinite(t) || t < pair.curve.source.domain.min || t > pair.curve.source.domain.max)
     return { status: "outside", reason: "Curve parameter is outside its saved domain." };
-  const domain = pair.surface.source.domain;
-  if (!domain || typeof domain !== "object" || Array.isArray(domain) || domain.kind !== "parameter" ||
+  const rawDomain = pair.surface.source.domain;
+  if (!rawDomain || typeof rawDomain !== "object" || Array.isArray(rawDomain))
+    return { status: "incompatible-source", reason: "Surface has no bounded parameter chart." };
+  const domain = rawDomain as { kind?: unknown; u?: unknown; v?: unknown };
+  if (domain.kind !== "parameter" ||
       !domain.u || typeof domain.u !== "object" || Array.isArray(domain.u) ||
       !domain.v || typeof domain.v !== "object" || Array.isArray(domain.v))
     return { status: "incompatible-source", reason: "Surface has no bounded parameter chart." };

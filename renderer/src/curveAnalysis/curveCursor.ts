@@ -91,3 +91,27 @@ export function projectRestoredCurveParameterCursor(cursor: ProjectScientificCur
   return { status: "matched", value: (t - document.source.domain.min) /
     (document.source.domain.max - document.source.domain.min) };
 }
+
+/** The saved Project workbench owns a Curve document directly, without a native editor seed. */
+export function savedCurveParameterCursorDraft(document: CurveDocument, t: number,
+  originViewId: string): ValidationResult<ProjectCursorDraft> {
+  if (!Number.isFinite(t) || t < document.source.domain.min || t > document.source.domain.max)
+    return { ok: false, errors: ["Curve parameter must be finite and inside the saved domain."] };
+  return { ok: true, value: { source: viewerSourceFromDocument(document), sourceModule: "curve",
+    frame: curveParameterFrame(document), position: [t], resourceSha256: null,
+    mode: "locked", originViewId } };
+}
+
+/** An incoming cursor may select a saved Curve only at its exact source generation and frame. */
+export function projectSavedCurveParameterCursor(cursor: ProjectScientificCursor,
+  document: CurveDocument): CursorProjection<number> {
+  if (cursor.sourceModule !== "curve" || cursor.resourceSha256 !== null ||
+      !matchesScientificSourceGeneration(cursor.source, viewerSourceFromDocument(document)) ||
+      canonicalJsonStringify(cursor.frame) !== canonicalJsonStringify(curveParameterFrame(document)))
+    return { status: "incompatible-source", reason: "Saved Curve generation or parameter frame differs." };
+  const t = cursor.position[0];
+  if (cursor.position.length !== 1 || t === undefined || !Number.isFinite(t) ||
+      t < document.source.domain.min || t > document.source.domain.max)
+    return { status: "outside", reason: "Curve parameter is outside the saved domain." };
+  return { status: "matched", value: t };
+}

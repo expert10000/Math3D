@@ -4,7 +4,7 @@ import { ScientificCursorBus } from "../components/scientificCursor";
 import { curveDocumentFromLegacyDefinition } from "./curveDocumentAdapter";
 import { adaptCurveDefinition } from "./infrastructure";
 import { curveParameterCursorDraft, projectCurveParameterCursor, projectRestoredCurveParameterCursor,
-  restoredCurveParameterCursorDraft } from "./curveCursor";
+  projectSavedCurveParameterCursor, restoredCurveParameterCursorDraft, savedCurveParameterCursorDraft } from "./curveCursor";
 import { curveEditorSeed } from "../projects/nativeProjectRestore";
 import type { SemanticCurvePick } from "./probe";
 
@@ -77,5 +77,32 @@ describe("M3D20-03 saved native Curve cursor", () => {
     expect(projectRestoredCurveParameterCursor(cursor, revised, editor).status).toBe("incompatible-source");
     expect(projectRestoredCurveParameterCursor({ ...cursor, frame: { ...cursor.frame, axes: [{ ...cursor.frame.axes[0]!, unit: "s" }] } },
       saved, editor).status).toBe("incompatible-source");
+  });
+});
+
+describe("M3D20-03 saved Project Curve cursor", () => {
+  const project = instantiateMath3DProjectTemplate("derivative-study", "project-curve-cursor");
+  const saved = project.workspace.entries.find(entry => entry.module === "curve")!.checkpoint;
+  if (saved.format !== "math3d.curve-document") throw Error("Fixture");
+  it("adopts a Graph return and shares the exact saved parameter", () => {
+    const draft = savedCurveParameterCursorDraft(saved, 1, "project-curve:fixture");
+    expect(draft.ok).toBe(true);
+    if (!draft.ok) return;
+    const cursor = new ScientificCursorBus().publishProject(draft.value, draft.value.source);
+    expect(projectSavedCurveParameterCursor(cursor, saved)).toEqual({ status: "matched", value: 1 });
+    expect(savedCurveParameterCursorDraft(saved, NaN, "project-curve:fixture").ok).toBe(false);
+    expect(savedCurveParameterCursorDraft(saved, saved.source.domain.max + 1, "project-curve:fixture").ok).toBe(false);
+  });
+  it("withholds stale generations, frame changes and out-of-domain values", () => {
+    const draft = savedCurveParameterCursorDraft(saved, 1, "project-curve:fixture");
+    if (!draft.ok) throw Error(draft.errors.join(" "));
+    const cursor = new ScientificCursorBus().publishProject(draft.value, draft.value.source);
+    const revised = replaceCurveDocumentSource(saved, { ...saved.source, definition: { ...saved.source.definition,
+      expressions: { x: "x", y: "x^3" } } });
+    expect(projectSavedCurveParameterCursor(cursor, revised).status).toBe("incompatible-source");
+    expect(projectSavedCurveParameterCursor({ ...cursor, frame: { ...cursor.frame, frameId: "other" } },
+      saved).status).toBe("incompatible-source");
+    expect(projectSavedCurveParameterCursor({ ...cursor, position: [saved.source.domain.max + 1] },
+      saved).status).toBe("outside");
   });
 });

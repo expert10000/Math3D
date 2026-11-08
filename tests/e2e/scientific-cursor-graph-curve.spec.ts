@@ -23,5 +23,27 @@ test("M3D20-03 returns a saved Graph probe to its promoted Curve without changin
     await expect(inspector.getByTestId("graph2d-linked-curve-cursor")).toContainText("Linked Curve parameter");
     await expect(page.getByTestId("graph2d-plot").locator(".graph2d-probe-linked")).toHaveCount(1);
     expect(await localProbe.textContent()).toBe(before);
+    const ids = await page.evaluate(() => {
+      const entries = JSON.parse(localStorage.getItem("math3d.project.v1")!).workspace.entries;
+      return { graph: entries.find((entry: { module: string }) => entry.module === "graph2d").expected.id as string,
+        curve: entries.find((entry: { module: string }) => entry.module === "curve").expected.id as string };
+    });
+    await page.getByTestId("projects-toggle").click();
+    await projects.getByRole("button", { name: "View current project" }).click();
+    await projects.getByTestId(`project-dashboard-document-${ids.curve}`).click();
+    await expect(page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id", ids.curve);
+    await projects.getByRole("button", { name: "Close project explorer" }).click();
+    await expect(page.getByTestId("project-curve-linked-cursor")).toContainText("Linked Curve parameter t=");
+    const parameter = page.getByTestId("project-curve-parameter");
+    await expect(parameter).not.toHaveValue("");
+    await parameter.fill("1");
+    await page.getByTestId("project-curve-share-parameter").click();
+    await expect(page.getByTestId("project-curve-linked-cursor")).toContainText("Linked Curve parameter t=1");
+    await page.getByTestId("projects-toggle").click();
+    await projects.getByRole("button", { name: "View current project" }).click();
+    await projects.getByTestId(`project-dashboard-document-${ids.graph}`).click();
+    await projects.getByRole("button", { name: "Close project explorer" }).click();
+    await expect(page.getByTestId("graph2d-linked-curve-cursor").first()).toContainText("(1.0000, 1.0000)");
+    await expect(page.getByTestId("graph2d-plot").locator(".graph2d-probe-linked")).toHaveCount(1);
   } finally { await closeSurfaceApp(app); }
 });
