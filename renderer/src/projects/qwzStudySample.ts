@@ -21,15 +21,20 @@ export async function verifyProjectQwzSample(project: Math3DProject, pair: Proje
   const band = await api.bandSample({ fingerprint: pair.bands.source.sceneFingerprint,
     objectId: "band-0", sampleIndex });
   if (band.fingerprint !== pair.bands.source.sceneFingerprint ||
+      band.objectId !== "band-0" || band.sampleIndex !== sampleIndex ||
       band.runId !== pair.bands.source.provenance.runId ||
       band.resultSha256 !== pair.bands.source.provenance.resultSha256 ||
-      band.kUnit !== pair.bands.source.coordinates.units[0])
+      band.kUnit !== pair.bands.source.coordinates.units[0] ||
+      !band.k.every(Number.isFinite) || !Number.isFinite(band.energy))
     throw new TypeError("Band sample differs from the saved QWZ source or reciprocal unit.");
   await openVerifiedStudyQuantumScene(project, pair.curvature);
   const projection = await api.projectQwzCursor({ fingerprint: pair.curvature.source.sceneFingerprint,
     runId: band.runId, resultSha256: band.resultSha256, k: [band.k[0], band.k[1]],
     basisId: `qwz:${band.kUnit}` });
-  if (projection.target !== "curvature" || !Number.isFinite(projection.distance))
+  if (projection.target !== "curvature" || !Number.isFinite(projection.distance) ||
+      projection.distance < 0 || !Number.isSafeInteger(projection.sampleIndex) ||
+      projection.sampleIndex < 0 || !Number.isSafeInteger(projection.candidateCount) ||
+      projection.candidateCount < 1 || !projection.k.every(Number.isFinite))
     throw new TypeError("Curvature projection has no qualified target.");
   const target = await api.topologySample({ fingerprint: pair.curvature.source.sceneFingerprint,
     quantityId: quantity.id, sampleIndex: projection.sampleIndex });
@@ -38,6 +43,7 @@ export async function verifyProjectQwzSample(project: Math3DProject, pair: Proje
       target.runId !== band.runId || target.resultSha256 !== band.resultSha256 ||
       target.coordinateUnits[0] !== pair.curvature.source.coordinates.units[0] ||
       target.coordinateUnits[1] !== pair.curvature.source.coordinates.units[1] ||
+      !target.position.every(Number.isFinite) || !Number.isFinite(target.value) ||
       Math.abs(target.position[0] - projection.k[0]) > 1e-8 ||
       Math.abs(target.position[1] - projection.k[1]) > 1e-8)
     throw new TypeError("Curvature sample differs from the exact projected k point.");
