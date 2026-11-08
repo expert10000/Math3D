@@ -282,7 +282,7 @@ test("saved exact locus opens read-only in CAS and returns to its Geometry check
   } finally { await closeSurfaceApp(ctx); }
 });
 
-test("saved bounded circle contour opens as a provenance-linked Curve", async () => {
+test("saved two-circle sample promotes a chosen contour with Curve lineage", async () => {
   test.setTimeout(120_000);
   let ctx: LaunchedSurfaceApp | null = null;
   try {
@@ -299,12 +299,13 @@ test("saved bounded circle contour opens as a provenance-linked Curve", async ()
         monomialOrder: "degrevlex" } });
     project = core.upsertMath3DProjectAlgebraObject(project, ring);
     const scene = core.buildSageAlgebraicLocusScene(project, { objectId: ring.id, revision: 1 }, {
-      polynomial: "x^2+y^2-1", bounds: [{ min: -3, max: 3 }, { min: -3, max: 3 }],
+      polynomial: "(x^2+y^2-1)*(x^2+y^2-4)",
+      bounds: [{ min: -3, max: 3 }, { min: -3, max: 3 }],
       tolerance: 0.001, maxSamples: 8000 });
     const sample = core.sampleSageAlgebraicLocus(scene);
     project = core.upsertMath3DProjectAlgebraicLocusSample(project, sample);
     const choice = core.projectAlgebraLocusReturn(project, project.workspace.entries[0].expected.id);
-    const expected = core.upsertProjectAlgebraLocusCurve(project, choice);
+    const expected = core.upsertProjectAlgebraLocusCurve(project, choice, 1);
     ctx = await launchSurfaceApp();
     await resetSurfaceAppState(ctx.page);
     await ctx.page.evaluate(({ id, title, raw }) => {
@@ -324,13 +325,19 @@ test("saved bounded circle contour opens as a provenance-linked Curve", async ()
       .getByRole("button", { name: /Bounded numerical sample/ }).click();
     await expect(cas.getByTestId("cas-saved-locus-inspection").getByTestId("cas-locus-plot"))
       .toBeVisible();
-    await cas.getByTestId("cas-open-saved-locus-curve").click();
+    const components = cas.getByTestId("cas-saved-locus-components");
+    await expect(components.getByRole("button")).toHaveCount(2);
+    await expect(components.getByTestId("cas-open-saved-locus-curve-0"))
+      .toContainText("Open contour 1 of 2 in Curves");
+    await components.getByTestId("cas-open-saved-locus-curve-1").click();
     await expect(ctx.page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id",
       expected.curve.identity.id);
     const saved = core.parseMath3DProject(await ctx.page.evaluate(() =>
       localStorage.getItem("math3d.project.v1")));
     expect(saved.workspace.entries.find((entry: { expected: { id: string } }) =>
       entry.expected.id === expected.curve.identity.id)?.checkpoint).toEqual(expected.curve);
+    expect(expected.curve.source.definition.settings).toMatchObject({ componentIndex: 1,
+      componentCount: 2, sampleHash: sample.resultHash });
     expect(saved.workspace.relations.some((relation: { operation: string }) =>
       relation.operation === "algebra.locus-sample-curve")).toBe(true);
   } finally { await closeSurfaceApp(ctx); }
