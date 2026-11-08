@@ -281,3 +281,57 @@ test("saved exact locus opens read-only in CAS and returns to its Geometry check
     await expect(ctx.page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id", documentId);
   } finally { await closeSurfaceApp(ctx); }
 });
+
+test("saved bounded circle contour opens as a provenance-linked Curve", async () => {
+  test.setTimeout(120_000);
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    const workspace = core.createMixedWorkspaceDocument({ entries: [], activeDocumentIds: [],
+      results: [], artifacts: [], relations: [], committedSelection: null, constructions: [] });
+    let project = core.createMath3DProject(workspace, { stableKey: "sage-f02-curve",
+      title: "Bounded contour Curve" });
+    const qq = core.createAlgebraObjectRecord({ id: core.createProjectAlgebraObjectId(project.identity.id, "QQ"),
+      revision: 1, label: "QQ", definition: { kind: "rational-field" } });
+    project = core.upsertMath3DProjectAlgebraObject(project, qq);
+    const ring = core.createAlgebraObjectRecord({ id: core.createProjectAlgebraObjectId(project.identity.id, "R"),
+      revision: 1, label: "R", definition: { kind: "polynomial-ring",
+        coefficientDomain: { objectId: qq.id, revision: 1 }, variables: ["x", "y"],
+        monomialOrder: "degrevlex" } });
+    project = core.upsertMath3DProjectAlgebraObject(project, ring);
+    const scene = core.buildSageAlgebraicLocusScene(project, { objectId: ring.id, revision: 1 }, {
+      polynomial: "x^2+y^2-1", bounds: [{ min: -3, max: 3 }, { min: -3, max: 3 }],
+      tolerance: 0.001, maxSamples: 8000 });
+    const sample = core.sampleSageAlgebraicLocus(scene);
+    project = core.upsertMath3DProjectAlgebraicLocusSample(project, sample);
+    const choice = core.projectAlgebraLocusReturn(project, project.workspace.entries[0].expected.id);
+    const expected = core.upsertProjectAlgebraLocusCurve(project, choice);
+    ctx = await launchSurfaceApp();
+    await resetSurfaceAppState(ctx.page);
+    await ctx.page.evaluate(({ id, title, raw }) => {
+      localStorage.setItem("math3d.project.v1", raw);
+      localStorage.setItem(`math3d.project.v1.payload.${id}`, raw);
+      localStorage.setItem("math3d.project-library.v1", JSON.stringify({ format: "math3d.project-library",
+        version: 1, entries: [{ id, title, tags: [], favorite: false,
+          savedAt: Date.now(), viewedAt: Date.now() }] }));
+    }, { id: project.identity.id, title: project.metadata.title, raw: core.serializeMath3DProject(project) });
+    await ctx.page.reload();
+    await ctx.page.getByTestId("projects-toggle").click();
+    await ctx.page.getByTestId(`project-open-saved-${project.identity.id}`).click();
+    await ctx.page.getByTestId("workspace-nav-cas").click();
+    const cas = ctx.page.getByTestId("cas-algebra-workspace");
+    await cas.getByTestId("cas-structures-explorer").getByRole("button", { name: /R @1/ }).click();
+    await cas.getByTestId("cas-saved-locus-choices")
+      .getByRole("button", { name: /Bounded numerical sample/ }).click();
+    await expect(cas.getByTestId("cas-saved-locus-inspection").getByTestId("cas-locus-plot"))
+      .toBeVisible();
+    await cas.getByTestId("cas-open-saved-locus-curve").click();
+    await expect(ctx.page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id",
+      expected.curve.identity.id);
+    const saved = core.parseMath3DProject(await ctx.page.evaluate(() =>
+      localStorage.getItem("math3d.project.v1")));
+    expect(saved.workspace.entries.find((entry: { expected: { id: string } }) =>
+      entry.expected.id === expected.curve.identity.id)?.checkpoint).toEqual(expected.curve);
+    expect(saved.workspace.relations.some((relation: { operation: string }) =>
+      relation.operation === "algebra.locus-sample-curve")).toBe(true);
+  } finally { await closeSurfaceApp(ctx); }
+});
