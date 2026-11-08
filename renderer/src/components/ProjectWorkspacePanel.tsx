@@ -1945,7 +1945,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               </div>}
             </aside>
             <ProjectCursorInspector project={project} />
-            <ProjectStudiesPanel project={project} documents={dashboardDocuments} editable={!preview && !managed && !busy}
+            <ProjectStudiesPanel project={project} documents={dashboardDocuments} resources={resourceSession.current}
+              editable={!preview && !managed && !busy}
               onCreate={(studyTitle, ids) => stageStudy(source => createProjectStudyFromDocuments(source,
                 crypto.randomUUID(), studyTitle, ids), "Study created.")}
               onRename={(id, studyTitle) => stageStudy(source => renameProjectStudy(source, id, studyTitle), "Study renamed.")}

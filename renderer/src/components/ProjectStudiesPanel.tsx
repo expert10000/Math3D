@@ -1,18 +1,23 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { inspectProjectStudyMembers, type KernelWorkspaceModule, type Math3DProject } from "@math3d/core";
+import type { VerifiedProjectResources } from "../projects/projectResources";
+
+const StudyPanePreview = lazy(() => import("./StudyPanePreview").then(module => ({ default: module.StudyPanePreview })));
 
 type DocumentChoice = Readonly<{ id: string; title: string; module: KernelWorkspaceModule }>;
 type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoice[]; editable: boolean;
+  resources?: VerifiedProjectResources;
   onCreate: (title: string, ids: readonly string[]) => void; onRename: (id: string, title: string) => void;
   onFork: (id: string, title: string) => void; onOpenDocument: (id: string, module: KernelWorkspaceModule) => void }>;
 
 /** A Study is a saved layout of references; opening a pane delegates to its owning document. */
-export function ProjectStudiesPanel({ project, documents, editable, onCreate, onRename, onFork,
+export function ProjectStudiesPanel({ project, documents, editable, resources, onCreate, onRename, onFork,
   onOpenDocument }: Props) {
   const [selected, setSelected] = useState<string[]>([]);
   const [title, setTitle] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
+  const [visiblePaneId, setVisiblePaneId] = useState<string | null>(null);
   const studies = project.workspace.studies ?? [];
   const open = studies.find(study => study.id === openId) ?? null;
   const choiceById = new Map(documents.map(document => [document.id, document]));
@@ -36,7 +41,7 @@ export function ProjectStudiesPanel({ project, documents, editable, onCreate, on
     </div>}
     <ul>{studies.map(study => <li key={study.id}>
       <button type="button" data-testid={`project-study-open-${study.id}`} onClick={() => {
-        setOpenId(study.id); setEditTitle(study.title);
+        setOpenId(study.id); setEditTitle(study.title); setVisiblePaneId(null);
       }}>{study.title}</button> · {study.layout.mode} · {study.members.length} members
     </li>)}</ul>
     {open && <div data-testid="project-study-view" data-study-id={open.id}>
@@ -53,10 +58,16 @@ export function ProjectStudiesPanel({ project, documents, editable, onCreate, on
           const choice = choiceById.get(member.documentId);
           const status = statusByMember.get(member.memberId) ?? "missing-document";
           const workspaceEntry = project.workspace.entries.find(entry => entry.expected.id === member.documentId);
-          return <div key={pane.paneId} data-testid={`project-study-pane-${pane.paneId}`} style={{ border: "1px solid #cbd5e1", padding: 8 }}>
+          return <div key={pane.paneId} data-testid={`project-study-pane-${pane.paneId}`} style={{ border: "1px solid #cbd5e1", padding: 8, minWidth: 0, overflow: "hidden" }}>
             <strong>{choice?.title ?? member.documentId}</strong><p>{member.role} · {statusLabel[status]} · saved r{member.expected.revision}</p>
             <button type="button" disabled={!workspaceEntry}
               onClick={() => { if (workspaceEntry) onOpenDocument(member.documentId, workspaceEntry.module); }}>Open source document</button>
+            <button type="button" data-testid={`project-study-preview-toggle-${pane.paneId}`}
+              onClick={() => setVisiblePaneId(current => current === pane.paneId ? null : pane.paneId)}>
+              {visiblePaneId === pane.paneId ? "Hide preview" : "Show preview"}</button>
+            {visiblePaneId === pane.paneId && <Suspense fallback={<p role="status">Loading Study pane…</p>}>
+              <StudyPanePreview project={project} study={open} paneId={pane.paneId} resources={resources} />
+            </Suspense>}
           </div>;
         })}
       </div>
