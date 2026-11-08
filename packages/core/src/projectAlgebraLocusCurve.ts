@@ -1,9 +1,11 @@
-import { createCurveDocument, type CurveDocument } from "./curveDocument";
+import { createCurveDocument, normalizeCurveDocument, type CurveDocument } from "./curveDocument";
+import { canonicalJsonStringify } from "./documentIdentity";
 import { createDocumentRelation } from "./documentRelations";
 import { createMixedWorkspaceDocument } from "./mixedWorkspace";
 import { parseMath3DProject, replaceMath3DProjectWorkspace, serializeMath3DProject,
   type Math3DProject } from "./math3dProject";
-import { resolveProjectAlgebraLocusInspection, type ProjectAlgebraLocusReturn } from
+import { projectAlgebraLocusReturn, resolveProjectAlgebraLocusInspection,
+  type ProjectAlgebraLocusReturn } from
   "./projectAlgebraLocusReturn";
 import type { SageAlgebraicLocusSample } from "./sageAlgebraicLocusSampling";
 import { viewerSourceFromDocument } from "./viewerProvenance";
@@ -86,11 +88,11 @@ export const orderedLocusCurvePoints = (sample: SageAlgebraicLocusSample): Locus
   return components[0];
 };
 
-/** Promotes an already saved numerical sample, preserving its exact Geometry checkpoint as lineage. */
-export const promoteSavedAlgebraLocusCurve = (project: Math3DProject,
-  choice: ProjectAlgebraLocusReturn, componentIndex?: number): CurveDocument => {
+const buildSavedAlgebraLocusCurve = (project: Math3DProject,
+  choice: ProjectAlgebraLocusReturn, componentIndex: number | undefined,
+  allowHistorical: boolean): CurveDocument => {
   const inspection = resolveProjectAlgebraLocusInspection(project, choice);
-  if (inspection.kind !== "sampled" || choice.sourceStatus !== "current")
+  if (inspection.kind !== "sampled" || !allowHistorical && choice.sourceStatus !== "current")
     throw new TypeError("Choose a current saved bounded contour sample for Curve promotion.");
   const sample = inspection.sample;
   const components = locusCurveComponents(sample);
@@ -125,6 +127,11 @@ export const promoteSavedAlgebraLocusCurve = (project: Math3DProject,
     metadata: { title: `Bounded locus contour ${selectedIndex + 1}/${components.length}: ${sample.scene.source.target.label}` } });
 };
 
+/** Promotes an already saved numerical sample, preserving its exact Geometry checkpoint as lineage. */
+export const promoteSavedAlgebraLocusCurve = (project: Math3DProject,
+  choice: ProjectAlgebraLocusReturn, componentIndex?: number): CurveDocument =>
+  buildSavedAlgebraLocusCurve(project, choice, componentIndex, false);
+
 /** Requalifies the checkpoint and saves the Curve with exact return lineage. */
 export const upsertProjectAlgebraLocusCurve = (project: Math3DProject,
   choice: ProjectAlgebraLocusReturn, componentIndex?: number):
@@ -144,4 +151,62 @@ export const upsertProjectAlgebraLocusCurve = (project: Math3DProject,
       { module: "curve", checkpoint: curve, expected: curve.identity, replay: null }],
     relations: [...current.workspace.relations.filter(item => item.relationId !== relation.relationId), relation] });
   return { project: replaceMath3DProjectWorkspace(current, workspace), curve };
+};
+
+export type ProjectAlgebraLocusCurveSourceStatus = Readonly<{
+  status: "current" | "historical" | "stale" | "archived" | "missing" | "invalid";
+  sourceDocumentId: string | null;
+  reason: string | null;
+}>;
+
+/** Verifies the complete saved component and relation before offering return navigation. */
+export const projectAlgebraLocusCurveSourceStatus = (project: Math3DProject,
+  curve: CurveDocument): ProjectAlgebraLocusCurveSourceStatus => {
+  const invalid = (reason: string): ProjectAlgebraLocusCurveSourceStatus =>
+    ({ status: "invalid", sourceDocumentId: null, reason });
+  if (!normalizeCurveDocument(curve).ok ||
+      curve.source.definition.familyId !== "algebra.bounded-locus-contour")
+    return invalid("This is not a valid saved algebraic contour Curve.");
+  const sourceId = curve.source.definition.sourceIds?.[0];
+  const settings = curve.source.definition.settings;
+  const source = project.workspace.entries.find(item => item.expected.id === sourceId &&
+    item.module === "geometry");
+  if (!source) return { status: "missing", sourceDocumentId: null,
+    reason: "The saved sampled Geometry source is missing." };
+  if (source.expected.revision !== settings?.sourceRevision ||
+      source.expected.structuralHash !== settings.sourceStructuralHash)
+    return invalid("The saved sampled Geometry checkpoint changed.");
+  const choice = projectAlgebraLocusReturn(project, source.expected.id);
+  if (!choice?.enabled || !choice.sampleHash ||
+      choice.sampleHash !== settings?.sampleHash || choice.sceneHash !== settings.sceneHash)
+    return invalid("The saved sampled Geometry evidence changed.");
+  const index = settings?.componentIndex;
+  try {
+    const expected = buildSavedAlgebraLocusCurve(project, choice,
+      typeof index === "number" ? index : undefined, true);
+    if (canonicalJsonStringify(expected.source) !== canonicalJsonStringify(curve.source) ||
+        expected.identity.id !== curve.identity.id ||
+        expected.identity.structuralHash !== curve.identity.structuralHash)
+      return invalid("The Curve points or contour provenance differ from the saved sample.");
+    const relation = createDocumentRelation({ kind: "promoted-from",
+      sources: [viewerSourceFromDocument(source.checkpoint)], sourceOrder: "ordered",
+      target: { type: "document", generation: viewerSourceFromDocument(curve) },
+      operation: "algebra.locus-sample-curve",
+      parameters: { sampleHash: choice.sampleHash, sceneHash: choice.sceneHash,
+        componentIndex: index, completeness: "bounded-sample" } });
+    if (!project.workspace.relations.some(item =>
+      canonicalJsonStringify(item) === canonicalJsonStringify(relation)))
+      return invalid("The Curve's saved Geometry relation is missing or changed.");
+  } catch { return invalid("The saved contour component cannot be verified."); }
+  return { status: choice.sourceStatus, sourceDocumentId: source.expected.id,
+    reason: choice.sourceStatus === "current" ? null :
+      `The algebra source is ${choice.sourceStatus}; inspect the saved Geometry without recomputation.` };
+};
+
+export const resolveProjectAlgebraLocusCurveSource = (project: Math3DProject,
+  curve: CurveDocument): string => {
+  const status = projectAlgebraLocusCurveSourceStatus(project, curve);
+  if (!status.sourceDocumentId || status.status === "invalid" || status.status === "missing")
+    throw new TypeError(status.reason ?? "The saved contour source is unavailable.");
+  return status.sourceDocumentId;
 };
