@@ -4,7 +4,8 @@ import { algebraicLocusGeometryDocument, algebraicSingularityGeometryDocument,
   createAlgebraObjectRecord, createMath3DProject,
   createMixedWorkspaceDocument, createProjectAlgebraObjectId, parseMath3DProject,
   projectAlgebraLocusReturn, projectSavedAlgebraOpenInActions,
-  resolveProjectAlgebraLocusReturn, resolveProjectSavedAlgebraOpenIn,
+  resolveProjectAlgebraLocusReturn, resolveProjectAlgebraSingularityInspection,
+  resolveProjectSavedAlgebraOpenIn,
   sampleSageAlgebraicLocus, SAGE_LOCUS_GEOMETRY_EXTENSION, SAGE_LOCUS_SINGULARITY_EXTENSION,
   serializeMath3DProject, setMath3DProjectAlgebraObjectArchived,
   upsertMath3DProjectAlgebraObject, upsertMath3DProjectAlgebraicSingularityScene,
@@ -38,7 +39,10 @@ describe("saved Project algebra locus Open in", () => {
     expect(action).toMatchObject({ enabled: true, sceneHash: scene.sceneHash,
       sampleHash: null, analysisHash: analysis.analysisHash, inspectionPoint: ["1", "0"] });
     expect(resolveProjectAlgebraLocusReturn(saved, action).target).toEqual(target);
+    expect(resolveProjectAlgebraSingularityInspection(saved, action)).toEqual(analysis);
     expect(() => resolveProjectAlgebraLocusReturn(saved,
+      { ...action, analysisHash: `sha256:${"0".repeat(64)}` })).toThrow(/changed/);
+    expect(() => resolveProjectAlgebraSingularityInspection(saved,
       { ...action, analysisHash: `sha256:${"0".repeat(64)}` })).toThrow(/changed/);
     const destination = projectSavedAlgebraOpenInActions(saved, target)[0]!;
     expect(destination).toMatchObject({ id: "algebra.singularity-geometry", enabled: true,
@@ -93,6 +97,8 @@ describe("saved Project algebra locus Open in", () => {
     const exact = projectAlgebraLocusReturn(exactProject, documentId)!;
     expect(exact).toMatchObject({ enabled: true, sourceStatus: "current", sampleHash: null });
     expect(resolveProjectAlgebraLocusReturn(exactProject, exact).target).toEqual(target);
+    expect(() => resolveProjectAlgebraSingularityInspection(exactProject, exact))
+      .toThrow(/no saved exact tangent analysis/);
     const sample = sampleSageAlgebraicLocus(scene);
     const sampledProject = upsertMath3DProjectAlgebraicLocusSample(exactProject, sample);
     const sampled = projectAlgebraLocusReturn(sampledProject, documentId)!;

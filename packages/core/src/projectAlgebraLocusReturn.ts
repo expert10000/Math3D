@@ -5,7 +5,8 @@ import { parseAlgebraicLocusGeometryDocument, sageAlgebraicLocusSceneStatus,
   SAGE_LOCUS_GEOMETRY_EXTENSION } from "./sageAlgebraicLocusScene";
 import { parseSampledAlgebraicLocusGeometryDocument, SAGE_LOCUS_SAMPLE_EXTENSION } from
   "./sageAlgebraicLocusSampling";
-import { parseAlgebraicSingularityGeometryDocument, SAGE_LOCUS_SINGULARITY_EXTENSION } from
+import { parseAlgebraicSingularityGeometryDocument, SAGE_LOCUS_SINGULARITY_EXTENSION,
+  type SageAlgebraicSingularityScene } from
   "./sageAlgebraicSingularity";
 
 export const PROJECT_ALGEBRA_LOCUS_RETURN_SCHEMA_VERSION = 2 as const;
@@ -81,4 +82,21 @@ export const resolveProjectAlgebraLocusReturn = (project: Math3DProject,
   return { projectId: current.source.projectId,
     target: { objectId: current.source.objectId, revision: current.source.revision },
     contentHash: current.source.contentHash };
+};
+
+/** Reads an exact saved inspection only after requalifying its source and checkpoint. */
+export const resolveProjectAlgebraSingularityInspection = (project: Math3DProject,
+  choice: ProjectAlgebraLocusReturn): SageAlgebraicSingularityScene => {
+  resolveProjectAlgebraLocusReturn(project, choice);
+  if (!choice.analysisHash || !choice.inspectionPoint || choice.sampleHash)
+    throw new TypeError("The selected Geometry checkpoint has no saved exact tangent analysis.");
+  const entry = project.workspace.entries.find(item => item.expected.id === choice.documentId);
+  if (entry?.checkpoint.format !== "math3d.geometry-document")
+    throw new TypeError("The saved tangent Geometry checkpoint is unavailable.");
+  const analysis = parseAlgebraicSingularityGeometryDocument(entry.checkpoint, project).analysis;
+  if (analysis.analysisHash !== choice.analysisHash ||
+      analysis.scene.sceneHash !== choice.sceneHash ||
+      JSON.stringify(analysis.point) !== JSON.stringify(choice.inspectionPoint))
+    throw new TypeError("The saved exact tangent analysis changed; review its Geometry checkpoint again.");
+  return analysis;
 };
