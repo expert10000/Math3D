@@ -13,7 +13,7 @@ import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, 
   upsertMath3DProjectComposition, upsertMath3DProjectSavedMeshComparison, inspectProjectCompositionAvailability,
   migrateProjectScientificSelections,
   createProjectStudyFromDocuments, renameProjectStudy, forkProjectStudy,
-  createProjectQwzQuadStudy, qualifyProjectQwzPair,
+  createProjectQwzQuadStudy, pinProjectQwzSample, qualifyProjectQwzPair,
   type ProjectComposition, type ProjectSavedMeshComparison,
   type ProjectNote,
   type Math3DProject, type MixedWorkspaceDocument, type KernelWorkspaceModule, type QuantumSceneDocument, type ViewerProvenanceEvidence } from "@math3d/core";
@@ -1990,6 +1990,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                 crypto.randomUUID(), studyTitle), "Study forked.")}
               onLink={id => stageStudy(source => addQualifiedStudyGraphCurveLink(source, id), "Graph–Curve parameter link added.")}
               onCreateQwz={id => { void stageQwzQuadStudy(id); }}
+              onPinQwz={(id, sampleIndex) => stageStudy(source => pinProjectQwzSample(source, id, sampleIndex),
+                "QWZ k selection pinned in Study.")}
               onOpenDocument={(id, module) => viewBesideProject(id, module)} />
           </div>}
           {!quick && detailView && project && <ProjectRelationshipMap project={project} titles={documentTitles}
