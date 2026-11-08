@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { algebraicLocusGeometryDocument, algebraicSingularityGeometryDocument,
   analyzeSageAlgebraicSingularity, buildSageAlgebraicLocusScene,
-  createAlgebraObjectRecord, createMath3DProject,
+  compareProjectAlgebraLocusEvidence, createAlgebraObjectRecord, createMath3DProject,
   createMixedWorkspaceDocument, createProjectAlgebraObjectId, parseMath3DProject,
   projectAlgebraLocusReturn, projectSavedAlgebraLocusEvidence,
   projectSavedAlgebraOpenInActions,
@@ -32,6 +32,43 @@ const fixture = () => {
 };
 
 describe("saved Project algebra locus Open in", () => {
+  it("compares saved sample and tangent contracts without inferring numerical equivalence", () => {
+    const { project, target, scene } = fixture();
+    const sample = sampleSageAlgebraicLocus(scene);
+    const tangent = analyzeSageAlgebraicSingularity(scene, ["1", "0"]);
+    const saved = upsertMath3DProjectAlgebraicSingularityScene(
+      upsertMath3DProjectAlgebraicLocusSample(project, sample), tangent);
+    const [sampleChoice, tangentChoice] = projectSavedAlgebraLocusEvidence(saved, target);
+    const comparison = compareProjectAlgebraLocusEvidence(saved, sampleChoice!, tangentChoice!);
+    expect(comparison).toMatchObject({ sameSourceRevision: true, sameEquations: true,
+      sameRealBounds: true, samePrecision: true, sameExactScene: true,
+      left: { kind: "sampled", method: sample.algorithm, sampleCount: sample.sampleCount },
+      right: { kind: "singularity", inspectionPoint: ["1", "0"] } });
+    expect(() => compareProjectAlgebraLocusEvidence(saved, sampleChoice!, sampleChoice!))
+      .toThrow(/distinct/);
+  });
+
+  it("reports changed bounds and rechecks both comparison checkpoints", () => {
+    const { project, qq, target, scene } = fixture();
+    const other = buildSageAlgebraicLocusScene(project, target, { polynomial: "x^2+y^2-1",
+      bounds: [{ min: -1, max: 1 }, { min: -1, max: 1 }], tolerance: 0.001,
+      maxSamples: 8000 });
+    const saved = upsertMath3DProjectAlgebraicLocusScene(
+      upsertMath3DProjectAlgebraicLocusScene(project, scene), other);
+    const [first, second] = projectSavedAlgebraLocusEvidence(saved, target);
+    expect(compareProjectAlgebraLocusEvidence(saved, first!, second!)).toMatchObject({
+      sameSourceRevision: true, sameEquations: true, sameRealBounds: false,
+      samePrecision: true, sameExactScene: false });
+    expect(() => compareProjectAlgebraLocusEvidence(saved, first!,
+      { ...second!, documentHash: `sha256:${"0".repeat(64)}` })).toThrow(/changed/);
+    const revised = createAlgebraObjectRecord({ id: target.objectId, revision: 2, label: "R revised",
+      definition: { kind: "polynomial-ring", coefficientDomain: {
+        objectId: qq.id, revision: 1 }, variables: ["x", "y"],
+        monomialOrder: "lex" } });
+    const historical = upsertMath3DProjectAlgebraObject(saved, revised);
+    expect(() => compareProjectAlgebraLocusEvidence(historical, first!, second!))
+      .toThrow(/changed/);
+  });
   it("lists only validated saved evidence for the selected algebra revision", () => {
     const { project, qq, target, scene } = fixture();
     const sample = sampleSageAlgebraicLocus(scene);
