@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { analyzeBiquadraticExtensionFromDefinition, analyzeFiniteGroup, analyzeQuadraticNumberField,
+  canonicalJsonStringify,
   ellipticCurveFacts,
   createGaloisGroupObject, inspectProjectAlgebraFreshness,
   compareProjectAlgebraLocusEvidence, projectSavedAlgebraLocusEvidence,
@@ -173,6 +174,18 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
     catch (error) { return { value: null,
       error: `The saved locus comparison changed: ${(error as Error).message}` }; }
   }, [project, selectedSavedChoice, comparisonChoice, activeSavedLocus]);
+  const exportComparison = () => {
+    if (!project || !selectedSavedChoice || !comparisonChoice) return;
+    try {
+      const report = compareProjectAlgebraLocusEvidence(project, selectedSavedChoice, comparisonChoice);
+      const url = URL.createObjectURL(new Blob([canonicalJsonStringify(report)],
+        { type: "application/json" }));
+      const link = document.createElement("a");
+      link.href = url; link.download = `math3d-locus-comparison-${report.comparisonHash.slice(-12)}.json`;
+      document.body.appendChild(link); link.click(); link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) { setHandoffError(`Saved locus comparison could not export: ${String(error)}`); }
+  };
   const chooseCommand = (command: SagePaletteAction) => {
     const token = ++commandSequence.current;
     if (command.kind === "operation") { setCommandOperation({ id: command.id, token });
@@ -433,7 +446,23 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       <div>Right: {comparison.value.right.kind}{comparison.value.right.method
         ? ` · ${comparison.value.right.method} · ${comparison.value.right.sampleCount} evaluations` : ""}
         {` · ${comparison.value.right.sourceStatus}`}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 8 }}>
+        {([comparison.value.left, comparison.value.right] as const).map((side, index) =>
+          <div key={side.documentId} data-testid={index === 0 ? "cas-comparison-left" : "cas-comparison-right"}
+            style={{ border: "1px solid #dbe2ea", borderRadius: 6, padding: 8, overflowWrap: "anywhere" }}>
+            <strong>{index === 0 ? "Left" : "Right"} · {side.label}</strong>
+            <div>Checkpoint: {side.documentId} @ {side.documentRevision}</div>
+            <div>Exact equations: {side.equations.map(item => `${item} = 0`).join("; ")}</div>
+            <div>Real bounds: {side.realBounds.map(bound =>
+              `${bound.variable} ∈ [${bound.min}, ${bound.max}]`).join(" · ")}</div>
+            <div>Precision: tolerance {side.precision.tolerance}; sample cap {side.precision.maxSamples}</div>
+            {side.classification && <div>Tangent classification: {side.classification}</div>}
+            {side.warnings.length > 0 && <div>Sample warnings: {side.warnings.join(" ")}</div>}
+            <small>Checkpoint hash: {side.documentHash}<br />Exact scene hash: {side.sceneHash}</small>
+          </div>)}
+      </div>
       <small>This compares saved contracts and evidence metadata; it does not claim equal loci or numerical overlap.</small>
+      <button type="button" style={action} onClick={exportComparison}>Export comparison JSON</button>
       <button type="button" style={action} onClick={() => setComparisonChoice(null)}>Close comparison</button>
     </section>}
     {activeSavedLocus && selectedSavedChoice && <section
