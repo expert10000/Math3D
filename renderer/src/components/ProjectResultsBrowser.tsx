@@ -109,7 +109,7 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
   const references = useMemo(() => result ? [
     ...resultNoteReferences(project, result), ...resultStudyReferences(project, result),
     ...(workbookBytes ? resultWorkbookReferences(project, result, workbookBytes) : []),
-  ] : [], [project, result, workbookBytes]);
+  ] : [], [project, result, workbookBytes, readResource]);
   const resultCard = result && presentProjectResultCard(result, resultStatus,
     regionResultStatuses[result.resultId], isRegionResult(result.provenance.operation.type));
   const artifactStatus = artifact && inspection?.artifacts.find(item => item.id === artifact.handle.artifactId);

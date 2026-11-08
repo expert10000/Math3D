@@ -141,6 +141,44 @@ test("Catenoid Project Details shows freshness for its saved Mesh analysis", asy
   } finally { await closeSurfaceApp(ctx); }
 });
 
+test("Project Result opens its exact Note and cited Workbook block", async () => {
+  test.setTimeout(180_000);
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp();
+    await resetSurfaceAppState(ctx.page);
+    const page = ctx.page;
+    await page.getByTestId("projects-toggle").click();
+    await page.getByTestId("project-template-open-catenoid-evidence").click();
+    await expect(page.getByTestId("project-source-editor")).toBeVisible();
+    await page.getByTestId("project-gallery-layout-toggle").click();
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("math3d.project.v1")),
+      { timeout: 60_000 }).not.toBeNull();
+    const project = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const resultNote = project.notes.find((note: { anchor?: { kind?: string } }) =>
+      note.anchor?.kind === "result");
+    await page.getByTestId("project-detail-tab-documents").click();
+    await page.getByTestId("project-research-links")
+      .getByTestId(`project-research-note-${resultNote.identity.id}`)
+      .locator(".project-research-target").first()
+      .getByRole("button", { name: "Inspect result" }).click();
+    await expect(page.getByTestId("project-detail-tab-results")).toHaveAttribute("aria-current", "page");
+    const backlinks = page.getByTestId("project-result-backlinks");
+    await expect(backlinks).toContainText("Exact reference");
+    const noteLink = backlinks.locator('[data-testid^="project-result-backlink-note-"]').first();
+    const workbookLink = backlinks.locator('[data-testid^="project-result-backlink-workbook-"]').first();
+    await expect(noteLink).toContainText(resultNote.title);
+    await expect(workbookLink).toContainText(project.workbooks[0].title);
+    await noteLink.getByRole("button", { name: "Open note" }).click();
+    const notes = page.getByTestId("project-notes-panel");
+    await expect(notes.getByTestId(`project-note-${resultNote.identity.id}`)).toBeVisible();
+    await notes.getByRole("button", { name: "Back to Project" }).click();
+    await expect(backlinks).toBeVisible();
+    await workbookLink.getByRole("button", { name: "Open block" }).click();
+    await expect(page.getByTestId("project-middle-workbook")).toBeVisible({ timeout: 60_000 });
+  } finally { await closeSurfaceApp(ctx); }
+});
+
 test("Project Documents follows exact Workbook citations and Note anchors", async () => {
   test.setTimeout(180_000);
   let ctx: LaunchedSurfaceApp | null = null;
