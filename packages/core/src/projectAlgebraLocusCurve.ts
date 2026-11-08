@@ -1,5 +1,5 @@
 import { createCurveDocument, normalizeCurveDocument, type CurveDocument } from "./curveDocument";
-import { canonicalJsonStringify } from "./documentIdentity";
+import { canonicalJsonStringify, type StableDocumentId } from "./documentIdentity";
 import { createDocumentRelation } from "./documentRelations";
 import { createMixedWorkspaceDocument } from "./mixedWorkspace";
 import { parseMath3DProject, replaceMath3DProjectWorkspace, serializeMath3DProject,
@@ -155,7 +155,7 @@ export const upsertProjectAlgebraLocusCurve = (project: Math3DProject,
 
 export type ProjectAlgebraLocusCurveSourceStatus = Readonly<{
   status: "current" | "historical" | "stale" | "archived" | "missing" | "invalid";
-  sourceDocumentId: string | null;
+  sourceDocumentId: StableDocumentId | null;
   reason: string | null;
 }>;
 
@@ -204,7 +204,7 @@ export const projectAlgebraLocusCurveSourceStatus = (project: Math3DProject,
 };
 
 export const resolveProjectAlgebraLocusCurveSource = (project: Math3DProject,
-  curve: CurveDocument): string => {
+  curve: CurveDocument): StableDocumentId => {
   const status = projectAlgebraLocusCurveSourceStatus(project, curve);
   if (!status.sourceDocumentId || status.status === "invalid" || status.status === "missing")
     throw new TypeError(status.reason ?? "The saved contour source is unavailable.");
