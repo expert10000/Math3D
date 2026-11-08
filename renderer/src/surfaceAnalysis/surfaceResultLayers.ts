@@ -52,6 +52,30 @@ const cleanLines = (lines: ReadonlyArray<ReadonlyArray<Vec3>>): Vec3[][] => line
   if (run.length >= 2) runs.push(run);
   return runs;
 });
+const cleanMappedLines = (lines: ReadonlyArray<ReadonlyArray<Vec3>>,
+  parameters: ReadonlyArray<ReadonlyArray<readonly [number, number]>>) => {
+  if (lines.length !== parameters.length)
+    throw new TypeError("Surface layer parameter lines must match the geometry lines.");
+  const polylines: Vec3[][] = [], parameterPolylines: Array<Array<readonly [number, number]>> = [];
+  lines.forEach((line, lineIndex) => {
+    const mapped = parameters[lineIndex];
+    if (line.length !== mapped.length)
+      throw new TypeError("Surface layer parameter points must match geometry points.");
+    let spatial: Vec3[] = [], chart: Array<readonly [number, number]> = [];
+    const flush = () => {
+      if (spatial.length >= 2) { polylines.push(spatial); parameterPolylines.push(chart); }
+      spatial = []; chart = [];
+    };
+    line.forEach((point, index) => {
+      const uv = mapped[index]!;
+      if (finitePoint(point) && uv.length === 2 && uv.every(Number.isFinite)) {
+        spatial.push(point); chart.push(uv);
+      } else flush();
+    });
+    flush();
+  });
+  return { polylines, parameterPolylines };
+};
 const lineStatistics = (lines: ReadonlyArray<ReadonlyArray<Vec3>>) => {
   const lengths = lines.map((line) => line.slice(1).reduce((sum, point, index) => sum + distance(line[index], point), 0));
   return {
@@ -80,7 +104,10 @@ export const createSurfaceCurveLayer = (args: {
   warnings?: readonly string[];
   visible?: boolean;
 }): SurfaceCurveResultLayer => {
-  const polylines = cleanLines(args.polylines ?? []);
+  const cleaned = args.parameterPolylines
+    ? cleanMappedLines(args.polylines ?? [], args.parameterPolylines)
+    : { polylines: cleanLines(args.polylines ?? []), parameterPolylines: undefined };
+  const { polylines, parameterPolylines } = cleaned;
   const method = surfaceLayerMethod(args.definition, args.method);
   const parameters = { ...(args.parameters ?? {}) };
   const selectionSource = args.selectionSource ?? defaultSource;
@@ -89,7 +116,7 @@ export const createSurfaceCurveLayer = (args: {
     layerId, identity: args.definition.identity, layerKind: args.layerKind, label: args.label ?? args.layerKind, state: polylines.length ? "ready" : "empty",
     visible: args.visible ?? true, selected: false, method, parameters, selectionSource,
     policy: { ...DEFAULT_SURFACE_LAYER_POLICY, periodicDomain: args.definition.domain.kind === "parameter" && (!!args.definition.domain.u.periodic || !!args.definition.domain.v.periodic), ...(args.policy ?? {}) },
-    polylines, parameterPolylines: args.parameterPolylines, statistics: lineStatistics(polylines),
+    polylines, parameterPolylines, statistics: lineStatistics(polylines),
     warnings: polylines.length ? [...(args.warnings ?? [])] : [...(args.warnings ?? []), "No computed polyline is currently available for this layer."],
   };
 };

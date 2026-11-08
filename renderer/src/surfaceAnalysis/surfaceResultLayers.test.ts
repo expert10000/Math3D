@@ -23,6 +23,15 @@ describe("Surface persistent curve and feature layers", () => {
     expect(layer.statistics).toMatchObject({ curveCount: 2, pointCount: 4, totalLength: 2 });
   });
 
+  it("keeps chart coordinates aligned with every retained Surface run", () => {
+    const layer = createSurfaceCurveLayer({ definition: smooth, layerKind: "geodesic",
+      polylines: [[[0, 0, 0], [1, 0, 0], [Number.NaN, 0, 0], [2, 0, 0], [3, 0, 0]]],
+      parameterPolylines: [[[0, 0], [0.1, 0], [0.2, 0], [0.3, 0], [0.4, 0]]] });
+    expect(layer.parameterPolylines).toEqual([[[0, 0], [0.1, 0]], [[0.3, 0], [0.4, 0]]]);
+    expect(layer.parameterPolylines?.map(line => line.length))
+      .toEqual(layer.polylines.map(line => line.length));
+  });
+
   it("labels discrete geometry mesh-approximation even when analytic is requested", () => {
     expect(surfaceLayerMethod(mesh, "analytic")).toBe("mesh-approximation");
     expect(createSurfaceFeatureLayer({ definition: mesh, method: "analytic", layerKind: "ridge", points: [[0, 0, 0]] }).method).toBe("mesh-approximation");
