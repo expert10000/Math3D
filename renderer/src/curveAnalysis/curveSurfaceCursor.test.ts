@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { instantiateMath3DProjectTemplate, replaceCurveDocumentSource, replaceSurfaceDocumentSource,
+import { createDocumentRelation, instantiateMath3DProjectTemplate, replaceCurveDocumentSource, replaceSurfaceDocumentSource,
   viewerSourceFromDocument } from "@math3d/core";
 import { ScientificCursorBus } from "../components/scientificCursor";
 import { curveParameterFrame } from "./curveCursor";
-import { currentCurveSurfacePair, curveSurfaceCursorDraft, projectCurveSurfaceParameter } from "./curveSurfaceCursor";
+import { currentCurveSurfacePair, curveSurfaceCursorDraft, curveSurfaceReturnDraft, projectCurveSurfaceParameter } from "./curveSurfaceCursor";
 
 const project = instantiateMath3DProjectTemplate("curve-construction-study", "cursor-chart");
 const chart = project.workspace.entries.find(entry => entry.checkpoint.format === "math3d.surface-document" &&
@@ -46,5 +46,27 @@ describe("M3D20-03 Curve-on-Surface cursor", () => {
     const shared = new ScientificCursorBus().publishProject(draft.value, draft.value.source);
     expect(projectCurveSurfaceParameter(shared, project, chart.identity.id)).toEqual({ status: "matched", value: { u: 0.75, v: 0.5625 } });
     expect(curveSurfaceCursorDraft(project, trace.identity.id, chart.identity.id, 2, "saved-curve").status).toBe("outside");
+  });
+  it("returns a chart coordinate to t only when the saved trace has an identity axis", () => {
+    const pick = { surfaceId: chart.identity.id, revision: chart.identity.revision,
+      hash: chart.identity.structuralHash, uv: { u: 0.5, v: 0.25 } };
+    const result = curveSurfaceReturnDraft(project, trace.identity.id, pick, "chart-view");
+    expect(result).toMatchObject({ status: "matched", value: { position: [0.5], sourceModule: "curve" } });
+    expect(curveSurfaceReturnDraft(project, trace.identity.id, { ...pick, uv: { u: 0.5, v: 0.3 } }, "chart-view").status).toBe("outside");
+    expect(curveSurfaceReturnDraft(project, trace.identity.id, { ...pick, hash: "sha256:changed" }, "chart-view").status).toBe("incompatible-source");
+  });
+  it("refuses a non-injective chart expression without guessing an inverse", () => {
+    const changed = replaceCurveDocumentSource(trace, { ...trace.source, definition: {
+      ...trace.source.definition, expressions: { u: "t*t", v: "t*t" } } });
+    const relation = createDocumentRelation({ kind: "derived-from", sources: [viewerSourceFromDocument(chart)],
+      sourceOrder: "ordered", target: { type: "document", generation: viewerSourceFromDocument(changed) },
+      operation: "surface.chart-curve", parameters: {} });
+    const revised = { ...project, workspace: { ...project.workspace,
+      entries: project.workspace.entries.map(entry => entry.expected.id === trace.identity.id ?
+        { ...entry, checkpoint: changed, expected: changed.identity, replay: null } : entry),
+      relations: project.workspace.relations.map(item => item.operation === "surface.chart-curve" ? relation : item) } };
+    expect(curveSurfaceReturnDraft(revised, changed.identity.id, { surfaceId: chart.identity.id,
+      revision: chart.identity.revision, hash: chart.identity.structuralHash, uv: { u: 0.25, v: 0.25 } },
+    "chart-view").status).toBe("ambiguous");
   });
 });
