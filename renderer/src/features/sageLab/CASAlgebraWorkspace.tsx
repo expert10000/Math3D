@@ -53,6 +53,7 @@ export type CASAlgebraWorkspaceProps = Omit<SageServicesWorkspaceProps, "structu
   onSaveLocusScene?: (scene: SageAlgebraicLocusScene) => void | Promise<void>;
   onSaveLocusSample?: (sample: SageAlgebraicLocusSample) => void | Promise<void>;
   onOpenLocusGeometry?: (documentId: string) => void | Promise<void>;
+  onPromoteLocusCurve?: (choice: ProjectAlgebraLocusReturn) => void | Promise<void>;
   requestedSelection?: { projectId: string; target: AlgebraObjectRef;
     contentHash: string; evidence?: ProjectAlgebraLocusReturn | null; token: number } | null;
   onSaveLocusSingularity?: (analysis: SageAlgebraicSingularityScene) => void | Promise<void>;
@@ -77,7 +78,8 @@ const readSavedSelection = (project: Math3DProject | null): unknown => {
 };
 
 export default function CASAlgebraWorkspace({ project, onCreateStructure, onSaveEvidence, onSaveRecipe,
-  onSaveLocusScene, onSaveLocusSample, onOpenLocusGeometry, onSaveLocusSingularity, onAppendRecipeEvidence, onOpenProjects,
+  onSaveLocusScene, onSaveLocusSample, onOpenLocusGeometry, onPromoteLocusCurve,
+  onSaveLocusSingularity, onAppendRecipeEvidence, onOpenProjects,
   onInstallGalleryExample, requestedSelection, workspaceContext = "cas", ...props }: CASAlgebraWorkspaceProps) {
   const [selection, setSelection] = useState<AlgebraObjectRef | null>(() =>
     resolveStructureSelection(project, requestedSelection && requestedSelection.projectId === project?.identity.id
@@ -491,6 +493,14 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
         } catch (error) { setHandoffError(`Saved Geometry could not open: ${String(error)}`); }
       }}>Open saved {activeSavedLocus.kind === "singularity" ? "tangent" :
         activeSavedLocus.kind === "sampled" ? "sampled" : "exact"} Geometry</button>}
+      {onPromoteLocusCurve && activeSavedLocus.kind === "sampled" &&
+        activeSavedLocus.sample.kind === "curve" && activeSavedLocus.sample.scene.domain.bounds.length === 2 &&
+        <div><button type="button" style={action} data-testid="cas-open-saved-locus-curve"
+          disabled={selectedSavedChoice.sourceStatus !== "current"} onClick={() => {
+            void Promise.resolve().then(() => onPromoteLocusCurve(selectedSavedChoice))
+              .catch(error => setHandoffError(`Saved contour could not open in Curves: ${String(error)}`));
+          }}>Open bounded contour in Curves</button>
+          <small style={{ display: "block" }}>Promotes one connected numerical contour with its saved Geometry source. Multiple components or branches require Geometry inspection.</small></div>}
     </section>}
     {onSaveLocusScene && onSaveLocusSample && onSaveLocusSingularity && (chosen.record.definition.kind === "ideal" ||
       chosen.record.definition.kind === "polynomial-ring") &&

@@ -816,6 +816,7 @@ import {
   upsertMath3DProjectAlgebraicLocusScene,
   SAGE_LOCUS_GEOMETRY_EXTENSION,
   upsertMath3DProjectAlgebraicLocusSample,
+  upsertProjectAlgebraLocusCurve,
   upsertMath3DProjectAlgebraicSingularityScene,
   upsertProjectScientificSelection,
   upsertProjectLineIntegralResult,
@@ -111998,6 +111999,25 @@ case "mobius":
           reopenProjectWorkspace(current.workspace, restoredProjectRef.current?.resources, current);
           if (!navigateRestoredDocument(documentId, "geometry"))
             throw new TypeError("The saved locus Geometry document could not be opened.");
+          setCasWorkspaceOpen(false); setProjectsOpen(false);
+        }}
+        onPromoteLocusCurve={(choice) => {
+          const current = projectForNotePins;
+          if (!current || current.identity.id !== choice.source.projectId)
+            throw new TypeError("Open the matching Project before promoting a saved contour.");
+          const savedBytes = localStorage.getItem(projectPayloadKey(current.identity.id));
+          if (!savedBytes || parseMath3DProject(savedBytes).identity.structuralHash !== current.identity.structuralHash)
+            throw new TypeError("The saved Project changed. Reopen it before promoting the contour.");
+          const result = upsertProjectAlgebraLocusCurve(current, choice);
+          saveLibraryProject(localStorage, result.project, Date.now(), undefined,
+            { expectedBytes: savedBytes });
+          activeNotebookProjectRef.current = result.project;
+          setNotebookProjectVersion((version) => version + 1);
+          window.dispatchEvent(new Event("math3d:project-saved-externally"));
+          reopenProjectWorkspace(result.project.workspace, restoredProjectRef.current?.resources,
+            result.project);
+          if (!navigateRestoredDocument(result.curve.identity.id, "curve"))
+            throw new TypeError("The promoted Curve could not be opened.");
           setCasWorkspaceOpen(false); setProjectsOpen(false);
         }}
         onSaveRecipe={(recipe) => {
