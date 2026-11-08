@@ -119,8 +119,18 @@ test("SAGE-F03 distinguishes cusp and node tangent views, then independently reo
     await expect(savedInspection).toContainText("Ordinary cusp");
     await expect(savedInspection).toContainText("Jacobian at point");
     await expect(ctx.page.getByTestId("cas-locus-preview")).toHaveCount(0);
-    const savedChoices = ctx.page.getByTestId("cas-saved-locus-choices").getByRole("button");
+    const savedChoices = ctx.page.getByTestId("cas-saved-locus-choices")
+      .locator('button[data-testid^="cas-saved-locus-choice-"]');
     await expect(savedChoices).toHaveCount(2);
+    await ctx.page.getByTestId("cas-saved-locus-choices")
+      .getByRole("button", { name: "Compare with selected" }).click();
+    const comparison = ctx.page.getByTestId("cas-saved-locus-comparison");
+    await expect(comparison).toContainText("Source revision: same");
+    await expect(comparison).toContainText("exact equations: different");
+    await expect(comparison).toContainText("Real bounds: same");
+    await expect(comparison).toContainText("exact scene: different");
+    await comparison.getByRole("button", { name: "Close comparison" }).click();
+    await expect(comparison).toHaveCount(0);
     await savedChoices.nth(1).click();
     await expect(savedInspection).toContainText("Ordinary real node");
     await savedChoices.first().click();
