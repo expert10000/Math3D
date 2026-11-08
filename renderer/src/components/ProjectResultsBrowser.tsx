@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { matchesScientificSourceGeneration, viewerSourceFromDocument,
+  type ScientificSourceGeneration } from "@math3d/core";
 import { VECTOR_FIELD3D_POINT_RESULT_TYPE, VECTOR_FIELD3D_REGION_RESULT_TYPE,
   VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE, type KernelWorkspaceModule,
   VECTOR_FIELD3D_DERIVED_REGION_RESULT_TYPE,
@@ -100,9 +102,13 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
   const artifactStatus = artifact && inspection?.artifacts.find(item => item.id === artifact.handle.artifactId);
   const linkedResults = artifact ? results.filter(item => item.artifacts.some(handle => handle.artifactId === artifact.handle.artifactId)) : [];
   const artifactRelations = artifact ? project.workspace.relations.filter(relation => relation.target.type === "artifact" && relation.target.artifactId === artifact.handle.artifactId) : [];
-  const sourceButton = (id: string) => {
+  const sourceButton = (id: string, recorded?: ScientificSourceGeneration) => {
     const entry = project.workspace.entries.find(item => item.expected.id === id);
-    return <button type="button" disabled={!entry || !canOpen(id, entry.module)} onClick={() => entry && onOpen(id, entry.module)}>{titles.get(id) ?? id}</button>;
+    const title = titles.get(id) ?? id;
+    if (!entry) return <span data-testid="project-result-source-missing">{title} · source document missing</span>;
+    if (recorded && !matchesScientificSourceGeneration(viewerSourceFromDocument({ identity: entry.expected }), recorded))
+      return <span data-testid="project-result-source-historical">{title} · recorded r{recorded.revision} g{recorded.generation}; current r{entry.expected.revision} g{entry.expected.generation}</span>;
+    return <button type="button" disabled={!canOpen(id, entry.module)} onClick={() => onOpen(id, entry.module)}>{title}</button>;
   };
 
   return <div className="project-results-browser" data-testid="project-results-browser">
@@ -180,7 +186,7 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
               Create verified equilibrium Workbook report</button>
           </div>}
           <dl><div><dt>Source document</dt><dd>{meshSourceIsHistorical ?
-            <span>{titles.get(result.provenance.source.documentId) ?? result.provenance.source.documentId} · historical revision; use the exact generation view above when available</span> : sourceButton(result.provenance.source.documentId)}</dd></div>
+            <span>{titles.get(result.provenance.source.documentId) ?? result.provenance.source.documentId} · historical revision; use the exact generation view above when available</span> : sourceButton(result.provenance.source.documentId, result.provenance.source)}</dd></div>
             <div><dt>Source generation</dt><dd>Revision {result.provenance.source.revision} · generation {result.provenance.source.generation}</dd></div>
             <div><dt>Source hash</dt><dd><code>{result.provenance.source.structuralHash}</code></dd></div>
             <div><dt>Method</dt><dd>{result.provenance.operation.algorithm} · version {result.provenance.operation.algorithmVersion}</dd></div>
@@ -285,7 +291,7 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
             onClick={() => select({ kind: "result", id: item.resultId })}>{item.provenance.operation.type} · {titles.get(item.provenance.source.documentId) ?? item.provenance.source.documentId} · r{item.provenance.source.revision} g{item.provenance.source.generation}</button>)}</div> : <p>No result reference recorded.</p>}
           <h5>Recorded relation sources ({artifactRelations.length})</h5>
           {artifactRelations.length ? <ul>{artifactRelations.flatMap(relation => relation.sources.map(source => <li key={`${relation.relationId}:${source.documentId}`}>
-            {sourceButton(source.documentId)} · revision {source.revision} · generation {source.generation}
+            {sourceButton(source.documentId, source)} · revision {source.revision} · generation {source.generation}
           </li>))}</ul> : <p>No direct relation to a source document recorded.</p>}
         </>}
         {!result && !artifact && <p>No saved result or artifact is available to inspect.</p>}
