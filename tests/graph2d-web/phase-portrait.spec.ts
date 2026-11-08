@@ -17,7 +17,6 @@ test("GRA-11.3 authors and edits a planar phase portrait with directions and orb
   await saveGraphEditor(page);
   await expect(functions).toContainText("x' = y; y' = -x");
   const inspector = page.getByRole("complementary", { name: "Graph inspector" });
-  await inspector.getByLabel("Phase equilibrium evaluation budget").selectOption("12000");
   await expect(inspector).toContainText("Adaptive phase portrait");
   await expect(inspector.getByTestId("graph2d-phase-orbits")).toContainText("forward time-horizon");
   await expect(inspector.getByTestId("graph2d-phase-nullclines")).toContainText("complete");
