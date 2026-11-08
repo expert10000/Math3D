@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createProjectQwzQuadStudy, createQuantumSceneDocument, instantiateMath3DProjectTemplate,
-  parseMath3DProject, qualifyProjectQwzPair, serializeMath3DProject,
+  parseMath3DProject, qualifyProjectQwzPair, qualifyProjectQwzQuadStudy, serializeMath3DProject,
   type ProjectQuantumSceneReference } from "@math3d/core";
 import { admitVerifiedQwzStudy } from "./quantumStudyAdmission";
 
@@ -35,7 +35,11 @@ describe("M3D20-04 QWZ four-view Study assembly", () => {
     ] });
     expect(study.links).toMatchObject([{ mappingId: "quantum.qwz.reciprocal-k", direction: "two-way" }]);
     expect(next.workspace.entries).toEqual(project.workspace.entries);
+    expect(qualifyProjectQwzQuadStudy(next, study)).not.toBeNull();
     expect(parseMath3DProject(serializeMath3DProject(next)).workspace.studies).toEqual([study]);
+    expect(qualifyProjectQwzQuadStudy(next, { ...study, layout: { ...study.layout,
+      panes: study.layout.panes.map((pane, index) => index === 2 ? { ...pane,
+        viewConfigId: "qwz.inspector" } : pane) } })).toBeNull();
   });
   it("refuses missing references, mismatched coordinates and changed generations", async () => {
     const project = await admitted(), id = project.workspace.quantumStudies![0]!.id;

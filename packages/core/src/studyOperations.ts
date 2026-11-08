@@ -131,3 +131,29 @@ export function createProjectQwzQuadStudy(project: Math3DProject, quantumStudyId
   if (source.workspace.studies?.some(item => item.id === study.id)) throw new TypeError("QWZ Study identity already exists.");
   return upsertProjectStudy(source, study);
 }
+
+/** Imported view-config labels are not authority: requalify every role against its source pair. */
+export function qualifyProjectQwzQuadStudy(project: Math3DProject, study: StudyRecordV1): ProjectQwzPair | null {
+  if (study.projectId !== project.identity.id ||
+      !project.workspace.studies?.some(item => item.id === study.id) ||
+      study.layout.mode !== "quad" || study.layout.panes.length !== 4 || study.members.length !== 2) return null;
+  const expectedPanes = [
+    ["curvature", "curvature", "qwz.curvature"], ["bands", "bands", "qwz.bands"],
+    ["reciprocal", "curvature", "qwz.reciprocal"], ["inspector", "curvature", "qwz.inspector"],
+  ];
+  if (study.layout.panes.some((pane, index) => pane.paneId !== expectedPanes[index]![0] ||
+      pane.memberId !== expectedPanes[index]![1] || pane.viewConfigId !== expectedPanes[index]![2]) ||
+      !study.links.some(link => link.id === "qwz-reciprocal-k" && link.kind === "cursor" &&
+        link.sourcePaneId === "curvature" && link.targetPaneId === "bands" &&
+        link.mappingId === "quantum.qwz.reciprocal-k" && link.direction === "two-way")) return null;
+  for (const quantum of project.workspace.quantumStudies ?? []) {
+    const pair = qualifyProjectQwzPair(project, quantum.id);
+    if (pair && study.members.some(member => member.memberId === "curvature" &&
+        member.documentId === pair.curvature.identity.id &&
+        canonicalJsonStringify(member.expected) === canonicalJsonStringify(pair.curvature.identity)) &&
+        study.members.some(member => member.memberId === "bands" &&
+          member.documentId === pair.bands.identity.id &&
+          canonicalJsonStringify(member.expected) === canonicalJsonStringify(pair.bands.identity))) return pair;
+  }
+  return null;
+}

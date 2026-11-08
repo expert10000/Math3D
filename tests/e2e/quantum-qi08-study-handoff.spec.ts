@@ -46,6 +46,15 @@ test("Lab QWZ study handoff stages both exact scenes in a new Math3D Project", a
     await studies.getByTestId("project-study-preview-toggle-bands").click();
     await expect(studies.getByTestId("project-study-quantum-view")).toHaveAttribute("data-role", "bands", { timeout: 60_000 });
     await expect(studies.getByTestId("project-study-quantum-view")).toHaveCount(1);
+    await studies.getByTestId("project-study-preview-toggle-reciprocal").click();
+    await expect(studies.getByTestId("project-study-quantum-view")).toHaveAttribute("data-role", "reciprocal", { timeout: 60_000 });
+    await studies.getByLabel("Band sample index").fill("0");
+    await studies.getByTestId("project-study-share-qwz-k").click();
+    await expect(studies.getByTestId("project-study-qwz-cursor-status")).toContainText("Berry curvature", { timeout: 60_000 });
+    await expect(studies.getByTestId("project-study-quantum-linked-k")).toContainText("Linked k=");
+    await studies.getByTestId("project-study-preview-toggle-inspector").click();
+    await expect(studies.getByTestId("project-study-qwz-inspector")).toContainText("Chern number: -1", { timeout: 60_000 });
+    await expect(studies.getByTestId("project-study-quantum-linked-k")).toContainText("Linked k=");
     await projects.getByTestId("project-save").click();
     await expect(projects.getByTestId("project-message")).toContainText("Saved", { timeout: 60_000 });
     await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1") || "null")?.workspace.entries

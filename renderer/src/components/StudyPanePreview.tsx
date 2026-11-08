@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { sampleGraph2DScene, type Graph2DProbe, type Math3DProject, type StudyRecordV1 } from "@math3d/core";
+import { qualifyProjectQwzQuadStudy, sampleGraph2DScene,
+  type Graph2DProbe, type Math3DProject, type StudyRecordV1 } from "@math3d/core";
 import { Graph2DPlot } from "../graph2d/Graph2DPlot";
 import { GeometryViewer } from "./GeometryViewer";
 import { additionalRepresentationView } from "../projects/additionalProjectRepresentations";
@@ -46,9 +47,11 @@ export function StudyPanePreview({ project, study, paneId, resources }: {
       }
       const viewConfigId = study.layout.panes.find(item => item.paneId === paneId)?.viewConfigId;
       if (document.format === "math3d.quantum-scene-document" &&
-          (viewConfigId === "qwz.curvature" || viewConfigId === "qwz.bands"))
+          qualifyProjectQwzQuadStudy(project, study) &&
+          (viewConfigId === "qwz.curvature" || viewConfigId === "qwz.bands" ||
+            viewConfigId === "qwz.reciprocal" || viewConfigId === "qwz.inspector"))
         return { kind: "quantum" as const, document,
-          role: viewConfigId === "qwz.curvature" ? "curvature" as const : "bands" as const };
+          role: viewConfigId.slice(4) as "curvature" | "bands" | "reciprocal" | "inspector" };
       return { kind: "withheld" as const,
         reason: "This document has no read-only Study pane viewer yet. Open its owning document." };
     } catch (error) { return { kind: "withheld" as const,

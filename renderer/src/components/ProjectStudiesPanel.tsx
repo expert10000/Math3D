@@ -1,9 +1,10 @@
 import { lazy, Suspense, useState } from "react";
-import { inspectProjectStudyMembers, qualifyProjectQwzPair,
+import { inspectProjectStudyMembers, qualifyProjectQwzPair, qualifyProjectQwzQuadStudy,
   type KernelWorkspaceModule, type Math3DProject } from "@math3d/core";
 import type { VerifiedProjectResources } from "../projects/projectResources";
 import { qualifyStudyGraphCurveLink, studyHasQualifiedGraphCurveLink } from "../projects/studyGraphCurveLink";
 import { StudyGraphCurveControl } from "./StudyGraphCurveControl";
+import { StudyQwzCursorControl } from "./StudyQwzCursorControl";
 
 const StudyPanePreview = lazy(() => import("./StudyPanePreview").then(module => ({ default: module.StudyPanePreview })));
 
@@ -27,6 +28,7 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, o
   const open = studies.find(study => study.id === openId) ?? null;
   const graphCurvePair = open ? qualifyStudyGraphCurveLink(project, open) : null;
   const graphCurveLinked = !!open && !!graphCurvePair && studyHasQualifiedGraphCurveLink(open, graphCurvePair);
+  const qwzPair = open ? qualifyProjectQwzQuadStudy(project, open) : null;
   const choiceById = new Map(documents.map(document => [document.id, document]));
   const statusByMember = new Map(open ? inspectProjectStudyMembers(project, open).map(item => [item.memberId, item.status]) : []);
   const statusLabel = { "current-reference": "Source current", changed: "Source changed",
@@ -65,6 +67,7 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, o
       {graphCurvePair && !graphCurveLinked && editable && <button type="button" data-testid="project-study-link-graph-curve"
         onClick={() => onLink(open.id)}>Link promoted Graph and Curve</button>}
       {graphCurvePair && graphCurveLinked && <StudyGraphCurveControl project={project} pair={graphCurvePair} studyId={open.id} />}
+      {qwzPair && <StudyQwzCursorControl project={project} pair={qwzPair} />}
       <div data-testid="project-study-panes" data-layout={open.layout.mode} style={{ display: "grid",
         gridTemplateColumns: open.layout.mode === "single" || open.layout.mode === "tabs" ? "1fr" : "repeat(2, minmax(0, 1fr))", gap: 8 }}>
         {open.layout.panes.map(pane => {
