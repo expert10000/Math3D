@@ -3,7 +3,8 @@ import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/pr
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { createMixedWorkspaceDocument, createProjectQwzQuadStudy, createQuantumSceneDocument,
-  createQuantumStudyFromTemplate, instantiateMath3DProjectTemplate, qualifyProjectQwzQuadStudy,
+  createQuantumStudyFromTemplate, inspectProjectQwzPinnedSample, instantiateMath3DProjectTemplate,
+  pinProjectQwzSample, qualifyProjectQwzQuadStudy,
   linkQuantumSceneDocuments, parseMath3DProject, relinkMath3DProjectQuantumScene,
   replaceMath3DProjectWorkspace, serializeMath3DProject, upsertMath3DProjectQuantumScene,
   type QuantumSceneDocumentSource } from "@math3d/core";
@@ -47,6 +48,7 @@ describe("content-addressed portable QWZ Project", () => {
         quantumStudies: [createQuantumStudyFromTemplate("qwz", documents[0]!, documents)] }));
       project = createProjectQwzQuadStudy(project, project.workspace.quantumStudies![0]!.id,
         "portable-quad", "Portable QWZ four-view Study");
+      project = pinProjectQwzSample(project, project.workspace.studies![0]!.id, 0);
       let portable = project;
       for (const reference of project.quantumScenes!) portable = relinkMath3DProjectQuantumScene(portable,
         reference.sceneFingerprint, `scenes/${reference.sceneFingerprint}.qscene`);
@@ -78,7 +80,11 @@ describe("content-addressed portable QWZ Project", () => {
       expect(restored.workspace.entries.some(entry => entry.module === "geometry")).toBe(true);
       expect(restored.workspace.entries.filter(entry => entry.module === "quantum").length).toBe(2);
       expect(restored.workspace.studies?.[0]?.layout.mode).toBe("quad");
-      expect(qualifyProjectQwzQuadStudy(restored, restored.workspace.studies![0]!)).not.toBeNull();
+      const restoredStudy = restored.workspace.studies![0]!;
+      const restoredPair = qualifyProjectQwzQuadStudy(restored, restoredStudy);
+      expect(restoredPair).not.toBeNull();
+      expect(inspectProjectQwzPinnedSample(restoredStudy, restoredPair!))
+        .toEqual({ status: "current", sampleIndex: 0 });
       for (const reference of restored.quantumScenes!) {
         const scene = await importQuantumSceneBundle(reference.directory);
         expect(sceneFingerprint(scene)).toBe(reference.sceneFingerprint);
