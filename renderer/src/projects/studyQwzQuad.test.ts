@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createProjectQwzQuadStudy, createQuantumSceneDocument, instantiateMath3DProjectTemplate,
-  parseMath3DProject, qualifyProjectQwzPair, qualifyProjectQwzQuadStudy, serializeMath3DProject,
+  inspectProjectQwzPinnedSample, parseMath3DProject, pinProjectQwzSample,
+  qualifyProjectQwzPair, qualifyProjectQwzQuadStudy, serializeMath3DProject,
   type ProjectQuantumSceneReference } from "@math3d/core";
 import { admitVerifiedQwzStudy } from "./quantumStudyAdmission";
 
@@ -64,5 +65,23 @@ describe("M3D20-04 QWZ four-view Study assembly", () => {
     const project = await admitVerifiedQwzStudy(base, { runId, resultSha256, references },
       async reference => reference.sceneFingerprint === energyBands.source.sceneFingerprint ? energyBands : documents[0]!);
     expect(qualifyProjectQwzPair(project, project.workspace.quantumStudies![0]!.id)).not.toBeNull();
+  });
+  it("pins one source-bound band sample ID and withholds a foreign or ambiguous pin", async () => {
+    const project = await admitted();
+    const quad = createProjectQwzQuadStudy(project, project.workspace.quantumStudies![0]!.id, "pin", "QWZ pin");
+    const study = quad.workspace.studies![0]!, pair = qualifyProjectQwzQuadStudy(quad, study)!;
+    expect(inspectProjectQwzPinnedSample(study, pair)).toEqual({ status: "none" });
+    const pinned = pinProjectQwzSample(quad, study.id, 7);
+    expect(inspectProjectQwzPinnedSample(pinned.workspace.studies![0]!, pair))
+      .toEqual({ status: "current", sampleIndex: 7 });
+    expect(pinProjectQwzSample(pinned, study.id, 8).workspace.studies![0]!.pinnedSelectionIds).toHaveLength(1);
+    expect(parseMath3DProject(serializeMath3DProject(pinned)).workspace.studies).toEqual(pinned.workspace.studies);
+    expect(() => pinProjectQwzSample(quad, study.id, 1_000_001)).toThrow(/outside/);
+    const foreign = { ...study, pinnedSelectionIds: [`qwz:band-0:${"f".repeat(64)}:7`] };
+    expect(inspectProjectQwzPinnedSample(foreign, pair).status).toBe("withheld");
+    expect(inspectProjectQwzPinnedSample({ ...study, pinnedSelectionIds: [
+      `qwz:band-0:${pair.bands.source.sceneFingerprint}:7`,
+      `qwz:band-0:${pair.bands.source.sceneFingerprint}:8`,
+    ] }, pair).status).toBe("withheld");
   });
 });
