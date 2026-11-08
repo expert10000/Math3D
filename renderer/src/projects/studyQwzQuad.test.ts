@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createProjectQwzQuadStudy, createQuantumSceneDocument, instantiateMath3DProjectTemplate,
   inspectProjectQwzPinnedSample, parseMath3DProject, pinProjectQwzSample,
-  qualifyProjectQwzPair, qualifyProjectQwzQuadStudy, serializeMath3DProject,
+  qualifyProjectQwzPair, qualifyProjectQwzQuadStudy, serializeMath3DProject, unpinProjectQwzSample,
   type ProjectQuantumSceneReference } from "@math3d/core";
 import { admitVerifiedQwzStudy } from "./quantumStudyAdmission";
 
@@ -75,6 +75,8 @@ describe("M3D20-04 QWZ four-view Study assembly", () => {
     expect(inspectProjectQwzPinnedSample(pinned.workspace.studies![0]!, pair))
       .toEqual({ status: "current", sampleIndex: 7 });
     expect(pinProjectQwzSample(pinned, study.id, 8).workspace.studies![0]!.pinnedSelectionIds).toHaveLength(1);
+    expect(inspectProjectQwzPinnedSample(unpinProjectQwzSample(pinned, study.id).workspace.studies![0]!, pair))
+      .toEqual({ status: "none" });
     expect(parseMath3DProject(serializeMath3DProject(pinned)).workspace.studies).toEqual(pinned.workspace.studies);
     expect(() => pinProjectQwzSample(quad, study.id, 1_000_001)).toThrow(/outside/);
     const foreign = { ...study, pinnedSelectionIds: [`qwz:band-0:${"f".repeat(64)}:7`] };

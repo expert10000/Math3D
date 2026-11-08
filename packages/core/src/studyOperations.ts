@@ -187,3 +187,14 @@ export function pinProjectQwzSample(project: Math3DProject, studyId: string, sam
   const retained = study.pinnedSelectionIds.filter(id => !id.startsWith(qwzPinPrefix));
   return upsertProjectStudy(source, { ...study, pinnedSelectionIds: [...retained, pin] });
 }
+
+/** Remove only the QWZ sample pin; unrelated Study selections retain their ownership. */
+export function unpinProjectQwzSample(project: Math3DProject, studyId: string): Math3DProject {
+  const source = current(project), study = source.workspace.studies?.find(item => item.id === studyId);
+  if (!study) throw new TypeError("Study is unavailable.");
+  if (!qualifyProjectQwzQuadStudy(source, study))
+    throw new TypeError("QWZ source pair or Study mapping is unavailable.");
+  const retained = study.pinnedSelectionIds.filter(id => !id.startsWith(qwzPinPrefix));
+  return retained.length === study.pinnedSelectionIds.length ? source :
+    upsertProjectStudy(source, { ...study, pinnedSelectionIds: retained });
+}
