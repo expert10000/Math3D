@@ -63,6 +63,15 @@ export const projectAlgebraLocusReturn = (project: Math3DProject, documentId: st
       `The pinned algebra source is ${status}; CAS will open that exact revision for inspection.` };
 };
 
+/** Lists validated saved views for one exact algebra revision, in Project document order. */
+export const projectSavedAlgebraLocusEvidence = (project: Math3DProject,
+  target: AlgebraObjectRef): readonly ProjectAlgebraLocusReturn[] =>
+  project.workspace.entries.flatMap(entry => {
+    const choice = projectAlgebraLocusReturn(project, entry.expected.id);
+    return choice?.enabled && choice.source.objectId === target.objectId &&
+      choice.source.revision === target.revision ? [choice] : [];
+  });
+
 /** Rechecks both the Geometry checkpoint and pinned algebra source before navigation. */
 export const resolveProjectAlgebraLocusReturn = (project: Math3DProject,
   choice: ProjectAlgebraLocusReturn): { projectId: string; target: AlgebraObjectRef; contentHash: string } => {

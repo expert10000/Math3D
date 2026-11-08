@@ -3,7 +3,8 @@ import { algebraicLocusGeometryDocument, algebraicSingularityGeometryDocument,
   analyzeSageAlgebraicSingularity, buildSageAlgebraicLocusScene,
   createAlgebraObjectRecord, createMath3DProject,
   createMixedWorkspaceDocument, createProjectAlgebraObjectId, parseMath3DProject,
-  projectAlgebraLocusReturn, projectSavedAlgebraOpenInActions,
+  projectAlgebraLocusReturn, projectSavedAlgebraLocusEvidence,
+  projectSavedAlgebraOpenInActions,
   resolveProjectAlgebraLocusInspection, resolveProjectAlgebraLocusReturn,
   resolveProjectAlgebraSingularityInspection,
   resolveProjectSavedAlgebraOpenIn,
@@ -31,6 +32,25 @@ const fixture = () => {
 };
 
 describe("saved Project algebra locus Open in", () => {
+  it("lists only validated saved evidence for the selected algebra revision", () => {
+    const { project, qq, target, scene } = fixture();
+    const sample = sampleSageAlgebraicLocus(scene);
+    const analysis = analyzeSageAlgebraicSingularity(scene, ["1", "0"]);
+    const saved = upsertMath3DProjectAlgebraicSingularityScene(
+      upsertMath3DProjectAlgebraicLocusSample(project, sample), analysis);
+    const choices = projectSavedAlgebraLocusEvidence(saved, target);
+    expect(choices).toHaveLength(2);
+    expect(choices.map(choice => [choice.sampleHash, choice.analysisHash])).toEqual([
+      [sample.resultHash, null], [null, analysis.analysisHash]]);
+    expect(projectSavedAlgebraLocusEvidence(saved, { objectId: qq.id, revision: 1 })).toEqual([]);
+    const invalid = structuredClone(saved);
+    const tangent = invalid.workspace.entries.find(entry => entry.expected.id === choices[1]!.documentId)!
+      .checkpoint;
+    if (tangent.format !== "math3d.geometry-document") throw new Error("Expected Geometry fixture");
+    (tangent.source.extensions as Record<string, unknown>)[SAGE_LOCUS_SINGULARITY_EXTENSION] = {};
+    expect(projectSavedAlgebraLocusEvidence(invalid, target)).toHaveLength(1);
+  });
+
   it("returns from saved exact tangent evidence to its pinned algebra source", () => {
     const { project, target, scene } = fixture();
     const analysis = analyzeSageAlgebraicSingularity(scene, ["1", "0"]);
