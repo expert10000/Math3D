@@ -136,7 +136,8 @@ type Props = {
   capture: () => MixedWorkspaceDocument;
   canNavigateDocument?: (id: string, module: KernelWorkspaceModule) => boolean;
   onNavigateDocument?: (id: string, module: KernelWorkspaceModule) => void;
-  onOpenAlgebra?: (projectId: string, target: AlgebraObjectRef, contentHash: string) => void;
+  onOpenAlgebra?: (projectId: string, target: AlgebraObjectRef, contentHash: string,
+    evidence?: ProjectAlgebraLocusReturn) => void;
   onOpenAnalysis?: (id: string, module: KernelWorkspaceModule, route: ProjectAnalysisRoute, workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources) => void;
   artifactAvailable?: (id: string, hash?: string | null) => boolean;
   resourceReader?: ProjectResourceReader;
@@ -1683,7 +1684,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     try {
       const source = resolveProjectAlgebraLocusReturn(liveProject(), choice);
       if (!onOpenAlgebra) throw new TypeError("CAS navigation is unavailable on this host.");
-      onOpenAlgebra(source.projectId, source.target, source.contentHash);
+      onOpenAlgebra(source.projectId, source.target, source.contentHash,
+        choice.analysisHash ? choice : undefined);
       onOpenChange(false);
     } catch (error) { setMessage(`Return to CAS refused: ${(error as Error).message}`); }
   };

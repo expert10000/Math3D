@@ -6,6 +6,7 @@ import {
   type KernelWorkspaceModule, type MixedWorkspaceDocument, type ViewerProvenanceEvidence,
   type Math3DProject,
   type AlgebraObjectRef,
+  type ProjectAlgebraLocusReturn,
   type ProjectQuantumSceneReference,
   type ProjectScientificSceneReference,
   type QuantumSceneDocument,
@@ -55,7 +56,8 @@ export type KernelWorkspacePanelProps = {
   artifactAvailable?: (artifactId: string, hash?: string | null) => boolean;
   onNavigateModule?: (module: KernelWorkspaceModule) => void;
   onNavigateDocument?: (id: string, module: KernelWorkspaceModule) => void;
-  onOpenAlgebra?: (projectId: string, target: AlgebraObjectRef, contentHash: string) => void;
+  onOpenAlgebra?: (projectId: string, target: AlgebraObjectRef, contentHash: string,
+    evidence?: ProjectAlgebraLocusReturn) => void;
   onOpenAnalysis?: (id: string, module: KernelWorkspaceModule, route: ProjectAnalysisRoute, workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources) => void;
   canNavigateDocument?: (id: string, module: KernelWorkspaceModule) => boolean;
   onReopen?: (workspace: MixedWorkspaceDocument) => void;

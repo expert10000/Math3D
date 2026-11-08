@@ -11,6 +11,8 @@ import { meshDocumentEditable } from "./projects/nativeMeshRestore";
 import { createMeshDocument, canonicalJsonStringify, parseMath3DProject, upsertMath3DProjectAlgebraObject,
   addMath3DProjectAlgebraEvidence, upsertMath3DProjectAlgebraRecipe, installAlgebraGalleryExample,
   type ProjectScientificSceneReference } from "@math3d/core";
+import { resolveProjectAlgebraSingularityInspection,
+  type ProjectAlgebraLocusReturn } from "@math3d/core";
 import { VerifiedProjectResources, type ProjectResourceReader, type ProjectResourceRequirement } from "./projects/projectResources";
 import type { MeshReplayBundle } from "./mesh/meshReplay";
 import { geometryEditorSeed as restoredGeometryEditorSeed, geometryDocumentEditable, geometrySourceFromEditor, geometryDisplayFromEditor, retainConstructionSource } from "./projects/nativeGeometryRestore";
@@ -41981,7 +41983,7 @@ const App: React.FC = () => {
   const [casWorkspaceOpen, setCasWorkspaceOpen] = useState(false);
   const [casSourceRequest, setCasSourceRequest] = useState<{
     projectId: string; target: import("@math3d/core").AlgebraObjectRef;
-    contentHash: string; token: number } | null>(null);
+    contentHash: string; evidence: ProjectAlgebraLocusReturn | null; token: number } | null>(null);
   const [casAnalysisRecord, setCasAnalysisRecord] = useState<SymbolicResultRecord | null>(null);
   const [numberTheoryWorkspaceOpen, setNumberTheoryWorkspaceOpen] = useState(false);
   const [numberTheoryAnalysisRecord, setNumberTheoryAnalysisRecord] = useState<SymbolicResultRecord | null>(null);
@@ -80539,13 +80541,19 @@ case "mobius":
             else { setDatasetKind("surface"); setSurfaceViewerKind("param"); }
           }
         }}
-        onOpenAlgebra={(projectId, target, contentHash) => {
+        onOpenAlgebra={(projectId, target, contentHash, evidence) => {
           const current = projectForNotePins;
           const entry = current?.algebraObjects?.find(item => item.id === target.objectId);
           if (!current || current.identity.id !== projectId ||
               entry?.revisions[target.revision - 1]?.contentHash !== contentHash)
             throw new TypeError("The selected algebra source is unavailable in the active Project.");
-          setCasSourceRequest(previous => ({ projectId, target, contentHash,
+          if (evidence) {
+            const analysis = resolveProjectAlgebraSingularityInspection(current, evidence);
+            if (analysis.scene.source.target.id !== target.objectId ||
+                analysis.scene.source.target.revision !== target.revision)
+              throw new TypeError("The saved tangent analysis belongs to another algebra source.");
+          }
+          setCasSourceRequest(previous => ({ projectId, target, contentHash, evidence: evidence ?? null,
             token: (previous?.token ?? 0) + 1 }));
           setNumberTheoryWorkspaceOpen(false);
           setProjectsOpen(false);
