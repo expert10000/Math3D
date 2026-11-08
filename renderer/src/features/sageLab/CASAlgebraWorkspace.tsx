@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { analyzeBiquadraticExtensionFromDefinition, analyzeFiniteGroup, analyzeQuadraticNumberField,
   ellipticCurveFacts,
   createGaloisGroupObject, inspectProjectAlgebraFreshness,
-  resolveProjectAlgebraLocusInspection,
+  projectSavedAlgebraLocusEvidence, resolveProjectAlgebraLocusInspection,
   type AlgebraObjectRecord, type AlgebraObjectRef,
   type AlgebraRecipeGraph, type Math3DProject, type ProjectAlgebraEvidence,
   type ProjectAlgebraLocusReturn, type ProjectAlgebraLocusInspection,
@@ -143,6 +143,10 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
     select(checked);
   }, [requestedSelection?.token, project?.identity.id]);
   const chosen = selectedStructure(project, selection);
+  const savedEvidenceChoices = useMemo(() => project && chosen ?
+    projectSavedAlgebraLocusEvidence(project, { objectId: chosen.record.id,
+      revision: chosen.record.revision }) : [],
+    [project, chosen?.record.id, chosen?.record.revision]);
   const savedLocus = useMemo(() => {
     if (!selectedSavedChoice) return null;
     if (!project) return { inspection: null, error: "The saved locus Project is unavailable." };
@@ -380,6 +384,25 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
     {chosen.record.definition.kind === "elliptic-curve" &&
       <SageEllipticCurveVisualization key={`${chosen.record.id}@${chosen.record.revision}`}
         project={project} curve={chosen.record} />}
+    {savedEvidenceChoices.length > 0 && <section data-testid="cas-saved-locus-choices"
+      style={{ display: "grid", gap: 6, border: "1px solid #c7d9ed", borderRadius: 8, padding: 10 }}>
+      <strong>Saved locus evidence</strong>
+      <small>Inspect a saved Project checkpoint. Opening it does not run a new calculation.</small>
+      {savedEvidenceChoices.map(choice => <button type="button" key={choice.documentId}
+        data-testid={`cas-saved-locus-choice-${choice.documentId}`}
+        aria-pressed={selectedSavedChoice?.documentId === choice.documentId &&
+          selectedSavedChoice.documentHash === choice.documentHash}
+        style={{ ...action, textAlign: "left" }} onClick={() => {
+          try {
+            resolveProjectAlgebraLocusInspection(project, choice);
+            setHandoffError(""); setSelectedSavedChoice(choice);
+          } catch (error) { setHandoffError(`Saved locus could not open: ${String(error)}`); }
+        }}>
+        {choice.analysisHash ? `Exact tangent at (${choice.inspectionPoint?.join(", ")})` :
+          choice.sampleHash ? "Bounded numerical sample" : "Uncomputed exact contract"}
+        {` · ${choice.sourceStatus} · ${choice.documentId.slice(-8)}`}
+      </button>)}
+    </section>}
     {activeSavedLocus && selectedSavedChoice && <section
       data-testid={activeSavedLocus.kind === "singularity" ? "cas-saved-tangent-inspection" :
         "cas-saved-locus-inspection"} style={{ display: "grid", gap: 8 }}>
