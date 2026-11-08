@@ -228,7 +228,9 @@ export const curveResultToCsv = (card: CurveResultCard, definition: CanonicalCur
 };
 const esc = (value: string): string => value.replace(/[&<>\"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[character]!));
 export const curveResultToSvg = (card: CurveResultCard, definition: CanonicalCurveDefinition): string => {
-  const series = card.series; const pairs = series ? series.parameter.map((x, index) => ({ x, y: series.value[index] })).filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y)) : [];
+  const series = card.series; const pairs = series ? series.parameter
+    .map((x, index) => ({ x, y: series.value[index], valid: series.valid?.[index] ?? true }))
+    .filter((point) => point.valid && Number.isFinite(point.x) && Number.isFinite(point.y)) : [];
   const xs = pairs.map((point) => point.x), ys = pairs.map((point) => point.y); const minX = xs.length ? Math.min(...xs) : 0, maxX = xs.length ? Math.max(...xs) : 1, minY = ys.length ? Math.min(...ys) : 0, maxY = ys.length ? Math.max(...ys) : 1;
   const points = pairs.map((point) => `${20 + 600 * (point.x - minX) / Math.max(1e-15, maxX - minX)},${220 - 190 * (point.y - minY) / Math.max(1e-15, maxY - minY)}`).join(" ");
   const manifest = esc(JSON.stringify(stable(createCurveResultExportManifest(card, definition))));

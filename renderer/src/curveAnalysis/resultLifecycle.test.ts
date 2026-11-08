@@ -117,6 +117,11 @@ describe("Curve scientific result lifecycle", () => {
     expect(curveResultToCsv(card, definition())).not.toContain('"NaN"');
     expect(curveResultToCsv(card, definition()).split("\n")[2]).toContain(',"","false"');
     expect(curveResultToSvg(card, definition())).toContain("<metadata>{&quot;definition&quot;");
+    const masked = { ...card, series: { ...card.series!, valid: card.series!.valid!.map((valid, index) =>
+      index === 3 ? false : valid) } };
+    const polylinePoints = (svg: string) => /<polyline[^>]+points="([^"]*)"/.exec(svg)![1]!.split(" ");
+    expect(polylinePoints(curveResultToSvg(masked, definition()))).toHaveLength(
+      polylinePoints(curveResultToSvg(card, definition())).length - 1);
   });
 
   it("aligns comparisons over the common domain independent of sampling", () => {
