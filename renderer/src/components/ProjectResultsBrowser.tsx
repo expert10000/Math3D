@@ -144,6 +144,14 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
               title={resultCard.integrity.detail}>{resultCard.integrity.label}</span>}
           </div>
           <p>Recorded status: <strong>{result.status}</strong>{resultStatus?.missingArtifactIds.length ? ` · ${resultStatus.missingArtifactIds.length} unavailable artifact(s)` : ""}</p>
+          {resultCard && <div data-testid="project-result-card-axes" className="project-results-links">
+            {(["execution", "integrity", "mathematics"] as const).map(axis =>
+              <p key={axis} data-testid={`project-result-axis-${axis}`}>
+                <strong>{axis === "mathematics" ? "Mathematics" : axis === "integrity" ? "Source integrity" : "Execution"}:</strong>{" "}
+                <span className="project-freshness-badge" data-tone={resultCard[axis].tone}>
+                  {resultCard[axis].label}</span>{" "}{resultCard[axis].detail}
+              </p>)}
+          </div>}
           {meshResult && <div data-testid="project-saved-mesh-evidence" style={{ border: "1px solid #cbd5e1", borderRadius: 8, padding: 10 }}>
             <strong>Exact saved Mesh evidence</strong>
             {meshVerification?.checked ? <><p>Result {meshResult.resultId} · hash {meshVerification.checked.resultHash}<br />
