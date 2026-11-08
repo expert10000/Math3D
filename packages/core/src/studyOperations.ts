@@ -157,3 +157,33 @@ export function qualifyProjectQwzQuadStudy(project: Math3DProject, study: StudyR
   }
   return null;
 }
+
+const qwzPin = /^qwz:band-0:([a-f0-9]{64}):(0|[1-9][0-9]{0,6})$/;
+const qwzPinPrefix = "qwz:band-0:";
+export type ProjectQwzPinnedSample = Readonly<{ status: "none" } | { status: "current"; sampleIndex: number } | {
+  status: "withheld"; reason: string }>;
+
+/** The ID records a source-bound sample index, never an unverified energy or curvature value. */
+export function inspectProjectQwzPinnedSample(study: StudyRecordV1,
+  pair: ProjectQwzPair): ProjectQwzPinnedSample {
+  const pins = study.pinnedSelectionIds.filter(id => id.startsWith(qwzPinPrefix));
+  if (!pins.length) return { status: "none" };
+  if (pins.length !== 1) return { status: "withheld", reason: "Multiple QWZ sample pins disagree." };
+  const match = pins[0]!.match(qwzPin);
+  if (!match || match[1] !== pair.bands.source.sceneFingerprint || Number(match[2]) > 1_000_000)
+    return { status: "withheld", reason: "Pinned QWZ sample belongs to another or unsupported scene generation." };
+  return { status: "current", sampleIndex: Number(match[2]) };
+}
+
+/** Call after independently verifying the selected sample against the external scene bytes. */
+export function pinProjectQwzSample(project: Math3DProject, studyId: string, sampleIndex: number): Math3DProject {
+  const source = current(project), study = source.workspace.studies?.find(item => item.id === studyId);
+  if (!study) throw new TypeError("Study is unavailable.");
+  const pair = qualifyProjectQwzQuadStudy(source, study);
+  if (!pair) throw new TypeError("QWZ source pair or Study mapping is unavailable.");
+  if (!Number.isSafeInteger(sampleIndex) || sampleIndex < 0 || sampleIndex > 1_000_000)
+    throw new TypeError("QWZ sample index is outside the supported range.");
+  const pin = `${qwzPinPrefix}${pair.bands.source.sceneFingerprint}:${sampleIndex}`;
+  const retained = study.pinnedSelectionIds.filter(id => !id.startsWith(qwzPinPrefix));
+  return upsertProjectStudy(source, { ...study, pinnedSelectionIds: [...retained, pin] });
+}
