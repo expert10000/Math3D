@@ -12,6 +12,9 @@ import { VECTOR_FIELD3D_POINT_RESULT_TYPE, VECTOR_FIELD3D_REGION_RESULT_TYPE,
 import type { ProjectDependencyInspection } from "../projects/projectDependencies";
 import { presentProjectResultCard } from "../projects/projectResultCard";
 import { createProjectResultEvidence } from "../projects/projectResultEvidence";
+import { resultNoteReferences, resultStudyReferences, resultWorkbookReferences } from
+  "../projects/projectResultReferences";
+import type { WorkbookStageId } from "@math3d/workbook";
 import type { SavedRegionSourceStatus } from "../vectorfield3d/checkSavedRegionResultSources";
 import { isScientificSubrectangle } from
   "../projects/scientificSubrectangleWorkbook";
@@ -34,6 +37,10 @@ type Props = {
   regionResultStatuses?: Readonly<Record<string, SavedRegionSourceStatus>>;
   onCreateScientificReport?: (resultId: string) => void;
   onExportScientificReport?: (resultId: string) => void;
+  workbookBytes?: (id: string) => Uint8Array | null;
+  onOpenWorkbookBlock?: (id: string, stageId: WorkbookStageId, blockId: string) => void;
+  onOpenNote?: (id: string) => void;
+  onOpenStudy?: (id: string) => void;
 };
 
 const readable = (value: unknown) => typeof value === "string" ? value : JSON.stringify(value);
@@ -47,7 +54,8 @@ const isRegionResult = (operation: string) => operation === VECTOR_FIELD3D_REGIO
   operation === VECTOR_FIELD3D_TRAJECTORY_RESULT_TYPE ||
   operation === VECTOR_FIELD3D_EQUILIBRIUM_RESULT_TYPE;
 
-export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, titles, canOpen, onOpen, focusResult, readResource, regionResultStatuses = {}, onCreateScientificReport, onExportScientificReport }) => {
+export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, titles, canOpen, onOpen, focusResult, readResource, regionResultStatuses = {}, onCreateScientificReport, onExportScientificReport,
+  workbookBytes, onOpenWorkbookBlock, onOpenNote, onOpenStudy }) => {
   const [query, setQuery] = useState("");
   const [selection, setSelection] = useState<Selection | null>(null);
   const [meshPreviewOpen, setMeshPreviewOpen] = useState(false);
@@ -98,6 +106,10 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
   }, [project, meshResult, readResource]);
   const artifact = active?.kind === "artifact" ? artifacts.find(item => item.handle.artifactId === active.id) : undefined;
   const resultStatus = result && inspection?.results.find(item => item.id === result.resultId);
+  const references = useMemo(() => result ? [
+    ...resultNoteReferences(project, result), ...resultStudyReferences(project, result),
+    ...(workbookBytes ? resultWorkbookReferences(project, result, workbookBytes) : []),
+  ] : [], [project, result, workbookBytes]);
   const resultCard = result && presentProjectResultCard(result, resultStatus,
     regionResultStatuses[result.resultId], isRegionResult(result.provenance.operation.type));
   const artifactStatus = artifact && inspection?.artifacts.find(item => item.id === artifact.handle.artifactId);
@@ -285,6 +297,22 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
             Object.keys(result.summary).length ? <dl>{Object.entries(result.summary).map(([key, value]) => <div key={key}><dt>{key}</dt><dd><code>{readable(value)}</code></dd></div>)}</dl> : <p>No summary values recorded.</p>}
           {result.artifacts.length > 0 && <><h5>Artifacts</h5><div className="project-results-links">{result.artifacts.map(handle => <button type="button" key={handle.artifactId}
             onClick={() => select({ kind: "artifact", id: handle.artifactId })}>{handle.role} · {handle.kind}</button>)}</div></>}
+          <section data-testid="project-result-backlinks" aria-label="Result references in this Project">
+            <h5>Referenced in this Project ({references.length})</h5>
+            {references.length ? <ul>{references.map((reference, index) => <li key={`${reference.kind}:${reference.id}:${reference.blockId ?? index}`}
+              data-testid={`project-result-backlink-${reference.kind}-${index}`}>
+              <span>{reference.kind === "workbook" ? "Workbook block" : reference.kind === "study" ? "Study" : "Note"}: {reference.title}</span>{" "}
+              <span className="project-freshness-badge" data-tone={reference.status === "current" ? "current" : "stale"}
+                title={reference.reason}>{reference.status === "current" ? "Exact reference" : "Historical reference"}</span>{" "}
+              <button type="button" disabled={reference.kind === "note" ? !onOpenNote :
+                reference.kind === "study" ? !onOpenStudy : !onOpenWorkbookBlock}
+                onClick={() => { if (reference.kind === "note") onOpenNote?.(reference.id);
+                  else if (reference.kind === "study") onOpenStudy?.(reference.id);
+                  else if (reference.stageId && reference.blockId)
+                    onOpenWorkbookBlock?.(reference.id, reference.stageId, reference.blockId); }}>
+                Open {reference.kind === "workbook" ? "block" : reference.kind}</button>
+            </li>)}</ul> : <p>No exact Note, Study, or checked Workbook reference is recorded.</p>}
+          </section>
           {(result.warnings.length > 0 || result.diagnostics.length > 0) && <details><summary>Warnings and diagnostics ({result.warnings.length + result.diagnostics.length})</summary>
             <ul>{result.warnings.map((warning, index) => <li key={`warning-${index}`}>{warning}</li>)}
               {result.diagnostics.map((diagnostic, index) => <li key={`${diagnostic.code}-${index}`}>{diagnostic.severity} · {diagnostic.code}: {diagnostic.message}</li>)}</ul>
