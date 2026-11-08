@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import type { CanonicalCurveDefinition } from "../curveAnalysis/contracts";
 import type { CurveAnalysisWorkspaceDocument } from "../curveAnalysis/persistence";
 import type { CurveAnalysisResultStore } from "../curveAnalysis/infrastructure";
+import { qualifyCurveResult } from "../curveAnalysis/resultQualification";
 import {
   CURVE_ANALYSIS_PRESETS,
   applyCurveAnalysisPreset,
@@ -56,8 +57,13 @@ export const CurveResultLifecyclePanel: React.FC<CurveResultLifecyclePanelProps>
     {lifecycle.activePreset && <div data-testid="curve-active-analysis-preset" style={{ color: lifecycle.activePreset.state === "stale" ? "#9a3412" : "#166534", fontSize: 10 }}>Preset {CURVE_ANALYSIS_PRESETS.find((preset) => preset.id === lifecycle.activePreset?.presetId)?.label} · {lifecycle.activePreset.state} · Curve r{lifecycle.activePreset.curveRevision}</div>}
     <div data-testid="curve-result-cards" style={{ display: "grid", gap: 6 }}>
       {cards.length === 0 && <div style={{ color: "#64748b" }}>Apply an analysis preset to create scientific result cards.</div>}
-      {cards.map((card) => <article key={card.resultKey} data-testid={`curve-result-card-${card.variant}`} style={{ border: card.layer.selected ? "2px solid #2563eb" : "1px solid #cbd5e1", borderRadius: 7, padding: 7, background: card.state === "stale" ? "#fff7ed" : "#fff", display: "grid", gap: 4 }}>
+      {cards.map((card) => { const qualification = qualifyCurveResult(card, definition); return <article key={card.resultKey} data-testid={`curve-result-card-${card.variant}`}
+        data-evidence-status={qualification.status} style={{ border: card.layer.selected ? "2px solid #2563eb" : "1px solid #cbd5e1", borderRadius: 7, padding: 7, background: qualification.status === "current" ? "#fff" : "#fff7ed", display: "grid", gap: 4 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 5 }}><strong>{card.label}</strong><span>{card.state}</span></div>
+        <div data-testid="curve-result-qualification" style={{ fontSize: 10 }}>
+          <strong>{qualification.claim}</strong> · {qualification.status} · {qualification.verification}
+          {qualification.status !== "current" && ` · ${qualification.reason}`}
+        </div>
         <div style={{ fontSize: 10 }}>{card.method} · {card.valueUnit} · {card.backend} · {card.computeTimeMs ?? "—"} ms</div>
         <div style={{ fontSize: 10 }}>Curve {card.identity.curveId} r{card.identity.curveRevision} · result v{card.resultVersion} · dependencies {card.dependencies.length}</div>
         {card.statistics && <div style={{ fontSize: 10 }}>valid {card.statistics.validCount}/{card.statistics.sampleCount} · min {card.statistics.minimum?.toPrecision(4) ?? "—"} · max {card.statistics.maximum?.toPrecision(4) ?? "—"} · mean {card.statistics.mean?.toPrecision(4) ?? "—"}</div>}
@@ -76,7 +82,7 @@ export const CurveResultLifecyclePanel: React.FC<CurveResultLifecyclePanelProps>
           <button type="button" onClick={() => download(`${card.variant}.csv`, curveResultToCsv(card, definition), "text/csv")}>CSV</button>
           <button type="button" onClick={() => download(`${card.variant}.svg`, curveResultToSvg(card, definition), "image/svg+xml")}>SVG</button>
         </div>
-      </article>)}
+      </article>; })}
     </div>
     {comparison && <div data-testid="curve-result-comparison" style={{ border: "1px solid #bfdbfe", background: "#eff6ff", borderRadius: 6, padding: 6 }}>Common domain [{comparison.domain?.join(", ")}] · aligned {comparison.samples.length} · max |Δ| {comparison.maximumAbsoluteDelta?.toPrecision(4) ?? "—"} · RMS {comparison.rmsDelta?.toPrecision(4) ?? "—"}</div>}
   </section>;
