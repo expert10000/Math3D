@@ -97,5 +97,22 @@ test("SAGE-F03 distinguishes cusp and node tangent views, then independently reo
       "ordinary-cusp", "ordinary-real-node"]);
     expect(analyses.every((item: { scene: { source: { target: { contentHash: string } } } }) =>
       item.scene.source.target.contentHash === ring.contentHash)).toBe(true);
+    await fresh.getByTestId("project-gallery-layout-toggle").click();
+    const details = fresh.getByTestId("project-detail-toggle");
+    if (await details.getAttribute("aria-pressed") === "false") await details.click();
+    await fresh.getByTestId("project-detail-tab-documents").click();
+    const savedMenu = fresh.getByTestId(`project-algebra-open-in-${ring.id}`);
+    await savedMenu.locator("summary").click();
+    const tangentActions = savedMenu.getByRole("button", { name: "Open exact tangent view in Geometry" });
+    await expect(tangentActions).toHaveCount(2);
+    await expect(savedMenu).toContainText("Jacobian evidence and source remain pinned");
+    await tangentActions.first().click();
+    const cuspDocumentId = core.algebraicSingularityGeometryDocument(cusp).identity.id;
+    await expect(ctx.page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id", cuspDocumentId);
+    await ctx.page.getByTestId("projects-toggle").click();
+    await ctx.page.getByTestId(`project-algebra-return-${cuspDocumentId}`)
+      .getByRole("button", { name: "Return to algebra source in CAS" }).click();
+    await expect(ctx.page.getByTestId("cas-algebra-workspace").getByTestId("cas-structures-explorer")
+      .getByRole("button", { name: /R @1/ })).toHaveAttribute("aria-current", "true");
   } finally { await closeSurfaceApp(ctx); }
 });
