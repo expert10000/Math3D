@@ -13,6 +13,7 @@ import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, 
   upsertMath3DProjectComposition, upsertMath3DProjectSavedMeshComparison, inspectProjectCompositionAvailability,
   migrateProjectScientificSelections,
   createProjectStudyFromDocuments, renameProjectStudy, forkProjectStudy,
+  createProjectQwzQuadStudy, qualifyProjectQwzPair,
   type ProjectComposition, type ProjectSavedMeshComparison,
   type ProjectNote,
   type Math3DProject, type MixedWorkspaceDocument, type KernelWorkspaceModule, type QuantumSceneDocument, type ViewerProvenanceEvidence } from "@math3d/core";
@@ -1716,6 +1717,32 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     try { setProject(change(project)); setMessage(`${success} Save Project to keep it.`); }
     catch (error) { setMessage(`Study change refused: ${(error as Error).message}`); }
   };
+  const stageQwzQuadStudy = async (quantumStudyId: string) => {
+    const source = projectStateRef.current;
+    if (!source || busy || preview || managed) return;
+    const pair = qualifyProjectQwzPair(source, quantumStudyId);
+    if (!pair || !onVerifyQuantumSceneDocument) {
+      setMessage("QWZ Study refused: exact desktop source verification is unavailable."); return;
+    }
+    const before = serializeMath3DProject(source);
+    setBusy(true);
+    try {
+      for (const document of [pair.curvature, pair.bands]) {
+        const reference = source.quantumScenes?.find(item => item.sceneFingerprint === document.source.sceneFingerprint);
+        if (!reference) throw new TypeError("QWZ scene reference is missing.");
+        const verified = await onVerifyQuantumSceneDocument(reference);
+        if (canonicalJsonStringify(verified.source) !== canonicalJsonStringify(document.source) ||
+            verified.location.directory !== document.location.directory)
+          throw new TypeError("QWZ source changed since this Project was saved.");
+      }
+      if (!projectStateRef.current || serializeMath3DProject(projectStateRef.current) !== before)
+        throw new TypeError("Project changed during QWZ source verification.");
+      const next = createProjectQwzQuadStudy(source, quantumStudyId, crypto.randomUUID(),
+        `${source.workspace.quantumStudies?.find(item => item.id === quantumStudyId)?.title ?? "QWZ"} four-view Study`);
+      setProject(next); setMessage("Four-view QWZ Study staged. Save Project to keep it.");
+    } catch (error) { setMessage(`QWZ Study refused: ${(error as Error).message}`); }
+    finally { setBusy(false); }
+  };
   const renderNotesPanel = (layout: "floating" | "page") => <ProjectNotesPanel layout={layout} project={notesProject} workspace={notesWorkspace} readResource={comparisonResource} drafts={noteDrafts} busy={busy} message={notesMessage} focusNoteId={selectedNoteId ?? noteRequest?.id}
     selectionAvailable={Boolean(captureNoteSelection?.())} workbooks={noteWorkbooks}
     onClose={() => setNotesOpen(false)} onOpenProjects={() => { setNotesOpen(false); if (layout === "floating") { setDetailView(true); onOpenChange(true); } }} onRefresh={refreshNotes}
@@ -1962,6 +1989,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               onFork={(id, studyTitle) => stageStudy(source => forkProjectStudy(source, id,
                 crypto.randomUUID(), studyTitle), "Study forked.")}
               onLink={id => stageStudy(source => addQualifiedStudyGraphCurveLink(source, id), "Graph–Curve parameter link added.")}
+              onCreateQwz={id => { void stageQwzQuadStudy(id); }}
               onOpenDocument={(id, module) => viewBesideProject(id, module)} />
           </div>}
           {!quick && detailView && project && <ProjectRelationshipMap project={project} titles={documentTitles}

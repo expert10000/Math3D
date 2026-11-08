@@ -8,6 +8,7 @@ import { resolveStudyPane } from "../projects/studyPaneResolution";
 import { qualifyStudyGraphCurveLink, studyHasQualifiedGraphCurveLink } from "../projects/studyGraphCurveLink";
 import { projectCurveParameterToGraph } from "../graph2d/graphCurveCursor";
 import { scientificCursorBus } from "./scientificCursor";
+import { StudyQuantumPanePreview } from "./StudyQuantumPanePreview";
 
 const plotSize = { width: 360, height: 280 };
 
@@ -43,6 +44,11 @@ export function StudyPanePreview({ project, study, paneId, resources }: {
           { documents: resolved.documents, resources, project });
         return { kind: "geometry" as const, view };
       }
+      const viewConfigId = study.layout.panes.find(item => item.paneId === paneId)?.viewConfigId;
+      if (document.format === "math3d.quantum-scene-document" &&
+          (viewConfigId === "qwz.curvature" || viewConfigId === "qwz.bands"))
+        return { kind: "quantum" as const, document,
+          role: viewConfigId === "qwz.curvature" ? "curvature" as const : "bands" as const };
       return { kind: "withheld" as const,
         reason: "This document has no read-only Study pane viewer yet. Open its owning document." };
     } catch (error) { return { kind: "withheld" as const,
@@ -52,7 +58,8 @@ export function StudyPanePreview({ project, study, paneId, resources }: {
   return <div data-testid="project-study-pane-preview" data-kind={preview.kind}
     style={{ position: "relative", height: 320, minWidth: 0, overflow: "hidden" }}>
     {preview.kind === "graph" ? <Graph2DPlot display={preview.display} size={plotSize} series={preview.series}
-      linkedCursorProbe={linkedProbe} /> :
-      <GeometryViewer scene={preview.view.scene} meshOverrides={preview.view.meshes} />}
+      linkedCursorProbe={linkedProbe} /> : preview.kind === "geometry" ?
+      <GeometryViewer scene={preview.view.scene} meshOverrides={preview.view.meshes} /> :
+      <StudyQuantumPanePreview project={project} document={preview.document} role={preview.role} />}
   </div>;
 }

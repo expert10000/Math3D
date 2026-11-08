@@ -32,6 +32,20 @@ test("Lab QWZ study handoff stages both exact scenes in a new Math3D Project", a
     await expect(projects.getByTestId("project-quantum-scene-message")).toContainText("Both exact QWZ views staged", { timeout: 60_000 });
     await projects.locator('[data-testid^="quantum-study-template-"]').first().click();
     await expect(projects.getByTestId("project-quantum-scene-message")).toContainText("layout staged");
+    const studies = projects.getByTestId("project-studies-panel");
+    if (await projects.getByRole("heading", { name: "Quick Projects" }).count())
+      await projects.getByTestId("project-gallery-layout-toggle").click();
+    if (!await studies.count()) await projects.getByTestId("project-detail-toggle").click();
+    await expect(studies).toBeVisible();
+    await studies.locator('[data-testid^="project-study-create-qwz-"]').click();
+    await expect(projects.getByTestId("project-message")).toContainText("Four-view QWZ Study staged", { timeout: 60_000 });
+    await studies.locator('[data-testid^="project-study-open-"]').click();
+    await expect(studies.getByTestId("project-study-panes")).toHaveAttribute("data-layout", "quad");
+    await studies.getByTestId("project-study-preview-toggle-curvature").click();
+    await expect(studies.getByTestId("project-study-quantum-view")).toHaveAttribute("data-role", "curvature", { timeout: 60_000 });
+    await studies.getByTestId("project-study-preview-toggle-bands").click();
+    await expect(studies.getByTestId("project-study-quantum-view")).toHaveAttribute("data-role", "bands", { timeout: 60_000 });
+    await expect(studies.getByTestId("project-study-quantum-view")).toHaveCount(1);
     await projects.getByTestId("project-save").click();
     await expect(projects.getByTestId("project-message")).toContainText("Saved", { timeout: 60_000 });
     await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1") || "null")?.workspace.entries
@@ -41,6 +55,7 @@ test("Lab QWZ study handoff stages both exact scenes in a new Math3D Project", a
     expect(project.workspace.quantumStudies).toHaveLength(1);
     expect(project.workspace.quantumStudies[0].templateId).toBe("qwz");
     expect(project.workspace.quantumStudies[0].panels.map((panel: { role: string }) => panel.role)).toEqual(["curvature", "bands"]);
+    expect(project.workspace.studies[0].layout.mode).toBe("quad");
     expect(project.workspace.entries.filter((entry: { module: string }) => entry.module === "quantum")
       .every((entry: { checkpoint: { linkedViews?: unknown[] } }) => entry.checkpoint.linkedViews?.length === 1)).toBe(true);
   } finally {

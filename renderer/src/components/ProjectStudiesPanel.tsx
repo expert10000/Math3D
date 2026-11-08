@@ -1,5 +1,6 @@
 import { lazy, Suspense, useState } from "react";
-import { inspectProjectStudyMembers, type KernelWorkspaceModule, type Math3DProject } from "@math3d/core";
+import { inspectProjectStudyMembers, qualifyProjectQwzPair,
+  type KernelWorkspaceModule, type Math3DProject } from "@math3d/core";
 import type { VerifiedProjectResources } from "../projects/projectResources";
 import { qualifyStudyGraphCurveLink, studyHasQualifiedGraphCurveLink } from "../projects/studyGraphCurveLink";
 import { StudyGraphCurveControl } from "./StudyGraphCurveControl";
@@ -11,11 +12,12 @@ type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoi
   resources?: VerifiedProjectResources;
   onCreate: (title: string, ids: readonly string[]) => void; onRename: (id: string, title: string) => void;
   onFork: (id: string, title: string) => void; onLink: (id: string) => void;
+  onCreateQwz: (quantumStudyId: string) => void;
   onOpenDocument: (id: string, module: KernelWorkspaceModule) => void }>;
 
 /** A Study is a saved layout of references; opening a pane delegates to its owning document. */
 export function ProjectStudiesPanel({ project, documents, editable, resources, onCreate, onRename, onFork,
-  onLink, onOpenDocument }: Props) {
+  onLink, onCreateQwz, onOpenDocument }: Props) {
   const [selected, setSelected] = useState<string[]>([]);
   const [title, setTitle] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
@@ -44,6 +46,10 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, o
       <button type="button" data-testid="project-study-create-button" disabled={!title.trim() || !selected.length}
         onClick={() => { onCreate(title.trim(), selected); setTitle(""); setSelected([]); }}>Create Study</button>
     </div>}
+    {editable && project.workspace.quantumStudies?.filter(item => item.templateId === "qwz" &&
+      qualifyProjectQwzPair(project, item.id)).map(item => <button type="button" key={item.id}
+        data-testid={`project-study-create-qwz-${item.id}`} onClick={() => onCreateQwz(item.id)}>
+        Create four-view QWZ Study from {item.title}</button>)}
     <ul>{studies.map(study => <li key={study.id}>
       <button type="button" data-testid={`project-study-open-${study.id}`} onClick={() => {
         setOpenId(study.id); setEditTitle(study.title); setVisiblePaneId(null);
