@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { inspectProjectQwzPinnedSample,
   type Math3DProject, type ProjectQwzPair, type StudyRecordV1 } from "@math3d/core";
 import { verifyProjectQwzSample } from "../projects/qwzStudySample";
+import { buildQwzStudyEvidence } from "../projects/qwzStudyEvidence";
 import { scientificCursorBus } from "./scientificCursor";
 
 /** Publish only an importer-verified band sample after the curvature target is qualified. */
@@ -16,6 +17,8 @@ export function StudyQwzCursorControl({ project, pair, study, editable, onPin, o
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [verifiedIndex, setVerifiedIndex] = useState<number | null>(null);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportMessage, setExportMessage] = useState("");
   const generation = useRef(0);
   const restoredPin = useRef<string | null>(null);
   useEffect(() => () => { generation.current++; }, [project, pair.curvature.identity.id, pair.bands.identity.id]);
@@ -53,6 +56,21 @@ export function StudyQwzCursorControl({ project, pair, study, editable, onPin, o
     }
   }, [study.id, study.pinnedSelectionIds, pin.status === "current" ? pin.sampleIndex : null,
     pin.status === "withheld" ? pin.reason : null, share, verifiedIndex]);
+  const exportEvidence = async () => {
+    setExportBusy(true); setExportMessage("Rechecking both QWZ sources for publication…");
+    try {
+      const evidence = await buildQwzStudyEvidence(project, study);
+      const url = URL.createObjectURL(new Blob([JSON.stringify(evidence, null, 2) + "\n"],
+        { type: "application/json" }));
+      const link = document.createElement("a");
+      link.href = url; link.download = `qwz-study-${study.id.slice(0, 12)}.evidence.json`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setExportMessage(evidence.verification.status === "verified" ?
+        "Verified QWZ evidence exported." : "QWZ evidence exported with withheld quantities and omissions.");
+    } catch (error) { setExportMessage(`QWZ evidence export failed: ${(error as Error).message}`); }
+    finally { setExportBusy(false); }
+  };
   return <div data-testid="project-study-qwz-cursor-control">
     <label>Band sample index <input type="number" min={0} step={1} value={index}
       onChange={event => { setIndex(event.target.value); setVerifiedIndex(null); }} /></label>
@@ -65,5 +83,8 @@ export function StudyQwzCursorControl({ project, pair, study, editable, onPin, o
       onClick={() => { setVerifiedIndex(null); onUnpin(study.id); }}>Remove pinned k</button>}
     {pin.status === "current" && <p data-testid="project-study-qwz-pin-status">Pinned band sample {pin.sampleIndex}; source verified on open.</p>}
     {message && <p role="status" data-testid="project-study-qwz-cursor-status">{message}</p>}
+    <button type="button" data-testid="project-study-export-qwz-evidence" disabled={exportBusy}
+      onClick={() => { void exportEvidence(); }}>Export Study evidence JSON</button>
+    {exportMessage && <p role="status" data-testid="project-study-qwz-export-status">{exportMessage}</p>}
   </div>;
 }
