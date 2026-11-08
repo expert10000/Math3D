@@ -39,10 +39,14 @@ test("SCI-19 JSON audit rechecks a reopened combined Workbook and withholds chan
     { recursive: true });
   const app = await launchSurfaceApp();
   let diagnosticTraceStarted = false;
+  let diagnosticProfiler: import("playwright").CDPSession | null = null;
   try {
     if (process.env.M3D20_AUDIT_TRACE === "1") {
       await app.app.context().tracing.start({ screenshots: true, snapshots: true, sources: true });
       diagnosticTraceStarted = true;
+      diagnosticProfiler = await app.app.context().newCDPSession(app.page);
+      await diagnosticProfiler.send("Profiler.enable");
+      await diagnosticProfiler.send("Profiler.start");
       app.page.on("pageerror", error => console.error("M3D20_AUDIT_PAGEERROR", error.message));
     }
     const page = app.page;
@@ -184,6 +188,14 @@ test("SCI-19 JSON audit rechecks a reopened combined Workbook and withholds chan
       expect(byKey(key).profiles).toBeTruthy();
     }
   } finally {
+    if (diagnosticProfiler) {
+      try {
+        const { profile } = await diagnosticProfiler.send("Profiler.stop");
+        await writeFile(test.info().outputPath("renderer-cpu-profile.json"),
+          JSON.stringify(profile));
+        await diagnosticProfiler.detach();
+      } catch (error) { console.warn("M3D20_AUDIT_CPU_PROFILE", String(error)); }
+    }
     if (diagnosticTraceStarted) await app.app.context().tracing.stop({
       path: test.info().outputPath("electron-context-trace.zip"),
     }).catch(error => console.warn("M3D20_AUDIT_TRACE_STOP", String(error)));
