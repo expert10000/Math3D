@@ -763,6 +763,8 @@ import { CurveMeshPanel } from "./components/CurveMeshPanel";
 import { CurveBackendPanel } from "./components/CurveBackendPanel";
 import { CurveWorkerPanel } from "./components/CurveWorkerPanel";
 import { CurveDocumentAdapter, curveDocumentFromLegacyDefinition, splineDefinitionFromCurveDocument } from "./curveAnalysis/curveDocumentAdapter";
+import { curveParameterCursorDraft } from "./curveAnalysis/curveCursor";
+import { scientificCursorBus } from "./components/scientificCursor";
 import { VolumeDocumentAdapter, volumeDocumentFromLegacyObject } from "./volume/volumeDocumentAdapter";
 import { VolumeExtractionKernelBridge, locateVolumeExtractionVertex, promoteVolumeExtraction, volumeExtractionStatus, type VolumeExtractionRecord } from "./volume/volumeExtractionKernel";
 import { VolumeIsosurfaceScientificJob } from "./volume/volumeScientificJob";
@@ -11626,6 +11628,8 @@ const App: React.FC = () => {
   const [curveShowPreviews, setCurveShowPreviews] = useState(true);
   const [curvePlotDomain, setCurvePlotDomain] = useState<CurveScalarPlotDomain>("parameter");
   const [curveProbeSource, setCurveProbeSource] = useState<CurvePickSource>("parameter-slider");
+  const [curveCursorLinked, setCurveCursorLinked] = useState(true);
+  const [curveCursorStatus, setCurveCursorStatus] = useState("");
   const [curveDiagnosticFilter, setCurveDiagnosticFilter] = useState<CurveDiagnosticCategory | "all" | "warnings">("all");
   const [curveDiagnosticRevisionToken, setCurveDiagnosticRevisionToken] = useState(0);
   const [curveSavedDiagnosticReports, setCurveSavedDiagnosticReports] = useState<CurveDiagnosticReport[]>([]);
@@ -12328,6 +12332,17 @@ const App: React.FC = () => {
     setCurveProbeSource(source);
     setCurveProbeU(clamp(normalizedParameter, 0, 1));
     setCurveInspectorTab("probe");
+  };
+  const pinCurveParameter = () => {
+    if (!activeSemanticCurvePick || !curveCursorLinked) return;
+    const document = activeCurveKernelAdapter.document();
+    const draft = curveParameterCursorDraft(document, activeCanonicalCurveDefinition,
+      activeSemanticCurvePick, `curve-viewer:${document.identity.id}`);
+    if (!draft.ok) { setCurveCursorStatus(`Cursor withheld: ${draft.errors.join(" ")}`); return; }
+    try {
+      scientificCursorBus.publishProject(draft.value, draft.value.source);
+      setCurveCursorStatus("Current Curve parameter pinned to the shared cursor.");
+    } catch (error) { setCurveCursorStatus(`Cursor withheld: ${String((error as Error).message)}`); }
   };
   const persistActiveCurveProbe = () => {
     if (!activeSemanticCurvePick) return null;
@@ -91991,11 +92006,17 @@ case "mobius":
                         <div data-testid="curve-probe-source">Source: {curveProbeSource}</div>
                         <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 4 }}>
                           <button type="button" data-testid="curve-pin-probe" onClick={persistActiveCurveProbe} disabled={!activeSemanticCurvePick}>Pin / save</button>
+                          <button type="button" data-testid="curve-cursor-link" onClick={() => {
+                            setCurveCursorLinked(value => !value); setCurveCursorStatus("");
+                          }}>{curveCursorLinked ? "Unlink cursor" : "Link cursor"}</button>
+                          <button type="button" data-testid="curve-share-parameter" onClick={pinCurveParameter}
+                            disabled={!curveCursorLinked || !activeSemanticCurvePick}>Share parameter</button>
                           <button type="button" data-testid="curve-add-probe-annotations" onClick={handleAddCurveAnnotationSet} disabled={!activeSemanticCurvePick}>Add annotations</button>
                           <button type="button" onClick={() => { if (activeSemanticCurvePick) void navigator.clipboard?.writeText(JSON.stringify(activeSemanticCurvePick, null, 2)); }} disabled={!activeSemanticCurvePick}>Copy</button>
                           <button type="button" onClick={() => downloadCurveProbeText("curve-probes.json", JSON.stringify(curveAnalysisWorkspaceDocument.savedProbes, null, 2), "application/json")}>JSON</button>
                           <button type="button" onClick={() => downloadCurveProbeText("curve-probes.csv", curvePickToCsv(curveAnalysisWorkspaceDocument.savedProbes), "text/csv")}>CSV</button>
                         </div>
+                        {curveCursorStatus && <p data-testid="curve-cursor-status" role="status">{curveCursorStatus}</p>}
                         <div data-testid="curve-pinned-probes" style={{ marginTop: 6, display: "grid", gap: 4 }}>
                           <strong>Pinned probes ({curveAnalysisWorkspaceDocument.savedProbes.length})</strong>
                           {curveAnalysisWorkspaceDocument.savedProbes.slice(0, 6).map((pick) => {
