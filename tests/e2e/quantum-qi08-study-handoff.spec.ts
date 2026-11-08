@@ -22,7 +22,7 @@ test("Lab QWZ study handoff stages both exact scenes in a new Math3D Project", a
   const manifest = { schema: "quantum-study-handoff/v1", model: "qwz", runId,
     resultSha256: scenes[0].resultSha256, scenes: scenes.map(({ role, folder, sceneId }) => ({ role, folder, sceneId })) };
   await writeFile(join(handoff, "study.json"), JSON.stringify(manifest));
-  const app = await launchRepoElectron({ args: [".", "--quantum-study", handoff, "new"],
+  let app = await launchRepoElectron({ args: [".", "--quantum-study", handoff, "new"],
     cwd: resolve(__dirname, "..", ".."), env: { ...process.env, MATH3D_E2E_PROFILE_ROOT: join(root, "profile") } });
   try {
     const page = await app.firstWindow();
@@ -67,6 +67,36 @@ test("Lab QWZ study handoff stages both exact scenes in a new Math3D Project", a
     expect(project.workspace.studies[0].layout.mode).toBe("quad");
     expect(project.workspace.entries.filter((entry: { module: string }) => entry.module === "quantum")
       .every((entry: { checkpoint: { linkedViews?: unknown[] } }) => entry.checkpoint.linkedViews?.length === 1)).toBe(true);
+    await app.close();
+    app = await launchRepoElectron({ args: ["."], cwd: resolve(__dirname, "..", ".."),
+      env: { ...process.env, MATH3D_E2E_PROFILE_ROOT: join(root, "profile"),
+        QLAB_PYTHON: join(root, "missing-worker") } });
+    const reopenedPage = await app.firstWindow();
+    await reopenedPage.getByTestId("projects-toggle").click();
+    const reopenedProjects = reopenedPage.getByTestId("project-explorer-panel");
+    await reopenedProjects.getByTestId(`project-open-saved-${project.identity.id}`).click();
+    await expect(reopenedProjects.getByTestId("project-message")).toContainText("Opened supported project", { timeout: 60_000 });
+    const reopenedStudies = reopenedProjects.getByTestId("project-studies-panel");
+    if (!await reopenedStudies.count()) await reopenedProjects.getByTestId("project-gallery-layout-toggle").first().click();
+    if (!await reopenedStudies.count() && await reopenedProjects.getByTestId("project-detail-toggle").count())
+      await reopenedProjects.getByTestId("project-detail-toggle").click();
+    if (await reopenedProjects.getByTestId("project-detail-tab-overview").count())
+      await reopenedProjects.getByTestId("project-detail-tab-overview").click();
+    await expect(reopenedStudies).toBeVisible();
+    await reopenedStudies.locator('[data-testid^="project-study-open-"]').click();
+    await expect(reopenedStudies.getByTestId("project-study-panes")).toHaveAttribute("data-layout", "quad");
+    await reopenedStudies.getByTestId("project-study-preview-toggle-curvature").click();
+    await expect(reopenedStudies.getByTestId("project-study-quantum-view")).toHaveAttribute("data-role", "curvature", { timeout: 60_000 });
+    await reopenedStudies.getByLabel("Band sample index").fill("0");
+    await reopenedStudies.getByTestId("project-study-share-qwz-k").click();
+    await expect(reopenedStudies.getByTestId("project-study-qwz-cursor-status")).toContainText("Berry curvature", { timeout: 60_000 });
+    const blob = join(handoff, names[0], "curvature.f64"), original = await readFile(blob);
+    const changed = Buffer.from(original); changed[0] ^= 1; await writeFile(blob, changed);
+    await reopenedStudies.getByTestId("project-study-preview-toggle-curvature").click();
+    await reopenedStudies.getByTestId("project-study-preview-toggle-curvature").click();
+    await expect(reopenedStudies.getByTestId("project-study-quantum-withheld")).toContainText(/changed|hash|checksum|integrity/i, { timeout: 60_000 });
+    await expect(reopenedStudies.getByTestId("project-study-panes")).toHaveAttribute("data-layout", "quad");
+    await writeFile(blob, original);
   } finally {
     await app.close();
     if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-qi08-ui-")) throw new Error("Unsafe QI-08 cleanup path");

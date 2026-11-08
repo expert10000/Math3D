@@ -9,9 +9,10 @@ import { scientificCursorBus, type ScientificCursorEvent } from "./scientificCur
 type Opened = Extract<QuantumSceneOpenResponse, { ok: true }>;
 
 /** External scene bytes are independently reopened before this read-only pane receives geometry. */
-export function StudyQuantumPanePreview({ project, document, role }: {
+export function StudyQuantumPanePreview({ project, document, role, linkedFingerprints }: {
   project: Math3DProject; document: QuantumSceneDocument;
   role: "curvature" | "bands" | "reciprocal" | "inspector";
+  linkedFingerprints: readonly [string, string];
 }) {
   const [state, setState] = useState<{ opened: Opened | null; error: string }>({ opened: null, error: "" });
   const [cursor, setCursor] = useState<ScientificCursorEvent | null>(null);
@@ -35,6 +36,7 @@ export function StudyQuantumPanePreview({ project, document, role }: {
   } } | undefined)?.scene;
   const linkedK = cursor?.kind === "quantum" && cursor.runId === document.source.provenance.runId &&
     cursor.resultSha256 === document.source.provenance.resultSha256 &&
+    linkedFingerprints.includes(cursor.originViewId) &&
     cursor.reciprocalPoint?.basisId === `qwz:${document.source.coordinates.units[0]}` ? cursor.reciprocalPoint.k : null;
   if (role === "reciprocal" && !scene?.reciprocal)
     return <p role="status" data-testid="project-study-quantum-withheld">Verified source has no reciprocal-space view.</p>;

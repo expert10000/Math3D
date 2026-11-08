@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
-import { createMixedWorkspaceDocument, createQuantumSceneDocument, instantiateMath3DProjectTemplate,
+import { createMixedWorkspaceDocument, createProjectQwzQuadStudy, createQuantumSceneDocument,
+  createQuantumStudyFromTemplate, instantiateMath3DProjectTemplate, qualifyProjectQwzQuadStudy,
   linkQuantumSceneDocuments, parseMath3DProject, relinkMath3DProjectQuantumScene,
   replaceMath3DProjectWorkspace, serializeMath3DProject, upsertMath3DProjectQuantumScene,
   type QuantumSceneDocumentSource } from "@math3d/core";
@@ -42,7 +43,10 @@ describe("content-addressed portable QWZ Project", () => {
       project = replaceMath3DProjectWorkspace(project, createMixedWorkspaceDocument({ ...project.workspace,
         entries: [...project.workspace.entries, ...documents.map(document =>
           ({ module: "quantum" as const, checkpoint: document, expected: document.identity, replay: null }))],
-        activeDocumentIds: [...project.workspace.activeDocumentIds, ...documents.map(document => document.identity.id)] }));
+        activeDocumentIds: [...project.workspace.activeDocumentIds, ...documents.map(document => document.identity.id)],
+        quantumStudies: [createQuantumStudyFromTemplate("qwz", documents[0]!, documents)] }));
+      project = createProjectQwzQuadStudy(project, project.workspace.quantumStudies![0]!.id,
+        "portable-quad", "Portable QWZ four-view Study");
       let portable = project;
       for (const reference of project.quantumScenes!) portable = relinkMath3DProjectQuantumScene(portable,
         reference.sceneFingerprint, `scenes/${reference.sceneFingerprint}.qscene`);
@@ -73,6 +77,8 @@ describe("content-addressed portable QWZ Project", () => {
       restored = parseMath3DProject(serializeMath3DProject(restored));
       expect(restored.workspace.entries.some(entry => entry.module === "geometry")).toBe(true);
       expect(restored.workspace.entries.filter(entry => entry.module === "quantum").length).toBe(2);
+      expect(restored.workspace.studies?.[0]?.layout.mode).toBe("quad");
+      expect(qualifyProjectQwzQuadStudy(restored, restored.workspace.studies![0]!)).not.toBeNull();
       for (const reference of restored.quantumScenes!) {
         const scene = await importQuantumSceneBundle(reference.directory);
         expect(sceneFingerprint(scene)).toBe(reference.sceneFingerprint);

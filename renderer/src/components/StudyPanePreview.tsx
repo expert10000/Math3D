@@ -46,12 +46,14 @@ export function StudyPanePreview({ project, study, paneId, resources }: {
         return { kind: "geometry" as const, view };
       }
       const viewConfigId = study.layout.panes.find(item => item.paneId === paneId)?.viewConfigId;
-      if (document.format === "math3d.quantum-scene-document" &&
-          qualifyProjectQwzQuadStudy(project, study) &&
+      const qwzPair = qualifyProjectQwzQuadStudy(project, study);
+      if (document.format === "math3d.quantum-scene-document" && qwzPair &&
           (viewConfigId === "qwz.curvature" || viewConfigId === "qwz.bands" ||
             viewConfigId === "qwz.reciprocal" || viewConfigId === "qwz.inspector"))
         return { kind: "quantum" as const, document,
-          role: viewConfigId.slice(4) as "curvature" | "bands" | "reciprocal" | "inspector" };
+          role: viewConfigId.slice(4) as "curvature" | "bands" | "reciprocal" | "inspector",
+          linkedFingerprints: [qwzPair.curvature.source.sceneFingerprint,
+            qwzPair.bands.source.sceneFingerprint] as const };
       return { kind: "withheld" as const,
         reason: "This document has no read-only Study pane viewer yet. Open its owning document." };
     } catch (error) { return { kind: "withheld" as const,
@@ -63,6 +65,7 @@ export function StudyPanePreview({ project, study, paneId, resources }: {
     {preview.kind === "graph" ? <Graph2DPlot display={preview.display} size={plotSize} series={preview.series}
       linkedCursorProbe={linkedProbe} /> : preview.kind === "geometry" ?
       <GeometryViewer scene={preview.view.scene} meshOverrides={preview.view.meshes} /> :
-      <StudyQuantumPanePreview project={project} document={preview.document} role={preview.role} />}
+      <StudyQuantumPanePreview project={project} document={preview.document} role={preview.role}
+        linkedFingerprints={preview.linkedFingerprints} />}
   </div>;
 }

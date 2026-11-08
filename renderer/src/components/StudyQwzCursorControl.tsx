@@ -45,7 +45,10 @@ export function StudyQwzCursorControl({ project, pair }: { project: Math3DProjec
       const target = await api.topologySample({ fingerprint: pair.curvature.source.sceneFingerprint,
         quantityId: quantity.id, sampleIndex: projection.sampleIndex });
       if (target.fingerprint !== pair.curvature.source.sceneFingerprint ||
+          target.quantityId !== quantity.id || target.sampleIndex !== projection.sampleIndex ||
           target.runId !== band.runId || target.resultSha256 !== band.resultSha256 ||
+          target.coordinateUnits[0] !== pair.curvature.source.coordinates.units[0] ||
+          target.coordinateUnits[1] !== pair.curvature.source.coordinates.units[1] ||
           Math.abs(target.position[0] - projection.k[0]) > 1e-8 ||
           Math.abs(target.position[1] - projection.k[1]) > 1e-8)
         throw new TypeError("Curvature sample differs from the exact projected k point.");
