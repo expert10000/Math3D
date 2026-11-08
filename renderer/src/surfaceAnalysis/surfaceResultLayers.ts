@@ -153,7 +153,7 @@ export const createSurfaceFeatureLayer = (args: {
   }
   const confidence = args.confidence
     ? Float32Array.from(retainedIndices.map(index => args.confidence![index]!))
-    : new Float32Array(points.length).fill(1);
+    : new Float32Array();
   let confidenceSum = 0;
   for (const value of confidence) confidenceSum += value;
   const method = surfaceLayerMethod(args.definition, args.method);
@@ -167,7 +167,9 @@ export const createSurfaceFeatureLayer = (args: {
     policy: { ...DEFAULT_SURFACE_LAYER_POLICY, periodicDomain: args.definition.domain.kind === "parameter" && (!!args.definition.domain.u.periodic || !!args.definition.domain.v.periodic), ...(args.policy ?? {}) },
     points, polylines, confidence,
     statistics: { pointCount: points.length, curveCount: polylines.length, curvePointCount: polylines.reduce((sum, line) => sum + line.length, 0), meanConfidence: confidence.length ? confidenceSum / confidence.length : null },
-    warnings: populated ? [...(args.warnings ?? [])] : [...(args.warnings ?? []), "No computed feature geometry is currently available for this layer."],
+    warnings: [...(args.warnings ?? []),
+      ...(!args.confidence && points.length ? ["Feature point confidence is unavailable for this layer."] : []),
+      ...(!populated ? ["No computed feature geometry is currently available for this layer."] : [])],
   };
 };
 

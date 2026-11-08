@@ -74,6 +74,13 @@ describe("Surface persistent curve and feature layers", () => {
     expect(() => createSurfaceFeatureLayer({ ...input, confidence: [] })).toThrow(/match/);
   });
 
+  it("leaves unmeasured feature confidence unknown", () => {
+    const layer = createSurfaceFeatureLayer({ definition: smooth, layerKind: "umbilic", points: [[0, 0, 0]] });
+    expect(layer.confidence).toHaveLength(0);
+    expect(layer.statistics.meanConfidence).toBeNull();
+    expect(layer.warnings.join(" ")).toMatch(/confidence is unavailable/);
+  });
+
   it("updates visibility and exclusive selection without changing IDs", () => {
     const a = createSurfaceCurveLayer({ definition: smooth, layerKind: "geodesic", parameters: { id: 1 }, polylines: [[[0, 0, 0], [1, 0, 0]]] });
     const b = createSurfaceCurveLayer({ definition: smooth, layerKind: "level", parameters: { id: 2 }, polylines: [[[0, 0, 0], [0, 1, 0]]] });
