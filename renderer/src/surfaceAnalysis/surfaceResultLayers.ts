@@ -140,9 +140,15 @@ export const createSurfaceFeatureLayer = (args: {
   warnings?: readonly string[];
   visible?: boolean;
 }): SurfaceFeatureResultLayer => {
-  const points = (args.points ?? []).filter(finitePoint);
+  const inputPoints = args.points ?? [];
+  const retainedIndices = inputPoints.flatMap((point, index) => finitePoint(point) ? [index] : []);
+  const points = retainedIndices.map(index => inputPoints[index]!);
   const polylines = cleanLines(args.polylines ?? []);
-  const confidence = args.confidence?.length === points.length ? Float32Array.from(args.confidence) : new Float32Array(points.length).fill(1);
+  if (args.confidence && args.confidence.length !== inputPoints.length)
+    throw new TypeError("Surface feature confidence must match the input feature points.");
+  const confidence = args.confidence
+    ? Float32Array.from(retainedIndices.map(index => args.confidence![index]!))
+    : new Float32Array(points.length).fill(1);
   let confidenceSum = 0;
   for (const value of confidence) confidenceSum += value;
   const method = surfaceLayerMethod(args.definition, args.method);

@@ -56,6 +56,16 @@ describe("Surface persistent curve and feature layers", () => {
     expect(layer.statistics).toEqual({ pointCount: 2, curveCount: 1, curvePointCount: 2, meanConfidence: 0.75 });
   });
 
+  it("retains confidence by original feature index after invalid points are omitted", () => {
+    const layer = createSurfaceFeatureLayer({ definition: smooth, layerKind: "ridge",
+      points: [[0, 0, 0], [Number.NaN, 0, 0], [2, 0, 0]],
+      confidence: [0.2, 0.9, 0.8] });
+    expect(layer.points).toEqual([[0, 0, 0], [2, 0, 0]]);
+    expect(Array.from(layer.confidence)[0]).toBeCloseTo(0.2);
+    expect(Array.from(layer.confidence)[1]).toBeCloseTo(0.8);
+    expect(layer.statistics.meanConfidence).toBeCloseTo(0.5);
+  });
+
   it("updates visibility and exclusive selection without changing IDs", () => {
     const a = createSurfaceCurveLayer({ definition: smooth, layerKind: "geodesic", parameters: { id: 1 }, polylines: [[[0, 0, 0], [1, 0, 0]]] });
     const b = createSurfaceCurveLayer({ definition: smooth, layerKind: "level", parameters: { id: 2 }, polylines: [[[0, 0, 0], [0, 1, 0]]] });
