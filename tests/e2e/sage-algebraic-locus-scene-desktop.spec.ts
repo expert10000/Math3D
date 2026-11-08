@@ -168,5 +168,37 @@ test("SAGE-F01/F02 saves exact-source contract and bounded sphere/plane plot, th
     const returnedCas = ctx.page.getByTestId("cas-algebra-workspace");
     await expect(returnedCas.getByTestId("cas-structures-explorer")
       .getByRole("button", { name: /I @1/ })).toHaveAttribute("aria-current", "true");
+    const revisedIdeal = core.createAlgebraObjectRecord({ id: ideal.id, revision: 2,
+      label: "I revised", definition: { kind: "ideal", ambientRing: ref(ring),
+        generators: ["x^2+y^2+z^2-4", "x-y"] } });
+    const historicalProject = core.upsertMath3DProjectAlgebraObject(reopened, revisedIdeal);
+    await ctx.page.evaluate(({ id, raw }) => {
+      localStorage.setItem("math3d.project.v1", raw);
+      localStorage.setItem(`math3d.project.v1.payload.${id}`, raw);
+    }, { id: project.identity.id, raw: core.serializeMath3DProject(historicalProject) });
+    await ctx.page.reload();
+    await ctx.page.getByTestId("projects-toggle").click();
+    await ctx.page.getByTestId(`project-open-saved-${project.identity.id}`).click();
+    const historicalPanel = ctx.page.getByTestId("project-explorer-panel");
+    await historicalPanel.getByTestId("project-gallery-layout-toggle").click();
+    const historicalDetails = historicalPanel.getByTestId("project-detail-toggle");
+    if (await historicalDetails.getAttribute("aria-pressed") === "false") await historicalDetails.click();
+    await historicalPanel.getByTestId("project-detail-tab-documents").click();
+    const historicalMenu = historicalPanel.getByTestId(`project-algebra-open-in-${ideal.id}-revision-1`);
+    await historicalMenu.locator("summary").click();
+    await expect(historicalMenu).toContainText("Source is historical; inspect saved evidence without recomputation");
+    await expect(historicalMenu.getByRole("button", { name: "Prepare locus in CAS" })).toBeDisabled();
+    await historicalMenu.getByRole("button", { name: "Open sampled locus in Geometry" }).click();
+    await expect(ctx.page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id",
+      checkpoint!.expected.id);
+    await ctx.page.getByTestId("projects-toggle").click();
+    await ctx.page.getByTestId(`project-algebra-return-${checkpoint!.expected.id}`)
+      .getByRole("button", { name: "Return to algebra source in CAS" }).click();
+    const historicalCas = ctx.page.getByTestId("cas-algebra-workspace");
+    const historicalStructure = historicalCas.getByTestId("cas-selected-structure");
+    await expect(historicalStructure.getByRole("combobox", { name: "Structure revision" })).toHaveValue("1");
+    await expect(historicalStructure).toContainText("Historical revision");
+    await expect(historicalCas.getByTestId("cas-structures-explorer")).toContainText(
+      "Opened the pinned algebra revision for inspection");
   } finally { await closeSurfaceApp(ctx); }
 });
