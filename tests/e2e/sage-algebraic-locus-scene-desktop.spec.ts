@@ -209,6 +209,12 @@ test("SAGE-F01/F02 saves exact-source contract and bounded sphere/plane plot, th
       "Opened the pinned algebra revision for inspection");
     await expect(historicalCas.getByTestId("cas-saved-locus-inspection")
       .getByTestId("cas-locus-plot")).toBeVisible();
+    const historicalBuilder = historicalCas.getByTestId("cas-locus-builder");
+    await expect(historicalBuilder.getByRole("button", { name: "Validate & preview locus" }))
+      .toBeDisabled();
+    await expect(historicalBuilder).toContainText("Choose the current unarchived algebra object revision");
+    await expect(historicalBuilder.getByTestId("cas-open-in-geometry")
+      .getByRole("button", { name: "Open exact locus in Geometry" })).toBeDisabled();
   } finally { await closeSurfaceApp(ctx); }
 });
 

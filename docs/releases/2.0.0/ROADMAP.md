@@ -874,6 +874,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **CAS saved-evidence browser:** Selecting an algebra revision in CAS now lists its validated saved locus checkpoints directly. Exact contracts, bounded samples, and local tangent analyses remain separate choices, each rechecked before inspection. The list excludes malformed checkpoints and never starts a new calculation. Desktop journeys cover direct selection of a saved exact contract and switching between two saved tangent analyses.
 
+**CAS preparation qualification:** The locus builder now disables new validation for historical, archived, stale, or otherwise ineligible algebra sources and shows the source reason beside the controls. Rendering, local tangent inspection, and tangent saving recheck the prepared scene against the current Project before acting. Saved historical evidence stays browsable and read-only. The historical return desktop journey checks the disabled preparation controls while keeping its saved plot visible.
+
 **Integration evidence (2026-11-07):** The CAS locus handoff reached `main` in PR #33. Focused core checks passed (9 tests across the Open-in, locus-scene and sampling suites), and the locus and singularity desktop journeys passed (2 tests). After merging remote `main` into the local checkout, `npm run build:core` completed the main TypeScript build, renderer bundle and build-identity step. That build ran with pre-existing local working-tree changes, so it is development evidence rather than a clean release-candidate gate.
 
 **Exit:** at least the three flagship journeys use the same action pattern; missing/incompatible capability never silently executes.
