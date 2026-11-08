@@ -134,6 +134,8 @@ export const exportProjectCheckpointFile = (project: Math3DProject): string =>
   exportProjectFile(replaceMath3DProjectWorkspace(project, projectCheckpoint(project.workspace)));
 /** Retain imported analysis/companions while live source commands advance their own identities and replay. */
 export const mergeProjectLiveWorkspace = (retained: MixedWorkspaceDocument, live: MixedWorkspaceDocument): MixedWorkspaceDocument => {
+  const studyFields = live.studies !== undefined ? { studies: live.studies } :
+    retained.studies === undefined ? {} : { studies: retained.studies };
   const scientificSelections = retained.scientificSelections === undefined && live.scientificSelections === undefined ?
     undefined : [...new Map([...(retained.scientificSelections ?? []), ...(live.scientificSelections ?? [])]
       .map(selection => [selection.identity.kind === "authored" ? selection.identity.id : "", selection])).values()];
@@ -143,11 +145,11 @@ export const mergeProjectLiveWorkspace = (retained: MixedWorkspaceDocument, live
       .map(document => [document.identity.id, document])).values()];
   const derivedFieldsField = derivedFields === undefined ? {} : { derivedFields };
   const quantum = retained.entries.filter((entry) => entry.module === "quantum");
-  const combined = quantum.length ? createMixedWorkspaceDocument({ ...live,
+  const combined = quantum.length ? createMixedWorkspaceDocument({ ...live, ...studyFields,
     entries: [...live.entries.filter((entry) => entry.module !== "quantum"), ...quantum],
     activeDocumentIds: [...new Set([...live.activeDocumentIds.filter((id) => live.entries.some((entry) => entry.module !== "quantum" && entry.expected.id === id)),
       ...retained.activeDocumentIds.filter((id) => quantum.some((entry) => entry.expected.id === id))])] }) :
-    createMixedWorkspaceDocument({ ...live });
+    createMixedWorkspaceDocument({ ...live, ...studyFields });
   const previousGraphs = retained.entries.filter((entry) => entry.module === "graph2d"), liveGraphs = combined.entries.filter((entry) => entry.module === "graph2d");
   if (previousGraphs.length !== 1 || liveGraphs.length !== 1 || previousGraphs[0]!.expected.id !== liveGraphs[0]!.expected.id) {
     // A Project may be visible while its editor module has not loaded. The live

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { analyzeGraph2DDerivative, createGraph2DWorkspaceProject, createMath3DProject, createMixedWorkspaceDocument, createVolumeDocument, getGraph2DPresetCatalog,
-  instantiateGraph2DPreset, migrateProjectScientificSelections, parseMath3DProject, promoteGraph2DToCurve, replaceMath3DProjectWorkspace, serializeMath3DProject, serializeMixedWorkspaceDocument, structuralHash } from "@math3d/core";
+  instantiateGraph2DPreset, migrateProjectScientificSelections, parseMath3DProject, promoteGraph2DToCurve, replaceMath3DProjectWorkspace, serializeMath3DProject, serializeMixedWorkspaceDocument, structuralHash, createProjectStudyFromDocuments } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { VolumeDocumentAdapter } from "../volume/volumeDocumentAdapter";
 import { exportProjectFile, exportProjectCheckpointFile, inspectProjectCompatibility, MAX_PROJECT_IMPORT_BYTES, mergeProjectLiveWorkspace, previewProjectImport } from "./projectTransfer";
@@ -19,6 +19,16 @@ const store = () => {
   return { values, getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); }, removeItem: (key: string) => { values.delete(key); } };
 };
 describe("PRJ06 project transfer and compatibility", () => {
+  it("retains Project Study references when live module capture omits them", () => {
+    const { project } = fixture();
+    const saved = createProjectStudyFromDocuments(project, "study", "Graph and Curve",
+      project.workspace.entries.map(entry => entry.expected.id));
+    const { studies: _studies, ...live } = saved.workspace;
+    const merged = mergeProjectLiveWorkspace(saved.workspace, createMixedWorkspaceDocument(live));
+    expect(merged.studies).toEqual(saved.workspace.studies);
+    expect(parseMath3DProject(serializeMath3DProject(replaceMath3DProjectWorkspace(saved, merged)))
+      .workspace.studies).toEqual(saved.workspace.studies);
+  });
   it("retains GF-03 derived chains through partial live Project capture", () => {
     const fixtureUrl = new URL("../../../tests/fixtures/derived-field/gf03-magnitude-slice-profile.math3d", import.meta.url);
     const project = parseMath3DProject(readFileSync(fixtureUrl, "utf8"));

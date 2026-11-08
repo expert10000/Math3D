@@ -46,10 +46,12 @@ export const inspectProjectDocumentDelete = (project: Math3DProject, id: string)
     while (byId.has(source)) source = byId.get(source)!.input.documentId;
     return source === id;
   }).map(document => document.identity.id) ?? [];
+  const dependentStudyIds = current.workspace.studies?.filter(study => study.members.some(member =>
+    member.documentId === id)).map(study => study.id) ?? [];
   return { id, ownedResultIds, dependentDocumentIds: [...dependentDocumentIds].sort(), dependentResultIds: [...dependentResultIds].sort(),
     dependentArtifactIds: [...dependentArtifactIds].sort(), dependentRelationIds, constructionReferences,
-    dependentDerivedFieldIds,
-    canDelete: !dependentDocumentIds.size && !dependentResultIds.size && !dependentArtifactIds.size && !dependentRelationIds.length && !constructionReferences && !dependentDerivedFieldIds.length };
+    dependentDerivedFieldIds, dependentStudyIds,
+    canDelete: !dependentDocumentIds.size && !dependentResultIds.size && !dependentArtifactIds.size && !dependentRelationIds.length && !constructionReferences && !dependentDerivedFieldIds.length && !dependentStudyIds.length };
 };
 /** Delete only an isolated document and its owned results; retain external artifact bytes/manifests. */
 export const deleteProjectDocument = (project: Math3DProject, id: string): Math3DProject => {
