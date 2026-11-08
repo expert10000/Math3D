@@ -84,7 +84,7 @@ test("live Docker Sage operations report results and failures in Compute jobs", 
   for (const item of cases) {
     await panel.getByLabel("Operation").selectOption(item.operation);
     await panel.getByRole("button", { name: "Run", exact: true }).click();
-    await expect(panel.getByRole("status", { name: /Completed/ })).toBeVisible();
+    await expect(panel.getByRole("status").filter({ hasText: /^Completed/ })).toBeVisible({ timeout: 60_000 });
     await expect(panel).toContainText(item.expected);
   }
 

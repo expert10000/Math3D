@@ -17,10 +17,11 @@ test("GRA-11.3 authors and edits a planar phase portrait with directions and orb
   await saveGraphEditor(page);
   await expect(functions).toContainText("x' = y; y' = -x");
   const inspector = page.getByRole("complementary", { name: "Graph inspector" });
+  await inspector.getByLabel("Phase equilibrium evaluation budget").selectOption("12000");
   await expect(inspector).toContainText("Adaptive phase portrait");
   await expect(inspector.getByTestId("graph2d-phase-orbits")).toContainText("forward time-horizon");
   await expect(inspector.getByTestId("graph2d-phase-nullclines")).toContainText("complete");
-  await expect(inspector.getByTestId("graph2d-phase-equilibria")).toContainText("residual");
+  await expect(inspector.getByTestId("graph2d-phase-equilibria").getByRole("columnheader", { name: "Residual", exact: true })).toBeVisible();
   await expect(inspector.getByTestId("graph2d-phase-classification")).toContainText("linear center");
   await expect(page.locator('[data-graph2d-path="phase_portrait_1"]')).toHaveAttribute("d", /L/);
   await expect(page.locator('[data-graph2d-nullclines="phase_portrait_1"] path[data-nullcline="x"]')).toHaveAttribute("d", /M/);
@@ -43,10 +44,10 @@ test("Gallery opens a nonlinear phase portrait with three equilibrium candidates
   await graphEditor(page).getByRole("button", { name: "Browse phase portrait examples", exact: true }).click();
   await expect(page.getByRole("button", { name: "Differential equations", exact: true })).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "Open Three equilibria", exact: true }).click();
-  await expect(page.locator('[data-graph2d-equilibrium="phase_portrait_1"]')).toHaveCount(3);
   const inspector = page.getByRole("complementary", { name: "Graph inspector" });
-  await expect(inspector.getByTestId("graph2d-phase-equilibria"))
-    .toContainText("residual");
+  await inspector.getByLabel("Phase equilibrium evaluation budget").selectOption("12000");
+  await expect(page.locator('[data-graph2d-equilibrium="phase_portrait_1"]')).toHaveCount(3);
+  await expect(inspector.getByTestId("graph2d-phase-equilibria").getByRole("columnheader", { name: "Residual", exact: true })).toBeVisible();
   await expect(inspector.getByTestId("graph2d-phase-classification")).toHaveCount(3);
   await expect(inspector.getByTestId("graph2d-phase-classification").filter({ hasText: "stable node" })).toHaveCount(2);
 });
