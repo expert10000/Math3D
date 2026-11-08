@@ -112001,14 +112001,14 @@ case "mobius":
             throw new TypeError("The saved locus Geometry document could not be opened.");
           setCasWorkspaceOpen(false); setProjectsOpen(false);
         }}
-        onPromoteLocusCurve={(choice) => {
+        onPromoteLocusCurve={(choice, componentIndex) => {
           const current = projectForNotePins;
           if (!current || current.identity.id !== choice.source.projectId)
             throw new TypeError("Open the matching Project before promoting a saved contour.");
           const savedBytes = localStorage.getItem(projectPayloadKey(current.identity.id));
           if (!savedBytes || parseMath3DProject(savedBytes).identity.structuralHash !== current.identity.structuralHash)
             throw new TypeError("The saved Project changed. Reopen it before promoting the contour.");
-          const result = upsertProjectAlgebraLocusCurve(current, choice);
+          const result = upsertProjectAlgebraLocusCurve(current, choice, componentIndex);
           saveLibraryProject(localStorage, result.project, Date.now(), undefined,
             { expectedBytes: savedBytes });
           activeNotebookProjectRef.current = result.project;

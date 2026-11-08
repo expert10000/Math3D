@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { analyzeBiquadraticExtensionFromDefinition, analyzeFiniteGroup, analyzeQuadraticNumberField,
-  canonicalJsonStringify,
+  canonicalJsonStringify, locusCurveComponents,
   ellipticCurveFacts,
   createGaloisGroupObject, inspectProjectAlgebraFreshness,
   compareProjectAlgebraLocusEvidence, projectSavedAlgebraLocusEvidence,
@@ -53,7 +53,8 @@ export type CASAlgebraWorkspaceProps = Omit<SageServicesWorkspaceProps, "structu
   onSaveLocusScene?: (scene: SageAlgebraicLocusScene) => void | Promise<void>;
   onSaveLocusSample?: (sample: SageAlgebraicLocusSample) => void | Promise<void>;
   onOpenLocusGeometry?: (documentId: string) => void | Promise<void>;
-  onPromoteLocusCurve?: (choice: ProjectAlgebraLocusReturn) => void | Promise<void>;
+  onPromoteLocusCurve?: (choice: ProjectAlgebraLocusReturn,
+    componentIndex: number) => void | Promise<void>;
   requestedSelection?: { projectId: string; target: AlgebraObjectRef;
     contentHash: string; evidence?: ProjectAlgebraLocusReturn | null; token: number } | null;
   onSaveLocusSingularity?: (analysis: SageAlgebraicSingularityScene) => void | Promise<void>;
@@ -169,6 +170,10 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
     savedScene.source.target.id === chosen.record.id &&
     savedScene.source.target.revision === chosen.record.revision
     ? savedLocus!.inspection : null;
+  const savedContour = activeSavedLocus?.kind === "sampled" &&
+    activeSavedLocus.sample.kind === "curve" && activeSavedLocus.sample.scene.domain.bounds.length === 2
+    ? (() => { try { return { components: locusCurveComponents(activeSavedLocus.sample), error: null }; }
+      catch (error) { return { components: null, error: (error as Error).message }; } })() : null;
   const comparison = useMemo(() => {
     if (!project || !selectedSavedChoice || !comparisonChoice || !activeSavedLocus) return null;
     try { return { value: compareProjectAlgebraLocusEvidence(project,
@@ -493,14 +498,20 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
         } catch (error) { setHandoffError(`Saved Geometry could not open: ${String(error)}`); }
       }}>Open saved {activeSavedLocus.kind === "singularity" ? "tangent" :
         activeSavedLocus.kind === "sampled" ? "sampled" : "exact"} Geometry</button>}
-      {onPromoteLocusCurve && activeSavedLocus.kind === "sampled" &&
-        activeSavedLocus.sample.kind === "curve" && activeSavedLocus.sample.scene.domain.bounds.length === 2 &&
-        <div><button type="button" style={action} data-testid="cas-open-saved-locus-curve"
+      {onPromoteLocusCurve && savedContour && <div data-testid="cas-saved-locus-components"
+        style={{ display: "grid", gap: 5 }}>
+        {savedContour.error && <small>{savedContour.error}</small>}
+        {savedContour.components?.map((component, index) => <button key={index} type="button"
+          style={action} data-testid={`cas-open-saved-locus-curve-${index}`}
           disabled={selectedSavedChoice.sourceStatus !== "current"} onClick={() => {
-            void Promise.resolve().then(() => onPromoteLocusCurve(selectedSavedChoice))
+            void Promise.resolve().then(() => onPromoteLocusCurve(selectedSavedChoice, index))
               .catch(error => setHandoffError(`Saved contour could not open in Curves: ${String(error)}`));
-          }}>Open bounded contour in Curves</button>
-          <small style={{ display: "block" }}>Promotes one connected numerical contour with its saved Geometry source. Multiple components or branches require Geometry inspection.</small></div>}
+          }}>{savedContour.components!.length === 1 ? "Open bounded contour in Curves" :
+            `Open contour ${index + 1} of ${savedContour.components!.length} in Curves`}
+          {` · ${component.points.length - 1} segments · ${component.closed ? "closed" : "open"}`}
+        </button>)}
+        <small>Each Curve uses one explicitly selected numerical component and retains its saved Geometry source. Branching contours stay in Geometry.</small>
+      </div>}
     </section>}
     {onSaveLocusScene && onSaveLocusSample && onSaveLocusSingularity && (chosen.record.definition.kind === "ideal" ||
       chosen.record.definition.kind === "polynomial-ring") &&
