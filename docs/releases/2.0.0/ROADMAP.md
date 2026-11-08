@@ -936,6 +936,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **QWZ pinned-selection and source gate (2026-11-08):** A Study can now pin one band sample with its source fingerprint. Cold restart reopens both saved bundles and restores the linked curvature readout only after exact source and sample verification. The source button opens the verified scene viewer; closing it returns to the open quad with the pin intact. A changed source is refused by both the source viewer and linked Study readout while the saved pin remains. The relocated Project pack test also retains and requalifies the pinned selection with the worker unavailable. Additional Study mappings and a verified publication snapshot remain open.
 
+**QWZ evidence export (2026-11-08):** The pin can be replaced or removed while unrelated Study selections remain intact. A QWZ Study can export a deterministic JSON evidence snapshot after independently reopening both scene bundles and verifying the exact band sample, curvature target and reciprocal projection. The snapshot records source fingerprints, run/result identity, producer invariants, values and projection offset without copying scene arrays. If a pin is absent or source bytes change, it exports an explicit omissions manifest with quantitative fields withheld. The desktop test covers verified and tampered exports after cold restart; broader Workbook publication and additional Study mappings remain open.
+
 **Exit:** QWZ quad Study saves, cold-reopens and round-trips without copying source ownership or triggering unauthorized recomputation.
 
 ### M3D20-05 — Result Cards and Inspector convergence (P0)

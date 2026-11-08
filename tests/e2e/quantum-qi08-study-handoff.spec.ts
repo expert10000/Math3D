@@ -53,6 +53,18 @@ test("Lab QWZ study handoff stages both exact scenes in a new Math3D Project", a
     await expect(studies.getByTestId("project-study-qwz-cursor-status")).toContainText("Berry curvature", { timeout: 60_000 });
     await studies.getByTestId("project-study-pin-qwz-k").click();
     await expect(studies.getByTestId("project-study-qwz-pin-status")).toContainText("Pinned band sample 0");
+    await studies.getByLabel("Band sample index").fill("1");
+    await studies.getByTestId("project-study-share-qwz-k").click();
+    await expect(studies.getByTestId("project-study-pin-qwz-k")).toHaveText("Update pinned k", { timeout: 60_000 });
+    await studies.getByTestId("project-study-pin-qwz-k").click();
+    await expect(studies.getByTestId("project-study-qwz-pin-status")).toContainText("Pinned band sample 1");
+    await studies.getByTestId("project-study-unpin-qwz-k").click();
+    await expect(studies.getByTestId("project-study-qwz-pin-status")).toHaveCount(0);
+    await studies.getByLabel("Band sample index").fill("0");
+    await studies.getByTestId("project-study-share-qwz-k").click();
+    await expect(studies.getByTestId("project-study-pin-qwz-k")).toBeVisible({ timeout: 60_000 });
+    await studies.getByTestId("project-study-pin-qwz-k").click();
+    await expect(studies.getByTestId("project-study-qwz-pin-status")).toContainText("Pinned band sample 0");
     await expect(studies.getByTestId("project-study-quantum-linked-k")).toContainText("Linked k=");
     await studies.getByTestId("project-study-preview-toggle-inspector").click();
     await expect(studies.getByTestId("project-study-qwz-inspector")).toContainText("Chern number: -1", { timeout: 60_000 });
