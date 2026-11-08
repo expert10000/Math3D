@@ -6,7 +6,7 @@ import { VECTOR_FIELD3D_POINT_RESULT_TYPE, VECTOR_FIELD3D_REGION_RESULT_TYPE,
   VECTOR_FIELD3D_COMBINED_SUBRECTANGLE_RESULT_TYPE,
   VECTOR_FIELD3D_TRAJECTORY_RESULT_TYPE,
   VECTOR_FIELD3D_EQUILIBRIUM_RESULT_TYPE,
-  type Math3DProject } from "@math3d/core";
+  type Math3DProject, type ScientificSourceGeneration } from "@math3d/core";
 import type { ProjectDependencyInspection } from "../projects/projectDependencies";
 import { presentProjectFreshness } from "../projects/projectFreshnessPresentation";
 import type { SavedRegionSourceStatus } from "../vectorfield3d/checkSavedRegionResultSources";
@@ -16,6 +16,7 @@ import { isScientificTrajectory } from "../projects/scientificTrajectoryWorkbook
 import { isScientificEquilibrium } from "../projects/scientificEquilibriumWorkbook";
 import type { ProjectResourceReader } from "../projects/projectResources";
 import { verifySavedMeshResult } from "../projects/projectSavedMeshResultComparison";
+import { projectResultSourceLink } from "../projects/projectResultSourceLink";
 
 const ProjectSavedMeshGenerationPreview = React.lazy(() => import("./ProjectSavedMeshGenerationPreview").then(module => ({ default: module.ProjectSavedMeshGenerationPreview })));
 
@@ -101,10 +102,6 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
     ? selection : results[0] ? { kind: "result" as const, id: results[0].resultId } : artifacts[0] ? { kind: "artifact" as const, id: artifacts[0].handle.artifactId } : null;
   const result = active?.kind === "result" ? results.find(item => item.resultId === active.id) : undefined;
   const meshResult = result?.provenance.operation.type.startsWith("mesh.saved.") ? result : undefined;
-  const meshCurrent = meshResult && project.workspace.entries.find(item => item.module === "mesh" &&
-    item.expected.id === meshResult.provenance.source.documentId)?.expected;
-  const meshSourceIsHistorical = !!meshResult && (!meshCurrent || meshCurrent.revision !== meshResult.provenance.source.revision ||
-    meshCurrent.structuralHash !== meshResult.provenance.source.structuralHash);
   const meshVerification = useMemo(() => {
     if (!meshResult || !readResource) return null;
     try { return { checked: verifySavedMeshResult(project, meshResult.resultId, readResource), error: null }; }
@@ -115,9 +112,16 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
   const artifactStatus = artifact && inspection?.artifacts.find(item => item.id === artifact.handle.artifactId);
   const linkedResults = artifact ? results.filter(item => item.artifacts.some(handle => handle.artifactId === artifact.handle.artifactId)) : [];
   const artifactRelations = artifact ? project.workspace.relations.filter(relation => relation.target.type === "artifact" && relation.target.artifactId === artifact.handle.artifactId) : [];
-  const sourceButton = (id: string) => {
-    const entry = project.workspace.entries.find(item => item.expected.id === id);
-    return <button type="button" disabled={!entry || !canOpen(id, entry.module)} onClick={() => entry && onOpen(id, entry.module)}>{titles.get(id) ?? id}</button>;
+  const sourceButton = (source: ScientificSourceGeneration) => {
+    const link = projectResultSourceLink(project, source);
+    const label = titles.get(source.documentId) ?? source.documentId;
+    return link.status === "current" && link.module
+      ? <button type="button" data-testid={`project-result-source-${source.documentId}`}
+          disabled={!canOpen(source.documentId, link.module)} title={link.reason}
+          onClick={() => onOpen(source.documentId, link.module!)}>{label}</button>
+      : <span data-testid={`project-result-source-${source.documentId}`} title={link.reason}>
+          {label} · {link.status === "historical" ? "historical source generation" : "missing source"}
+        </span>;
   };
 
   return <div className="project-results-browser" data-testid="project-results-browser">
@@ -188,8 +192,7 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
               onClick={() => onCreateScientificReport?.(result.resultId)}>
               Create verified equilibrium Workbook report</button>
           </div>}
-          <dl><div><dt>Source document</dt><dd>{meshSourceIsHistorical ?
-            <span>{titles.get(result.provenance.source.documentId) ?? result.provenance.source.documentId} · historical revision; use the exact generation view above when available</span> : sourceButton(result.provenance.source.documentId)}</dd></div>
+          <dl><div><dt>Source document</dt><dd>{sourceButton(result.provenance.source)}</dd></div>
             <div><dt>Source generation</dt><dd>Revision {result.provenance.source.revision} · generation {result.provenance.source.generation}</dd></div>
             <div><dt>Source hash</dt><dd><code>{result.provenance.source.structuralHash}</code></dd></div>
             <div><dt>Method</dt><dd>{result.provenance.operation.algorithm} · version {result.provenance.operation.algorithmVersion}</dd></div>
@@ -294,7 +297,7 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
             onClick={() => select({ kind: "result", id: item.resultId })}>{item.provenance.operation.type} · {titles.get(item.provenance.source.documentId) ?? item.provenance.source.documentId} · r{item.provenance.source.revision} g{item.provenance.source.generation}</button>)}</div> : <p>No result reference recorded.</p>}
           <h5>Recorded relation sources ({artifactRelations.length})</h5>
           {artifactRelations.length ? <ul>{artifactRelations.flatMap(relation => relation.sources.map(source => <li key={`${relation.relationId}:${source.documentId}`}>
-            {sourceButton(source.documentId)} · revision {source.revision} · generation {source.generation}
+            {sourceButton(source)} · revision {source.revision} · generation {source.generation}
           </li>))}</ul> : <p>No direct relation to a source document recorded.</p>}
         </>}
         {!result && !artifact && <p>No saved result or artifact is available to inspect.</p>}
