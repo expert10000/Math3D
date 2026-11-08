@@ -106,6 +106,11 @@ describe("saved algebra locus to Curve", () => {
     const saved = upsertMath3DProjectAlgebraicLocusSample(project, sample);
     const choice = projectAlgebraLocusReturn(saved, saved.workspace.entries[0]!.expected.id)!;
     const promoted = upsertProjectAlgebraLocusCurve(saved, choice);
+    expect(projectAlgebraLocusCurveSourceStatus(saved, promoted.curve).status).toBe("invalid");
+    const editedCheckpoint = structuredClone(promoted.curve);
+    editedCheckpoint.metadata.title = "Unsaved contour title";
+    expect(projectAlgebraLocusCurveSourceStatus(promoted.project, editedCheckpoint).status)
+      .toBe("invalid");
     const revised = createAlgebraObjectRecord({ id: ring.id, revision: 2, label: "R revised",
       definition: { kind: "polynomial-ring", coefficientDomain: { objectId: qq.id, revision: 1 },
         variables: ["x", "y"], monomialOrder: "lex" } });
