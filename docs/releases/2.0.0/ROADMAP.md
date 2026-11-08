@@ -886,6 +886,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **Surface–Mesh comparison cursor (2026-11-08):** Pinned saved points and live comparison picks now publish only from current Surface or Mesh generations with a declared Cartesian frame; Mesh cursors carry the buffer checksum. A comparison view adopts an incoming point only when the source generation, resource and frame match, and marks a coordinate without claiming a target element. Its link control leaves local picks available. Curve document linkage, a broader multi-view matrix and cross-document mathematical mappings remain open.
 
+**Curve parameter cursor (2026-11-08):** The Curve Inspector can share a qualified parameter `t` from the current synchronized Curve document. The parameter frame is scoped to that document, with its recorded unit and exact source generation. A matching incoming cursor moves the local selector without publishing another event; stale source, frame, unit and domain mismatches are refused. Live and saved Curve identity remains separate, so cross-document Curve-to-Surface/Graph mappings and the broader multi-view matrix remain open.
+
 **Exit:** no feedback loops, qualified coordinate mapping and exact return; local selection works even if linked target is unavailable.
 
 ### M3D20-04 — StudyDocument (P0; bounded flagship)
