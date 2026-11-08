@@ -6,7 +6,8 @@ import { VECTOR_FIELD3D_POINT_RESULT_TYPE, VECTOR_FIELD3D_REGION_RESULT_TYPE,
   VECTOR_FIELD3D_COMBINED_SUBRECTANGLE_RESULT_TYPE,
   VECTOR_FIELD3D_TRAJECTORY_RESULT_TYPE,
   VECTOR_FIELD3D_EQUILIBRIUM_RESULT_TYPE,
-  type Math3DProject, type ScientificSourceGeneration } from "@math3d/core";
+  type Math3DProject, type ScientificSourceGeneration,
+  presentAnalysisResultClaim } from "@math3d/core";
 import type { ProjectDependencyInspection } from "../projects/projectDependencies";
 import { presentProjectFreshness } from "../projects/projectFreshnessPresentation";
 import type { SavedRegionSourceStatus } from "../vectorfield3d/checkSavedRegionResultSources";
@@ -101,6 +102,7 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
   const active = selection && (selection.kind === "result" ? results.some(result => result.resultId === selection.id) : artifacts.some(artifact => artifact.handle.artifactId === selection.id))
     ? selection : results[0] ? { kind: "result" as const, id: results[0].resultId } : artifacts[0] ? { kind: "artifact" as const, id: artifacts[0].handle.artifactId } : null;
   const result = active?.kind === "result" ? results.find(item => item.resultId === active.id) : undefined;
+  const resultClaim = result && presentAnalysisResultClaim(result.status);
   const meshResult = result?.provenance.operation.type.startsWith("mesh.saved.") ? result : undefined;
   const meshVerification = useMemo(() => {
     if (!meshResult || !readResource) return null;
@@ -132,6 +134,7 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
       <nav className="project-results-list" aria-label="Saved results and artifacts">
         <h4>Results ({results.length})</h4>
         {filteredResults.map(item => {
+          const claim = presentAnalysisResultClaim(item.status);
           const status = inspection?.results.find(candidate => candidate.id === item.resultId);
           const freshness = isRegionResult(item.provenance.operation.type)
             ? regionSourcePresentation(regionResultStatuses[item.resultId])
@@ -140,7 +143,7 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
             aria-current={active?.kind === "result" && active.id === item.resultId ? "true" : undefined}
             onClick={() => select({ kind: "result", id: item.resultId })}>
             <strong>{item.provenance.operation.type}</strong>
-            <small>{titles.get(item.provenance.source.documentId) ?? item.provenance.source.documentId} · {item.status}</small>
+            <small>{titles.get(item.provenance.source.documentId) ?? item.provenance.source.documentId} · {claim.label}</small>
             {freshness && <span className="project-freshness-badge" data-tone={freshness.tone}>{freshness.label}</span>}
           </button>;
         })}
@@ -164,7 +167,9 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
               ? <span className="project-freshness-badge" data-tone={regionSourcePresentation(regionResultStatuses[result.resultId]).tone}>{regionSourcePresentation(regionResultStatuses[result.resultId]).label}</span>
               : resultStatus && <span className="project-freshness-badge" data-tone={presentProjectFreshness(resultStatus.freshness).tone}>{presentProjectFreshness(resultStatus.freshness).label}</span>}
           </div>
-          <p>Recorded status: <strong>{result.status}</strong>{resultStatus?.missingArtifactIds.length ? ` · ${resultStatus.missingArtifactIds.length} unavailable artifact(s)` : ""}</p>
+          <p data-testid="project-result-claim">Mathematical claim: <strong>{resultClaim!.label}</strong>
+            {` · ${resultClaim!.meaning}`}
+            {resultStatus?.missingArtifactIds.length ? ` · ${resultStatus.missingArtifactIds.length} unavailable artifact(s)` : ""}</p>
           {meshResult && <div data-testid="project-saved-mesh-evidence" style={{ border: "1px solid #cbd5e1", borderRadius: 8, padding: 10 }}>
             <strong>Exact saved Mesh evidence</strong>
             {meshVerification?.checked ? <><p>Result {meshResult.resultId} · hash {meshVerification.checked.resultHash}<br />
