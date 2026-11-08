@@ -763,7 +763,7 @@ import { CurveMeshPanel } from "./components/CurveMeshPanel";
 import { CurveBackendPanel } from "./components/CurveBackendPanel";
 import { CurveWorkerPanel } from "./components/CurveWorkerPanel";
 import { CurveDocumentAdapter, curveDocumentFromLegacyDefinition, splineDefinitionFromCurveDocument } from "./curveAnalysis/curveDocumentAdapter";
-import { curveParameterCursorDraft } from "./curveAnalysis/curveCursor";
+import { curveParameterCursorDraft, projectCurveParameterCursor } from "./curveAnalysis/curveCursor";
 import { scientificCursorBus } from "./components/scientificCursor";
 import { VolumeDocumentAdapter, volumeDocumentFromLegacyObject } from "./volume/volumeDocumentAdapter";
 import { VolumeExtractionKernelBridge, locateVolumeExtractionVertex, promoteVolumeExtraction, volumeExtractionStatus, type VolumeExtractionRecord } from "./volume/volumeExtractionKernel";
@@ -12200,6 +12200,25 @@ const App: React.FC = () => {
       kernelDocuments: [...workspace.kernelDocuments.filter((document) => document.metadata.legacyCurveId !== activeCanonicalCurveDefinition.identity.curveId), activeCurveKernelAdapter.document()].slice(-64),
     }));
   }, [activeCanonicalCurveDefinition.fingerprint, activeCanonicalCurveDefinition.identity.curveId, activeCurveKernelAdapter, activeCurvePreset?.id, activeCurveSplineSeed, curveSplineDefinition?.id, restoredCurveAdapter]);
+  const activeCurveCursorSource = activeCurveKernelAdapter.document();
+  useEffect(() => {
+    if (mode !== "curves" || !curveCursorLinked) return;
+    setCurveCursorStatus("");
+    return scientificCursorBus.subscribe(event => {
+      if (event.kind !== "project" ||
+          event.originViewId === `curve-viewer:${activeCurveCursorSource.identity.id}`) return;
+      const projected = projectCurveParameterCursor(event, activeCurveKernelAdapter.document(),
+        activeCanonicalCurveDefinition);
+      if (projected.status === "matched") {
+        setCurveProbeU(projected.value); setCurveProbeSource("replay");
+        setCurveCursorStatus("Linked exact Curve parameter from the current source; no cursor rebroadcast.");
+      } else if (event.source.documentId === activeCurveCursorSource.identity.id) {
+        setCurveCursorStatus(`Cursor withheld: ${projected.reason}`);
+      }
+    });
+  }, [mode, curveCursorLinked, activeCurveKernelAdapter, activeCurveCursorSource.identity.id,
+    activeCurveCursorSource.identity.revision, activeCurveCursorSource.identity.structuralHash,
+    activeCanonicalCurveDefinition]);
   const curveAnalysisRegistryRef = useRef(createCurveAnalysisRegistry());
   const [curveAnalysisResultStore, setCurveAnalysisResultStore] = useState(createCurveAnalysisResultStore);
   const [curveResultLifecycle, setCurveResultLifecycle] = useState(createCurveResultLifecycleState);
