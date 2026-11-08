@@ -35,6 +35,7 @@ import { projectSavedAlgebraOpenInActions, resolveProjectSavedAlgebraOpenIn,
   type ProjectSavedAlgebraOpenInAction } from "@math3d/core";
 import { projectAlgebraCasHandoff, resolveProjectAlgebraCasHandoff,
   type ProjectAlgebraCasHandoff, type AlgebraObjectRef } from "@math3d/core";
+import { projectAlgebraLocusCurveSourceStatus, resolveProjectAlgebraLocusCurveSource } from "@math3d/core";
 import { createSavedSurfaceMesh } from "../projects/savedSurfaceMesh";
 import { inspectProjectDependencies } from "../projects/projectDependencies";
 import { presentProjectFreshness, presentProjectRelationFreshness } from "../projects/projectFreshnessPresentation";
@@ -473,6 +474,12 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     }
   }, [project]);
   const documentTitles = new Map(explorer?.groups.flatMap((group) => group.documents.map((document) => [document.id, document.title] as const)) ?? []);
+  const contourSources = useMemo(() => new Map<string, ReturnType<typeof projectAlgebraLocusCurveSourceStatus>>(
+    project?.workspace.entries.flatMap(entry =>
+    entry.module === "curve" && entry.checkpoint.format === "math3d.curve-document" &&
+    entry.checkpoint.source.definition.familyId === "algebra.bounded-locus-contour"
+      ? [[entry.expected.id, projectAlgebraLocusCurveSourceStatus(project!, entry.checkpoint)] as const]
+      : []) ?? []), [project]);
   const relatedSummary = useMemo(() => {
     const empty = { sources: [] as { id: string; module: KernelWorkspaceModule; revision: number; historical: boolean }[],
       derived: [] as { id: string; module: KernelWorkspaceModule; revision: number; historical: boolean }[],
@@ -2324,6 +2331,36 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                 "Open the Project workspace to return to CAS." : busy ? "Project is busy." :
                 !onOpenAlgebra ? "CAS navigation is unavailable on this host." : null}
               onReturn={returnToAlgebraInCas} />}
+            {contourSources.has(document.id) && (() => {
+              const status = contourSources.get(document.id)!;
+              return <div data-testid={`project-contour-source-${document.id}`}
+                style={{ display: "grid", gap: 4, fontSize: 12 }}>
+                <span><strong>Saved contour source:</strong> {status.status}
+                  {status.reason ? ` · ${status.reason}` : " · exact saved component verified"}</span>
+                <button type="button" data-testid={`project-contour-return-${document.id}`}
+                  disabled={preview || !status.sourceDocumentId ||
+                    !onRestoreWorkspace || !onNavigateDocument}
+                  title={preview ? "Open the saved Project first." :
+                    !status.sourceDocumentId ? status.reason ?? "Geometry source unavailable." :
+                    !onRestoreWorkspace || !onNavigateDocument ?
+                      "Project workspace navigation is unavailable on this host." :
+                      status.reason ?? "Open the pinned sampled Geometry checkpoint"}
+                  onClick={() => {
+                    if (!project || !onRestoreWorkspace) return;
+                    const entry = project.workspace.entries.find(item => item.expected.id === document.id);
+                    if (entry?.checkpoint.format !== "math3d.curve-document") return;
+                    try {
+                      const sourceId = resolveProjectAlgebraLocusCurveSource(project, entry.checkpoint);
+                      if (!canNavigateDocument?.(sourceId, "geometry"))
+                        onRestoreWorkspace(project.workspace, resourceSession.current, project);
+                      if (!canNavigateDocument?.(sourceId, "geometry"))
+                        throw new TypeError("The saved Geometry source is unavailable in this workspace.");
+                      viewBesideProject(sourceId, "geometry");
+                    }
+                    catch (error) { setMessage(`Contour source could not open: ${(error as Error).message}`); }
+                  }}>Open source Geometry</button>
+              </div>;
+            })()}
             {document.module === "vector3d" && <button type="button"
               data-testid={`project-open-field-explorer-${document.id}`}
               disabled={busy || document.archived || !onNavigateDocument || !onRestoreWorkspace}

@@ -340,5 +340,20 @@ test("saved two-circle sample promotes a chosen contour with Curve lineage", asy
       componentCount: 2, sampleHash: sample.resultHash });
     expect(saved.workspace.relations.some((relation: { operation: string }) =>
       relation.operation === "algebra.locus-sample-curve")).toBe(true);
+    await ctx.page.reload();
+    await ctx.page.getByTestId("projects-toggle").click();
+    await ctx.page.getByTestId(`project-open-saved-${project.identity.id}`).click();
+    const panel = ctx.page.getByTestId("project-explorer-panel");
+    await expect(panel.getByTestId("project-view-mode")).toContainText("Current workspace");
+    const sourceStatus = panel.getByTestId(`project-contour-source-${expected.curve.identity.id}`);
+    await expect(sourceStatus).toContainText("Saved contour source: current");
+    await ctx.page.evaluate(id => {
+      const button = document.querySelector<HTMLButtonElement>(
+        `[data-testid="project-contour-return-${id}"]`);
+      if (!button) throw new Error("Curve source return is unavailable.");
+      button.click();
+    }, expected.curve.identity.id);
+    await expect(ctx.page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id",
+      choice.documentId);
   } finally { await closeSurfaceApp(ctx); }
 });
