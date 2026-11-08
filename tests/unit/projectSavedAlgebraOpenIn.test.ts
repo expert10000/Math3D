@@ -5,7 +5,8 @@ import { algebraicLocusGeometryDocument, algebraicSingularityGeometryDocument,
   createMixedWorkspaceDocument, createProjectAlgebraObjectId, parseMath3DProject,
   projectAlgebraLocusReturn, projectSavedAlgebraOpenInActions,
   resolveProjectAlgebraLocusReturn, resolveProjectSavedAlgebraOpenIn,
-  sampleSageAlgebraicLocus, SAGE_LOCUS_GEOMETRY_EXTENSION, serializeMath3DProject, setMath3DProjectAlgebraObjectArchived,
+  sampleSageAlgebraicLocus, SAGE_LOCUS_GEOMETRY_EXTENSION, SAGE_LOCUS_SINGULARITY_EXTENSION,
+  serializeMath3DProject, setMath3DProjectAlgebraObjectArchived,
   upsertMath3DProjectAlgebraObject, upsertMath3DProjectAlgebraicSingularityScene,
   upsertMath3DProjectAlgebraicLocusSample, upsertMath3DProjectAlgebraicLocusScene } from "@math3d/core";
 
@@ -46,6 +47,43 @@ describe("saved Project algebra locus Open in", () => {
     expect(resolveProjectSavedAlgebraOpenIn(saved, target, destination)).toBe(documentId);
     expect(() => resolveProjectSavedAlgebraOpenIn(saved, target,
       { ...destination, inspectionPoint: ["0", "0"] })).toThrow(/destination changed/);
+  });
+
+  it("keeps tangent points distinct and rejects changed or altered exact evidence", () => {
+    const { project, qq, ring, target, scene } = fixture();
+    const xPoint = analyzeSageAlgebraicSingularity(scene, ["1", "0"]);
+    const yPoint = analyzeSageAlgebraicSingularity(scene, ["0", "1"]);
+    const saved = upsertMath3DProjectAlgebraicSingularityScene(
+      upsertMath3DProjectAlgebraicSingularityScene(project, xPoint), yPoint);
+    const actions = projectSavedAlgebraOpenInActions(saved, target);
+    expect(actions.map(action => action.inspectionPoint)).toEqual([["1", "0"], ["0", "1"]]);
+    expect(new Set(actions.map(action => action.documentId)).size).toBe(2);
+    expect(actions.every(action => action.enabled && action.analysisHash)).toBe(true);
+    for (const action of actions)
+      expect(resolveProjectSavedAlgebraOpenIn(saved, target, action)).toBe(action.documentId);
+
+    const revised = createAlgebraObjectRecord({ id: ring.id, revision: 2, label: "R revised",
+      definition: { kind: "polynomial-ring", coefficientDomain: { objectId: qq.id, revision: 1 },
+        variables: ["x", "y"], monomialOrder: "lex" } });
+    const changed = upsertMath3DProjectAlgebraObject(saved, revised);
+    const historical = projectSavedAlgebraOpenInActions(changed, target);
+    expect(historical.every(action => action.enabled && action.sourceStatus === "historical")).toBe(true);
+    expect(() => resolveProjectSavedAlgebraOpenIn(changed, target, actions[0]!))
+      .toThrow(/destination changed/);
+    const archived = setMath3DProjectAlgebraObjectArchived(changed, ring.id, true);
+    expect(projectSavedAlgebraOpenInActions(archived, target).every(action =>
+      action.enabled && action.sourceStatus === "archived")).toBe(true);
+
+    const altered = structuredClone(saved);
+    const checkpoint = altered.workspace.entries.find(entry => entry.expected.id === actions[0]!.documentId)!
+      .checkpoint;
+    if (checkpoint.format !== "math3d.geometry-document") throw new Error("Expected Geometry fixture");
+    const extensions = checkpoint.source.extensions as Record<string, unknown>;
+    const analysis = extensions[SAGE_LOCUS_SINGULARITY_EXTENSION] as typeof xPoint;
+    extensions[SAGE_LOCUS_SINGULARITY_EXTENSION] = {
+      ...analysis, local: { ...analysis.local, jacobian: ["7", "0"] } };
+    expect(projectAlgebraLocusReturn(altered, checkpoint.identity.id)).toBeNull();
+    expect(projectSavedAlgebraOpenInActions(altered, target)).toHaveLength(1);
   });
 
   it("returns from exact and sampled Geometry to the pinned algebra revision", () => {
