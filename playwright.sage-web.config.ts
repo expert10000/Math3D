@@ -1,8 +1,8 @@
 import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
-  testDir: "./tests/graph2d-web",
-  testMatch: "sagePolynomial.spec.ts",
+  testDir: "./tests",
+  testMatch: ["**/graph2d-web/sagePolynomial.spec.ts", "**/sage-local-web/installedLocal.spec.ts"],
   timeout: 120_000,
   workers: 1,
   reporter: "list",

@@ -202,7 +202,7 @@ test("G2D39 checked data fitting, residuals, stale models and offline uncertaint
   await expect(page.getByTestId("graph2d-regression-overlay")).toHaveCount(0);
   await panel.getByRole("button", { name: "Fit dataset", exact: true }).click(); await expect(panel.getByRole("status")).toHaveText("Current regression");
   await expect(panel).toContainText("n=6 · excluded=1 · df=4"); await expect(page.getByTestId("graph2d-regression-overlay")).toHaveCount(1);
-  await panel.getByText("Residuals (6)", { exact: true }).click(); await expect(panel.getByRole("rowheader", { name: "row_1", exact: true })).toBeVisible();
+  await panel.getByText("Residuals (6)", { exact: true }).click(); await expect(panel.getByRole("button", { name: "Highlight residual row row_1", exact: true })).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem("math3d.mixed-workspace.v1"))).toBe(before);
   await page.getByTestId("main-viewer").getByRole("button", { name: "Fit selection", exact: true }).click();
   await page.screenshot({ path: info.outputPath("regression.png") });
