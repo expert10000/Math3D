@@ -32,10 +32,11 @@ describe("Project result evidence", () => {
       expect(evidence.assessment.omissions).toContain("summary values");
     }
   });
-  it("keeps a verified source distinct from the producer's numerical authority", () => {
+  it("does not present a prior source check as a new export-time verification", () => {
     const card = presentProjectResultCard(result, dependency, "source-current", true);
     const evidence = createProjectResultEvidence(result, card, dependency);
-    expect(evidence.assessment).toMatchObject({ status: "source-verified",
+    expect(evidence.assessment).toMatchObject({ status: "recorded-only",
       mathematics: "Recorded numerical" });
+    expect(evidence.assessment.explanation).toContain("did not reopen");
   });
 });

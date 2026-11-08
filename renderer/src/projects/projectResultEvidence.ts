@@ -9,8 +9,8 @@ export function createProjectResultEvidence(result: AnalysisResultEnvelope, card
   dependency: Dependency | undefined) {
   const ready = card.execution.label === "Completed";
   const status = !ready ? "withheld" as const :
-    card.integrity.label === "Source verified" ? "source-verified" as const :
-      card.integrity.label === "Snapshot current" ? "recorded-only" as const : "withheld" as const;
+    card.integrity.label === "Source verified" || card.integrity.label === "Snapshot current" ?
+      "recorded-only" as const : "withheld" as const;
   return {
     schema: "math3d.project-result-evidence/v1" as const,
     resultId: result.resultId,
@@ -20,7 +20,9 @@ export function createProjectResultEvidence(result: AnalysisResultEnvelope, card
     authority: result.status,
     assessment: { status, execution: card.execution.label,
       integrity: card.integrity.label, mathematics: card.mathematics.label,
-      explanation: card.integrity.detail,
+      explanation: card.integrity.label === "Source verified" ?
+        "External bytes passed the last result-specific check; this export did not reopen them." :
+        card.integrity.detail,
       omissions: status === "withheld" ? ["summary values"] : [] },
     summary: status === "withheld" ? null : result.summary,
     artifactHandles: result.artifacts,

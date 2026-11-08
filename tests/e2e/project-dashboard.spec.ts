@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, resizeSurfaceAppWindow, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
 
@@ -117,6 +118,21 @@ test("Catenoid Project Details shows freshness for its saved Mesh analysis", asy
     await browser.getByTestId(`project-result-select-${result.resultId}`).click();
     await expect(detail).toContainText(result.provenance.operation.algorithm);
     await expect(detail).toContainText(`Revision ${result.provenance.source.revision} · generation ${result.provenance.source.generation}`);
+    await expect(detail.getByTestId("project-result-card-axes")).toContainText("Recorded");
+    const evidencePath = test.info().outputPath("project-result-evidence.json");
+    await ctx.app.evaluate(({ session }, path) => session.defaultSession.once("will-download",
+      (_event, item) => item.setSavePath(path)), evidencePath);
+    await detail.getByTestId("project-result-export-evidence").click();
+    await expect.poll(async () => {
+      try { return JSON.parse(await readFile(evidencePath, "utf8")); } catch { return null; }
+    }, { timeout: 60_000 }).not.toBeNull();
+    const evidence = JSON.parse(await readFile(evidencePath, "utf8"));
+    expect(evidence.schema).toBe("math3d.project-result-evidence/v1");
+    expect(evidence.resultId).toBe(result.resultId);
+    expect(evidence.source).toEqual(result.provenance.source);
+    expect(evidence.assessment.mathematics).toMatch(/^Recorded /);
+    if (evidence.assessment.status === "withheld") expect(evidence.summary).toBeNull();
+    else expect(evidence.summary).toEqual(result.summary);
     await browser.getByRole("searchbox", { name: "Search saved outputs" }).fill("no such output");
     await expect(browser.getByText("No matching results.")).toBeVisible();
     await browser.getByRole("searchbox", { name: "Search saved outputs" }).fill("");

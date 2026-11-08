@@ -108,7 +108,7 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
     const title = titles.get(id) ?? id;
     if (!entry) return <span data-testid="project-result-source-missing">{title} · source document missing</span>;
     if (recorded && !matchesScientificSourceGeneration(viewerSourceFromDocument({ identity: entry.expected }), recorded))
-      return <span data-testid="project-result-source-historical">{title} · recorded r{recorded.revision} g{recorded.generation}; current r{entry.expected.revision} g{entry.expected.generation}</span>;
+      return <span data-testid="project-result-source-historical">{title} · recorded r{recorded.revision} g{recorded.generation}; current r{entry.expected.revision} g{viewerSourceFromDocument({ identity: entry.expected }).generation}</span>;
     return <button type="button" disabled={!canOpen(id, entry.module)} onClick={() => onOpen(id, entry.module)}>{title}</button>;
   };
   const exportEvidence = () => {

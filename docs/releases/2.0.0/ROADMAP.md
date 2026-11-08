@@ -947,6 +947,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 - `M3D20-05c feat(project): result/provenance deep links and cross-reference navigation`.
 - `M3D20-05d test(results): verification strength, stale/missing states and units`.
 
+**Result card foundation (2026-11-08):** Project Results now presents execution, source integrity and mathematical authority as separate axes. A numerical producer result with matching Project generations is labeled as recorded, while external scientific sources require their result-specific byte recheck before the card says “Source verified.” Changed, missing and historical sources retain metadata without claiming a current result; source navigation refuses to substitute a newer generation. The selected card can export a JSON record with its source, operation, producer and qualified summary or explicit omission. Export labels values as recorded because it does not reopen external bytes at export time. Module-level Inspector convergence and the wider Result action matrix remain open.
+
 **Exit:** Surface/Mesh/Graph/Field/CAS/Quantum share the same result semantics; engine success cannot masquerade as scientific verification.
 
 ### M3D20-06 — Runtime Center (P0)
