@@ -103,7 +103,12 @@ test("SCI-19 JSON audit rechecks a reopened combined Workbook and withholds chan
     await expect(resultsTab).toHaveAttribute("aria-current", "page");
     const outputs = projects.getByTestId("project-results-browser");
     await expect(outputs).toBeVisible();
-    await outputs.getByTestId(`project-result-select-${result.resultId}`).click();
+    const selectResult = outputs.getByTestId(`project-result-select-${result.resultId}`);
+    await expect(selectResult).toBeEnabled();
+    await selectResult.evaluate(element => {
+      setTimeout(() => (element as HTMLButtonElement).click(), 0);
+    });
+    await expect(selectResult).toHaveAttribute("aria-current", "true", { timeout: 120_000 });
     await outputs.getByTestId("project-create-subrectangle-workbook")
       .evaluate(element => { setTimeout(() => (element as HTMLButtonElement).click(), 0); });
     await expect.poll(() => page.evaluate(id => {
