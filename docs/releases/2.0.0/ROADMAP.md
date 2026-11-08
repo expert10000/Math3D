@@ -892,6 +892,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **Surface chart return (2026-11-08):** The comparison view can return a current Surface chart coordinate to the selected saved Curve parameter. A live Surface pick fills the chart fields only when its revision and structural hash match the current chart; the operator can also enter `u,v` directly. The return requires an explicit identity parameter axis and verifies the complete forward `u(t),v(t)` map within both saved domains. Off-trace points, non-injective charts and changed sources are refused. The linked marker and Curve parameter update without a cursor feedback loop. The desktop journey covers a successful return, off-trace refusal and link/target changes.
 
+**Graph promotion cursor (2026-11-08):** A saved `graph2d.promote-curve` relation now qualifies Curve parameters against the current Graph object and Curve generation. The adapter regenerates the promotion input to verify its mathematical source, evaluates the original Graph expression inside its recorded domain, and marks the Graph plot without replacing the local selection. The Graph Inspector can return a selected probe only after its parameter and full coordinates verify against that forward map. Wrong objects, stale sources, incompatible frames, excluded endpoints and off-trace probes are refused. General unrelated Graph/Curve mappings remain open.
+
 **Exit:** no feedback loops, qualified coordinate mapping and exact return; local selection works even if linked target is unavailable.
 
 ### M3D20-04 — StudyDocument (P0; bounded flagship)
