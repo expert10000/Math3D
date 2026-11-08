@@ -1,3 +1,4 @@
+import { createCanonicalNormalizationCache } from "./canonicalNormalizationCache";
 import { advanceDocumentIdentity, canonicalJsonStringify, createDocumentIdentity, createStableDocumentId,
   isDocumentIdentity, structuralHash, type CanonicalJsonValue, type DocumentIdentity } from "./documentIdentity";
 import { evaluateGraph2DExpression, parseGraph2DExpression, type Graph2DExpressionAst } from "./mathExpressionRealAst";
@@ -196,7 +197,7 @@ const validSource = (source: unknown): source is VectorField3DSource => {
       solver.maxArcLength <= 1e9);
 };
 
-export const normalizeVectorField3DDocument = (value: unknown): ValidationResult<VectorField3DDocument> => {
+const normalizeVectorField3DDocumentUncached = (value: unknown): ValidationResult<VectorField3DDocument> => {
   if (!record(value) || value.format !== VECTOR_FIELD3D_DOCUMENT_FORMAT ||
       value.schemaVersion !== VECTOR_FIELD3D_DOCUMENT_SCHEMA_VERSION)
     return { ok: false, errors: ["Unsupported 3D vector-field document format or version."] };
@@ -395,6 +396,8 @@ export const normalizeVectorField3DDocument = (value: unknown): ValidationResult
     return { ok: true, value: document };
   } catch (error) { return { ok: false, errors: [(error as Error).message] }; }
 };
+
+export const normalizeVectorField3DDocument = createCanonicalNormalizationCache(normalizeVectorField3DDocumentUncached);
 
 export const vectorField3DExpression = (source: string, unit: string): VectorField3DExpression => {
   const parsed = parseGraph2DExpression(source, ["x", "y", "z"]);

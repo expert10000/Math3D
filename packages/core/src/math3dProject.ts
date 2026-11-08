@@ -1,3 +1,4 @@
+import { createCanonicalNormalizationCache } from "./canonicalNormalizationCache";
 import { advanceDocumentIdentity, canonicalJsonStringify, createDocumentIdentity, createStableDocumentId,
   isDocumentIdentity, isStableDocumentId, isStructuralHash, structuralHash,
   type CanonicalJsonValue, type DocumentIdentity, type StableDocumentId, type StructuralHash } from "./documentIdentity";
@@ -102,7 +103,7 @@ const validWorkbookReference = (value: unknown): value is ProjectWorkbookReferen
   Number.isSafeInteger(value.revision) && (value.revision as number) >= 1 && isStructuralHash(value.checksum) &&
   Number.isSafeInteger(value.byteLength) && (value.byteLength as number) >= 1 && (value.byteLength as number) <= MAX_PROJECT_WORKBOOK_BYTES;
 
-export const normalizeMath3DProject = (value: unknown): ValidationResult<Math3DProject> => {
+const normalizeMath3DProjectUncached = (value: unknown): ValidationResult<Math3DProject> => {
   try {
     if (canonicalJsonByteLength(value) > MAX_MATH3D_PROJECT_BYTES) return { ok: false, errors: ["Project exceeds its size limit."] };
     if (!record(value) || !exact(value, ["format", "schemaVersion", "identity", "metadata", "workspace", ...(value.workbooks === undefined ? [] : ["workbooks"]), ...(value.notes === undefined ? [] : ["notes"]), ...(value.quantumScenes === undefined ? [] : ["quantumScenes"]), ...(value.scientificScenes === undefined ? [] : ["scientificScenes"]), ...(value.compositions === undefined ? [] : ["compositions"]), ...(value.savedMeshComparisons === undefined ? [] : ["savedMeshComparisons"]), ...(value.algebraObjects === undefined ? [] : ["algebraObjects"]), ...(value.algebraEvidence === undefined ? [] : ["algebraEvidence"]), ...(value.algebraRecipes === undefined ? [] : ["algebraRecipes"])]) ||
@@ -235,6 +236,8 @@ export const normalizeMath3DProject = (value: unknown): ValidationResult<Math3DP
     return { ok: true, value: JSON.parse(canonicalJsonStringify({ ...value, workspace: workspace.value, ...(algebraObjects ? { algebraObjects } : {}), ...(algebraEvidence ? { algebraEvidence } : {}), ...(algebraRecipes ? { algebraRecipes } : {}) })) as Math3DProject };
   } catch (error) { return { ok: false, errors: [String((error as Error).message ?? error)] }; }
 };
+
+export const normalizeMath3DProject = createCanonicalNormalizationCache(normalizeMath3DProjectUncached);
 
 const requireProject = (value: unknown): Math3DProject => {
   const normalized = normalizeMath3DProject(value);

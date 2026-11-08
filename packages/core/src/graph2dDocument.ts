@@ -1,3 +1,4 @@
+import { createCanonicalNormalizationCache } from "./canonicalNormalizationCache";
 import {
   canonicalJsonStringify, createDocumentIdentity, createStableDocumentId,
   defineDocumentFieldPolicy, isDocumentIdentity, isStableDocumentId, isStructuralHash, structuralHash,
@@ -1154,7 +1155,7 @@ const validSelection = (value: unknown, source: Graph2DSource): value is Graph2D
       value.probe.parameter <= selected.domain.max);
 };
 
-export const normalizeGraph2DDocument = (value: unknown): ValidationResult<Graph2DDocument> => {
+const normalizeGraph2DDocumentUncached = (value: unknown): ValidationResult<Graph2DDocument> => {
   if (!record(value) || value.format !== GRAPH2D_DOCUMENT_FORMAT || value.schemaVersion !== GRAPH2D_DOCUMENT_SCHEMA_VERSION)
     return { ok: false, errors: ["Unsupported Graph2D document format or version."] };
   const errors: string[] = [];
@@ -1184,6 +1185,8 @@ export const normalizeGraph2DDocument = (value: unknown): ValidationResult<Graph
     return { ok: true, value: document };
   } catch (error) { return { ok: false, errors: [String((error as Error).message ?? error)] }; }
 };
+
+export const normalizeGraph2DDocument = createCanonicalNormalizationCache(normalizeGraph2DDocumentUncached);
 
 export const createGraph2DDocument = (input: {
   source: Graph2DSource;

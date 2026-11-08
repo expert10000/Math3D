@@ -5,6 +5,11 @@ on:
     paths:
       - .github/workflows/m3d20-workbook-audit.yml
       - tests/e2e/scientific-workbook-json-audit.spec.ts
+      - packages/core/src/canonicalNormalizationCache.ts
+      - packages/core/src/graph2dDocument.ts
+      - packages/core/src/vectorField3DDocument.ts
+      - packages/core/src/math3dProject.ts
+      - renderer/src/core/canonicalNormalizationCache.test.ts
   workflow_dispatch:
 permissions:
   contents: read
@@ -86,8 +91,8 @@ jobs:
           Invoke-Install -Label 'renderer npm install' -Command { npm --prefix renderer install } -Directory 'renderer/node_modules'
       - name: Install scientific Python dependencies
         run: python -m pip install numpy scipy sympy vtk
-      - name: Check Graph pointer regression and workspace shell
-        run: npm --prefix renderer test -- src/graph2d/graph2dPointerCoordinates.test.ts src/graph2d/GraphsWorkspace.test.tsx
+      - name: Check normalization integrity, Graph pointer regression and scientific audits
+        run: npm --prefix renderer test -- src/graph2d/graph2dPointerCoordinates.test.ts src/graph2d/GraphsWorkspace.test.tsx src/core/canonicalNormalizationCache.test.ts src/core/documentIdentity.test.ts src/core/graph2dDocument.test.ts src/core/vectorField3DDocument.test.ts src/core/math3dProject.test.ts src/workbook/notebookProjectContext.test.ts src/projects/scientificSubrectangleAuditExport.test.ts
       - name: Typecheck the diagnostic candidate
         run: npm run typecheck:noemit
       - name: Build the application
