@@ -9,7 +9,7 @@ import { algebraicLocusGeometryDocument, algebraicSingularityGeometryDocument,
   resolveProjectAlgebraSingularityInspection,
   resolveProjectSavedAlgebraOpenIn,
   sampleSageAlgebraicLocus, SAGE_LOCUS_GEOMETRY_EXTENSION, SAGE_LOCUS_SINGULARITY_EXTENSION,
-  serializeMath3DProject, setMath3DProjectAlgebraObjectArchived,
+  serializeMath3DProject, setMath3DProjectAlgebraObjectArchived, structuralHash,
   upsertMath3DProjectAlgebraObject, upsertMath3DProjectAlgebraicSingularityScene,
   upsertMath3DProjectAlgebraicLocusSample, upsertMath3DProjectAlgebraicLocusScene } from "@math3d/core";
 
@@ -42,8 +42,20 @@ describe("saved Project algebra locus Open in", () => {
     const comparison = compareProjectAlgebraLocusEvidence(saved, sampleChoice!, tangentChoice!);
     expect(comparison).toMatchObject({ sameSourceRevision: true, sameEquations: true,
       sameRealBounds: true, samePrecision: true, sameExactScene: true,
-      left: { kind: "sampled", method: sample.algorithm, sampleCount: sample.sampleCount },
-      right: { kind: "singularity", inspectionPoint: ["1", "0"] } });
+      format: "math3d.saved-locus-comparison", schemaVersion: 1,
+      projectId: project.identity.id,
+      left: { kind: "sampled", documentHash: sampleChoice!.documentHash,
+        sceneHash: scene.sceneHash, equations: ["x^2+y^2-1"],
+        method: sample.algorithm, sampleCount: sample.sampleCount,
+        warnings: sample.warnings },
+      right: { kind: "singularity", documentHash: tangentChoice!.documentHash,
+        inspectionPoint: ["1", "0"], classification: tangent.local.classification } });
+    const { comparisonHash, ...body } = comparison;
+    expect(comparisonHash).toBe(structuralHash(body));
+    const reopened = parseMath3DProject(serializeMath3DProject(saved));
+    const [reopenedSample, reopenedTangent] = projectSavedAlgebraLocusEvidence(reopened, target);
+    expect(compareProjectAlgebraLocusEvidence(reopened, reopenedSample!, reopenedTangent!))
+      .toEqual(comparison);
     expect(() => compareProjectAlgebraLocusEvidence(saved, sampleChoice!, sampleChoice!))
       .toThrow(/distinct/);
   });
