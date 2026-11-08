@@ -217,7 +217,13 @@ const csvCell = (value: unknown): string => `"${String(value ?? "").replace(/"/g
 export const curveResultToCsv = (card: CurveResultCard, definition: CanonicalCurveDefinition): string => {
   const manifest = JSON.stringify(stable(createCurveResultExportManifest(card, definition)));
   const lines = [`# Math3D-Curve-Manifest: ${manifest}`, "parameter,value,valid"];
-  card.series?.parameter.forEach((parameter, index) => lines.push([parameter, card.series!.value[index], card.series!.valid?.[index] ?? Number.isFinite(card.series!.value[index])].map(csvCell).join(",")));
+  card.series?.parameter.forEach((parameter, index) => {
+    const value = card.series!.value[index];
+    const valid = Number.isFinite(parameter) && Number.isFinite(value) &&
+      (card.series!.valid?.[index] ?? true);
+    lines.push([Number.isFinite(parameter) ? parameter : null, valid ? value : null, valid]
+      .map(csvCell).join(","));
+  });
   return lines.join("\n");
 };
 const esc = (value: string): string => value.replace(/[&<>\"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[character]!));

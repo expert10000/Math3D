@@ -114,6 +114,8 @@ describe("Curve scientific result lifecycle", () => {
     expect(manifest).toMatchObject({ schema: "math3d.curve-result/v1", identity: { curveId: "circle", curveRevision: 3 }, definition: { representation: "parametric" }, sampling: { tolerance: 1e-4 }, method: "numerical-derivatives", software: { product: "Math3D", backend: "Math3D Curve Core" } });
     expect(curveResultToJson(card, definition())).toBe(curveResultToJson(card, definition()));
     expect(curveResultToCsv(card, definition())).toContain("# Math3D-Curve-Manifest:");
+    expect(curveResultToCsv(card, definition())).not.toContain('"NaN"');
+    expect(curveResultToCsv(card, definition()).split("\n")[2]).toContain(',"","false"');
     expect(curveResultToSvg(card, definition())).toContain("<metadata>{&quot;definition&quot;");
   });
 
