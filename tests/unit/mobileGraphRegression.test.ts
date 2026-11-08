@@ -39,6 +39,9 @@ it("exports the eight-row release reference with numerical 95% mean and predicti
   const result = runMobileGraphAnalysis(document, draft, rows), fit = result.regression!;
   expect(fit.n).toBe(8); expect(fit.sse).toBeCloseTo(.32, 10);
   const middle = fit.curve[64]!;
+  if (!("meanLow" in middle) || !("meanHigh" in middle) ||
+      !("predictionLow" in middle) || !("predictionHigh" in middle))
+    throw new Error("The linear regression reference must include mean and prediction intervals.");
   expect(middle.x).toBe(3.5); expect(middle.y).toBeCloseTo(8, 10);
   expect(middle.meanLow).toBeCloseTo(7.800210484, 8);
   expect(middle.meanHigh).toBeCloseTo(8.199789516, 8);
