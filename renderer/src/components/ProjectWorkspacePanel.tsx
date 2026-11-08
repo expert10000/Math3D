@@ -43,6 +43,7 @@ import { ProjectDependenciesPanel } from "./ProjectDependenciesPanel";
 import { ProjectRelationshipMap } from "./ProjectRelationshipMap";
 import { ProjectCursorInspector } from "./ProjectCursorInspector";
 import { ProjectStudiesPanel } from "./ProjectStudiesPanel";
+import { addQualifiedStudyGraphCurveLink } from "../projects/studyGraphCurveLink";
 const ProjectCompositionView = React.lazy(() => import("./ProjectCompositionView").then(module => ({ default: module.ProjectCompositionView })));
 const QuantumNativeOverlayView = React.lazy(() => import("./QuantumNativeOverlayView").then(module => ({ default: module.QuantumNativeOverlayView })));
 const ProjectSavedMeshResultComparisonView = React.lazy(() => import("./ProjectSavedMeshResultComparisonView").then(module => ({ default: module.ProjectSavedMeshResultComparisonView })));
@@ -1952,6 +1953,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               onRename={(id, studyTitle) => stageStudy(source => renameProjectStudy(source, id, studyTitle), "Study renamed.")}
               onFork={(id, studyTitle) => stageStudy(source => forkProjectStudy(source, id,
                 crypto.randomUUID(), studyTitle), "Study forked.")}
+              onLink={id => stageStudy(source => addQualifiedStudyGraphCurveLink(source, id), "Graph–Curve parameter link added.")}
               onOpenDocument={(id, module) => viewBesideProject(id, module)} />
           </div>}
           {!quick && detailView && project && <ProjectRelationshipMap project={project} titles={documentTitles}

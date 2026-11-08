@@ -1,6 +1,8 @@
 import { lazy, Suspense, useState } from "react";
 import { inspectProjectStudyMembers, type KernelWorkspaceModule, type Math3DProject } from "@math3d/core";
 import type { VerifiedProjectResources } from "../projects/projectResources";
+import { qualifyStudyGraphCurveLink, studyHasQualifiedGraphCurveLink } from "../projects/studyGraphCurveLink";
+import { StudyGraphCurveControl } from "./StudyGraphCurveControl";
 
 const StudyPanePreview = lazy(() => import("./StudyPanePreview").then(module => ({ default: module.StudyPanePreview })));
 
@@ -8,11 +10,12 @@ type DocumentChoice = Readonly<{ id: string; title: string; module: KernelWorksp
 type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoice[]; editable: boolean;
   resources?: VerifiedProjectResources;
   onCreate: (title: string, ids: readonly string[]) => void; onRename: (id: string, title: string) => void;
-  onFork: (id: string, title: string) => void; onOpenDocument: (id: string, module: KernelWorkspaceModule) => void }>;
+  onFork: (id: string, title: string) => void; onLink: (id: string) => void;
+  onOpenDocument: (id: string, module: KernelWorkspaceModule) => void }>;
 
 /** A Study is a saved layout of references; opening a pane delegates to its owning document. */
 export function ProjectStudiesPanel({ project, documents, editable, resources, onCreate, onRename, onFork,
-  onOpenDocument }: Props) {
+  onLink, onOpenDocument }: Props) {
   const [selected, setSelected] = useState<string[]>([]);
   const [title, setTitle] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
@@ -20,6 +23,8 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, o
   const [visiblePaneId, setVisiblePaneId] = useState<string | null>(null);
   const studies = project.workspace.studies ?? [];
   const open = studies.find(study => study.id === openId) ?? null;
+  const graphCurvePair = open ? qualifyStudyGraphCurveLink(project, open) : null;
+  const graphCurveLinked = !!open && !!graphCurvePair && studyHasQualifiedGraphCurveLink(open, graphCurvePair);
   const choiceById = new Map(documents.map(document => [document.id, document]));
   const statusByMember = new Map(open ? inspectProjectStudyMembers(project, open).map(item => [item.memberId, item.status]) : []);
   const statusLabel = { "current-reference": "Source current", changed: "Source changed",
@@ -51,6 +56,9 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, o
         <button type="button" data-testid="project-study-rename" disabled={!editTitle.trim()}
           onClick={() => onRename(open.id, editTitle.trim())}>Rename</button>
         <button type="button" data-testid="project-study-fork" onClick={() => onFork(open.id, `${open.title} copy`)}>Fork</button></div>}
+      {graphCurvePair && !graphCurveLinked && editable && <button type="button" data-testid="project-study-link-graph-curve"
+        onClick={() => onLink(open.id)}>Link promoted Graph and Curve</button>}
+      {graphCurvePair && graphCurveLinked && <StudyGraphCurveControl project={project} pair={graphCurvePair} studyId={open.id} />}
       <div data-testid="project-study-panes" data-layout={open.layout.mode} style={{ display: "grid",
         gridTemplateColumns: open.layout.mode === "single" || open.layout.mode === "tabs" ? "1fr" : "repeat(2, minmax(0, 1fr))", gap: 8 }}>
         {open.layout.panes.map(pane => {

@@ -29,6 +29,12 @@ test("M3D20-04 saves and cold-reopens a Study layout of existing Project documen
     await studies.getByTestId("project-study-preview-toggle-pane-2").click();
     await expect(studies.getByTestId("project-study-pane-preview")).toHaveAttribute("data-kind", "geometry");
     await expect(studies.getByTestId("project-study-pane-preview")).toHaveCount(1);
+    await studies.getByTestId("project-study-link-graph-curve").click();
+    await studies.getByLabel("Curve parameter (x)").fill("1");
+    await studies.getByTestId("project-study-share-parameter").click();
+    await expect(studies.getByTestId("project-study-linked-result")).toContainText("Graph (1, 1)");
+    await studies.getByTestId("project-study-preview-toggle-pane-1").click();
+    await expect(studies.locator(".graph2d-probe-linked")).toHaveCount(1);
     await projects.getByTestId("project-save").click();
     await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).workspace.studies?.length)).toBe(1);
     await page.reload();
@@ -38,6 +44,7 @@ test("M3D20-04 saves and cold-reopens a Study layout of existing Project documen
     await expect(reopened.locator("[data-testid^='project-study-open-']")).toHaveCount(1);
     await reopened.locator("[data-testid^='project-study-open-']").click();
     await expect(reopened.getByTestId("project-study-panes")).toHaveAttribute("data-layout", "split-2");
+    await expect(reopened.getByTestId("project-study-graph-curve-control")).toHaveCount(1);
     await expect(reopened.locator("[data-testid^='project-study-pane-']").first()).toContainText("Source current");
     await reopened.getByLabel("Rename Study").fill("Revised question");
     await reopened.getByTestId("project-study-rename").click();
