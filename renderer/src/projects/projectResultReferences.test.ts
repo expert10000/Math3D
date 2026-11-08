@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { createEmptyGraph2DDocument, structuralHash, viewerSourceFromDocument,
   type AnalysisResultEnvelope, type Math3DProject } from "@math3d/core";
-import { resultNoteReferences, resultStudyReferences } from "./projectResultReferences";
+import { resultNoteReferences, resultStudyReferences, resultWorkbookReferences } from "./projectResultReferences";
+import { instantiateNotebookStarter } from "./notebookStarters";
 
 const source = { documentId: "math3d:graph2d:source", revision: 1,
   generation: "source-gen", structuralHash: "sha256:source" };
@@ -42,5 +43,25 @@ describe("Project Result Study references", () => {
     const currentProject = { identity: { id: "project" }, workspace } as unknown as Math3DProject;
     expect(resultStudyReferences(currentProject, saved).map(item => [item.id, item.status]))
       .toEqual([["study-current", "current"], ["study-old", "historical"]]);
+  });
+});
+
+describe("Project Result Workbook references", () => {
+  it("reads exact citations only from checksum-qualified Workbook payloads", () => {
+    const made = instantiateNotebookStarter("catenoid-evidence", "result-backlinks");
+    const project = made.project, saved = project.workbooks![0]!;
+    const read = (id: string) => made.resources.bytes({ kind: "workbook-payload", id });
+    const links = project.workspace.results.flatMap(item => resultWorkbookReferences(project, item, read));
+    expect(links.length).toBeGreaterThan(0);
+    expect(links.every(item => item.kind === "workbook" && item.status === "current" && item.blockId)).toBe(true);
+    const changed = (id: string) => {
+      const bytes = read(id);
+      if (!bytes) return null;
+      const copy = Uint8Array.from(bytes); copy[0] ^= 1; return copy;
+    };
+    expect(project.workspace.results.flatMap(item => resultWorkbookReferences(project, item, changed)))
+      .toEqual([]);
+    expect(resultWorkbookReferences(project, project.workspace.results[0]!, () => null)).toEqual([]);
+    expect(saved.id).toBeTruthy();
   });
 });
