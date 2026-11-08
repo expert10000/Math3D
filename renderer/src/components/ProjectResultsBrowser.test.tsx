@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createAnalysisResultEnvelope, instantiateMath3DProjectTemplate,
-  viewerSourceFromDocument } from "@math3d/core";
+  viewerSourceFromDocument, type AnalysisResultStatus } from "@math3d/core";
 import { ProjectResultsBrowser } from "./ProjectResultsBrowser";
 
 const base = instantiateMath3DProjectTemplate("derivative-study", "result-browser-evidence");
@@ -12,9 +12,9 @@ const result = createAnalysisResultEnvelope({ resultId: "result-browser-evidence
     numericContext: { tolerance: { absolute: 0.01 } },
     engine: { name: "test", version: "1" }, elapsedMs: 2 },
   summary: { value: 2, unit: "m" }, warnings: [], diagnostics: [], artifacts: [] });
-const render = (generation = source) => {
+const render = (generation = source, status: AnalysisResultStatus = "numerical") => {
   const project = { ...base, workspace: { ...base.workspace, results: [
-    { ...result, provenance: { ...result.provenance, source: generation } }] } };
+    { ...result, status, provenance: { ...result.provenance, source: generation } }] } };
   return renderToStaticMarkup(<ProjectResultsBrowser project={project} inspection={null}
     titles={new Map([[source.documentId, "Saved Graph"]])} canOpen={() => true}
     onOpen={() => {}} />);
@@ -34,5 +34,13 @@ describe("Project saved result presentation", () => {
     const html = render({ ...source, generation: source.generation + 1 });
     expect(html).toContain("historical source generation");
     expect(html).not.toContain("Saved Graph</button>");
+  });
+
+  it("withholds summary values for an operation without a completed result", () => {
+    for (const status of ["failed", "cancelled", "unsupported"] as const) {
+      const html = render(source, status);
+      expect(html).toContain("No completed result values are available");
+      expect(html).not.toContain("<code>m</code>");
+    }
   });
 });

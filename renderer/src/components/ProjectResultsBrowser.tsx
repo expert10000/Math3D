@@ -204,7 +204,9 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
             <div><dt>Engine</dt><dd>{result.provenance.engine.name} {result.provenance.engine.version}</dd></div>
             <div><dt>Run time</dt><dd>{result.provenance.elapsedMs.toLocaleString()} ms</dd></div></dl>
           <h5>Summary</h5>
-          {(result.provenance.operation.type === VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE ||
+          {resultClaim!.outcome === "none" ?
+            <p data-testid="project-result-no-values">No completed result values are available. Inspect warnings and diagnostics for the recorded outcome.</p> :
+          (result.provenance.operation.type === VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE ||
             result.provenance.operation.type ===
               VECTOR_FIELD3D_COMBINED_SUBRECTANGLE_RESULT_TYPE) ?
             <div data-testid="project-combined-region-result">
