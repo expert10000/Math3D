@@ -138,6 +138,7 @@ export * from "./retainedGeometryGenerations";
 export * from "./retainedSurfaceGenerations";
 export * from "./quantumSceneDocument";
 export * from "./quantumStudyDocument";
+export * from "./studyRecord";
 export * from "./quantumFieldDocument";
 export * from "./projectNotes";
 export * from "./projectNoteValues";
