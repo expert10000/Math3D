@@ -167,6 +167,12 @@ export const projectAlgebraLocusCurveSourceStatus = (project: Math3DProject,
   if (!normalizeCurveDocument(curve).ok ||
       curve.source.definition.familyId !== "algebra.bounded-locus-contour")
     return invalid("This is not a valid saved algebraic contour Curve.");
+  const savedCurve = project.workspace.entries.find(item =>
+    item.expected.id === curve.identity.id && item.module === "curve");
+  if (savedCurve?.checkpoint.format !== "math3d.curve-document" ||
+      canonicalJsonStringify(savedCurve.checkpoint) !== canonicalJsonStringify(curve) ||
+      canonicalJsonStringify(savedCurve.expected) !== canonicalJsonStringify(curve.identity))
+    return invalid("The contour Curve is missing or differs from its saved Project checkpoint.");
   const sourceId = curve.source.definition.sourceIds?.[0];
   const settings = curve.source.definition.settings;
   const source = project.workspace.entries.find(item => item.expected.id === sourceId &&
