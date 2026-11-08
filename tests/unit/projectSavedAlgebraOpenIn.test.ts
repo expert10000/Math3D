@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { algebraicLocusGeometryDocument, buildSageAlgebraicLocusScene,
+import { algebraicLocusGeometryDocument, algebraicSingularityGeometryDocument,
+  analyzeSageAlgebraicSingularity, buildSageAlgebraicLocusScene,
   createAlgebraObjectRecord, createMath3DProject,
   createMixedWorkspaceDocument, createProjectAlgebraObjectId, parseMath3DProject,
   projectAlgebraLocusReturn, projectSavedAlgebraOpenInActions,
   resolveProjectAlgebraLocusReturn, resolveProjectSavedAlgebraOpenIn,
   sampleSageAlgebraicLocus, SAGE_LOCUS_GEOMETRY_EXTENSION, serializeMath3DProject, setMath3DProjectAlgebraObjectArchived,
-  upsertMath3DProjectAlgebraObject,
+  upsertMath3DProjectAlgebraObject, upsertMath3DProjectAlgebraicSingularityScene,
   upsertMath3DProjectAlgebraicLocusSample, upsertMath3DProjectAlgebraicLocusScene } from "@math3d/core";
 
 const fixture = () => {
@@ -27,6 +28,19 @@ const fixture = () => {
 };
 
 describe("saved Project algebra locus Open in", () => {
+  it("returns from saved exact tangent evidence to its pinned algebra source", () => {
+    const { project, target, scene } = fixture();
+    const analysis = analyzeSageAlgebraicSingularity(scene, ["1", "0"]);
+    const saved = upsertMath3DProjectAlgebraicSingularityScene(project, analysis);
+    const documentId = algebraicSingularityGeometryDocument(analysis).identity.id;
+    const action = projectAlgebraLocusReturn(saved, documentId)!;
+    expect(action).toMatchObject({ enabled: true, sceneHash: scene.sceneHash,
+      sampleHash: null, analysisHash: analysis.analysisHash, inspectionPoint: ["1", "0"] });
+    expect(resolveProjectAlgebraLocusReturn(saved, action).target).toEqual(target);
+    expect(() => resolveProjectAlgebraLocusReturn(saved,
+      { ...action, analysisHash: `sha256:${"0".repeat(64)}` })).toThrow(/changed/);
+  });
+
   it("returns from exact and sampled Geometry to the pinned algebra revision", () => {
     const { project, qq, ring, target, scene } = fixture();
     const exactProject = upsertMath3DProjectAlgebraicLocusScene(project, scene);
