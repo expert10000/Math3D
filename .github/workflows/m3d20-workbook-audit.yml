@@ -16,6 +16,7 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 35
     env:
+      electron_config_cache: ${{ github.workspace }}\.cache\electron
       PYTHON: python
       M3D20_AUDIT_TRACE: '1'
       MATH3D_ELECTRON_DOWNLOAD_TIMEOUT_MS: '600000'
@@ -35,6 +36,13 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.11'
+      - name: Restore the existing Electron download cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.electron_config_cache }}
+          key: ${{ runner.os }}-electron-cache-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-electron-cache-
       - name: Record tested source and workflow identities
         shell: bash
         run: |
@@ -54,12 +62,30 @@ jobs:
             acceptanceCertified:false
           },null,2));
           NODE
-      - name: Install application dependencies
-        shell: bash
+      - name: Install npm dependencies with bounded setup retries
+        shell: pwsh
         run: |
-          npm ci
-          npm --prefix renderer install
-          python -m pip install numpy scipy sympy vtk
+          function Invoke-Install {
+            param([string]$Label, [scriptblock]$Command, [string]$Directory)
+            for ($attempt = 1; $attempt -le 3; $attempt++) {
+              Write-Host "[$Label] attempt $attempt/3"
+              $output = & $Command 2>&1
+              $exitCode = $LASTEXITCODE
+              $output | ForEach-Object { Write-Host $_ }
+              if ($exitCode -eq 0) { return }
+              if (($output | Out-String) -match 'npm error code EUSAGE') {
+                throw "[$Label] package/lock mismatch; fix the lockfile instead of retrying."
+              }
+              if ($attempt -eq 3) { throw "[$Label] failed after 3 attempts (exit $exitCode)." }
+              $target = Join-Path $env:GITHUB_WORKSPACE $Directory
+              if (Test-Path $target) { Remove-Item -Recurse -Force $target -ErrorAction SilentlyContinue }
+              Start-Sleep -Seconds (15 * $attempt)
+            }
+          }
+          Invoke-Install -Label 'root npm ci' -Command { npm ci } -Directory 'node_modules'
+          Invoke-Install -Label 'renderer npm install' -Command { npm --prefix renderer install } -Directory 'renderer/node_modules'
+      - name: Install scientific Python dependencies
+        run: python -m pip install numpy scipy sympy vtk
       - name: Build the application
         run: npm run build:core
       - name: Run only SCI-19 with Electron context tracing
