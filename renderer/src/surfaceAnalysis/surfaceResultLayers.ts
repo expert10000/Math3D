@@ -143,7 +143,11 @@ export const createSurfaceFeatureLayer = (args: {
   const inputPoints = args.points ?? [];
   const retainedIndices = inputPoints.flatMap((point, index) => finitePoint(point) ? [index] : []);
   const points = retainedIndices.map(index => inputPoints[index]!);
-  const polylines = cleanLines(args.polylines ?? []);
+  const inputPolylines = args.polylines ?? [];
+  const polylines = cleanLines(inputPolylines);
+  const omittedPoints = inputPoints.length - points.length;
+  const omittedCurveSamples = inputPolylines.reduce((sum, line) => sum + line.length, 0)
+    - polylines.reduce((sum, line) => sum + line.length, 0);
   if (args.confidence && args.confidence.length !== inputPoints.length)
     throw new TypeError("Surface feature confidence must match the input feature points.");
   if (args.confidence) for (let index = 0; index < args.confidence.length; index += 1) {
@@ -168,6 +172,8 @@ export const createSurfaceFeatureLayer = (args: {
     points, polylines, confidence,
     statistics: { pointCount: points.length, curveCount: polylines.length, curvePointCount: polylines.reduce((sum, line) => sum + line.length, 0), meanConfidence: confidence.length ? confidenceSum / confidence.length : null },
     warnings: [...(args.warnings ?? []),
+      ...(omittedPoints ? [`${omittedPoints} invalid Surface feature point(s) were omitted.`] : []),
+      ...(omittedCurveSamples ? [`${omittedCurveSamples} invalid or isolated Surface feature curve sample(s) were omitted; disconnected runs remain separate.`] : []),
       ...(!args.confidence && points.length ? ["Feature point confidence is unavailable for this layer."] : []),
       ...(!populated ? ["No computed feature geometry is currently available for this layer."] : [])],
   };

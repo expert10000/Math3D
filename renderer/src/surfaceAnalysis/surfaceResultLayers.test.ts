@@ -81,6 +81,16 @@ describe("Surface persistent curve and feature layers", () => {
     expect(layer.warnings.join(" ")).toMatch(/confidence is unavailable/);
   });
 
+  it("discloses omitted feature points and separated curve runs", () => {
+    const layer = createSurfaceFeatureLayer({ definition: smooth, layerKind: "parabolic",
+      points: [[0, 0, 0], [Number.NaN, 0, 0]],
+      polylines: [[[0, 0, 0], [1, 0, 0], [Number.NaN, 0, 0], [2, 0, 0], [3, 0, 0]]] });
+    expect(layer.polylines).toEqual([[[0, 0, 0], [1, 0, 0]], [[2, 0, 0], [3, 0, 0]]]);
+    expect(layer.statistics).toMatchObject({ pointCount: 1, curveCount: 2, curvePointCount: 4 });
+    expect(layer.warnings.join(" ")).toMatch(/1 invalid Surface feature point/);
+    expect(layer.warnings.join(" ")).toMatch(/1 invalid or isolated Surface feature curve sample/);
+  });
+
   it("updates visibility and exclusive selection without changing IDs", () => {
     const a = createSurfaceCurveLayer({ definition: smooth, layerKind: "geodesic", parameters: { id: 1 }, polylines: [[[0, 0, 0], [1, 0, 0]]] });
     const b = createSurfaceCurveLayer({ definition: smooth, layerKind: "level", parameters: { id: 2 }, polylines: [[[0, 0, 0], [0, 1, 0]]] });
