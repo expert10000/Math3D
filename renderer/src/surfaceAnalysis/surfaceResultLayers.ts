@@ -146,6 +146,11 @@ export const createSurfaceFeatureLayer = (args: {
   const polylines = cleanLines(args.polylines ?? []);
   if (args.confidence && args.confidence.length !== inputPoints.length)
     throw new TypeError("Surface feature confidence must match the input feature points.");
+  if (args.confidence) for (let index = 0; index < args.confidence.length; index += 1) {
+    const value = args.confidence[index];
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1)
+      throw new RangeError("Surface feature confidence must be finite and within [0, 1].");
+  }
   const confidence = args.confidence
     ? Float32Array.from(retainedIndices.map(index => args.confidence![index]!))
     : new Float32Array(points.length).fill(1);

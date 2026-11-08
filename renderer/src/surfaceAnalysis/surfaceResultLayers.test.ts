@@ -66,6 +66,14 @@ describe("Surface persistent curve and feature layers", () => {
     expect(layer.statistics.meanConfidence).toBeCloseTo(0.5);
   });
 
+  it("refuses malformed feature confidence rather than reporting false certainty", () => {
+    const input = { definition: smooth, layerKind: "ridge" as const, points: [[0, 0, 0]] as const };
+    expect(() => createSurfaceFeatureLayer({ ...input, confidence: [Number.NaN] }))
+      .toThrow(/finite/);
+    expect(() => createSurfaceFeatureLayer({ ...input, confidence: [1.2] })).toThrow(/within/);
+    expect(() => createSurfaceFeatureLayer({ ...input, confidence: [] })).toThrow(/match/);
+  });
+
   it("updates visibility and exclusive selection without changing IDs", () => {
     const a = createSurfaceCurveLayer({ definition: smooth, layerKind: "geodesic", parameters: { id: 1 }, polylines: [[[0, 0, 0], [1, 0, 0]]] });
     const b = createSurfaceCurveLayer({ definition: smooth, layerKind: "level", parameters: { id: 2 }, polylines: [[[0, 0, 0], [0, 1, 0]]] });
