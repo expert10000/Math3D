@@ -91,7 +91,7 @@ describe("saved Project algebra locus Open in", () => {
       { enabled: false, documentId: null }]);
   });
 
-  it("disables historical algebra sources and never substitutes another object's locus", () => {
+  it("opens historical saved evidence without substituting another object's locus", () => {
     const { project, qq, ring, target, scene } = fixture();
     const saved = upsertMath3DProjectAlgebraicLocusScene(project, scene);
     expect(projectSavedAlgebraOpenInActions(saved, { objectId: qq.id, revision: 1 })[0]?.enabled)
@@ -101,13 +101,14 @@ describe("saved Project algebra locus Open in", () => {
         variables: ["x", "y"], monomialOrder: "lex" } });
     const changed = upsertMath3DProjectAlgebraObject(saved, revised);
     const historical = projectSavedAlgebraOpenInActions(changed, target)[0]!;
-    expect(historical.enabled).toBe(false);
-    expect(historical.disabledReason).toContain("current unarchived algebra object revision");
+    expect(historical).toMatchObject({ enabled: true, sourceStatus: "historical",
+      preview: expect.stringContaining("without recomputation") });
+    expect(resolveProjectSavedAlgebraOpenIn(changed, target, historical)).toBe(historical.documentId);
     expect(() => resolveProjectSavedAlgebraOpenIn(changed, target,
       projectSavedAlgebraOpenInActions(saved, target)[0]!)).toThrow(/destination changed/);
   });
 
-  it("keeps distinct saved bounds separate and refuses archived sources", () => {
+  it("keeps distinct saved bounds separate and permits archived evidence inspection", () => {
     const { project, target, scene } = fixture();
     const other = buildSageAlgebraicLocusScene(project, target, { polynomial: "x^2+y^2-1",
       bounds: [{ min: -1, max: 1 }, { min: -1, max: 1 }], tolerance: 0.001,
@@ -122,7 +123,9 @@ describe("saved Project algebra locus Open in", () => {
     expect(resolveProjectSavedAlgebraOpenIn(saved, target, choices[1]!)).toBe(choices[1]?.documentId);
     const archived = setMath3DProjectAlgebraObjectArchived(saved, target.objectId, true);
     expect(projectSavedAlgebraOpenInActions(archived, target).every(action =>
-      !action.enabled && action.disabledReason?.includes("unarchived"))).toBe(true);
+      action.enabled && action.sourceStatus === "archived")).toBe(true);
+    const archivedChoice = projectSavedAlgebraOpenInActions(archived, target)[0]!;
+    expect(resolveProjectSavedAlgebraOpenIn(archived, target, archivedChoice)).toBe(archivedChoice.documentId);
     expect(() => resolveProjectSavedAlgebraOpenIn(archived, target, choices[0]!))
       .toThrow(/destination changed/);
   });
