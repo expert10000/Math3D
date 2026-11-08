@@ -129,6 +129,22 @@ test("SAGE-F03 distinguishes cusp and node tangent views, then independently reo
     await expect(comparison).toContainText("exact equations: different");
     await expect(comparison).toContainText("Real bounds: same");
     await expect(comparison).toContainText("exact scene: different");
+    await expect(comparison.getByTestId("cas-comparison-left")).toContainText("y^2-x^3 = 0");
+    await expect(comparison.getByTestId("cas-comparison-right")).toContainText("y^2-x^2*(x+1) = 0");
+    const comparisonPath = test.info().outputPath("cusp-node.comparison.json");
+    await ctx.app.evaluate(({ session }, target) => session.defaultSession.once("will-download",
+      (_event, item) => item.setSavePath(target)), comparisonPath);
+    await comparison.getByRole("button", { name: "Export comparison JSON" }).click();
+    await expect.poll(() => { try { return readFileSync(comparisonPath).length; } catch { return 0; } })
+      .toBeGreaterThan(100);
+    const report = JSON.parse(readFileSync(comparisonPath, "utf8"));
+    const { comparisonHash, ...reportBody } = report;
+    expect(report).toMatchObject({ format: "math3d.saved-locus-comparison",
+      projectId: project.identity.id, sameSourceRevision: true,
+      sameEquations: false, sameRealBounds: true,
+      left: { equations: ["y^2-x^3"], classification: "ordinary-cusp" },
+      right: { equations: ["y^2-x^2*(x+1)"], classification: "ordinary-real-node" } });
+    expect(comparisonHash).toBe(core.structuralHash(reportBody));
     await comparison.getByRole("button", { name: "Close comparison" }).click();
     await expect(comparison).toHaveCount(0);
     await savedChoices.nth(1).click();
