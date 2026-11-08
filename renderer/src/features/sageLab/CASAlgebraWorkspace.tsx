@@ -2,10 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { analyzeBiquadraticExtensionFromDefinition, analyzeFiniteGroup, analyzeQuadraticNumberField,
   ellipticCurveFacts,
   createGaloisGroupObject, inspectProjectAlgebraFreshness,
-  resolveProjectAlgebraSingularityInspection,
+  resolveProjectAlgebraLocusInspection,
   type AlgebraObjectRecord, type AlgebraObjectRef,
   type AlgebraRecipeGraph, type Math3DProject, type ProjectAlgebraEvidence,
-  type ProjectAlgebraLocusReturn,
+  type ProjectAlgebraLocusReturn, type ProjectAlgebraLocusInspection,
   type SageAlgebraicLocusScene, type SageAlgebraicLocusSample,
   type SageAlgebraicSingularityScene } from "@math3d/core";
 import type { SageGaloisResult, SageModuleInvariantResult, SageChainHomologyResult, SageFiniteFieldResult } from "@math3d/core";
@@ -27,6 +27,7 @@ import SageLocalExtensionWorkspace from "./SageLocalExtensionWorkspace";
 import SageEllipticCurveBuilder from "./SageEllipticCurveBuilder";
 import SageEllipticCurveVisualization from "./SageEllipticCurveVisualization";
 import SageAlgebraicLocusBuilder from "./SageAlgebraicLocusBuilder";
+import SageAlgebraicLocusPlot from "./SageAlgebraicLocusPlot";
 import SageAlgebraicSingularityView from "./SageAlgebraicSingularityView";
 import SageSchemeBuilder from "./SageSchemeBuilder";
 import SageSchemeTools from "./SageSchemeTools";
@@ -138,18 +139,21 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
     select(checked);
   }, [requestedSelection?.token, project?.identity.id]);
   const chosen = selectedStructure(project, selection);
-  const savedTangent = useMemo(() => {
-    if (!requestedSelection?.evidence?.analysisHash) return null;
-    if (!project) return { analysis: null, error: "The saved tangent Project is unavailable." };
-    try { return { analysis: resolveProjectAlgebraSingularityInspection(project, requestedSelection.evidence),
+  const savedLocus = useMemo(() => {
+    if (!requestedSelection?.evidence) return null;
+    if (!project) return { inspection: null, error: "The saved locus Project is unavailable." };
+    try { return { inspection: resolveProjectAlgebraLocusInspection(project, requestedSelection.evidence),
       error: null }; }
-    catch (error) { return { analysis: null,
-      error: `The saved tangent evidence changed: ${(error as Error).message}` }; }
+    catch (error) { return { inspection: null,
+      error: `The saved locus evidence changed: ${(error as Error).message}` }; }
   }, [project, requestedSelection?.token]);
-  const activeSavedTangent = savedTangent?.analysis && chosen &&
-    savedTangent.analysis.scene.source.target.id === chosen.record.id &&
-    savedTangent.analysis.scene.source.target.revision === chosen.record.revision
-    ? savedTangent.analysis : null;
+  const savedScene = savedLocus?.inspection?.kind === "singularity" ? savedLocus.inspection.analysis.scene :
+    savedLocus?.inspection?.kind === "sampled" ? savedLocus.inspection.sample.scene :
+    savedLocus?.inspection?.kind === "exact" ? savedLocus.inspection.scene : null;
+  const activeSavedLocus: ProjectAlgebraLocusInspection | null = savedScene && chosen &&
+    savedScene.source.target.id === chosen.record.id &&
+    savedScene.source.target.revision === chosen.record.revision
+    ? savedLocus!.inspection : null;
   const chooseCommand = (command: SagePaletteAction) => {
     const token = ++commandSequence.current;
     if (command.kind === "operation") { setCommandOperation({ id: command.id, token });
@@ -216,7 +220,7 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
 
   const explorer = <div data-testid="cas-structures-explorer" style={{ display: "grid", gap: 12 }}>
     {handoffError && <div role="alert">{handoffError}</div>}
-    {savedTangent?.error && !handoffError && <div role="alert">{savedTangent.error}</div>}
+    {savedLocus?.error && !handoffError && <div role="alert">{savedLocus.error}</div>}
     {handoffNotice && <div role="status">{handoffNotice}</div>}
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
       <h2 style={{ fontSize: 16, margin: 0, whiteSpace: "nowrap" }}>Project structures</h2>
@@ -372,17 +376,32 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
     {chosen.record.definition.kind === "elliptic-curve" &&
       <SageEllipticCurveVisualization key={`${chosen.record.id}@${chosen.record.revision}`}
         project={project} curve={chosen.record} />}
-    {activeSavedTangent && requestedSelection?.evidence && <section
-      data-testid="cas-saved-tangent-inspection" style={{ display: "grid", gap: 8 }}>
-      <strong>Saved exact tangent evidence · read-only</strong>
-      <SageAlgebraicSingularityView analysis={activeSavedTangent} />
+    {activeSavedLocus && requestedSelection?.evidence && <section
+      data-testid={activeSavedLocus.kind === "singularity" ? "cas-saved-tangent-inspection" :
+        "cas-saved-locus-inspection"} style={{ display: "grid", gap: 8 }}>
+      <strong>{activeSavedLocus.kind === "singularity" ? "Saved exact tangent evidence" :
+        activeSavedLocus.kind === "sampled" ? "Saved bounded locus sample" :
+        "Saved exact locus contract"} · read-only</strong>
+      {activeSavedLocus.kind === "singularity" ?
+        <SageAlgebraicSingularityView analysis={activeSavedLocus.analysis} /> : <>
+          <div><strong>Exact equations:</strong> {savedScene?.source.equations.join(" = 0; ")} = 0</div>
+          <div><strong>Source:</strong> {savedScene?.source.target.label}@{savedScene?.source.target.revision}
+            · {savedScene?.sceneHash}</div>
+          <div><strong>Real bounds:</strong> {savedScene?.domain.bounds.map(bound =>
+            `${bound.variable} ∈ [${bound.min}, ${bound.max}]`).join(" · ")}</div>
+          {activeSavedLocus.kind === "sampled" ? <>
+            <SageAlgebraicLocusPlot sample={activeSavedLocus.sample} />
+            <div>{activeSavedLocus.sample.warnings.join(" ")}</div>
+          </> : <div>Exact source contract only; the numerical locus is uncomputed.</div>}
+        </>}
       {onOpenLocusGeometry && <button type="button" style={action} onClick={() => {
         try {
-          resolveProjectAlgebraSingularityInspection(project, requestedSelection.evidence!);
+          resolveProjectAlgebraLocusInspection(project, requestedSelection.evidence!);
           void Promise.resolve(onOpenLocusGeometry(requestedSelection.evidence!.documentId))
             .catch(error => setHandoffError(`Saved Geometry could not open: ${String(error)}`));
         } catch (error) { setHandoffError(`Saved Geometry could not open: ${String(error)}`); }
-      }}>Open saved tangent Geometry</button>}
+      }}>Open saved {activeSavedLocus.kind === "singularity" ? "tangent" :
+        activeSavedLocus.kind === "sampled" ? "sampled" : "exact"} Geometry</button>}
     </section>}
     {onSaveLocusScene && onSaveLocusSample && onSaveLocusSingularity && (chosen.record.definition.kind === "ideal" ||
       chosen.record.definition.kind === "polynomial-ring") &&
