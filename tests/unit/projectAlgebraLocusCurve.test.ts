@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import { buildSageAlgebraicLocusScene, createAlgebraObjectRecord, createMath3DProject,
   createMixedWorkspaceDocument, createProjectAlgebraObjectId, orderedLocusCurvePoints,
   locusCurveComponents, parseMath3DProject, projectAlgebraLocusReturn, promoteSavedAlgebraLocusCurve,
+  projectAlgebraLocusCurveSourceStatus, resolveProjectAlgebraLocusCurveSource,
   sampleSageAlgebraicLocus, serializeMath3DProject, upsertMath3DProjectAlgebraObject,
-  upsertMath3DProjectAlgebraicLocusSample, upsertProjectAlgebraLocusCurve } from "@math3d/core";
+  upsertMath3DProjectAlgebraicLocusSample, upsertMath3DProjectAlgebraicLocusScene,
+  upsertProjectAlgebraLocusCurve } from "@math3d/core";
 
 const fixture = () => {
   let project = createMath3DProject(createMixedWorkspaceDocument({ entries: [],
@@ -46,6 +48,9 @@ describe("saved algebra locus to Curve", () => {
       ?.checkpoint).toEqual(curve);
     expect(reopened.workspace.relations).toHaveLength(1);
     expect(reopened.workspace.relations[0]?.operation).toBe("algebra.locus-sample-curve");
+    expect(projectAlgebraLocusCurveSourceStatus(reopened, curve)).toMatchObject({
+      status: "current", sourceDocumentId: choice.documentId, reason: null });
+    expect(resolveProjectAlgebraLocusCurveSource(reopened, curve)).toBe(choice.documentId);
   });
 
   it("refuses multiple contours and stale or forged saved choices", () => {
@@ -90,5 +95,34 @@ describe("saved algebra locus to Curve", () => {
     expect(reopened.workspace.entries.filter(item => item.module === "curve")).toHaveLength(2);
     expect(reopened.workspace.relations.filter(item => item.operation === "algebra.locus-sample-curve"))
       .toHaveLength(2);
+    expect(projectAlgebraLocusCurveSourceStatus(reopened, first.curve).status).toBe("current");
+    expect(projectAlgebraLocusCurveSourceStatus(reopened, second.curve).status).toBe("current");
+  });
+
+  it("classifies historical sources and refuses changed samples, points, and relations", () => {
+    const { project, qq, ring, scene } = fixture();
+    const exact = scene("x^2+y^2-1");
+    const sample = sampleSageAlgebraicLocus(exact);
+    const saved = upsertMath3DProjectAlgebraicLocusSample(project, sample);
+    const choice = projectAlgebraLocusReturn(saved, saved.workspace.entries[0]!.expected.id)!;
+    const promoted = upsertProjectAlgebraLocusCurve(saved, choice);
+    const revised = createAlgebraObjectRecord({ id: ring.id, revision: 2, label: "R revised",
+      definition: { kind: "polynomial-ring", coefficientDomain: { objectId: qq.id, revision: 1 },
+        variables: ["x", "y"], monomialOrder: "lex" } });
+    const historical = upsertMath3DProjectAlgebraObject(promoted.project, revised);
+    expect(projectAlgebraLocusCurveSourceStatus(historical, promoted.curve).status)
+      .toBe("historical");
+    expect(resolveProjectAlgebraLocusCurveSource(historical, promoted.curve)).toBe(choice.documentId);
+    const replacedSample = upsertMath3DProjectAlgebraicLocusScene(promoted.project, exact);
+    expect(projectAlgebraLocusCurveSourceStatus(replacedSample, promoted.curve).status)
+      .toBe("invalid");
+    expect(() => resolveProjectAlgebraLocusCurveSource(replacedSample, promoted.curve))
+      .toThrow(/changed/);
+    const noRelation = { ...promoted.project, workspace: { ...promoted.project.workspace,
+      relations: [] } };
+    expect(projectAlgebraLocusCurveSourceStatus(noRelation, promoted.curve).status).toBe("invalid");
+    const altered = structuredClone(promoted.curve);
+    (altered.source.definition.points as number[][])[0]![0] += 0.25;
+    expect(projectAlgebraLocusCurveSourceStatus(promoted.project, altered).status).toBe("invalid");
   });
 });
