@@ -22,6 +22,8 @@ import { useComparisonEvidenceExport } from "../projects/useComparisonEvidenceEx
 import { inspectProjectComparisonNote } from "../projects/projectComparisonNotes";
 import { resolveLinkedCoordinateProbe, resolveSavedCoordinateProbe, type LinkedCoordinateProbe } from "../projects/projectLinkedCoordinateProbe";
 import { resolveExactProjectCompositionSource } from "../projects/projectCompositionSource";
+import { compositionCursorDraft, compositionCursorProbe } from "./compositionCursor";
+import { scientificCursorBus } from "./scientificCursor";
 
 type RenderMesh = SurfaceMeshData & { id: string; color: number; opacity: number; transform?: {
   position: { x: number; y: number; z: number }; rotation: { x: number; y: number; z: number }; scale: { x: number; y: number; z: number };
@@ -260,6 +262,10 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
   const [palette, setPalette] = useState<[string, string]>([...colors]);
   const [opacity, setOpacity] = useState<[number, number]>([1, 0.72]);
   const [pick, setPick] = useState<Pick | null>(null), [message, setMessage] = useState("");
+  const [cursorLinked, setCursorLinked] = useState(true);
+  const [externalCursorProbe, setExternalCursorProbe] = useState<LinkedCoordinateProbe | null>(null);
+  const [cursorStatus, setCursorStatus] = useState("");
+  const cursorOriginViewId = `project-composition:${project.identity.id}`;
   const [observationTitle, setObservationTitle] = useState("Comparison observation");
   const [observationBody, setObservationBody] = useState("");
   const [observationBusy, setObservationBusy] = useState(false);
@@ -334,7 +340,20 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
     return probe ? [{ note, probe }] : [];
   }) : [];
   const savedProbe = savedProbeId ? savedProbes.find(item => item.note.identity.id === savedProbeId) : savedProbes.at(-1);
-  const displayedProbe = coordinateProbe ?? savedProbe?.probe ?? null;
+  useEffect(() => {
+    if (!cursorLinked || resolved.error || mode !== "side-by-side") {
+      setExternalCursorProbe(null); return;
+    }
+    return scientificCursorBus.subscribe(event => {
+      if (event.kind !== "project" || event.originViewId === cursorOriginViewId) return;
+      const projected = compositionCursorProbe(project, resolved.members, event);
+      setExternalCursorProbe(projected);
+      if (projected) setCursorStatus("Linked exact source coordinate; no target element inferred.");
+      else if (resolved.members.some(member => member.id === event.source.documentId))
+        setCursorStatus("Cursor withheld: source generation, resource, or coordinate frame differs.");
+    });
+  }, [cursorLinked, project, resolved, mode, cursorOriginViewId]);
+  const displayedProbe = coordinateProbe ?? externalCursorProbe ?? savedProbe?.probe ?? null;
   const legacyFrameSlots = saved && !resolved.error ? ([0, 1] as const).filter(slot => {
     const member = saved.members[slot], entry = project.workspace.entries.find(item => item.expected.id === member.documentId);
     if (!entry || !["geometry", "mesh", "surface"].includes(entry.module) ||
@@ -351,7 +370,17 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
     new Set(declaredAxes).size === 3;
   const cameraQualification = mode === "side-by-side" && !resolved.error ? qualifyProjectCameraPair(resolved.members) : null;
   const cameraLinked = cameraMode === "linked" && !!cameraQualification;
-  const onPick = (next: Pick) => { setPick(next); setLinked(current => linkable && next.uv ? { uv: next.uv!, token: (current?.token ?? 0) + 1 } : null); };
+  const onPick = (next: Pick) => {
+    setPick(next); setExternalCursorProbe(null);
+    setLinked(current => linkable && next.uv ? { uv: next.uv!, token: (current?.token ?? 0) + 1 } : null);
+    if (!cursorLinked) return;
+    const result = compositionCursorDraft(project, resolved.members, next, cursorOriginViewId);
+    if (!result.ok) { setCursorStatus(`Cursor withheld: ${result.errors.join(" ")}`); return; }
+    try {
+      scientificCursorBus.publishProject(result.value, result.value.source);
+      setCursorStatus("Selected source coordinate pinned to the shared cursor.");
+    } catch (error) { setCursorStatus(`Cursor withheld: ${String((error as Error).message)}`); }
+  };
   const onSelect = (index: 0 | 1, id: string) => { setSavedId(""); setPick(null); setLinked(null); setCameraMode("independent"); setCameraPose(null);
     setGeneration(current => current.map((value, i) => i === index ? "current" : value) as [string, string]); if (index === 0) setFirstId(id); else setSecondId(id); };
   return createPortal(<div role="dialog" aria-modal="true" aria-label="Project comparison and composition" data-testid="project-composition-view"
@@ -504,13 +533,18 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
         </article>;
       })}
     </section>}
-    <footer style={{ borderTop: "1px solid #cbd5e1", paddingTop: 8 }}><strong>Selection</strong> {pick ?
+    <footer style={{ borderTop: "1px solid #cbd5e1", paddingTop: 8 }}>
+      <button type="button" data-testid="project-composition-cursor-link" onClick={() => {
+        setCursorLinked(value => !value); setExternalCursorProbe(null); setCursorStatus("");
+      }}>{cursorLinked ? "Unlink scientific cursor" : "Link scientific cursor"}</button>
+      {cursorStatus && <p data-testid="project-composition-cursor-status" role="status">{cursorStatus}</p>}
+      <strong>Selection</strong> {pick ?
       `${titleOf(project, pick.memberId)} · r${pick.revision} · ${pick.hash.slice(0, 20)}… · ${pick.meshKey ?? "mesh"} · face ${pick.faceIndex ?? "—"} · (${pick.point.x.toPrecision(5)}, ${pick.point.y.toPrecision(5)}, ${pick.point.z.toPrecision(5)})` :
       "Click a rendered mesh to inspect its exact member and local coordinate; point and line overlays are not pickable here."}
       {saved && <span style={{ marginLeft: 16 }}>Saved source status: {inspectProjectCompositionAvailability(saved, project.workspace).join(" / ")}</span>}
       {mode === "side-by-side" && (linkable ? <p>Linked selection uses the same stored parameter ‘u,v’ in both generations, not an inferred physical-point match.
         {linked && ` Selected u=${linked.uv.u.toPrecision(5)}, v=${linked.uv.v.toPrecision(5)}.`}</p> :
-        displayedProbe ? <p data-testid="project-composition-probe-status">{coordinateProbe ? "Linked" : "Saved"} coordinate from {displayedProbe.source.slot === 0 ? "A" : "B"} to {displayedProbe.target.slot === 0 ? "A" : "B"}:
+        displayedProbe ? <p data-testid="project-composition-probe-status">{coordinateProbe || externalCursorProbe ? "Linked" : "Saved"} coordinate from {displayedProbe.source.slot === 0 ? "A" : "B"} to {displayedProbe.target.slot === 0 ? "A" : "B"}:
           {` (${displayedProbe.point.x.toPrecision(5)}, ${displayedProbe.point.y.toPrecision(5)}, ${displayedProbe.point.z.toPrecision(5)}) ${displayedProbe.unit}`}
           {` in ${displayedProbe.frame}.`} Source: {displayedProbe.source.id} r{displayedProbe.source.revision} · {displayedProbe.source.hash}.
           Element picks remain source-local; the other pane shows a coordinate marker only.</p> :

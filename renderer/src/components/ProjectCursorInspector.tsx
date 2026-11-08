@@ -27,7 +27,8 @@ export function vectorPointCursorAvailability(project: Math3DProject, selection:
 export function projectPointCursorFrame(project: Math3DProject, selection: ScientificSelection):
   { frame: AdapterFrame; reason: null } | { frame: null; reason: string } {
   if (selection.source?.kind !== "document") return { frame: null, reason: "Pinned document point required." };
-  const entry = project.workspace.entries.find(item => item.expected.id === selection.source.documentId);
+  const documentId = selection.source.documentId;
+  const entry = project.workspace.entries.find(item => item.expected.id === documentId);
   if (!entry) return { frame: null, reason: "Source document is unavailable." };
   if (entry.module === "vector3d") {
     const reason = vectorPointCursorAvailability(project, selection);
