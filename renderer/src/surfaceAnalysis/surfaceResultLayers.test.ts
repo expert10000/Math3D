@@ -21,6 +21,7 @@ describe("Surface persistent curve and feature layers", () => {
       polylines: [[[0, 0, 0], [1, 0, 0], [Number.NaN, 0, 0], [10, 0, 0], [11, 0, 0]]] });
     expect(layer.polylines).toEqual([[[0, 0, 0], [1, 0, 0]], [[10, 0, 0], [11, 0, 0]]]);
     expect(layer.statistics).toMatchObject({ curveCount: 2, pointCount: 4, totalLength: 2 });
+    expect(layer.warnings.join(" ")).toMatch(/1 invalid or isolated Surface sample/);
   });
 
   it("keeps chart coordinates aligned with every retained Surface run", () => {
@@ -30,6 +31,12 @@ describe("Surface persistent curve and feature layers", () => {
     expect(layer.parameterPolylines).toEqual([[[0, 0], [0.1, 0]], [[0.3, 0], [0.4, 0]]]);
     expect(layer.parameterPolylines?.map(line => line.length))
       .toEqual(layer.polylines.map(line => line.length));
+  });
+
+  it("refuses chart lines with a different number of vertices", () => {
+    expect(() => createSurfaceCurveLayer({ definition: smooth, layerKind: "geodesic",
+      polylines: [[[0, 0, 0], [1, 0, 0]]], parameterPolylines: [[[0, 0]]] }))
+      .toThrow(/parameter points must match/);
   });
 
   it("labels discrete geometry mesh-approximation even when analytic is requested", () => {

@@ -108,6 +108,9 @@ export const createSurfaceCurveLayer = (args: {
     ? cleanMappedLines(args.polylines ?? [], args.parameterPolylines)
     : { polylines: cleanLines(args.polylines ?? []), parameterPolylines: undefined };
   const { polylines, parameterPolylines } = cleaned;
+  const inputPointCount = (args.polylines ?? []).reduce((sum, line) => sum + line.length, 0);
+  const retainedPointCount = polylines.reduce((sum, line) => sum + line.length, 0);
+  const omitted = inputPointCount - retainedPointCount;
   const method = surfaceLayerMethod(args.definition, args.method);
   const parameters = { ...(args.parameters ?? {}) };
   const selectionSource = args.selectionSource ?? defaultSource;
@@ -117,7 +120,9 @@ export const createSurfaceCurveLayer = (args: {
     visible: args.visible ?? true, selected: false, method, parameters, selectionSource,
     policy: { ...DEFAULT_SURFACE_LAYER_POLICY, periodicDomain: args.definition.domain.kind === "parameter" && (!!args.definition.domain.u.periodic || !!args.definition.domain.v.periodic), ...(args.policy ?? {}) },
     polylines, parameterPolylines, statistics: lineStatistics(polylines),
-    warnings: polylines.length ? [...(args.warnings ?? [])] : [...(args.warnings ?? []), "No computed polyline is currently available for this layer."],
+    warnings: [...(args.warnings ?? []),
+      ...(omitted ? [`${omitted} invalid or isolated Surface sample(s) were omitted; disconnected runs remain separate.`] : []),
+      ...(!polylines.length ? ["No computed polyline is currently available for this layer."] : [])],
   };
 };
 
