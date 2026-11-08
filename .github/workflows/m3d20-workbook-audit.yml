@@ -1,0 +1,76 @@
+name: M3D20 focused Workbook audit
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/m3d20-workbook-audit.yml
+      - tests/e2e/scientific-workbook-json-audit.spec.ts
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: m3d20-workbook-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  workbook-audit:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    env:
+      PYTHON: python
+      M3D20_AUDIT_TRACE: '1'
+      MATH3D_ELECTRON_DOWNLOAD_TIMEOUT_MS: '600000'
+      MATH3D_ELECTRON_EXTRACT_TIMEOUT_MS: '180000'
+      MATH3D_ELECTRON_DOWNLOAD_RETRIES: '2'
+      PLAYWRIGHT_JSON_OUTPUT_NAME: audit-evidence/playwright.json
+    steps:
+      - name: Checkout the diagnostic test candidate
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+          cache: npm
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - name: Record tested source and workflow identities
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const {execFileSync} = require('node:child_process');
+          fs.mkdirSync('audit-evidence',{recursive:true});
+          fs.writeFileSync('audit-evidence/manifest.json',JSON.stringify({
+            repository:process.env.GITHUB_REPOSITORY,
+            testedSource:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),
+            harnessCommit:process.env.GITHUB_WORKFLOW_SHA,
+            eventCommit:process.env.GITHUB_SHA,
+            runId:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,
+            node:process.version,python:execFileSync('python',['--version'],{encoding:'utf8'}).trim(),
+            runner:'windows-2022',startedAt:new Date().toISOString(),
+            scope:'SCI-19 existing Workbook reopen and tamper assertions, diagnostic tracing enabled',
+            acceptanceCertified:false
+          },null,2));
+          NODE
+      - name: Install application dependencies
+        shell: bash
+        run: |
+          npm ci
+          npm --prefix renderer install
+          python -m pip install numpy scipy sympy vtk
+      - name: Build the application
+        run: npm run build:core
+      - name: Run only SCI-19 with Electron context tracing
+        run: npx playwright test tests/e2e/scientific-workbook-json-audit.spec.ts --workers=1 --retries=0 --reporter=list,json
+      - name: Upload audit result and Electron diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: m3d20-workbook-audit-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            audit-evidence/**
+            test-results/**
