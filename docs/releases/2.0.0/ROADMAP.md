@@ -884,6 +884,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **Quantum cursor hardening (2026-11-08):** Quantum events now require complete coordinate identity and snapshot their payload at publication. QWZ reciprocal projections and field samples ignore responses superseded by a later cursor; the field verifies the returned grid point before displaying it. The QWZ desktop journey covers the bands-to-curvature-to-bands return and exact source refusal. Curve, Surface and Mesh adapters and the full multi-view matrix remain open.
 
+**Surface–Mesh comparison cursor (2026-11-08):** Pinned saved points and live comparison picks now publish only from current Surface or Mesh generations with a declared Cartesian frame; Mesh cursors carry the buffer checksum. A comparison view adopts an incoming point only when the source generation, resource and frame match, and marks a coordinate without claiming a target element. Its link control leaves local picks available. Curve document linkage, a broader multi-view matrix and cross-document mathematical mappings remain open.
+
 **Exit:** no feedback loops, qualified coordinate mapping and exact return; local selection works even if linked target is unavailable.
 
 ### M3D20-04 — StudyDocument (P0; bounded flagship)
