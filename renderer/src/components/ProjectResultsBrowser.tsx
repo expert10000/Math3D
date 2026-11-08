@@ -8,7 +8,7 @@ import { VECTOR_FIELD3D_POINT_RESULT_TYPE, VECTOR_FIELD3D_REGION_RESULT_TYPE,
   VECTOR_FIELD3D_EQUILIBRIUM_RESULT_TYPE,
   type Math3DProject } from "@math3d/core";
 import type { ProjectDependencyInspection } from "../projects/projectDependencies";
-import { presentProjectFreshness } from "../projects/projectFreshnessPresentation";
+import { presentProjectResultCard } from "../projects/projectResultCard";
 import type { SavedRegionSourceStatus } from "../vectorfield3d/checkSavedRegionResultSources";
 import { isScientificSubrectangle } from
   "../projects/scientificSubrectangleWorkbook";
@@ -36,23 +36,6 @@ type Props = {
 const readable = (value: unknown) => typeof value === "string" ? value : JSON.stringify(value);
 const bytes = (value: number | null) => value === null ? "Size not recorded" : `${value.toLocaleString()} bytes`;
 
-const regionSourcePresentation = (status: SavedRegionSourceStatus | undefined) => status === "source-current"
-  ? { tone: "current", label: "Source verified" } : status === "missing"
-    ? { tone: "unavailable", label: "Missing source" } : status === "changed"
-      ? { tone: "unavailable", label: "Changed source" } : status === "error"
-        ? { tone: "unavailable", label: "Verification failed" }
-        : typeof status === "object" ?
-          { tone: [status.vector, ...(status.kind === "combined" ?
-              [status.scalar, status.complex] : []),
-              ...(status.divergence === undefined ? [] : [status.divergence]),
-              ...(status.curlMagnitude === undefined ? [] : [status.curlMagnitude])].every(value =>
-              value === "source-current") ? "current" : "unavailable",
-            label: [status.vector, ...(status.kind === "combined" ?
-              [status.scalar, status.complex] : []),
-              ...(status.divergence === undefined ? [] : [status.divergence]),
-              ...(status.curlMagnitude === undefined ? [] : [status.curlMagnitude])].every(value =>
-              value === "source-current") ? "All fields verified" : "Per-field status" } :
-          { tone: "unavailable", label: "Checking sources" };
 const isRegionResult = (operation: string) => operation === VECTOR_FIELD3D_REGION_RESULT_TYPE ||
   operation === VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE ||
   operation === VECTOR_FIELD3D_DERIVED_REGION_RESULT_TYPE ||
@@ -112,6 +95,8 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
   }, [project, meshResult, readResource]);
   const artifact = active?.kind === "artifact" ? artifacts.find(item => item.handle.artifactId === active.id) : undefined;
   const resultStatus = result && inspection?.results.find(item => item.id === result.resultId);
+  const resultCard = result && presentProjectResultCard(result, resultStatus,
+    regionResultStatuses[result.resultId], isRegionResult(result.provenance.operation.type));
   const artifactStatus = artifact && inspection?.artifacts.find(item => item.id === artifact.handle.artifactId);
   const linkedResults = artifact ? results.filter(item => item.artifacts.some(handle => handle.artifactId === artifact.handle.artifactId)) : [];
   const artifactRelations = artifact ? project.workspace.relations.filter(relation => relation.target.type === "artifact" && relation.target.artifactId === artifact.handle.artifactId) : [];
@@ -129,9 +114,8 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
         <h4>Results ({results.length})</h4>
         {filteredResults.map(item => {
           const status = inspection?.results.find(candidate => candidate.id === item.resultId);
-          const freshness = isRegionResult(item.provenance.operation.type)
-            ? regionSourcePresentation(regionResultStatuses[item.resultId])
-            : status && presentProjectFreshness(status.freshness);
+          const freshness = presentProjectResultCard(item, status,
+            regionResultStatuses[item.resultId], isRegionResult(item.provenance.operation.type)).integrity;
           return <button type="button" key={item.resultId} data-testid={`project-result-select-${item.resultId}`}
             aria-current={active?.kind === "result" && active.id === item.resultId ? "true" : undefined}
             onClick={() => select({ kind: "result", id: item.resultId })}>
@@ -156,9 +140,8 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
       <section ref={detailRef} tabIndex={-1} className="project-results-detail" aria-label="Selected saved output" data-testid="project-result-detail">
         {result && <>
           <div className="project-results-detail-heading"><div><small>ANALYSIS RESULT</small><h4>{result.provenance.operation.type}</h4></div>
-            {isRegionResult(result.provenance.operation.type)
-              ? <span className="project-freshness-badge" data-tone={regionSourcePresentation(regionResultStatuses[result.resultId]).tone}>{regionSourcePresentation(regionResultStatuses[result.resultId]).label}</span>
-              : resultStatus && <span className="project-freshness-badge" data-tone={presentProjectFreshness(resultStatus.freshness).tone}>{presentProjectFreshness(resultStatus.freshness).label}</span>}
+            {resultCard && <span className="project-freshness-badge" data-tone={resultCard.integrity.tone}
+              title={resultCard.integrity.detail}>{resultCard.integrity.label}</span>}
           </div>
           <p>Recorded status: <strong>{result.status}</strong>{resultStatus?.missingArtifactIds.length ? ` · ${resultStatus.missingArtifactIds.length} unavailable artifact(s)` : ""}</p>
           {meshResult && <div data-testid="project-saved-mesh-evidence" style={{ border: "1px solid #cbd5e1", borderRadius: 8, padding: 10 }}>
