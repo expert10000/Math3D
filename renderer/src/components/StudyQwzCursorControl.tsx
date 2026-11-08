@@ -6,10 +6,11 @@ import { reviewedQwzPair } from "./quantumStudyProfile";
 import { scientificCursorBus } from "./scientificCursor";
 
 /** Publish only an importer-verified band sample after the curvature target is qualified. */
-export function StudyQwzCursorControl({ project, pair, study, editable, onPin }: {
+export function StudyQwzCursorControl({ project, pair, study, editable, onPin, onUnpin }: {
   project: Math3DProject; pair: ProjectQwzPair; study: StudyRecordV1;
   editable: boolean;
   onPin: (studyId: string, sampleIndex: number) => void;
+  onUnpin: (studyId: string) => void;
 }) {
   const pin = inspectProjectQwzPinnedSample(study, pair);
   const [index, setIndex] = useState(() => pin.status === "current" ? String(pin.sampleIndex) : "");
@@ -90,9 +91,11 @@ export function StudyQwzCursorControl({ project, pair, study, editable, onPin }:
       onChange={event => { setIndex(event.target.value); setVerifiedIndex(null); }} /></label>
     <button type="button" data-testid="project-study-share-qwz-k" disabled={busy}
       onClick={() => { void share(index.trim() === "" ? NaN : Number(index)); }}>Share verified k</button>
-    {editable && verifiedIndex !== null && pin.status !== "current" && <button type="button"
+    {editable && verifiedIndex !== null && (pin.status !== "current" || pin.sampleIndex !== verifiedIndex) && <button type="button"
       data-testid="project-study-pin-qwz-k" onClick={() => onPin(study.id, verifiedIndex)}>
-      Pin k in Study</button>}
+      {pin.status === "current" ? "Update pinned k" : "Pin k in Study"}</button>}
+    {editable && pin.status !== "none" && <button type="button" data-testid="project-study-unpin-qwz-k"
+      onClick={() => { setVerifiedIndex(null); onUnpin(study.id); }}>Remove pinned k</button>}
     {pin.status === "current" && <p data-testid="project-study-qwz-pin-status">Pinned band sample {pin.sampleIndex}; source verified on open.</p>}
     {message && <p role="status" data-testid="project-study-qwz-cursor-status">{message}</p>}
   </div>;

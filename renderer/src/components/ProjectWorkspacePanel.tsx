@@ -13,7 +13,7 @@ import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, 
   upsertMath3DProjectComposition, upsertMath3DProjectSavedMeshComparison, inspectProjectCompositionAvailability,
   migrateProjectScientificSelections,
   createProjectStudyFromDocuments, renameProjectStudy, forkProjectStudy,
-  createProjectQwzQuadStudy, pinProjectQwzSample, qualifyProjectQwzPair,
+  createProjectQwzQuadStudy, pinProjectQwzSample, unpinProjectQwzSample, qualifyProjectQwzPair,
   type ProjectComposition, type ProjectSavedMeshComparison,
   type ProjectNote,
   type Math3DProject, type MixedWorkspaceDocument, type KernelWorkspaceModule, type QuantumSceneDocument, type ViewerProvenanceEvidence } from "@math3d/core";
@@ -2007,6 +2007,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               onCreateQwz={id => { void stageQwzQuadStudy(id); }}
               onPinQwz={(id, sampleIndex) => stageStudy(source => pinProjectQwzSample(source, id, sampleIndex),
                 "QWZ k selection pinned in Study.")}
+              onUnpinQwz={id => stageStudy(source => unpinProjectQwzSample(source, id),
+                "QWZ k selection removed from Study.")}
               onOpenQuantumSource={openLinkedQuantumScene}
               onOpenDocument={(id, module) => viewBesideProject(id, module)} />
           </div>}

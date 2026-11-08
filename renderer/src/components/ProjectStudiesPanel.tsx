@@ -15,12 +15,13 @@ type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoi
   onFork: (id: string, title: string) => void; onLink: (id: string) => void;
   onCreateQwz: (quantumStudyId: string) => void;
   onPinQwz: (studyId: string, sampleIndex: number) => void;
+  onUnpinQwz: (studyId: string) => void;
   onOpenQuantumSource?: (reference: ProjectQuantumSceneReference) => Promise<void>;
   onOpenDocument: (id: string, module: KernelWorkspaceModule) => void }>;
 
 /** A Study is a saved layout of references; opening a pane delegates to its owning document. */
 export function ProjectStudiesPanel({ project, documents, editable, resources, onCreate, onRename, onFork,
-  onLink, onCreateQwz, onPinQwz, onOpenQuantumSource, onOpenDocument }: Props) {
+  onLink, onCreateQwz, onPinQwz, onUnpinQwz, onOpenQuantumSource, onOpenDocument }: Props) {
   const [selected, setSelected] = useState<string[]>([]);
   const [title, setTitle] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
@@ -70,7 +71,7 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, o
         onClick={() => onLink(open.id)}>Link promoted Graph and Curve</button>}
       {graphCurvePair && graphCurveLinked && <StudyGraphCurveControl project={project} pair={graphCurvePair} studyId={open.id} />}
       {qwzPair && <StudyQwzCursorControl project={project} pair={qwzPair} study={open}
-        editable={editable} onPin={onPinQwz} />}
+        editable={editable} onPin={onPinQwz} onUnpin={onUnpinQwz} />}
       <div data-testid="project-study-panes" data-layout={open.layout.mode} style={{ display: "grid",
         gridTemplateColumns: open.layout.mode === "single" || open.layout.mode === "tabs" ? "1fr" : "repeat(2, minmax(0, 1fr))", gap: 8 }}>
         {open.layout.panes.map(pane => {
