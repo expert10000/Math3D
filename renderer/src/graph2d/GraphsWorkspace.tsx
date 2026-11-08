@@ -1,3 +1,4 @@
+import { graph2DLocalPointer } from "./graph2dPointerCoordinates";
 import {
   analyzeGraph2DArcLength, analyzeGraph2DCriticalPoints, analyzeGraph2DIntegral, analyzeGraph2DIntervals,
   analyzeGraph2DIntersections,
@@ -1800,9 +1801,8 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   const pick = (x: number, y: number, previous?: Graph2DSelection) => sampling.ready && !parameterPreviewActive ? pickGraph2DProbe({ document, series,
     viewport, size, screen: { x, y }, previous }).selection : document.selection;
   const localPoint = (event: { clientX: number; clientY: number }) => {
-    const rect = (viewerRef.current!.querySelector("svg") ?? viewerRef.current!).getBoundingClientRect();
-    // Use the actual plot rectangle, not its bordered/scrolled container.
-    return { x: (event.clientX - rect.left) * size.width / rect.width, y: (event.clientY - rect.top) * size.height / rect.height };
+    const plot = viewerRef.current?.querySelector<SVGSVGElement>('[data-testid="graph2d-plot"]');
+    return plot ? graph2DLocalPointer(event, size, plot.getBoundingClientRect()) : null;
   };
   const fitBounds = (bounds: ReturnType<typeof graph2DSceneFitBounds>) => {
     if (!sampling.ready || parameterPreviewActive || !bounds) return;
@@ -1812,6 +1812,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   const fitVisible = () => fitBounds(graph2DSceneFitBounds(series, sampling.constructions, "all", null));
   const fitConstruction = (id: string) => fitBounds(graph2DConstructionFitBounds(sampling.constructions, id));
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    if (!localPoint(event)) return;
     if (event.button !== 0 || (event.target as HTMLElement).closest("button,summary,details,input,select,textarea,label,form")) return;
     const phaseTarget = (event.target as Element).closest("[data-graph2d-phase-seed]")?.getAttribute("data-graph2d-phase-seed");
     if (phaseTarget && onAuthoringCommit && sampling.ready && !parameterPreviewActive && !graph2DHasLogScale(viewport)) {
@@ -1850,11 +1851,18 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
     event.currentTarget.focus();
   };
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    const pointer = localPoint(event);
+    if (!pointer) {
+      if (hoverFrameRef.current !== null) cancelAnimationFrame(hoverFrameRef.current);
+      hoverFrameRef.current = null;
+      setHoverSelection(null);
+      return;
+    }
     const seedDrag = phaseSeedDrag.current;
     if (seedDrag) {
       if (seedDrag.pointerId !== event.pointerId) return;
       if (!seedDrag.moved && Math.hypot(event.clientX - seedDrag.x, event.clientY - seedDrag.y) < 3) return;
-      const point = graph2DPhaseSeedAtScreen(document, seedDrag.objectId, viewport, size, localPoint(event), "drag");
+      const point = graph2DPhaseSeedAtScreen(document, seedDrag.objectId, viewport, size, pointer, "drag");
       if (point) { seedDrag.moved = true; seedDrag.point = point;
         setPhaseSeedPreview({ objectId: seedDrag.objectId, index: seedDrag.index, point }); }
       return;
@@ -1865,14 +1873,14 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
       if (Math.hypot(event.clientX - pointDrag.x, event.clientY - pointDrag.y) < 3 && !pointDrag.moved) return;
       pointDrag.moved = true;
       const projection = projectGraph2DConstrainedPoint(document, pointDrag.id, viewport, size,
-        localPoint(event), pointDrag.parameter);
+        pointer, pointDrag.parameter);
       if (projection) { pointDrag.parameter = projection.parameter;
         setPointDragPreview({ id: pointDrag.id, parameter: projection.parameter }); }
       return;
     }
     const drag = dragRef.current;
     if (!drag) {
-      const point = localPoint(event);
+      const point = pointer;
       if (hoverFrameRef.current !== null) cancelAnimationFrame(hoverFrameRef.current);
       hoverFrameRef.current = requestAnimationFrame(() => { hoverFrameRef.current = null; setHoverSelection(pick(point.x, point.y)); });
       return;
@@ -1887,10 +1895,18 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
     setPreview(panGraph2DViewport(drag.viewport, size, { x: dx, y: dy }));
   };
   const onPointerUp = (event: PointerEvent<HTMLDivElement>) => {
+    const pointer = localPoint(event);
+    if (!pointer) {
+      if (hoverFrameRef.current !== null) cancelAnimationFrame(hoverFrameRef.current);
+      hoverFrameRef.current = null;
+      setHoverSelection(null);
+      cancelPointDrag(); cancelPhaseSeedDrag(); dragRef.current = null; setPreview(null);
+      return;
+    }
     const seedDrag = phaseSeedDrag.current;
     if (seedDrag && seedDrag.pointerId === event.pointerId) {
       if (seedDrag.moved) {
-        const point = graph2DPhaseSeedAtScreen(document, seedDrag.objectId, viewport, size, localPoint(event), "drag");
+        const point = graph2DPhaseSeedAtScreen(document, seedDrag.objectId, viewport, size, pointer, "drag");
         if (point) seedDrag.point = point;
       }
       const canCommit = seedDrag.moved && seedDrag.sourceHash === document.identity.structuralHash &&
@@ -1904,7 +1920,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
     if (pointDrag && pointDrag.pointerId === event.pointerId) {
       if (pointDrag.moved) {
         const projection = projectGraph2DConstrainedPoint(document, pointDrag.id, viewport, size,
-          localPoint(event), pointDrag.parameter);
+          pointer, pointDrag.parameter);
         if (projection) pointDrag.parameter = projection.parameter;
       }
       const definition = document.source.constructions?.objects.find(item => item.id === pointDrag.id);
@@ -1922,7 +1938,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     if (drag.moved && previewRef.current) onViewportCommit?.(previewRef.current);
     else if (!drag.moved && !gridOpen && !scalesOpen && !parametersOpen) {
-      const point = localPoint(event);
+      const point = pointer;
       if (phaseSeedPlacement && onAuthoringCommit && sampling.ready && !parameterPreviewActive && !graph2DHasLogScale(viewport)) {
         const seed = graph2DPhaseSeedAtScreen(document, phaseSeedPlacement, viewport, size, point, "place");
         if (seed) { onAuthoringCommit(graph2DPhaseSeedAction(document, phaseSeedPlacement, null, seed));
@@ -1945,9 +1961,10 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   };
   wheelHandlerRef.current = (event: globalThis.WheelEvent) => {
     if (galleryOpen || exportOpen || (event.target as Element).closest(".graph2d-toolbar,.graph2d-compact-panels,.graph2d-viewer-message")) return;
+    const anchor = localPoint(event);
+    if (!anchor) return;
     cancelParameter();
     event.preventDefault();
-    const anchor = localPoint(event);
     const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? size.height : 1);
     const next = zoomGraph2DViewport(previewRef.current ?? document.display.viewport, size, anchor,
       Math.exp(-Math.max(-1000, Math.min(1000, delta)) * 0.0015));
