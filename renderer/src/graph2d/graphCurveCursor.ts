@@ -2,12 +2,14 @@ import { canonicalJsonStringify, evaluateGraph2DExpression, matchesScientificSou
   promoteGraph2DToCurve, viewerSourceFromDocument,
   type CurveDocument, type Graph2DDocument, type Graph2DExplicitObject, type Graph2DParametricObject,
   type Graph2DProbe, type Math3DProject } from "@math3d/core";
-import type { CursorProjection, ProjectScientificCursor } from "../components/scientificCursor";
+import type { CursorProjection, ProjectCursorDraft, ProjectScientificCursor } from "../components/scientificCursor";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { curveParameterFrame } from "../curveAnalysis/curveCursor";
 
 type Pair = Readonly<{ graph: Graph2DDocument; curve: CurveDocument;
   object: Graph2DExplicitObject | Graph2DParametricObject }>;
+const near = (a: number, b: number): boolean => Number.isFinite(a) && Number.isFinite(b) &&
+  Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
 
 /** A promotion must still describe the exact current Graph and Curve inputs. */
 export function currentGraphCurvePair(project: Math3DProject, graphId: string, curveId: string): Pair | null {
@@ -59,4 +61,26 @@ export function projectCurveParameterToGraph(cursor: ProjectScientificCursor, pr
   return x.ok && y.ok && Number.isFinite(x.value) && Number.isFinite(y.value) ?
     { status: "matched", value: { objectId, x: x.value, y: y.value, parameter: t } } :
     { status: "outside", reason: "Parametric Graph has no finite point at the Curve parameter." };
+}
+
+/** A Graph probe returns to the promoted Curve only after the complete forward map verifies it. */
+export function graphProbeCurveCursorDraft(project: Math3DProject, graphId: string, curveId: string,
+  probe: Graph2DProbe, originViewId: string): CursorProjection<ProjectCursorDraft> {
+  const pair = currentGraphCurvePair(project, graphId, curveId);
+  if (!pair || pair.object.id !== probe.objectId)
+    return { status: "incompatible-source", reason: "Graph probe is not on the current promoted object." };
+  const parameter = pair.curve.source.domain.parameter;
+  const t = pair.object.kind === "explicit-cartesian" ? probe.x :
+    Number.isFinite(probe.parameter) ? probe.parameter! :
+    pair.object.xExpression.source.trim() === parameter ? probe.x :
+    pair.object.yExpression.source.trim() === parameter ? probe.y : NaN;
+  if (!Number.isFinite(t))
+    return { status: "ambiguous", reason: "Graph probe has no unique Curve parameter." };
+  const draft: ProjectCursorDraft = { source: viewerSourceFromDocument(pair.curve), sourceModule: "curve",
+    frame: curveParameterFrame(pair.curve), position: [t], resourceSha256: null, mode: "locked", originViewId };
+  const projected = projectCurveParameterToGraph({ ...draft, kind: "project", sequence: 0 }, project, graphId, probe.objectId);
+  if (projected.status !== "matched") return projected;
+  if (!near(projected.value.x, probe.x) || !near(projected.value.y, probe.y))
+    return { status: "outside", reason: "Graph probe differs from the saved Curve trace." };
+  return { status: "matched", value: draft };
 }

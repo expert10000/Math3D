@@ -94,7 +94,7 @@ import { graphSageSource } from "../features/sageLab/graphSageSource";
 import { Graph2DPlot } from "./Graph2DPlot";
 import { scientificCursorBus, type ProjectScientificCursor } from "../components/scientificCursor";
 import { graphAnalyticRowCursorDraft, projectFieldCursorToAnalyticLine } from "./fieldGraphCursor";
-import { currentGraphCurvePair, projectCurveParameterToGraph } from "./graphCurveCursor";
+import { currentGraphCurvePair, graphProbeCurveCursorDraft, projectCurveParameterToGraph } from "./graphCurveCursor";
 import { ScientificFieldPlane } from "./ScientificFieldPlane";
 import { ScientificFieldVectorPlane } from "./ScientificFieldVectorPlane";
 import { ScientificFieldVolume } from "./ScientificFieldVolume";
@@ -2019,6 +2019,17 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
       return { status: "incompatible-source" as const, reason: "The active Graph source differs from the saved promotion." };
     return projectCurveParameterToGraph(curveCursor, project, document.identity.id, selectedObject.id);
   }, [curveCursor, project, document, selectedObject]);
+  const selectedGraphCurve = useMemo(() => {
+    if (!project || !selectedObject) return null;
+    for (const entry of project.workspace.entries) {
+      if (entry.module !== "curve") continue;
+      const pair = currentGraphCurvePair(project, document.identity.id, entry.expected.id);
+      if (pair?.object.id === selectedObject.id &&
+          matchesScientificSourceGeneration(viewerSourceFromDocument(document), viewerSourceFromDocument(pair.graph)))
+        return pair;
+    }
+    return null;
+  }, [project, document, selectedObject]);
   const selectedProjectProfile = selectedObject?.kind === "point-series" ?
     selectedObject.projectProfileOrigin : undefined;
   const selectedComparisonProfile = selectedObject?.kind === "point-series" ?
@@ -3412,6 +3423,19 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
         curveCursorProjection.status === "matched" ?
           `Linked Curve parameter on ${selectedObject?.label}: (${curveCursorProjection.value.x.toPrecision(5)}, ${curveCursorProjection.value.y.toPrecision(5)})` :
           `Linked Curve parameter withheld: ${curveCursorProjection.reason}`}</span>}
+      {selectedGraphCurve && <button type="button" data-testid="graph2d-return-curve-cursor"
+        disabled={!document.selection.probe || document.selection.probe.objectId !== selectedGraphCurve.object.id}
+        onClick={() => {
+          const probe = document.selection.probe;
+          if (!project || !probe) return;
+          const draft = graphProbeCurveCursorDraft(project, document.identity.id,
+            selectedGraphCurve.curve.identity.id, probe, "graphs-promoted-curve");
+          if (draft.status !== "matched") { setGraphCursorError(draft.reason); return; }
+          try {
+            scientificCursorBus.publishProject(draft.value, draft.value.source);
+            setGraphCursorError("");
+          } catch (cause) { setGraphCursorError(cause instanceof Error ? cause.message : String(cause)); }
+        }}>Share Graph probe with promoted Curve</button>}
       <button type="button" disabled={!selectedObject || !onAuthoringCommit} onClick={() => {
         if (selectedObject) setEditRequest(previous => ({ objectId: selectedObject.id, sequence: (previous?.sequence ?? 0) + 1 }));
       }}>Edit graph</button>

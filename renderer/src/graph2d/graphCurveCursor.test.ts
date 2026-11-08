@@ -3,7 +3,7 @@ import { advanceDocumentIdentity, createGraph2DDocument, instantiateMath3DProjec
   viewerSourceFromDocument } from "@math3d/core";
 import { ScientificCursorBus } from "../components/scientificCursor";
 import { curveParameterFrame } from "../curveAnalysis/curveCursor";
-import { currentGraphCurvePair, projectCurveParameterToGraph } from "./graphCurveCursor";
+import { currentGraphCurvePair, graphProbeCurveCursorDraft, projectCurveParameterToGraph } from "./graphCurveCursor";
 
 const project = instantiateMath3DProjectTemplate("derivative-study", "graph-curve-cursor");
 const graph = project.workspace.entries.find(entry => entry.module === "graph2d")!.checkpoint;
@@ -38,5 +38,18 @@ describe("M3D20-03 Graph promotion cursor", () => {
     } });
     expect(projectCurveParameterToGraph(cursor, withEntry(changedCurve), graph.identity.id, "profile").status).toBe("incompatible-source");
     expect(projectCurveParameterToGraph(cursor, withEntry(changedGraph), graph.identity.id, "profile").status).toBe("incompatible-source");
+  });
+  it("returns a checked Graph probe to the promoted Curve without guessing a point", () => {
+    const result = graphProbeCurveCursorDraft(project, graph.identity.id, curve.identity.id,
+      { objectId: "profile", x: 2, y: 4 }, "graphs-probe");
+    expect(result).toMatchObject({ status: "matched", value: { position: [2], sourceModule: "curve" } });
+    if (result.status === "matched") {
+      const shared = new ScientificCursorBus().publishProject(result.value, result.value.source);
+      expect(projectCurveParameterToGraph(shared, project, graph.identity.id, "profile").status).toBe("matched");
+    }
+    expect(graphProbeCurveCursorDraft(project, graph.identity.id, curve.identity.id,
+      { objectId: "profile", x: 2, y: 5 }, "graphs-probe").status).toBe("outside");
+    expect(graphProbeCurveCursorDraft(project, graph.identity.id, curve.identity.id,
+      { objectId: "other", x: 2, y: 4 }, "graphs-probe").status).toBe("incompatible-source");
   });
 });
