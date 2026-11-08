@@ -949,6 +949,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **Result card foundation (2026-11-08):** Project Results now presents execution, source integrity and mathematical authority as separate axes. A numerical producer result with matching Project generations is labeled as recorded, while external scientific sources require their result-specific byte recheck before the card says “Source verified.” Changed, missing and historical sources retain metadata without claiming a current result; source navigation refuses to substitute a newer generation. The selected card can export a JSON record with its source, operation, producer and qualified summary or explicit omission. Export labels values as recorded because it does not reopen external bytes at export time. Module-level Inspector convergence and the wider Result action matrix remain open.
 
+**Result reverse navigation (2026-11-08):** A selected Project Result now lists structured Note anchors and value bindings, Study members, and citations read from checksum-qualified Workbook payloads. Each backlink reports whether its saved result and source generation still match. A missing or altered Workbook resource yields no inferred citation. The desktop journey opens an exact Note and its cited Workbook block from the Result, and a resource-package round trip retains both links. Study focus is wired from the Result card; broader module-level Inspector convergence remains open.
+
 **Exit:** Surface/Mesh/Graph/Field/CAS/Quantum share the same result semantics; engine success cannot masquerade as scientific verification.
 
 ### M3D20-06 — Runtime Center (P0)

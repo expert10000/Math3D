@@ -3,6 +3,7 @@ import { createEmptyGraph2DDocument, structuralHash, viewerSourceFromDocument,
   type AnalysisResultEnvelope, type Math3DProject } from "@math3d/core";
 import { resultNoteReferences, resultStudyReferences, resultWorkbookReferences } from "./projectResultReferences";
 import { instantiateNotebookStarter } from "./notebookStarters";
+import { exportProjectPackage, parseProjectPackage } from "./projectResources";
 
 const noteDocument = createEmptyGraph2DDocument("result-note-source");
 const source = viewerSourceFromDocument(noteDocument);
@@ -70,5 +71,18 @@ describe("Project Result Workbook references", () => {
       .toEqual([]);
     expect(resultWorkbookReferences(project, project.workspace.results[0]!, () => null)).toEqual([]);
     expect(saved.id).toBeTruthy();
+  });
+  it("retains exact reverse citations after an independent Project resource-package import", () => {
+    const made = instantiateNotebookStarter("catenoid-evidence", "portable-result-links");
+    const reopened = parseProjectPackage(exportProjectPackage(made.project, made.resources));
+    const anchor = reopened.project.notes?.find(note => note.anchor?.kind === "result")?.anchor;
+    const result = reopened.project.workspace.results.find(item =>
+      anchor?.kind === "result" && item.resultId === anchor.resultId)!;
+    const notes = resultNoteReferences(reopened.project, result);
+    const books = resultWorkbookReferences(reopened.project, result,
+      id => reopened.resources.bytes({ kind: "workbook-payload", id }));
+    expect(notes.some(item => item.status === "current")).toBe(true);
+    expect(books.some(item => item.status === "current")).toBe(true);
+    expect(resultWorkbookReferences(reopened.project, result, () => null)).toEqual([]);
   });
 });
