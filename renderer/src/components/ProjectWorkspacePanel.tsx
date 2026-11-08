@@ -36,7 +36,8 @@ import { projectSavedAlgebraOpenInActions, resolveProjectSavedAlgebraOpenIn,
   type ProjectSavedAlgebraOpenInAction } from "@math3d/core";
 import { projectAlgebraCasHandoff, resolveProjectAlgebraCasHandoff,
   type ProjectAlgebraCasHandoff, type AlgebraObjectRef } from "@math3d/core";
-import { projectAlgebraLocusCurveSourceStatus, resolveProjectAlgebraLocusCurveSource } from "@math3d/core";
+import { projectAlgebraLocusCurveSourceStatus, resolveProjectAlgebraLocusCurveSource,
+  resolveProjectAlgebraLocusCurveAlgebraReturn } from "@math3d/core";
 import { createSavedSurfaceMesh } from "../projects/savedSurfaceMesh";
 import { inspectProjectDependencies } from "../projects/projectDependencies";
 import { presentProjectFreshness, presentProjectRelationFreshness } from "../projects/projectFreshnessPresentation";
@@ -1700,6 +1701,20 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       onOpenChange(false);
     } catch (error) { setMessage(`Return to CAS refused: ${(error as Error).message}`); }
   };
+  const returnContourToAlgebraInCas = (curveId: string) => {
+    if (preview || managed || !project) return;
+    try {
+      const current = liveProject();
+      const entry = current.workspace.entries.find(item => item.expected.id === curveId);
+      if (entry?.checkpoint.format !== "math3d.curve-document")
+        throw new TypeError("The saved contour Curve is unavailable.");
+      const choice = resolveProjectAlgebraLocusCurveAlgebraReturn(current, entry.checkpoint);
+      const source = resolveProjectAlgebraLocusReturn(current, choice);
+      if (!onOpenAlgebra) throw new TypeError("CAS navigation is unavailable on this host.");
+      onOpenAlgebra(source.projectId, source.target, source.contentHash, choice);
+      onOpenChange(false);
+    } catch (error) { setMessage(`Return to CAS refused: ${(error as Error).message}`); }
+  };
   const viewerDocuments = explorer?.groups.flatMap(group => group.documents).filter(document => !document.archived && canNavigateDocument?.(document.id, document.module)) ?? [];
   const dashboardDocuments = explorer?.groups.flatMap(group => group.documents).filter(document => !document.archived) ?? [];
   const savedProjectEntry = project ? library.entries.find(entry => entry.id === project.identity.id) : undefined;
@@ -2390,6 +2405,11 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                     }
                     catch (error) { setMessage(`Contour source could not open: ${(error as Error).message}`); }
                   }}>Open source Geometry</button>
+                <button type="button" data-testid={`project-contour-return-cas-${document.id}`}
+                  disabled={preview || !!managed || !status.sourceDocumentId || !onOpenAlgebra}
+                  title={status.reason ?? "Open the pinned algebra revision and saved contour evidence in CAS."}
+                  onClick={() => returnContourToAlgebraInCas(document.id)}>
+                  Return to algebra source in CAS</button>
               </div>;
             })()}
             {document.module === "vector3d" && <button type="button"
