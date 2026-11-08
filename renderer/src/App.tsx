@@ -763,7 +763,8 @@ import { CurveMeshPanel } from "./components/CurveMeshPanel";
 import { CurveBackendPanel } from "./components/CurveBackendPanel";
 import { CurveWorkerPanel } from "./components/CurveWorkerPanel";
 import { CurveDocumentAdapter, curveDocumentFromLegacyDefinition, splineDefinitionFromCurveDocument } from "./curveAnalysis/curveDocumentAdapter";
-import { curveParameterCursorDraft, projectCurveParameterCursor } from "./curveAnalysis/curveCursor";
+import { curveParameterCursorDraft, projectCurveParameterCursor, projectRestoredCurveParameterCursor,
+  restoredCurveParameterCursorDraft } from "./curveAnalysis/curveCursor";
 import { scientificCursorBus } from "./components/scientificCursor";
 import { VolumeDocumentAdapter, volumeDocumentFromLegacyObject } from "./volume/volumeDocumentAdapter";
 import { VolumeExtractionKernelBridge, locateVolumeExtractionVertex, promoteVolumeExtraction, volumeExtractionStatus, type VolumeExtractionRecord } from "./volume/volumeExtractionKernel";
@@ -12207,8 +12208,10 @@ const App: React.FC = () => {
     return scientificCursorBus.subscribe(event => {
       if (event.kind !== "project" ||
           event.originViewId === `curve-viewer:${activeCurveCursorSource.identity.id}`) return;
-      const projected = projectCurveParameterCursor(event, activeCurveKernelAdapter.document(),
-        activeCanonicalCurveDefinition);
+      const projected = activeCurveKernelAdapter === restoredCurveAdapter && restoredCurveAdapter ?
+        projectRestoredCurveParameterCursor(event, activeCurveKernelAdapter.document(),
+          { formulas: activeCurveFormulas, domain: activeCurveDomain }) :
+        projectCurveParameterCursor(event, activeCurveKernelAdapter.document(), activeCanonicalCurveDefinition);
       if (projected.status === "matched") {
         setCurveProbeU(projected.value); setCurveProbeSource("replay");
         setCurveCursorStatus("Linked exact Curve parameter from the current source; no cursor rebroadcast.");
@@ -12218,7 +12221,7 @@ const App: React.FC = () => {
     });
   }, [mode, curveCursorLinked, activeCurveKernelAdapter, activeCurveCursorSource.identity.id,
     activeCurveCursorSource.identity.revision, activeCurveCursorSource.identity.structuralHash,
-    activeCanonicalCurveDefinition]);
+    activeCanonicalCurveDefinition, restoredCurveAdapter, activeCurveFormulas, activeCurveDomain]);
   const curveAnalysisRegistryRef = useRef(createCurveAnalysisRegistry());
   const [curveAnalysisResultStore, setCurveAnalysisResultStore] = useState(createCurveAnalysisResultStore);
   const [curveResultLifecycle, setCurveResultLifecycle] = useState(createCurveResultLifecycleState);
@@ -12355,8 +12358,11 @@ const App: React.FC = () => {
   const pinCurveParameter = () => {
     if (!activeSemanticCurvePick || !curveCursorLinked) return;
     const document = activeCurveKernelAdapter.document();
-    const draft = curveParameterCursorDraft(document, activeCanonicalCurveDefinition,
-      activeSemanticCurvePick, `curve-viewer:${document.identity.id}`);
+    const draft = activeCurveKernelAdapter === restoredCurveAdapter && restoredCurveAdapter ?
+      restoredCurveParameterCursorDraft(document, { formulas: activeCurveFormulas, domain: activeCurveDomain },
+        activeCanonicalCurveDefinition, activeSemanticCurvePick, `curve-viewer:${document.identity.id}`) :
+      curveParameterCursorDraft(document, activeCanonicalCurveDefinition,
+        activeSemanticCurvePick, `curve-viewer:${document.identity.id}`);
     if (!draft.ok) { setCurveCursorStatus(`Cursor withheld: ${draft.errors.join(" ")}`); return; }
     try {
       scientificCursorBus.publishProject(draft.value, draft.value.source);
