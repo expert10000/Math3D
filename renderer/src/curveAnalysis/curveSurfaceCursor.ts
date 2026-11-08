@@ -1,6 +1,7 @@
 import { compileExpression, matchesScientificSourceGeneration, viewerSourceFromDocument,
   type CurveDocument, type Math3DProject, type SurfaceDocument } from "@math3d/core";
 import type { CursorProjection, ProjectScientificCursor } from "../components/scientificCursor";
+import type { ProjectCursorDraft } from "../components/scientificCursor";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { curveParameterFrame } from "./curveCursor";
 
@@ -57,4 +58,15 @@ export function projectCurveSurfaceParameter(cursor: ProjectScientificCursor, pr
       point.v < (vBounds.min as number) || point.v > (vBounds.max as number))
     return { status: "outside", reason: "Curve parameter maps outside the Surface chart." };
   return { status: "matched", value: point };
+}
+
+/** Publish only when the saved Curve and chart relation still produce a bounded point. */
+export function curveSurfaceCursorDraft(project: Math3DProject, curveId: string, surfaceId: string,
+  t: number, originViewId: string): CursorProjection<ProjectCursorDraft> {
+  const pair = currentCurveSurfacePair(project, curveId, surfaceId);
+  if (!pair) return { status: "incompatible-source", reason: "Curve and Surface relation is not current." };
+  const draft: ProjectCursorDraft = { source: viewerSourceFromDocument(pair.curve), sourceModule: "curve",
+    frame: curveParameterFrame(pair.curve), position: [t], resourceSha256: null, mode: "locked", originViewId };
+  const chart = projectCurveSurfaceParameter({ ...draft, kind: "project", sequence: 0 }, project, surfaceId);
+  return chart.status === "matched" ? { status: "matched", value: draft } : chart;
 }

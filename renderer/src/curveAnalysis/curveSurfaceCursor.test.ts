@@ -3,7 +3,7 @@ import { instantiateMath3DProjectTemplate, replaceCurveDocumentSource, replaceSu
   viewerSourceFromDocument } from "@math3d/core";
 import { ScientificCursorBus } from "../components/scientificCursor";
 import { curveParameterFrame } from "./curveCursor";
-import { currentCurveSurfacePair, projectCurveSurfaceParameter } from "./curveSurfaceCursor";
+import { currentCurveSurfacePair, curveSurfaceCursorDraft, projectCurveSurfaceParameter } from "./curveSurfaceCursor";
 
 const project = instantiateMath3DProjectTemplate("curve-construction-study", "cursor-chart");
 const chart = project.workspace.entries.find(entry => entry.checkpoint.format === "math3d.surface-document" &&
@@ -38,5 +38,13 @@ describe("M3D20-03 Curve-on-Surface cursor", () => {
     expect(projectCurveSurfaceParameter({ ...cursor, position: [2] }, project, chart.identity.id).status).toBe("outside");
     const chartCursor = { ...cursor, position: [1] };
     expect(projectCurveSurfaceParameter(chartCursor, project, chart.identity.id)).toEqual({ status: "matched", value: { u: 1, v: 1 } });
+  });
+  it("publishes a saved Curve parameter only when the linked chart can receive it", () => {
+    const draft = curveSurfaceCursorDraft(project, trace.identity.id, chart.identity.id, 0.75, "saved-curve");
+    expect(draft.status).toBe("matched");
+    if (draft.status !== "matched") return;
+    const shared = new ScientificCursorBus().publishProject(draft.value, draft.value.source);
+    expect(projectCurveSurfaceParameter(shared, project, chart.identity.id)).toEqual({ status: "matched", value: { u: 0.75, v: 0.5625 } });
+    expect(curveSurfaceCursorDraft(project, trace.identity.id, chart.identity.id, 2, "saved-curve").status).toBe("outside");
   });
 });
