@@ -1,8 +1,10 @@
 import { lazy, Suspense, useState } from "react";
-import { inspectProjectStudyMembers, type KernelWorkspaceModule, type Math3DProject } from "@math3d/core";
+import { inspectProjectStudyMembers, qualifyProjectQwzPair, qualifyProjectQwzQuadStudy,
+  type KernelWorkspaceModule, type Math3DProject } from "@math3d/core";
 import type { VerifiedProjectResources } from "../projects/projectResources";
 import { qualifyStudyGraphCurveLink, studyHasQualifiedGraphCurveLink } from "../projects/studyGraphCurveLink";
 import { StudyGraphCurveControl } from "./StudyGraphCurveControl";
+import { StudyQwzCursorControl } from "./StudyQwzCursorControl";
 
 const StudyPanePreview = lazy(() => import("./StudyPanePreview").then(module => ({ default: module.StudyPanePreview })));
 
@@ -11,11 +13,12 @@ type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoi
   resources?: VerifiedProjectResources;
   onCreate: (title: string, ids: readonly string[]) => void; onRename: (id: string, title: string) => void;
   onFork: (id: string, title: string) => void; onLink: (id: string) => void;
+  onCreateQwz: (quantumStudyId: string) => void;
   onOpenDocument: (id: string, module: KernelWorkspaceModule) => void }>;
 
 /** A Study is a saved layout of references; opening a pane delegates to its owning document. */
 export function ProjectStudiesPanel({ project, documents, editable, resources, onCreate, onRename, onFork,
-  onLink, onOpenDocument }: Props) {
+  onLink, onCreateQwz, onOpenDocument }: Props) {
   const [selected, setSelected] = useState<string[]>([]);
   const [title, setTitle] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
@@ -25,6 +28,7 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, o
   const open = studies.find(study => study.id === openId) ?? null;
   const graphCurvePair = open ? qualifyStudyGraphCurveLink(project, open) : null;
   const graphCurveLinked = !!open && !!graphCurvePair && studyHasQualifiedGraphCurveLink(open, graphCurvePair);
+  const qwzPair = open ? qualifyProjectQwzQuadStudy(project, open) : null;
   const choiceById = new Map(documents.map(document => [document.id, document]));
   const statusByMember = new Map(open ? inspectProjectStudyMembers(project, open).map(item => [item.memberId, item.status]) : []);
   const statusLabel = { "current-reference": "Source current", changed: "Source changed",
@@ -44,6 +48,10 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, o
       <button type="button" data-testid="project-study-create-button" disabled={!title.trim() || !selected.length}
         onClick={() => { onCreate(title.trim(), selected); setTitle(""); setSelected([]); }}>Create Study</button>
     </div>}
+    {editable && project.workspace.quantumStudies?.filter(item => item.templateId === "qwz" &&
+      qualifyProjectQwzPair(project, item.id)).map(item => <button type="button" key={item.id}
+        data-testid={`project-study-create-qwz-${item.id}`} onClick={() => onCreateQwz(item.id)}>
+        Create four-view QWZ Study from {item.title}</button>)}
     <ul>{studies.map(study => <li key={study.id}>
       <button type="button" data-testid={`project-study-open-${study.id}`} onClick={() => {
         setOpenId(study.id); setEditTitle(study.title); setVisiblePaneId(null);
@@ -59,6 +67,7 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, o
       {graphCurvePair && !graphCurveLinked && editable && <button type="button" data-testid="project-study-link-graph-curve"
         onClick={() => onLink(open.id)}>Link promoted Graph and Curve</button>}
       {graphCurvePair && graphCurveLinked && <StudyGraphCurveControl project={project} pair={graphCurvePair} studyId={open.id} />}
+      {qwzPair && <StudyQwzCursorControl project={project} pair={qwzPair} />}
       <div data-testid="project-study-panes" data-layout={open.layout.mode} style={{ display: "grid",
         gridTemplateColumns: open.layout.mode === "single" || open.layout.mode === "tabs" ? "1fr" : "repeat(2, minmax(0, 1fr))", gap: 8 }}>
         {open.layout.panes.map(pane => {
