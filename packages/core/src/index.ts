@@ -42,6 +42,7 @@ export * from "./sageAlgebraicLocusScene";
 export * from "./sageAlgebraicLocusSampling";
 export * from "./projectAlgebraOpenIn";
 export * from "./projectAlgebraLocusComparison";
+export * from "./projectAlgebraLocusCurve";
 export * from "./projectSavedAlgebraOpenIn";
 export * from "./projectAlgebraLocusReturn";
 export * from "./sageAlgebraicSingularity";
