@@ -888,6 +888,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **Curve parameter cursor (2026-11-08):** The Curve Inspector can share a qualified parameter `t` from the current synchronized Curve document. The parameter frame is scoped to that document, with its recorded unit and exact source generation. A matching incoming cursor moves the local selector without publishing another event; stale source, frame, unit and domain mismatches are refused. Live and saved Curve identity remains separate, so cross-document Curve-to-Surface/Graph mappings and the broader multi-view matrix remain open.
 
+**Curve-on-Surface chart cursor (2026-11-08):** A saved `surface.chart-curve` relation now qualifies a Curve parameter against the exact current Curve and Surface generations. The adapter evaluates the saved `u(t),v(t)` expressions only inside both recorded domains; missing relations, changed sources, wrong parameter frames and extrapolation refuse the map. The comparison view can publish a parameter from the saved Curve and mark only its linked current Surface chart. Changing or unlinking the target clears the marker. This is a parameter-chart marker, not a claim about a matching mesh element or shared Cartesian frame. General Curve-to-Graph mapping and the full multi-view matrix remain open.
+
 **Exit:** no feedback loops, qualified coordinate mapping and exact return; local selection works even if linked target is unavailable.
 
 ### M3D20-04 — StudyDocument (P0; bounded flagship)
