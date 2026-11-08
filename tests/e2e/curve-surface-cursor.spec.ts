@@ -43,6 +43,16 @@ test("M3D20-03 shares an exact Curve parameter with its Surface chart and clears
     await view.getByTestId("project-composition-cursor-link").click();
     await view.getByTestId("project-composition-share-curve").click();
     await expect(chartPane.getByTestId("project-composition-curve-parameter")).toBeVisible();
+    await view.getByTestId("project-composition-chart-u").fill("0.75");
+    await view.getByTestId("project-composition-chart-v").fill("0.5625");
+    await view.getByTestId("project-composition-return-curve").click();
+    await expect(view.getByTestId("project-composition-curve-t")).toHaveValue("0.75");
+    await expect(chartPane.getByTestId("project-composition-curve-parameter")).toContainText("u=0.75000, v=0.56250");
+    await expect(view.getByTestId("project-composition-cursor-status")).toContainText("Returned exact Surface chart coordinate");
+    await view.getByTestId("project-composition-chart-v").fill("0.6");
+    await view.getByTestId("project-composition-return-curve").click();
+    await expect(view.getByTestId("project-composition-cursor-status")).toContainText("not on the saved Curve trace");
+    await expect(view.getByTestId("project-composition-curve-t")).toHaveValue("0.75");
     await view.getByTestId("project-composition-source-0").selectOption(reference.identity.id);
     await expect(view.getByTestId("project-composition-curve-parameter")).toHaveCount(0);
     await expect(view.getByTestId("project-composition-curve-source")).toHaveCount(0);

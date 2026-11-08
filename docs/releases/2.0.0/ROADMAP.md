@@ -890,6 +890,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **Curve-on-Surface chart cursor (2026-11-08):** A saved `surface.chart-curve` relation now qualifies a Curve parameter against the exact current Curve and Surface generations. The adapter evaluates the saved `u(t),v(t)` expressions only inside both recorded domains; missing relations, changed sources, wrong parameter frames and extrapolation refuse the map. The comparison view can publish a parameter from the saved Curve and mark only its linked current Surface chart. Changing or unlinking the target clears the marker. This is a parameter-chart marker, not a claim about a matching mesh element or shared Cartesian frame. General Curve-to-Graph mapping and the full multi-view matrix remain open.
 
+**Surface chart return (2026-11-08):** The comparison view can return a current Surface chart coordinate to the selected saved Curve parameter. A live Surface pick fills the chart fields only when its revision and structural hash match the current chart; the operator can also enter `u,v` directly. The return requires an explicit identity parameter axis and verifies the complete forward `u(t),v(t)` map within both saved domains. Off-trace points, non-injective charts and changed sources are refused. The linked marker and Curve parameter update without a cursor feedback loop. The desktop journey covers a successful return, off-trace refusal and link/target changes.
+
 **Exit:** no feedback loops, qualified coordinate mapping and exact return; local selection works even if linked target is unavailable.
 
 ### M3D20-04 — StudyDocument (P0; bounded flagship)
