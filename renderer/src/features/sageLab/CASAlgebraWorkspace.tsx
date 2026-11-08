@@ -80,6 +80,8 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
   const [selection, setSelection] = useState<AlgebraObjectRef | null>(() =>
     resolveStructureSelection(project, requestedSelection && requestedSelection.projectId === project?.identity.id
       ? requestedSelection.target : readSavedSelection(project)));
+  const [selectedSavedChoice, setSelectedSavedChoice] = useState<ProjectAlgebraLocusReturn | null>(
+    requestedSelection?.evidence ?? null);
   const [handoffError, setHandoffError] = useState("");
   const [handoffNotice, setHandoffNotice] = useState("");
   const [selectionFocus, setSelectionFocus] = useState(0);
@@ -106,6 +108,8 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
     if (evidence && evidence.request.target.objectId !== selection?.objectId)
       setSelection(evidence.request.target);
   }, [project?.identity.revision, selectedEvidenceId]);
+  useEffect(() => { setSelectedSavedChoice(requestedSelection?.evidence ?? null); },
+    [requestedSelection?.token, project?.identity.id]);
 
   const select = (ref: AlgebraObjectRef) => {
     setSelection(ref);
@@ -140,13 +144,13 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
   }, [requestedSelection?.token, project?.identity.id]);
   const chosen = selectedStructure(project, selection);
   const savedLocus = useMemo(() => {
-    if (!requestedSelection?.evidence) return null;
+    if (!selectedSavedChoice) return null;
     if (!project) return { inspection: null, error: "The saved locus Project is unavailable." };
-    try { return { inspection: resolveProjectAlgebraLocusInspection(project, requestedSelection.evidence),
+    try { return { inspection: resolveProjectAlgebraLocusInspection(project, selectedSavedChoice),
       error: null }; }
     catch (error) { return { inspection: null,
       error: `The saved locus evidence changed: ${(error as Error).message}` }; }
-  }, [project, requestedSelection?.token]);
+  }, [project, selectedSavedChoice]);
   const savedScene = savedLocus?.inspection?.kind === "singularity" ? savedLocus.inspection.analysis.scene :
     savedLocus?.inspection?.kind === "sampled" ? savedLocus.inspection.sample.scene :
     savedLocus?.inspection?.kind === "exact" ? savedLocus.inspection.scene : null;
@@ -376,7 +380,7 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
     {chosen.record.definition.kind === "elliptic-curve" &&
       <SageEllipticCurveVisualization key={`${chosen.record.id}@${chosen.record.revision}`}
         project={project} curve={chosen.record} />}
-    {activeSavedLocus && requestedSelection?.evidence && <section
+    {activeSavedLocus && selectedSavedChoice && <section
       data-testid={activeSavedLocus.kind === "singularity" ? "cas-saved-tangent-inspection" :
         "cas-saved-locus-inspection"} style={{ display: "grid", gap: 8 }}>
       <strong>{activeSavedLocus.kind === "singularity" ? "Saved exact tangent evidence" :
@@ -396,8 +400,8 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
         </>}
       {onOpenLocusGeometry && <button type="button" style={action} onClick={() => {
         try {
-          resolveProjectAlgebraLocusInspection(project, requestedSelection.evidence!);
-          void Promise.resolve(onOpenLocusGeometry(requestedSelection.evidence!.documentId))
+          resolveProjectAlgebraLocusInspection(project, selectedSavedChoice);
+          void Promise.resolve(onOpenLocusGeometry(selectedSavedChoice.documentId))
             .catch(error => setHandoffError(`Saved Geometry could not open: ${String(error)}`));
         } catch (error) { setHandoffError(`Saved Geometry could not open: ${String(error)}`); }
       }}>Open saved {activeSavedLocus.kind === "singularity" ? "tangent" :
