@@ -22,6 +22,9 @@ import { useComparisonEvidenceExport } from "../projects/useComparisonEvidenceEx
 import { inspectProjectComparisonNote } from "../projects/projectComparisonNotes";
 import { resolveLinkedCoordinateProbe, resolveSavedCoordinateProbe, type LinkedCoordinateProbe } from "../projects/projectLinkedCoordinateProbe";
 import { resolveExactProjectCompositionSource } from "../projects/projectCompositionSource";
+import { compositionCursorDraft, compositionCursorProbe } from "./compositionCursor";
+import { scientificCursorBus } from "./scientificCursor";
+import { currentCurveSurfacePair, curveSurfaceCursorDraft, curveSurfaceReturnDraft, projectCurveSurfaceParameter } from "../curveAnalysis/curveSurfaceCursor";
 
 type RenderMesh = SurfaceMeshData & { id: string; color: number; opacity: number; transform?: {
   position: { x: number; y: number; z: number }; rotation: { x: number; y: number; z: number }; scale: { x: number; y: number; z: number };
@@ -193,9 +196,10 @@ export const qualifyProjectCameraPair = (members: readonly RenderMember[]): "sha
 export const ComparisonPane: React.FC<{ members: RenderMember[]; label: string; onPick: (pick: Pick) => void; height?: number;
   captureToken?: number; onCaptureThumbnail?: (dataUrl: string | null) => void;
   linkedUV?: { u: number; v: number } | null; linkedToken?: number;
+  curveParameterProbe?: boolean;
   coordinateProbe?: LinkedCoordinateProbe | null;
   onCameraSync?: (state: CameraSyncState) => void; cameraOverride?: CameraSyncState | null; cameraOverrideToken?: number }> =
-  ({ members, label, onPick, height = 520, captureToken, onCaptureThumbnail, linkedUV, linkedToken, coordinateProbe, onCameraSync, cameraOverride, cameraOverrideToken }) => {
+  ({ members, label, onPick, height = 520, captureToken, onCaptureThumbnail, linkedUV, linkedToken, curveParameterProbe, coordinateProbe, onCameraSync, cameraOverride, cameraOverrideToken }) => {
   const meshes = useMemo(() => members.flatMap(member => member.meshes), [members]);
   const points = useMemo(() => [...members.flatMap(member => member.points),
     ...(coordinateProbe ? [{ points: [coordinateProbe.point], color: 0xffbd2e, size: 0.2, opacity: 1 }] : [])],
@@ -211,6 +215,10 @@ export const ComparisonPane: React.FC<{ members: RenderMember[]; label: string; 
       <small>From {coordinateProbe.source.slot === 0 ? "A" : "B"} · {coordinateProbe.source.id} r{coordinateProbe.source.revision} · {coordinateProbe.source.hash.slice(0, 16)}…<br />
         ({coordinateProbe.point.x.toPrecision(5)}, {coordinateProbe.point.y.toPrecision(5)}, {coordinateProbe.point.z.toPrecision(5)}) {coordinateProbe.unit}.
         Coordinate marker only; no target element or value inferred.</small>
+    </div>}
+    {curveParameterProbe && linkedUV && <div data-testid="project-composition-curve-parameter" style={{ position: "absolute", zIndex: 30, right: 10, bottom: 10,
+      background: "#fff", padding: "5px 8px", borderRadius: 4 }}>
+      Curve on Surface chart · u={linkedUV.u.toPrecision(5)}, v={linkedUV.v.toPrecision(5)}
     </div>}
     {members.length === 1 && members[0]!.param ? <ParamSurfaceViewer surfaceId="custom" documentBinding={members[0]!.param.binding}
       customX={members[0]!.param.x} customY={members[0]!.param.y} customZ={members[0]!.param.z} paramDomain={members[0]!.param.domain}
@@ -260,6 +268,14 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
   const [palette, setPalette] = useState<[string, string]>([...colors]);
   const [opacity, setOpacity] = useState<[number, number]>([1, 0.72]);
   const [pick, setPick] = useState<Pick | null>(null), [message, setMessage] = useState("");
+  const [cursorLinked, setCursorLinked] = useState(true);
+  const [externalCursorProbe, setExternalCursorProbe] = useState<LinkedCoordinateProbe | null>(null);
+  const [externalCurveProbe, setExternalCurveProbe] = useState<{ slot: 0 | 1; uv: { u: number; v: number }; token: number } | null>(null);
+  const [curveTraceId, setCurveTraceId] = useState("");
+  const [curveParameter, setCurveParameter] = useState("0.5");
+  const [chartCoordinate, setChartCoordinate] = useState({ u: "0.5", v: "0.25" });
+  const [cursorStatus, setCursorStatus] = useState("");
+  const cursorOriginViewId = `project-composition:${project.identity.id}`;
   const [observationTitle, setObservationTitle] = useState("Comparison observation");
   const [observationBody, setObservationBody] = useState("");
   const [observationBusy, setObservationBusy] = useState(false);
@@ -326,6 +342,26 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
   }, [composition, project, readResource]);
   const report = useComparisonEvidenceExport(project, composition, readResource, pick);
   const linkable = mode === "side-by-side" && compatibleCompositionParameterChart(resolved.members);
+  const chartTraces = useMemo(() => resolved.members.filter(member =>
+    member.param && member.slot !== undefined && member.generation === "current").flatMap(member =>
+    project.workspace.entries.flatMap(entry => {
+      if (entry.module !== "curve") return [];
+      const pair = currentCurveSurfacePair(project, entry.expected.id, member.id);
+      return pair ? [{ pair, slot: member.slot!, surfaceId: member.id }] : [];
+    })), [project, resolved.members]);
+  const selectedTrace = chartTraces.find(item => item.pair.curve.identity.id === curveTraceId) ?? chartTraces[0];
+  const selectedTraceKey = selectedTrace ? `${selectedTrace.slot}:${selectedTrace.pair.curve.identity.structuralHash}:${selectedTrace.pair.surface.identity.structuralHash}` : "";
+  useEffect(() => {
+    setExternalCurveProbe(null);
+    if (!selectedTrace) { setChartCoordinate({ u: "", v: "" }); return; }
+    const midpoint = (selectedTrace.pair.curve.source.domain.min + selectedTrace.pair.curve.source.domain.max) / 2;
+    setCurveParameter(String(midpoint));
+    const draft = curveSurfaceCursorDraft(project, selectedTrace.pair.curve.identity.id, selectedTrace.surfaceId,
+      midpoint, cursorOriginViewId);
+    const chart = draft.status === "matched" ? projectCurveSurfaceParameter({ ...draft.value, kind: "project", sequence: 0 }, project,
+      selectedTrace.surfaceId) : null;
+    setChartCoordinate(chart?.status === "matched" ? { u: String(chart.value.u), v: String(chart.value.v) } : { u: "", v: "" });
+  }, [selectedTraceKey]);
   const coordinateProbe = mode === "side-by-side" && !resolved.error ? resolveLinkedCoordinateProbe(resolved.members, pick) : null;
   const savedProbes = saved && mode === "side-by-side" && !resolved.error ? (project.notes ?? []).flatMap(note => {
     if (note.anchor?.kind !== "comparison" || note.anchor.compositionId !== saved.id || !note.anchor.coordinateProbe ||
@@ -334,7 +370,31 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
     return probe ? [{ note, probe }] : [];
   }) : [];
   const savedProbe = savedProbeId ? savedProbes.find(item => item.note.identity.id === savedProbeId) : savedProbes.at(-1);
-  const displayedProbe = coordinateProbe ?? savedProbe?.probe ?? null;
+  useEffect(() => {
+    if (!cursorLinked || resolved.error || mode !== "side-by-side") {
+      setExternalCursorProbe(null); setExternalCurveProbe(null); return;
+    }
+    return scientificCursorBus.subscribe(event => {
+      if (event.kind !== "project" || event.originViewId === cursorOriginViewId) return;
+      if (event.sourceModule === "curve") {
+        const matched = resolved.members.find(member => member.slot !== undefined && member.param && member.generation === "current" &&
+          projectCurveSurfaceParameter(event, project, member.id).status === "matched");
+        const projection = matched ? projectCurveSurfaceParameter(event, project, matched.id) : null;
+        setExternalCurveProbe(current => projection?.status === "matched" && matched?.slot !== undefined ?
+          { slot: matched.slot, uv: projection.value, token: (current?.token ?? 0) + 1 } : null);
+        setCursorStatus(projection?.status === "matched" ? "Linked exact Curve parameter to its saved Surface chart." :
+          "Cursor withheld: Curve parameter has no current bounded Surface chart in this comparison.");
+        return;
+      }
+      setExternalCurveProbe(null);
+      const projected = compositionCursorProbe(project, resolved.members, event);
+      setExternalCursorProbe(projected);
+      if (projected) setCursorStatus("Linked exact source coordinate; no target element inferred.");
+      else if (resolved.members.some(member => member.id === event.source.documentId))
+        setCursorStatus("Cursor withheld: source generation, resource, or coordinate frame differs.");
+    });
+  }, [cursorLinked, project, resolved, mode, cursorOriginViewId]);
+  const displayedProbe = coordinateProbe ?? externalCursorProbe ?? savedProbe?.probe ?? null;
   const legacyFrameSlots = saved && !resolved.error ? ([0, 1] as const).filter(slot => {
     const member = saved.members[slot], entry = project.workspace.entries.find(item => item.expected.id === member.documentId);
     if (!entry || !["geometry", "mesh", "surface"].includes(entry.module) ||
@@ -351,7 +411,21 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
     new Set(declaredAxes).size === 3;
   const cameraQualification = mode === "side-by-side" && !resolved.error ? qualifyProjectCameraPair(resolved.members) : null;
   const cameraLinked = cameraMode === "linked" && !!cameraQualification;
-  const onPick = (next: Pick) => { setPick(next); setLinked(current => linkable && next.uv ? { uv: next.uv!, token: (current?.token ?? 0) + 1 } : null); };
+  const onPick = (next: Pick) => {
+    setPick(next); setExternalCursorProbe(null);
+    if (next.uv && selectedTrace?.surfaceId === next.memberId &&
+        next.revision === selectedTrace.pair.surface.identity.revision &&
+        next.hash === selectedTrace.pair.surface.identity.structuralHash)
+      setChartCoordinate({ u: String(next.uv.u), v: String(next.uv.v) });
+    setLinked(current => linkable && next.uv ? { uv: next.uv!, token: (current?.token ?? 0) + 1 } : null);
+    if (!cursorLinked) return;
+    const result = compositionCursorDraft(project, resolved.members, next, cursorOriginViewId);
+    if (!result.ok) { setCursorStatus(`Cursor withheld: ${result.errors.join(" ")}`); return; }
+    try {
+      scientificCursorBus.publishProject(result.value, result.value.source);
+      setCursorStatus("Selected source coordinate pinned to the shared cursor.");
+    } catch (error) { setCursorStatus(`Cursor withheld: ${String((error as Error).message)}`); }
+  };
   const onSelect = (index: 0 | 1, id: string) => { setSavedId(""); setPick(null); setLinked(null); setCameraMode("independent"); setCameraPose(null);
     setGeneration(current => current.map((value, i) => i === index ? "current" : value) as [string, string]); if (index === 0) setFirstId(id); else setSecondId(id); };
   return createPortal(<div role="dialog" aria-modal="true" aria-label="Project comparison and composition" data-testid="project-composition-view"
@@ -413,12 +487,61 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
         composition?.members.map((member, index) => <ComparisonPane key={`${index}:${member.documentId}`} members={resolved.members.filter(item => item.slot === index)}
           label={`${index === 0 ? "A" : "B"}: ${titleOf(project, member.documentId)} · r${member.expected.revision}`} onPick={onPick}
           captureToken={report.captureToken} onCaptureThumbnail={report.onCapture(index)}
-          linkedUV={linkable ? linked?.uv : null} linkedToken={linked?.token}
+          linkedUV={linkable && linked?.uv || (externalCurveProbe?.slot === index ? externalCurveProbe.uv : null)}
+          linkedToken={linkable && linked?.uv ? linked.token : externalCurveProbe?.slot === index ? externalCurveProbe.token : undefined}
+          curveParameterProbe={!(linkable && linked?.uv) && externalCurveProbe?.slot === index}
           coordinateProbe={displayedProbe?.target.slot === index ? displayedProbe : null}
           onCameraSync={cameraLinked && index === cameraLeader ? onLeaderCamera : undefined}
           cameraOverride={cameraLinked && index !== cameraLeader ? cameraPose?.state : null}
           cameraOverrideToken={cameraLinked && index !== cameraLeader ? cameraPose?.token : undefined} />)}
     </div>}
+    {mode === "side-by-side" && selectedTrace && <section data-testid="project-composition-curve-source" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+      <label>Saved Curve on Surface <select value={selectedTrace.pair.curve.identity.id} onChange={event => {
+        setCurveTraceId(event.target.value);
+        const choice = chartTraces.find(item => item.pair.curve.identity.id === event.target.value);
+        if (choice) setCurveParameter(String((choice.pair.curve.source.domain.min + choice.pair.curve.source.domain.max) / 2));
+      }}>{chartTraces.map(item => <option key={`${item.slot}:${item.pair.curve.identity.id}`} value={item.pair.curve.identity.id}>
+        {item.pair.curve.metadata.title} → {titleOf(project, item.surfaceId)}
+      </option>)}</select></label>
+      <label>t <input data-testid="project-composition-curve-t" type="number" min={selectedTrace.pair.curve.source.domain.min}
+        max={selectedTrace.pair.curve.source.domain.max} step="any" value={curveParameter}
+        onChange={event => setCurveParameter(event.target.value)} /></label>
+      <button type="button" data-testid="project-composition-share-curve" disabled={!cursorLinked} onClick={() => {
+        if (!curveParameter.trim()) { setCursorStatus("Cursor withheld: Curve parameter is incomplete."); return; }
+        const draft = curveSurfaceCursorDraft(project, selectedTrace.pair.curve.identity.id, selectedTrace.surfaceId,
+          Number(curveParameter), cursorOriginViewId);
+        if (draft.status !== "matched") { setCursorStatus(`Cursor withheld: ${draft.reason}`); return; }
+        try {
+          const shared = scientificCursorBus.publishProject(draft.value, draft.value.source);
+          const projected = projectCurveSurfaceParameter(shared, project, selectedTrace.surfaceId);
+          if (projected.status === "matched") {
+            setLinked(null); setExternalCursorProbe(null);
+            setChartCoordinate({ u: String(projected.value.u), v: String(projected.value.v) });
+            setExternalCurveProbe(current => ({ slot: selectedTrace.slot, uv: projected.value, token: (current?.token ?? 0) + 1 }));
+            setCursorStatus("Shared saved Curve parameter on its exact Surface chart.");
+          }
+        } catch (error) { setCursorStatus(`Cursor withheld: ${String((error as Error).message)}`); }
+      }}>Share Curve parameter</button>
+      <label>Surface u <input data-testid="project-composition-chart-u" type="number" step="any" value={chartCoordinate.u}
+        onChange={event => setChartCoordinate(current => ({ ...current, u: event.target.value }))} /></label>
+      <label>Surface v <input data-testid="project-composition-chart-v" type="number" step="any" value={chartCoordinate.v}
+        onChange={event => setChartCoordinate(current => ({ ...current, v: event.target.value }))} /></label>
+      <button type="button" data-testid="project-composition-return-curve" disabled={!cursorLinked} onClick={() => {
+        if (!chartCoordinate.u.trim() || !chartCoordinate.v.trim()) { setCursorStatus("Cursor withheld: Surface chart coordinate is incomplete."); return; }
+        const picked = { surfaceId: selectedTrace.surfaceId, revision: selectedTrace.pair.surface.identity.revision,
+          hash: selectedTrace.pair.surface.identity.structuralHash,
+          uv: { u: Number(chartCoordinate.u), v: Number(chartCoordinate.v) } };
+        const draft = curveSurfaceReturnDraft(project, selectedTrace.pair.curve.identity.id, picked, cursorOriginViewId);
+        if (draft.status !== "matched") { setCursorStatus(`Cursor withheld: ${draft.reason}`); return; }
+        try {
+          scientificCursorBus.publishProject(draft.value, draft.value.source);
+          setCurveParameter(String(draft.value.position[0]!)); setLinked(null); setExternalCursorProbe(null);
+          setExternalCurveProbe(current => ({ slot: selectedTrace.slot, uv: picked.uv, token: (current?.token ?? 0) + 1 }));
+          setCursorStatus("Returned exact Surface chart coordinate to its saved Curve parameter.");
+        } catch (error) { setCursorStatus(`Cursor withheld: ${String((error as Error).message)}`); }
+      }}>Return Surface u,v to Curve</button>
+      <small>Only the recorded Curve-to-chart relation and bounded parameter map can place this marker.</small>
+    </section>}
     {mode === "overlay" && !resolved.error && <p role="status" style={{ margin: 0 }}>
       {resolved.verifiedOverlay ?
         "Source-declared coordinate frames, axes, handedness, and units match this overlay." :
@@ -504,13 +627,18 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
         </article>;
       })}
     </section>}
-    <footer style={{ borderTop: "1px solid #cbd5e1", paddingTop: 8 }}><strong>Selection</strong> {pick ?
+    <footer style={{ borderTop: "1px solid #cbd5e1", paddingTop: 8 }}>
+      <button type="button" data-testid="project-composition-cursor-link" onClick={() => {
+        setCursorLinked(value => !value); setExternalCursorProbe(null); setCursorStatus("");
+      }}>{cursorLinked ? "Unlink scientific cursor" : "Link scientific cursor"}</button>
+      {cursorStatus && <p data-testid="project-composition-cursor-status" role="status">{cursorStatus}</p>}
+      <strong>Selection</strong> {pick ?
       `${titleOf(project, pick.memberId)} · r${pick.revision} · ${pick.hash.slice(0, 20)}… · ${pick.meshKey ?? "mesh"} · face ${pick.faceIndex ?? "—"} · (${pick.point.x.toPrecision(5)}, ${pick.point.y.toPrecision(5)}, ${pick.point.z.toPrecision(5)})` :
       "Click a rendered mesh to inspect its exact member and local coordinate; point and line overlays are not pickable here."}
       {saved && <span style={{ marginLeft: 16 }}>Saved source status: {inspectProjectCompositionAvailability(saved, project.workspace).join(" / ")}</span>}
       {mode === "side-by-side" && (linkable ? <p>Linked selection uses the same stored parameter ‘u,v’ in both generations, not an inferred physical-point match.
         {linked && ` Selected u=${linked.uv.u.toPrecision(5)}, v=${linked.uv.v.toPrecision(5)}.`}</p> :
-        displayedProbe ? <p data-testid="project-composition-probe-status">{coordinateProbe ? "Linked" : "Saved"} coordinate from {displayedProbe.source.slot === 0 ? "A" : "B"} to {displayedProbe.target.slot === 0 ? "A" : "B"}:
+        displayedProbe ? <p data-testid="project-composition-probe-status">{coordinateProbe || externalCursorProbe ? "Linked" : "Saved"} coordinate from {displayedProbe.source.slot === 0 ? "A" : "B"} to {displayedProbe.target.slot === 0 ? "A" : "B"}:
           {` (${displayedProbe.point.x.toPrecision(5)}, ${displayedProbe.point.y.toPrecision(5)}, ${displayedProbe.point.z.toPrecision(5)}) ${displayedProbe.unit}`}
           {` in ${displayedProbe.frame}.`} Source: {displayedProbe.source.id} r{displayedProbe.source.revision} · {displayedProbe.source.hash}.
           Element picks remain source-local; the other pane shows a coordinate marker only.</p> :

@@ -10,6 +10,7 @@ import { DocumentWorkspaceHost } from "./DocumentWorkspaceHost";
 import { SavedSurfaceToolbar } from "./SavedSurfaceToolbar";
 import { DocumentViewport } from "./DocumentViewport";
 import { surfaceDocumentBinding } from "./surfaceDocumentBinding";
+import { SavedCurveCursorControls } from "../curveAnalysis/SavedCurveCursorControls";
 import { documentPresentationKey, readDocumentPresentation, saveDocumentPresentation } from "./documentPresentation";
 
 export function SavedDocumentWorkbench({ session, workspaceVersion, projectId, projectTitle, documentTitle, related, onOpenRelated, onChange, onClose, onOpenProject, onVerifyScientificPathline, moduleView, customView = false, onSelectView, children }:
@@ -103,6 +104,7 @@ export function SavedDocumentWorkbench({ session, workspaceVersion, projectId, p
       </div>}
     source={<>
       <h2>Source / Object</h2>
+      {document.format === "math3d.curve-document" && <SavedCurveCursorControls document={document} />}
       {document.format === "math3d.curve-document" &&
         ["vector3d.temporal-pathline", "vector3d.temporal-streakline"].includes(document.source.definition.familyId) &&
         <div style={{ padding: 10 }}><button data-testid="scientific-pathline-verify" disabled={verifying || !onVerifyScientificPathline}

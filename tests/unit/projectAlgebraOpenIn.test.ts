@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { buildSageAlgebraicLocusScene, createAlgebraObjectRecord, createMath3DProject,
   createMixedWorkspaceDocument, createProjectAlgebraObjectId, parseMath3DProject,
-  projectAlgebraOpenInActions, resolveProjectAlgebraOpenIn, sampleSageAlgebraicLocus,
+  projectAlgebraCasHandoff, projectAlgebraOpenInActions, resolveProjectAlgebraCasHandoff,
+  resolveProjectAlgebraOpenIn, resolveProjectAlgebraPreparedLocus, sampleSageAlgebraicLocus,
+  setMath3DProjectAlgebraObjectArchived,
   serializeMath3DProject, upsertMath3DProjectAlgebraObject,
   upsertMath3DProjectAlgebraicLocusSample, upsertMath3DProjectAlgebraicLocusScene } from "@math3d/core";
 
@@ -24,6 +26,56 @@ const fixture = () => {
 };
 
 describe("Project Algebra Open in Geometry", () => {
+  it("requalifies a prepared locus before local CAS work", () => {
+    const { project, target, scene } = fixture();
+    const choice = projectAlgebraCasHandoff(project, target);
+    expect(resolveProjectAlgebraPreparedLocus(project, target, scene, choice).sceneHash)
+      .toBe(scene.sceneHash);
+    const archived = setMath3DProjectAlgebraObjectArchived(project, target.objectId, true);
+    expect(() => resolveProjectAlgebraPreparedLocus(archived, target, scene, choice))
+      .toThrow(/source changed/);
+    const revised = createAlgebraObjectRecord({ id: target.objectId, revision: 2, label: "R revised",
+      definition: { kind: "polynomial-ring", coefficientDomain: {
+        objectId: project.algebraObjects![0]!.id, revision: 1 }, variables: ["x", "y"],
+        monomialOrder: "lex" } });
+    const historical = upsertMath3DProjectAlgebraObject(project, revised);
+    expect(() => resolveProjectAlgebraPreparedLocus(historical, target, scene, choice))
+      .toThrow(/source changed/);
+    expect(() => resolveProjectAlgebraPreparedLocus(project,
+      { objectId: project.algebraObjects![0]!.id, revision: 1 }, scene, choice))
+      .toThrow(/source changed/);
+  });
+  it("hands a current QQ polynomial source to CAS and refuses an outdated choice", () => {
+    const { project, target } = fixture();
+    const choice = projectAlgebraCasHandoff(project, target);
+    expect(choice).toMatchObject({ enabled: true, label: "Prepare locus in CAS" });
+    expect(resolveProjectAlgebraCasHandoff(project, target, choice)).toEqual(target);
+    expect(() => resolveProjectAlgebraCasHandoff(project, target,
+      { ...choice, source: { ...choice.source, contentHash: `sha256:${"0".repeat(64)}` } }))
+      .toThrow(/source changed/);
+    const archived = setMath3DProjectAlgebraObjectArchived(project, target.objectId, true);
+    expect(projectAlgebraCasHandoff(archived, target)).toMatchObject({ enabled: false,
+      disabledReason: expect.stringContaining("unarchived") });
+    expect(() => resolveProjectAlgebraCasHandoff(archived, target, choice)).toThrow(/source changed/);
+    expect(projectAlgebraCasHandoff(project, { objectId: project.algebraObjects![0]!.id, revision: 1 }))
+      .toMatchObject({ enabled: false, disabledReason: expect.stringContaining("polynomial ring or ideal") });
+    const qq = project.algebraObjects![0]!.revisions[0]!;
+    const ideal = createAlgebraObjectRecord({ id: createProjectAlgebraObjectId(project.identity.id, "I"),
+      revision: 1, label: "I", definition: { kind: "ideal", ambientRing: target,
+        generators: ["x^2+y^2-1"] } });
+    const withIdeal = upsertMath3DProjectAlgebraObject(project, ideal);
+    const idealTarget = { objectId: ideal.id, revision: 1 };
+    const idealChoice = projectAlgebraCasHandoff(withIdeal, idealTarget);
+    expect(idealChoice.enabled).toBe(true);
+    const changedParent = upsertMath3DProjectAlgebraObject(withIdeal,
+      createAlgebraObjectRecord({ id: target.objectId, revision: 2, label: "R revised",
+        definition: { kind: "polynomial-ring", coefficientDomain: { objectId: qq.id, revision: 1 },
+          variables: ["x", "y"], monomialOrder: "lex" } }));
+    expect(projectAlgebraCasHandoff(changedParent, idealTarget)).toMatchObject({ enabled: false,
+      disabledReason: expect.stringContaining("stale dependencies") });
+    expect(() => resolveProjectAlgebraCasHandoff(changedParent, idealTarget, idealChoice))
+      .toThrow(/source changed/);
+  });
   it("separates exact contract and bounded sample actions through save and reopen", () => {
     const { project, target, scene } = fixture();
     expect(projectAlgebraOpenInActions(project, target, null, null)).toMatchObject([

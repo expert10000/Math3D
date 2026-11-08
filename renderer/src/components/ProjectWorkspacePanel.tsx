@@ -12,6 +12,8 @@ import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, 
   relinkMath3DProjectScientificScene, upsertMath3DProjectScientificScene, type ProjectScientificSceneReference,
   upsertMath3DProjectComposition, upsertMath3DProjectSavedMeshComparison, inspectProjectCompositionAvailability,
   migrateProjectScientificSelections,
+  createProjectStudyFromDocuments, renameProjectStudy, forkProjectStudy,
+  createProjectQwzQuadStudy, qualifyProjectQwzPair,
   type ProjectComposition, type ProjectSavedMeshComparison,
   type ProjectNote,
   type Math3DProject, type MixedWorkspaceDocument, type KernelWorkspaceModule, type QuantumSceneDocument, type ViewerProvenanceEvidence } from "@math3d/core";
@@ -26,12 +28,24 @@ import { ProjectGalleryFrame, type ProjectPlacement } from "./ProjectGalleryFram
 import { ProjectTemplatesPanel, StarterArtwork } from "./ProjectTemplatesPanel";
 import { ProjectDocumentActions, type ProjectDocumentAction } from "./ProjectDocumentActions";
 import { ProjectOpenInMenu } from "./ProjectOpenInMenu";
+import { ProjectAlgebraOpenInMenu } from "./ProjectAlgebraOpenInMenu";
+import { ProjectAlgebraReturnButton } from "./ProjectAlgebraReturnButton";
+import { projectAlgebraLocusReturn, resolveProjectAlgebraLocusReturn,
+  type ProjectAlgebraLocusReturn } from "@math3d/core";
+import { projectSavedAlgebraOpenInActions, resolveProjectSavedAlgebraOpenIn,
+  type ProjectSavedAlgebraOpenInAction } from "@math3d/core";
+import { projectAlgebraCasHandoff, resolveProjectAlgebraCasHandoff,
+  type ProjectAlgebraCasHandoff, type AlgebraObjectRef } from "@math3d/core";
+import { projectAlgebraLocusCurveSourceStatus, resolveProjectAlgebraLocusCurveSource } from "@math3d/core";
 import { createSavedSurfaceMesh } from "../projects/savedSurfaceMesh";
 import { inspectProjectDependencies } from "../projects/projectDependencies";
 import { presentProjectFreshness, presentProjectRelationFreshness } from "../projects/projectFreshnessPresentation";
 import { projectDependencyRefreshOptions, refreshProjectDependency, projectAnalysisRefreshOptions, recomputeProjectAnalysis } from "../projects/projectDependencyRefresh";
 import { ProjectDependenciesPanel } from "./ProjectDependenciesPanel";
 import { ProjectRelationshipMap } from "./ProjectRelationshipMap";
+import { ProjectCursorInspector } from "./ProjectCursorInspector";
+import { ProjectStudiesPanel } from "./ProjectStudiesPanel";
+import { addQualifiedStudyGraphCurveLink } from "../projects/studyGraphCurveLink";
 const ProjectCompositionView = React.lazy(() => import("./ProjectCompositionView").then(module => ({ default: module.ProjectCompositionView })));
 const QuantumNativeOverlayView = React.lazy(() => import("./QuantumNativeOverlayView").then(module => ({ default: module.QuantumNativeOverlayView })));
 const ProjectSavedMeshResultComparisonView = React.lazy(() => import("./ProjectSavedMeshResultComparisonView").then(module => ({ default: module.ProjectSavedMeshResultComparisonView })));
@@ -128,6 +142,8 @@ type Props = {
   capture: () => MixedWorkspaceDocument;
   canNavigateDocument?: (id: string, module: KernelWorkspaceModule) => boolean;
   onNavigateDocument?: (id: string, module: KernelWorkspaceModule) => void;
+  onOpenAlgebra?: (projectId: string, target: AlgebraObjectRef, contentHash: string,
+    evidence?: ProjectAlgebraLocusReturn) => void;
   onOpenAnalysis?: (id: string, module: KernelWorkspaceModule, route: ProjectAnalysisRoute, workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources) => void;
   artifactAvailable?: (id: string, hash?: string | null) => boolean;
   resourceReader?: ProjectResourceReader;
@@ -136,7 +152,7 @@ type Props = {
   activeProjectDocumentId?: string | null;
   onRestoreWorkspace?: (workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources, owner?: Math3DProject) => void;
 };
-export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open, onOpenChange, onCurrentProjectChange, verifiedQuantumScene, onImportQuantumScene, onImportScientificScene, onOpenQuantumScene, onVerifyQuantumSceneDocument, onRelinkQuantumScene, verifiedScientificScene, onOpenScientificScene, onRelinkScientificScene, captureActiveWorkbook, onOpenWorkbook, onViewProjectWorkbook, onViewProjectDetail, noteRequest, resultRequest, pairRequest, regionResultStatuses = {}, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeEvidence, activeProjectDocumentId }) => {
+export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open, onOpenChange, onCurrentProjectChange, verifiedQuantumScene, onImportQuantumScene, onImportScientificScene, onOpenQuantumScene, onVerifyQuantumSceneDocument, onRelinkQuantumScene, verifiedScientificScene, onOpenScientificScene, onRelinkScientificScene, captureActiveWorkbook, onOpenWorkbook, onViewProjectWorkbook, onViewProjectDetail, noteRequest, resultRequest, pairRequest, regionResultStatuses = {}, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAlgebra, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeEvidence, activeProjectDocumentId }) => {
 
   const loadedProject = useRef<Math3DProject | null>(null);
   const resourceSession = useRef<VerifiedProjectResources | undefined>(undefined);
@@ -219,6 +235,19 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [scientificSceneMessage, setScientificSceneMessage] = useState("");
   const [analysisError, setAnalysisError] = useState<{ id: string; message: string } | null>(null);
   const [project, setProject] = useState<Math3DProject | null>(null);
+  const algebraLoci = useMemo(() => project?.algebraObjects?.flatMap(entry =>
+    [...entry.revisions].reverse().filter(record => record.definition.kind === "polynomial-ring" ||
+      record.definition.kind === "ideal").map(record => {
+      const target = { objectId: entry.id, revision: record.revision };
+      return { entry, record, target, actions: projectSavedAlgebraOpenInActions(project, target),
+        casAction: projectAlgebraCasHandoff(project, target),
+        menuId: record.revision === entry.revisions.length ? entry.id : `${entry.id}-revision-${record.revision}` };
+    }).filter(item => item.record.revision === entry.revisions.length ||
+      item.actions.some(action => action.documentId))) ?? [], [project]);
+  const algebraReturns = useMemo(() => new Map<string, ProjectAlgebraLocusReturn>((project?.workspace.entries ?? [])
+    .map(entry => project ? projectAlgebraLocusReturn(project, entry.expected.id) : null)
+    .filter((action): action is ProjectAlgebraLocusReturn => action !== null)
+    .map(action => [action.documentId, action] as const)), [project]);
   const studyLaunchRequest = useRef<Promise<StudyLaunchResponse> | null>(null);
   useEffect(() => {
     let mounted = true;
@@ -446,6 +475,12 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     }
   }, [project]);
   const documentTitles = new Map(explorer?.groups.flatMap((group) => group.documents.map((document) => [document.id, document.title] as const)) ?? []);
+  const contourSources = useMemo(() => new Map<string, ReturnType<typeof projectAlgebraLocusCurveSourceStatus>>(
+    project?.workspace.entries.flatMap(entry =>
+    entry.module === "curve" && entry.checkpoint.format === "math3d.curve-document" &&
+    entry.checkpoint.source.definition.familyId === "algebra.bounded-locus-contour"
+      ? [[entry.expected.id, projectAlgebraLocusCurveSourceStatus(project!, entry.checkpoint)] as const]
+      : []) ?? []), [project]);
   const relatedSummary = useMemo(() => {
     const empty = { sources: [] as { id: string; module: KernelWorkspaceModule; revision: number; historical: boolean }[],
       derived: [] as { id: string; module: KernelWorkspaceModule; revision: number; historical: boolean }[],
@@ -1636,6 +1671,35 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         "Created a source-linked companion. Save the Project to retain it.");
     } catch (error) { setMessage(`Open in refused: ${(error as Error).message}`); }
   };
+  const openSavedAlgebraDestination = (target: { objectId: StableDocumentId; revision: number },
+    choice: ProjectSavedAlgebraOpenInAction) => {
+    if (busy || preview || managed || !project) return;
+    try {
+      const documentId = resolveProjectSavedAlgebraOpenIn(liveProject(), target, choice);
+      if (!onNavigateDocument || !canNavigateDocument?.(documentId, "geometry"))
+        throw new TypeError("The saved locus Geometry is unavailable in this workspace.");
+      navigate(documentId, "geometry");
+    } catch (error) { setMessage(`Open in refused: ${(error as Error).message}`); }
+  };
+  const prepareAlgebraInCas = (target: AlgebraObjectRef, choice: ProjectAlgebraCasHandoff) => {
+    if (busy || preview || managed || !project) return;
+    try {
+      const current = liveProject();
+      const checked = resolveProjectAlgebraCasHandoff(current, target, choice);
+      if (!onOpenAlgebra) throw new TypeError("CAS navigation is unavailable on this host.");
+      onOpenAlgebra(current.identity.id, checked, choice.source.contentHash);
+      onOpenChange(false);
+    } catch (error) { setMessage(`Open in refused: ${(error as Error).message}`); }
+  };
+  const returnToAlgebraInCas = (choice: ProjectAlgebraLocusReturn) => {
+    if (busy || preview || managed || !project) return;
+    try {
+      const source = resolveProjectAlgebraLocusReturn(liveProject(), choice);
+      if (!onOpenAlgebra) throw new TypeError("CAS navigation is unavailable on this host.");
+      onOpenAlgebra(source.projectId, source.target, source.contentHash, choice);
+      onOpenChange(false);
+    } catch (error) { setMessage(`Return to CAS refused: ${(error as Error).message}`); }
+  };
   const viewerDocuments = explorer?.groups.flatMap(group => group.documents).filter(document => !document.archived && canNavigateDocument?.(document.id, document.module)) ?? [];
   const dashboardDocuments = explorer?.groups.flatMap(group => group.documents).filter(document => !document.archived) ?? [];
   const savedProjectEntry = project ? library.entries.find(entry => entry.id === project.identity.id) : undefined;
@@ -1647,6 +1711,37 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     setViewerCompanion(true);
     setQuick(true);
     window.dispatchEvent(new CustomEvent("math3d:project-dock-visible", { detail: placement }));
+  };
+  const stageStudy = (change: (source: Math3DProject) => Math3DProject, success: string) => {
+    if (!project || busy || preview || managed) return;
+    try { setProject(change(project)); setMessage(`${success} Save Project to keep it.`); }
+    catch (error) { setMessage(`Study change refused: ${(error as Error).message}`); }
+  };
+  const stageQwzQuadStudy = async (quantumStudyId: string) => {
+    const source = projectStateRef.current;
+    if (!source || busy || preview || managed) return;
+    const pair = qualifyProjectQwzPair(source, quantumStudyId);
+    if (!pair || !onVerifyQuantumSceneDocument) {
+      setMessage("QWZ Study refused: exact desktop source verification is unavailable."); return;
+    }
+    const before = serializeMath3DProject(source);
+    setBusy(true);
+    try {
+      for (const document of [pair.curvature, pair.bands]) {
+        const reference = source.quantumScenes?.find(item => item.sceneFingerprint === document.source.sceneFingerprint);
+        if (!reference) throw new TypeError("QWZ scene reference is missing.");
+        const verified = await onVerifyQuantumSceneDocument(reference);
+        if (canonicalJsonStringify(verified.source) !== canonicalJsonStringify(document.source) ||
+            verified.location.directory !== document.location.directory)
+          throw new TypeError("QWZ source changed since this Project was saved.");
+      }
+      if (!projectStateRef.current || serializeMath3DProject(projectStateRef.current) !== before)
+        throw new TypeError("Project changed during QWZ source verification.");
+      const next = createProjectQwzQuadStudy(source, quantumStudyId, crypto.randomUUID(),
+        `${source.workspace.quantumStudies?.find(item => item.id === quantumStudyId)?.title ?? "QWZ"} four-view Study`);
+      setProject(next); setMessage("Four-view QWZ Study staged. Save Project to keep it.");
+    } catch (error) { setMessage(`QWZ Study refused: ${(error as Error).message}`); }
+    finally { setBusy(false); }
   };
   const renderNotesPanel = (layout: "floating" | "page") => <ProjectNotesPanel layout={layout} project={notesProject} workspace={notesWorkspace} readResource={comparisonResource} drafts={noteDrafts} busy={busy} message={notesMessage} focusNoteId={selectedNoteId ?? noteRequest?.id}
     selectionAvailable={Boolean(captureNoteSelection?.())} workbooks={noteWorkbooks}
@@ -1885,6 +1980,17 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                 </div>)}
               </div>}
             </aside>
+            <ProjectCursorInspector project={project} />
+            <ProjectStudiesPanel project={project} documents={dashboardDocuments} resources={resourceSession.current}
+              editable={!preview && !managed && !busy}
+              onCreate={(studyTitle, ids) => stageStudy(source => createProjectStudyFromDocuments(source,
+                crypto.randomUUID(), studyTitle, ids), "Study created.")}
+              onRename={(id, studyTitle) => stageStudy(source => renameProjectStudy(source, id, studyTitle), "Study renamed.")}
+              onFork={(id, studyTitle) => stageStudy(source => forkProjectStudy(source, id,
+                crypto.randomUUID(), studyTitle), "Study forked.")}
+              onLink={id => stageStudy(source => addQualifiedStudyGraphCurveLink(source, id), "Graph–Curve parameter link added.")}
+              onCreateQwz={id => { void stageQwzQuadStudy(id); }}
+              onOpenDocument={(id, module) => viewBesideProject(id, module)} />
           </div>}
           {!quick && detailView && project && <ProjectRelationshipMap project={project} titles={documentTitles}
             preview={preview} inspection={dashboardDependencies} canOpen={(id, module) => !!canNavigateDocument?.(id, module)} onOpen={viewBesideProject} />}
@@ -2246,6 +2352,43 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               canReturn={!preview && !!canNavigateDocument?.(projectOpenInReturn(project, document.id)?.sourceDocumentId ?? "",
                 projectOpenInReturn(project, document.id)?.sourceModule ?? "graph2d")}
               onReturn={(sourceId, module) => viewBesideProject(sourceId, module)} />}
+            {algebraReturns.has(document.id) && <ProjectAlgebraReturnButton
+              action={algebraReturns.get(document.id)!}
+              canReturn={!busy && !preview && !managed && !!onOpenAlgebra}
+              unavailableReason={preview ? "Open the saved Project first." : managed ?
+                "Open the Project workspace to return to CAS." : busy ? "Project is busy." :
+                !onOpenAlgebra ? "CAS navigation is unavailable on this host." : null}
+              onReturn={returnToAlgebraInCas} />}
+            {contourSources.has(document.id) && (() => {
+              const status = contourSources.get(document.id)!;
+              return <div data-testid={`project-contour-source-${document.id}`}
+                style={{ display: "grid", gap: 4, fontSize: 12 }}>
+                <span><strong>Saved contour source:</strong> {status.status}
+                  {status.reason ? ` · ${status.reason}` : " · exact saved component verified"}</span>
+                <button type="button" data-testid={`project-contour-return-${document.id}`}
+                  disabled={preview || !status.sourceDocumentId ||
+                    !onRestoreWorkspace || !onNavigateDocument}
+                  title={preview ? "Open the saved Project first." :
+                    !status.sourceDocumentId ? status.reason ?? "Geometry source unavailable." :
+                    !onRestoreWorkspace || !onNavigateDocument ?
+                      "Project workspace navigation is unavailable on this host." :
+                      status.reason ?? "Open the pinned sampled Geometry checkpoint"}
+                  onClick={() => {
+                    if (!project || !onRestoreWorkspace) return;
+                    const entry = project.workspace.entries.find(item => item.expected.id === document.id);
+                    if (entry?.checkpoint.format !== "math3d.curve-document") return;
+                    try {
+                      const sourceId = resolveProjectAlgebraLocusCurveSource(project, entry.checkpoint);
+                      if (!canNavigateDocument?.(sourceId, "geometry"))
+                        onRestoreWorkspace(project.workspace, resourceSession.current, project);
+                      if (!canNavigateDocument?.(sourceId, "geometry"))
+                        throw new TypeError("The saved Geometry source is unavailable in this workspace.");
+                      viewBesideProject(sourceId, "geometry");
+                    }
+                    catch (error) { setMessage(`Contour source could not open: ${(error as Error).message}`); }
+                  }}>Open source Geometry</button>
+              </div>;
+            })()}
             {document.module === "vector3d" && <button type="button"
               data-testid={`project-open-field-explorer-${document.id}`}
               disabled={busy || document.archived || !onNavigateDocument || !onRestoreWorkspace}
@@ -2277,6 +2420,34 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           </li>)}
         </ul>
       </section>)}
+      {algebraLoci.length > 0 && <section data-testid="project-group-algebra" style={{ marginTop: 12 }}>
+        <strong>Algebra loci</strong>
+        <ul className="project-document-list">
+          {algebraLoci.map(({ entry, record, target, actions, casAction, menuId }) => {
+            return <li key={menuId}>
+              <strong>{record.label}</strong><small> · {record.definition.kind} · revision {record.revision}
+                {entry.archived ? " · archived" : ""}{record.revision !== entry.revisions.length ? " · historical" : ""}</small>
+              <ProjectAlgebraOpenInMenu objectId={menuId}
+                actions={actions}
+                casAction={casAction}
+                canPrepare={!busy && !preview && !managed && !!onOpenAlgebra &&
+                  !!library.entries.some(item => item.id === project?.identity.id)}
+                prepareUnavailableReason={preview ? "Open the saved Project first." : managed ?
+                  "Open the Project workspace before preparing a locus." : busy ? "Project is busy." :
+                  !onOpenAlgebra ? "CAS navigation is unavailable on this host." :
+                  !library.entries.some(item => item.id === project?.identity.id) ?
+                    "Save this Project before preparing a locus in CAS." : null}
+                onPrepare={action => prepareAlgebraInCas(target, action)}
+                canOpen={action => !busy && !preview && !managed && !!onNavigateDocument &&
+                  action.enabled && !!action.documentId && !!canNavigateDocument?.(action.documentId, "geometry")}
+                unavailableReason={preview ? "Open the saved Project first." : managed ?
+                  "Open the Project workspace to view its saved locus." : busy ? "Project is busy." :
+                  !onNavigateDocument ? "Geometry navigation is unavailable on this host." : null}
+                onChoose={action => openSavedAlgebraDestination(target, action)} />
+            </li>;
+          })}
+        </ul>
+      </section>}
       {explorer && <section data-testid="project-group-analysis" style={{ marginTop: 12 }}>
         <strong>Analysis ({explorer.analysis.length})</strong>
         <ul style={{ paddingLeft: 20 }}>{explorer.analysis.map((result) => <li key={result.id}>

@@ -4,6 +4,7 @@ import { graph2DPromotionStatus, isGraph2DPromotionTargetEdited, compareGraph2DP
   type Graph2DAnyPromotion, type Graph2DDocument, type CurveDocument, type SurfaceDocument } from "@math3d/core";
 import { GeometryViewer } from "../components/GeometryViewer";
 import { CurveViewer } from "../components/CurveViewer";
+import { SavedCurveCursorControls } from "../curveAnalysis/SavedCurveCursorControls";
 
 function sampledBounds(positions: readonly number[]) {
   if (!positions.length) return { center: { x: 0, y: 0, z: 0 }, radius: 2 };
@@ -141,6 +142,7 @@ export function PromotedDocumentWorkspace({ promotion, source, onEdit, onLocateS
         <p>Sampled profile in the z=0 plane · {promotion.document.source.geometry?.segments?.length ?? 0} segments. The Graph expression and source generation are recorded in this Geometry document.</p> : <>
         <label>Profile y expression <input aria-label="Target y expression" value={expression} onChange={(event) => setExpression(event.target.value)} /></label>
         <button type="button" onClick={edit}>Apply target edit</button></>}
+      {promotion.document.format === "math3d.curve-document" && <SavedCurveCursorControls document={promotion.document} />}
       <p><button type="button" disabled={!sourceAvailable || isGraph2DPromotionTargetEdited(promotion)} onClick={() => onRegenerate("replace")}>Regenerate target</button>
         <button type="button" disabled={!sourceAvailable} onClick={() => onRegenerate("fork")}>Fork target</button></p>
       {error && <p role="alert">{error}</p>}

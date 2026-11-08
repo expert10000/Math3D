@@ -2,7 +2,9 @@ import { useState, type FormEvent } from "react";
 import { algebraicLocusGeometryDocument, buildSageAlgebraicLocusScene, canonicalJsonStringify,
   sampleSageAlgebraicLocus, sampledAlgebraicLocusGeometryDocument,
   analyzeSageAlgebraicSingularity, algebraicSingularityGeometryDocument,
-  projectAlgebraOpenInActions, resolveProjectAlgebraOpenIn, type ProjectAlgebraOpenInAction,
+  projectAlgebraCasHandoff, projectAlgebraOpenInActions, resolveProjectAlgebraCasHandoff,
+  resolveProjectAlgebraOpenIn, resolveProjectAlgebraPreparedLocus,
+  type ProjectAlgebraCasHandoff, type ProjectAlgebraOpenInAction,
   type AlgebraObjectRef, type Math3DProject, type SageAlgebraicLocusScene,
   type SageAlgebraicLocusSample, type SageAlgebraicSingularityScene } from "@math3d/core";
 import SageAlgebraicLocusPlot from "./SageAlgebraicLocusPlot";
@@ -35,26 +37,39 @@ export default function SageAlgebraicLocusBuilder({ project, target, onSave, onS
     { min: "-2", max: "2" }]);
   const [tolerance, setTolerance] = useState("0.001");
   const [maxSamples, setMaxSamples] = useState("50000");
-  const [preview, setPreview] = useState<{ signature: string; scene: SageAlgebraicLocusScene } | null>(null);
+  const [preview, setPreview] = useState<{ signature: string; scene: SageAlgebraicLocusScene;
+    choice: ProjectAlgebraCasHandoff } | null>(null);
   const [sampled, setSampled] = useState<{ signature: string; sample: SageAlgebraicLocusSample } | null>(null);
   const [point, setPoint] = useState(["0", "0", "0"]);
   const [inspected, setInspected] = useState<{ signature: string; analysis: SageAlgebraicSingularityScene } | null>(null);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
-  const signature = JSON.stringify({ target, polynomial, bounds: bounds.slice(0, variables.length), tolerance, maxSamples });
+  const handoff = projectAlgebraCasHandoff(project, target);
+  const signature = JSON.stringify({ projectId: project.identity.id, target, polynomial,
+    bounds: bounds.slice(0, variables.length), tolerance, maxSamples });
   const scene = preview?.signature === signature ? preview.scene : null;
   const sample = sampled?.signature === signature ? sampled.sample : null;
   const analysisSignature = `${signature}/${JSON.stringify(point.slice(0, variables.length))}`;
   const analysis = inspected?.signature === analysisSignature ? inspected.analysis : null;
   const openInActions = projectAlgebraOpenInActions(project, target, scene, sample);
+  const qualifiedScene = (() => {
+    if (!scene || !preview) return null;
+    try { return resolveProjectAlgebraPreparedLocus(project, target, scene, preview.choice); }
+    catch { return null; }
+  })();
+  const requireQualifiedScene = () => {
+    if (!scene || !preview) throw new TypeError("Validate a bounded real locus first.");
+    return resolveProjectAlgebraPreparedLocus(project, target, scene, preview.choice);
+  };
   const prepare = (event: FormEvent) => {
     event.preventDefault(); setMessage(""); setPreview(null); setSampled(null); setInspected(null);
     try {
+      resolveProjectAlgebraCasHandoff(project, target, handoff);
       const prepared = buildSageAlgebraicLocusScene(project, target, {
         ...(record?.definition.kind === "polynomial-ring" ? { polynomial } : {}),
         bounds: bounds.slice(0, variables.length).map((item) => ({ min: Number(item.min), max: Number(item.max) })),
         tolerance: Number(tolerance), maxSamples: Number(maxSamples) });
-      setPreview({ signature, scene: prepared });
+      setPreview({ signature, scene: prepared, choice: handoff });
     } catch (error) { setMessage(String((error as Error).message ?? error)); }
   };
   const openInGeometry = async (choice: ProjectAlgebraOpenInAction) => {
@@ -78,20 +93,25 @@ export default function SageAlgebraicLocusBuilder({ project, target, onSave, onS
   const render = () => {
     if (!scene || busy) return;
     setMessage("");
-    try { setSampled({ signature, sample: sampleSageAlgebraicLocus(scene) }); }
+    try { setSampled({ signature, sample: sampleSageAlgebraicLocus(requireQualifiedScene()) }); }
     catch (error) { setMessage(String((error as Error).message ?? error)); }
   };
   const inspect = () => {
     if (!scene || busy) return;
     setMessage(""); setInspected(null);
     try { setInspected({ signature: analysisSignature,
-      analysis: analyzeSageAlgebraicSingularity(scene, point.slice(0, variables.length)) }); }
+      analysis: analyzeSageAlgebraicSingularity(requireQualifiedScene(), point.slice(0, variables.length)) }); }
     catch (error) { setMessage(String((error as Error).message ?? error)); }
   };
   const saveAnalysis = async () => {
     if (!analysis || busy) return;
     setBusy(true); setMessage("");
-    try { await onSaveSingularity(analysis); setMessage("Saved exact tangent and singular-locus view to Project Geometry."); }
+    try {
+      if (analysis.scene.sceneHash !== requireQualifiedScene().sceneHash)
+        throw new TypeError("The tangent analysis no longer matches the prepared locus.");
+      await onSaveSingularity(analysis);
+      setMessage("Saved exact tangent and singular-locus view to Project Geometry.");
+    }
     catch (error) { setMessage(String((error as Error).message ?? error)); }
     finally { setBusy(false); }
   };
@@ -116,8 +136,10 @@ export default function SageAlgebraicLocusBuilder({ project, target, onSave, onS
         value={tolerance} onChange={(event) => setTolerance(event.target.value)} required /></label>
       <label>Sample cap<input aria-label="Locus sample cap" type="number" step="1" min="1000" max="200000"
         value={maxSamples} onChange={(event) => setMaxSamples(event.target.value)} required /></label>
-      <button type="submit" disabled={busy}>Validate & preview locus</button>
+      <button type="submit" disabled={busy || !handoff.enabled}
+        title={handoff.disabledReason ?? undefined}>Validate & preview locus</button>
     </form>
+    {handoff.disabledReason && <div role="status">{handoff.disabledReason} Saved evidence remains available for inspection.</div>}
     <div data-testid="cas-open-in-geometry" role="group" aria-label="Open in Geometry destinations"
       style={{ display: "grid", gap: 5, border: "1px solid #dbe2ea", borderRadius: 6, padding: 8 }}>
       <strong>Open in…</strong>
@@ -137,7 +159,7 @@ export default function SageAlgebraicLocusBuilder({ project, target, onSave, onS
       <div><strong>Precision:</strong> tolerance {scene.precision.tolerance}; sample cap {scene.precision.maxSamples}</div>
       <div><strong>Rendering:</strong> uncomputed · completeness unknown</div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        <button type="button" disabled={busy} onClick={render}>Render bounded real locus</button>
+        <button type="button" disabled={busy || !qualifiedScene} onClick={render}>Render bounded real locus</button>
         <button type="button" onClick={() => download(`math3d-locus-${scene.source.target.revision}.json`,
           canonicalJsonStringify(scene))}>Export scene JSON</button>
         <button type="button" onClick={() => download(`math3d-locus-geometry-${scene.source.target.revision}.json`,
@@ -162,12 +184,13 @@ export default function SageAlgebraicLocusBuilder({ project, target, onSave, onS
             <input aria-label={`${variable} inspection point`} value={point[index]}
               onChange={(event) => setPoint((current) => current.map((item, at) =>
                 at === index ? event.target.value : item))} style={{ width: 75 }} /></label>)}
-          <button type="button" disabled={busy} onClick={inspect}>Inspect tangent and singular locus</button>
+          <button type="button" disabled={busy || !qualifiedScene} onClick={inspect}>Inspect tangent and singular locus</button>
         </div>
         {analysis && <div style={{ display: "grid", gap: 6 }}>
           <SageAlgebraicSingularityView analysis={analysis} />
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            <button type="button" disabled={busy} onClick={() => { void saveAnalysis(); }}>Save tangent view to Project</button>
+            <button type="button" disabled={busy || !qualifiedScene}
+              onClick={() => { void saveAnalysis(); }}>Save tangent view to Project</button>
             <button type="button" onClick={() => download(`math3d-locus-tangent-${scene.source.target.revision}.json`,
               canonicalJsonStringify(analysis))}>Export tangent scene JSON</button>
             <button type="button" onClick={() => download(`math3d-locus-tangent-geometry-${scene.source.target.revision}.json`,

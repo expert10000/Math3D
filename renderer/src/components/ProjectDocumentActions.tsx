@@ -19,6 +19,8 @@ export const ProjectDocumentActions: React.FC<{ project: Math3DProject; document
       <strong>{impact.canDelete ? "Isolated document can be removed" : "Delete blocked by dependencies"}</strong>
       <div>{impact.ownedResultIds.length} owned result(s) will also be removed. External artifacts are retained.</div>
       <div>{impact.dependentDocumentIds.length} dependent document(s), {impact.dependentResultIds.length} dependent result(s), {impact.dependentArtifactIds.length} dependent artifact(s).</div>
+      {!!impact.dependentStudyIds.length && <div>{impact.dependentStudyIds.length} Study reference(s): {impact.dependentStudyIds.map(id =>
+        project.workspace.studies?.find(study => study.id === id)?.title ?? id).join(", ")}</div>}
       {!!impact.dependentRelationIds.length && <div>{impact.dependentRelationIds.length} relation(s) retain document or result references.</div>}
       {impact.dependentDocumentIds.map((id) => <div key={id}>{project.metadata.documents?.[id]?.title ?? id}</div>)}
       {impact.constructionReferences && <div>A saved construction still references this document.</div>}

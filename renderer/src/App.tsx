@@ -11,6 +11,8 @@ import { meshDocumentEditable } from "./projects/nativeMeshRestore";
 import { createMeshDocument, canonicalJsonStringify, parseMath3DProject, upsertMath3DProjectAlgebraObject,
   addMath3DProjectAlgebraEvidence, upsertMath3DProjectAlgebraRecipe, installAlgebraGalleryExample,
   type ProjectScientificSceneReference } from "@math3d/core";
+import { resolveProjectAlgebraLocusInspection,
+  type ProjectAlgebraLocusReturn } from "@math3d/core";
 import { VerifiedProjectResources, type ProjectResourceReader, type ProjectResourceRequirement } from "./projects/projectResources";
 import type { MeshReplayBundle } from "./mesh/meshReplay";
 import { geometryEditorSeed as restoredGeometryEditorSeed, geometryDocumentEditable, geometrySourceFromEditor, geometryDisplayFromEditor, retainConstructionSource } from "./projects/nativeGeometryRestore";
@@ -763,6 +765,9 @@ import { CurveMeshPanel } from "./components/CurveMeshPanel";
 import { CurveBackendPanel } from "./components/CurveBackendPanel";
 import { CurveWorkerPanel } from "./components/CurveWorkerPanel";
 import { CurveDocumentAdapter, curveDocumentFromLegacyDefinition, splineDefinitionFromCurveDocument } from "./curveAnalysis/curveDocumentAdapter";
+import { curveParameterCursorDraft, projectCurveParameterCursor, projectRestoredCurveParameterCursor,
+  restoredCurveParameterCursorDraft } from "./curveAnalysis/curveCursor";
+import { scientificCursorBus } from "./components/scientificCursor";
 import { VolumeDocumentAdapter, volumeDocumentFromLegacyObject } from "./volume/volumeDocumentAdapter";
 import { VolumeExtractionKernelBridge, locateVolumeExtractionVertex, promoteVolumeExtraction, volumeExtractionStatus, type VolumeExtractionRecord } from "./volume/volumeExtractionKernel";
 import { VolumeIsosurfaceScientificJob } from "./volume/volumeScientificJob";
@@ -814,6 +819,7 @@ import {
   upsertMath3DProjectAlgebraicLocusScene,
   SAGE_LOCUS_GEOMETRY_EXTENSION,
   upsertMath3DProjectAlgebraicLocusSample,
+  upsertProjectAlgebraLocusCurve,
   upsertMath3DProjectAlgebraicSingularityScene,
   upsertProjectScientificSelection,
   upsertProjectLineIntegralResult,
@@ -11626,6 +11632,8 @@ const App: React.FC = () => {
   const [curveShowPreviews, setCurveShowPreviews] = useState(true);
   const [curvePlotDomain, setCurvePlotDomain] = useState<CurveScalarPlotDomain>("parameter");
   const [curveProbeSource, setCurveProbeSource] = useState<CurvePickSource>("parameter-slider");
+  const [curveCursorLinked, setCurveCursorLinked] = useState(true);
+  const [curveCursorStatus, setCurveCursorStatus] = useState("");
   const [curveDiagnosticFilter, setCurveDiagnosticFilter] = useState<CurveDiagnosticCategory | "all" | "warnings">("all");
   const [curveDiagnosticRevisionToken, setCurveDiagnosticRevisionToken] = useState(0);
   const [curveSavedDiagnosticReports, setCurveSavedDiagnosticReports] = useState<CurveDiagnosticReport[]>([]);
@@ -12196,6 +12204,27 @@ const App: React.FC = () => {
       kernelDocuments: [...workspace.kernelDocuments.filter((document) => document.metadata.legacyCurveId !== activeCanonicalCurveDefinition.identity.curveId), activeCurveKernelAdapter.document()].slice(-64),
     }));
   }, [activeCanonicalCurveDefinition.fingerprint, activeCanonicalCurveDefinition.identity.curveId, activeCurveKernelAdapter, activeCurvePreset?.id, activeCurveSplineSeed, curveSplineDefinition?.id, restoredCurveAdapter]);
+  const activeCurveCursorSource = activeCurveKernelAdapter.document();
+  useEffect(() => {
+    if (mode !== "curves" || !curveCursorLinked) return;
+    setCurveCursorStatus("");
+    return scientificCursorBus.subscribe(event => {
+      if (event.kind !== "project" ||
+          event.originViewId === `curve-viewer:${activeCurveCursorSource.identity.id}`) return;
+      const projected = activeCurveKernelAdapter === restoredCurveAdapter && restoredCurveAdapter ?
+        projectRestoredCurveParameterCursor(event, activeCurveKernelAdapter.document(),
+          { formulas: activeCurveFormulas, domain: activeCurveDomain }) :
+        projectCurveParameterCursor(event, activeCurveKernelAdapter.document(), activeCanonicalCurveDefinition);
+      if (projected.status === "matched") {
+        setCurveProbeU(projected.value); setCurveProbeSource("replay");
+        setCurveCursorStatus("Linked exact Curve parameter from the current source; no cursor rebroadcast.");
+      } else if (event.source.documentId === activeCurveCursorSource.identity.id) {
+        setCurveCursorStatus(`Cursor withheld: ${projected.reason}`);
+      }
+    });
+  }, [mode, curveCursorLinked, activeCurveKernelAdapter, activeCurveCursorSource.identity.id,
+    activeCurveCursorSource.identity.revision, activeCurveCursorSource.identity.structuralHash,
+    activeCanonicalCurveDefinition, restoredCurveAdapter, activeCurveFormulas, activeCurveDomain]);
   const curveAnalysisRegistryRef = useRef(createCurveAnalysisRegistry());
   const [curveAnalysisResultStore, setCurveAnalysisResultStore] = useState(createCurveAnalysisResultStore);
   const [curveResultLifecycle, setCurveResultLifecycle] = useState(createCurveResultLifecycleState);
@@ -12328,6 +12357,20 @@ const App: React.FC = () => {
     setCurveProbeSource(source);
     setCurveProbeU(clamp(normalizedParameter, 0, 1));
     setCurveInspectorTab("probe");
+  };
+  const pinCurveParameter = () => {
+    if (!activeSemanticCurvePick || !curveCursorLinked) return;
+    const document = activeCurveKernelAdapter.document();
+    const draft = activeCurveKernelAdapter === restoredCurveAdapter && restoredCurveAdapter ?
+      restoredCurveParameterCursorDraft(document, { formulas: activeCurveFormulas, domain: activeCurveDomain },
+        activeCanonicalCurveDefinition, activeSemanticCurvePick, `curve-viewer:${document.identity.id}`) :
+      curveParameterCursorDraft(document, activeCanonicalCurveDefinition,
+        activeSemanticCurvePick, `curve-viewer:${document.identity.id}`);
+    if (!draft.ok) { setCurveCursorStatus(`Cursor withheld: ${draft.errors.join(" ")}`); return; }
+    try {
+      scientificCursorBus.publishProject(draft.value, draft.value.source);
+      setCurveCursorStatus("Current Curve parameter pinned to the shared cursor.");
+    } catch (error) { setCurveCursorStatus(`Cursor withheld: ${String((error as Error).message)}`); }
   };
   const persistActiveCurveProbe = () => {
     if (!activeSemanticCurvePick) return null;
@@ -41979,6 +42022,9 @@ const App: React.FC = () => {
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [computeCenterOpen, setComputeCenterOpen] = useState(false);
   const [casWorkspaceOpen, setCasWorkspaceOpen] = useState(false);
+  const [casSourceRequest, setCasSourceRequest] = useState<{
+    projectId: string; target: import("@math3d/core").AlgebraObjectRef;
+    contentHash: string; evidence: ProjectAlgebraLocusReturn | null; token: number } | null>(null);
   const [casAnalysisRecord, setCasAnalysisRecord] = useState<SymbolicResultRecord | null>(null);
   const [numberTheoryWorkspaceOpen, setNumberTheoryWorkspaceOpen] = useState(false);
   const [numberTheoryAnalysisRecord, setNumberTheoryAnalysisRecord] = useState<SymbolicResultRecord | null>(null);
@@ -80536,6 +80582,25 @@ case "mobius":
             else { setDatasetKind("surface"); setSurfaceViewerKind("param"); }
           }
         }}
+        onOpenAlgebra={(projectId, target, contentHash, evidence) => {
+          const current = projectForNotePins;
+          const entry = current?.algebraObjects?.find(item => item.id === target.objectId);
+          if (!current || current.identity.id !== projectId ||
+              entry?.revisions[target.revision - 1]?.contentHash !== contentHash)
+            throw new TypeError("The selected algebra source is unavailable in the active Project.");
+          if (evidence) {
+            resolveProjectAlgebraLocusInspection(current, evidence);
+            if (evidence.source.objectId !== target.objectId ||
+                evidence.source.revision !== target.revision ||
+                evidence.source.contentHash !== contentHash)
+              throw new TypeError("The saved locus view belongs to another algebra source.");
+          }
+          setCasSourceRequest(previous => ({ projectId, target, contentHash, evidence: evidence ?? null,
+            token: (previous?.token ?? 0) + 1 }));
+          setNumberTheoryWorkspaceOpen(false);
+          setProjectsOpen(false);
+          setCasWorkspaceOpen(true);
+        }}
         onOpenAnalysis={(id, module, route, workspace, resources) => {
           if (["surface", "surface-mesh", "mesh", "volume"].includes(route) && mode !== "surfaces") skipSurfacesAutoBrowseOnModeChangeRef.current = true;
           setDisplayMode("workspace"); setShowRightPanel(true);
@@ -91976,11 +92041,17 @@ case "mobius":
                         <div data-testid="curve-probe-source">Source: {curveProbeSource}</div>
                         <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 4 }}>
                           <button type="button" data-testid="curve-pin-probe" onClick={persistActiveCurveProbe} disabled={!activeSemanticCurvePick}>Pin / save</button>
+                          <button type="button" data-testid="curve-cursor-link" onClick={() => {
+                            setCurveCursorLinked(value => !value); setCurveCursorStatus("");
+                          }}>{curveCursorLinked ? "Unlink cursor" : "Link cursor"}</button>
+                          <button type="button" data-testid="curve-share-parameter" onClick={pinCurveParameter}
+                            disabled={!curveCursorLinked || !activeSemanticCurvePick}>Share parameter</button>
                           <button type="button" data-testid="curve-add-probe-annotations" onClick={handleAddCurveAnnotationSet} disabled={!activeSemanticCurvePick}>Add annotations</button>
                           <button type="button" onClick={() => { if (activeSemanticCurvePick) void navigator.clipboard?.writeText(JSON.stringify(activeSemanticCurvePick, null, 2)); }} disabled={!activeSemanticCurvePick}>Copy</button>
                           <button type="button" onClick={() => downloadCurveProbeText("curve-probes.json", JSON.stringify(curveAnalysisWorkspaceDocument.savedProbes, null, 2), "application/json")}>JSON</button>
                           <button type="button" onClick={() => downloadCurveProbeText("curve-probes.csv", curvePickToCsv(curveAnalysisWorkspaceDocument.savedProbes), "text/csv")}>CSV</button>
                         </div>
+                        {curveCursorStatus && <p data-testid="curve-cursor-status" role="status">{curveCursorStatus}</p>}
                         <div data-testid="curve-pinned-probes" style={{ marginTop: 6, display: "grid", gap: 4 }}>
                           <strong>Pinned probes ({curveAnalysisWorkspaceDocument.savedProbes.length})</strong>
                           {curveAnalysisWorkspaceDocument.savedProbes.slice(0, 6).map((pick) => {
@@ -111911,6 +111982,7 @@ case "mobius":
       )}
       {computeCenterOpen && <ComputeCenterPanel initialTab={computeCenterInitialTab} onClose={() => { setComputeCenterOpen(false); setComputeCenterInitialTab("overview"); }} />}
       {casWorkspaceOpen && <CASAlgebraWorkspace record={casAnalysisRecord} project={projectForNotePins}
+        requestedSelection={casSourceRequest}
         onInstallGalleryExample={(id) => {
           const current = projectForNotePins;
           if (!current) throw new TypeError("Open and save a Project before adding a gallery example.");
@@ -111973,6 +112045,25 @@ case "mobius":
           reopenProjectWorkspace(current.workspace, restoredProjectRef.current?.resources, current);
           if (!navigateRestoredDocument(documentId, "geometry"))
             throw new TypeError("The saved locus Geometry document could not be opened.");
+          setCasWorkspaceOpen(false); setProjectsOpen(false);
+        }}
+        onPromoteLocusCurve={(choice, componentIndex) => {
+          const current = projectForNotePins;
+          if (!current || current.identity.id !== choice.source.projectId)
+            throw new TypeError("Open the matching Project before promoting a saved contour.");
+          const savedBytes = localStorage.getItem(projectPayloadKey(current.identity.id));
+          if (!savedBytes || parseMath3DProject(savedBytes).identity.structuralHash !== current.identity.structuralHash)
+            throw new TypeError("The saved Project changed. Reopen it before promoting the contour.");
+          const result = upsertProjectAlgebraLocusCurve(current, choice, componentIndex);
+          saveLibraryProject(localStorage, result.project, Date.now(), undefined,
+            { expectedBytes: savedBytes });
+          activeNotebookProjectRef.current = result.project;
+          setNotebookProjectVersion((version) => version + 1);
+          window.dispatchEvent(new Event("math3d:project-saved-externally"));
+          reopenProjectWorkspace(result.project.workspace, restoredProjectRef.current?.resources,
+            result.project);
+          if (!navigateRestoredDocument(result.curve.identity.id, "curve"))
+            throw new TypeError("The promoted Curve could not be opened.");
           setCasWorkspaceOpen(false); setProjectsOpen(false);
         }}
         onSaveRecipe={(recipe) => {

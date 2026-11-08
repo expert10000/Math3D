@@ -118,6 +118,8 @@ const normalizeMath3DProjectUncached = (value: unknown): ValidationResult<Math3D
       new Set(value.metadata.tags).size !== value.metadata.tags.length)) return { ok: false, errors: ["Project tags must be unique, with at most 16 tags of 1–40 characters."] };
     const workspace = normalizeMixedWorkspaceDocument(value.workspace);
     if (!workspace.ok) return { ok: false, errors: workspace.errors.map((error) => `Project workspace: ${error}`) };
+    if (workspace.value.studies?.some(study => study.projectId !== (value.identity as DocumentIdentity).id))
+      return { ok: false, errors: ["Project Study owner differs from its containing Project."] };
     if (value.workbooks !== undefined && (!Array.isArray(value.workbooks) || value.workbooks.length < 1 || value.workbooks.length > 64 ||
       !value.workbooks.every(validWorkbookReference) ||
       new Set(value.workbooks.map((item: ProjectWorkbookReference) => item.id)).size !== value.workbooks.length ||
@@ -518,3 +520,4 @@ export const adoptMixedWorkspaceProject = (workspace: MixedWorkspaceDocument, ti
     identity: createDocumentIdentity(createStableDocumentId("project", stableKey), projectContent(normalized.value, undefined, undefined, quantumScenes)),
     metadata: { title }, workspace: normalized.value, ...(quantumScenes.length ? { quantumScenes } : {}) });
 };
+

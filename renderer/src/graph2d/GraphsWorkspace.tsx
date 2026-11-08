@@ -82,6 +82,7 @@ import {
   poincareReturnGraphRows,
   type VerifiedTemporalTransfers, type TemporalSpectrumRecipe,
   graph2DParameterStudyStatus,
+  matchesScientificSourceGeneration, viewerSourceFromDocument,
 } from "@math3d/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, PointerEvent } from "react";
@@ -92,6 +93,9 @@ import { SageSymbolicAnalysisCard } from "../features/sageLab/SageSymbolicAnalys
 import type { SymbolicResultRecord } from "../features/sageLab/SageSymbolicPanel";
 import { graphSageSource } from "../features/sageLab/graphSageSource";
 import { Graph2DPlot } from "./Graph2DPlot";
+import { scientificCursorBus, type ProjectScientificCursor } from "../components/scientificCursor";
+import { graphAnalyticRowCursorDraft, projectFieldCursorToAnalyticLine } from "./fieldGraphCursor";
+import { currentGraphCurvePair, graphProbeCurveCursorDraft, projectCurveParameterToGraph } from "./graphCurveCursor";
 import { ScientificFieldPlane } from "./ScientificFieldPlane";
 import { ScientificFieldVectorPlane } from "./ScientificFieldVectorPlane";
 import { ScientificFieldVolume } from "./ScientificFieldVolume";
@@ -398,6 +402,13 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   const projectProfileRef = useRef(project);
   projectProfileRef.current = project;
   const [profileActionError, setProfileActionError] = useState("");
+  const [fieldCursor, setFieldCursor] = useState<ProjectScientificCursor | null>(null);
+  const [curveCursor, setCurveCursor] = useState<ProjectScientificCursor | null>(null);
+  const [graphCursorError, setGraphCursorError] = useState("");
+  useEffect(() => scientificCursorBus.subscribe(event => {
+    setFieldCursor(event.kind === "project" && event.sourceModule === "vector3d" ? event : null);
+    setCurveCursor(event.kind === "project" && event.sourceModule === "curve" ? event : null);
+  }), []);
   const [spectrumVerified, setSpectrumVerified] = useState<Record<string,
     VerifiedTemporalTransfers>>({});
   const [ftleVerified, setFtleVerified] = useState<Record<string,
@@ -2011,6 +2022,31 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   };
   const selectedSeries = series.find((item) => item.objectId === document.selection.objectId);
   const selectedObject = document.source.objects.find((item) => item.id === document.selection.objectId);
+  const fieldCursorProjection = useMemo(() => fieldCursor && selectedObject?.kind === "point-series" &&
+    selectedObject.analyticOrigin ? projectFieldCursorToAnalyticLine(fieldCursor,
+      selectedObject.analyticOrigin, selectedObject.id, pointTableStore.resolve(selectedObject.table),
+      readFieldExplorerSession() ?? vectorField3DDocument ?? savedVectorField3D ?? null) : null,
+  [fieldCursor, selectedObject, vectorField3DDocument, savedVectorField3D]);
+  const curveCursorProjection = useMemo(() => {
+    if (!curveCursor || !project || !selectedObject || !project.workspace.relations.some(item =>
+        item.operation === "graph2d.promote-curve" && item.sources[0]?.documentId === document.identity.id &&
+        item.target.type === "document" && item.target.generation.documentId === curveCursor.source.documentId)) return null;
+    const pair = currentGraphCurvePair(project, document.identity.id, curveCursor.source.documentId);
+    if (!pair || !matchesScientificSourceGeneration(viewerSourceFromDocument(document), viewerSourceFromDocument(pair.graph)))
+      return { status: "incompatible-source" as const, reason: "The active Graph source differs from the saved promotion." };
+    return projectCurveParameterToGraph(curveCursor, project, document.identity.id, selectedObject.id);
+  }, [curveCursor, project, document, selectedObject]);
+  const selectedGraphCurve = useMemo(() => {
+    if (!project || !selectedObject) return null;
+    for (const entry of project.workspace.entries) {
+      if (entry.module !== "curve") continue;
+      const pair = currentGraphCurvePair(project, document.identity.id, entry.expected.id);
+      if (pair?.object.id === selectedObject.id &&
+          matchesScientificSourceGeneration(viewerSourceFromDocument(document), viewerSourceFromDocument(pair.graph)))
+        return pair;
+    }
+    return null;
+  }, [project, document, selectedObject]);
   const selectedProjectProfile = selectedObject?.kind === "point-series" ?
     selectedObject.projectProfileOrigin : undefined;
   const selectedComparisonProfile = selectedObject?.kind === "point-series" ?
@@ -3396,9 +3432,45 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
       <strong>{inspected.label}</strong>
       <span>{inspected.probe ? `Probe (${inspected.probe.x.toPrecision(5)}, ${inspected.probe.y.toPrecision(5)})` :
         "Select a point or run an analysis below."}</span>
+      {fieldCursorProjection && <span data-testid="graph2d-linked-field-cursor" role="status">{
+        fieldCursorProjection.status === "matched" ?
+          `Linked Field row ${fieldCursorProjection.value.rowId}: (${fieldCursorProjection.value.x}, ${fieldCursorProjection.value.y})` :
+          `Linked Field point withheld: ${fieldCursorProjection.reason}`}</span>}
+      {curveCursorProjection && <span data-testid="graph2d-linked-curve-cursor" role="status">{
+        curveCursorProjection.status === "matched" ?
+          `Linked Curve parameter on ${selectedObject?.label}: (${curveCursorProjection.value.x.toPrecision(5)}, ${curveCursorProjection.value.y.toPrecision(5)})` :
+          `Linked Curve parameter withheld: ${curveCursorProjection.reason}`}</span>}
+      {selectedGraphCurve && <button type="button" data-testid="graph2d-return-curve-cursor"
+        disabled={!document.selection.probe || document.selection.probe.objectId !== selectedGraphCurve.object.id}
+        onClick={() => {
+          const probe = document.selection.probe;
+          if (!project || !probe) return;
+          const draft = graphProbeCurveCursorDraft(project, document.identity.id,
+            selectedGraphCurve.curve.identity.id, probe, "graphs-promoted-curve");
+          if (draft.status !== "matched") { setGraphCursorError(draft.reason); return; }
+          try {
+            scientificCursorBus.publishProject(draft.value, draft.value.source);
+            setGraphCursorError("");
+          } catch (cause) { setGraphCursorError(cause instanceof Error ? cause.message : String(cause)); }
+        }}>Share Graph probe with promoted Curve</button>}
       <button type="button" disabled={!selectedObject || !onAuthoringCommit} onClick={() => {
         if (selectedObject) setEditRequest(previous => ({ objectId: selectedObject.id, sequence: (previous?.sequence ?? 0) + 1 }));
       }}>Edit graph</button>
+      {selectedObject?.kind === "point-series" && selectedObject.analyticOrigin && <button type="button"
+        data-testid="graph2d-return-field-cursor" disabled={!document.selection.probe?.rowId ||
+          !(vectorField3DDocument ?? savedVectorField3D)} onClick={() => {
+          if (selectedObject.kind !== "point-series" || !selectedObject.analyticOrigin || !document.selection.probe) return;
+          const currentField = readFieldExplorerSession() ?? vectorField3DDocument ?? savedVectorField3D;
+          if (!currentField) { setGraphCursorError("Open the current Field source before returning this point."); return; }
+          const draft = graphAnalyticRowCursorDraft(document.selection.probe, selectedObject.id,
+            selectedObject.analyticOrigin, pointTableStore.resolve(selectedObject.table), currentField);
+          if (!draft.ok) { setGraphCursorError(draft.errors.join(" ")); return; }
+          try {
+            scientificCursorBus.publishProject(draft.value, draft.value.source);
+            setGraphCursorError(""); setVectorField3DDocument(currentField); setVectorField3DOpen(true);
+          } catch (cause) { setGraphCursorError(cause instanceof Error ? cause.message : String(cause)); }
+        }}>Return row to Field probe</button>}
+      {graphCursorError && <span role="alert" data-testid="graph2d-return-field-cursor-error">{graphCursorError}</span>}
       {selectedObject?.kind === "point-series" && selectedObject.derivedOrigin &&
         <><button type="button" data-testid="graph2d-reverify-derived-line"
           onClick={() => { const selected = selectedObject;
@@ -4883,6 +4955,8 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           probeMarkers={probeMarkers}
           regression={!parameterPreviewActive && document.display.objects.find(s => s.objectId === currentRegression?.objectId)?.visible ? currentRegression : null}
           selectedProbe={parameterPreviewActive ? null : focusedNumericalProbe ?? document.selection.probe}
+          linkedCursorProbe={fieldCursorProjection?.status === "matched" ? fieldCursorProjection.value :
+            curveCursorProjection?.status === "matched" ? curveCursorProjection.value : null}
           hoverProbe={parameterPreviewActive ? null : hoverSelection?.probe} overlays={parameterPreviewActive ? [] : differentialOverlays}
           intervals={!parameterPreviewActive && intervals && isGraph2DIntervalAnalysisCurrent(intervals, document) ? intervals : null}
           focusedIntervalId={focusedInterval && focusedInterval.resultId === intervals?.resultId ?
@@ -4955,3 +5029,4 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
     </section>
   );
 }
+

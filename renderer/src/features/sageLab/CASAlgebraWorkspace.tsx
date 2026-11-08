@@ -1,9 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { analyzeBiquadraticExtensionFromDefinition, analyzeFiniteGroup, analyzeQuadraticNumberField,
+  canonicalJsonStringify, locusCurveComponents,
   ellipticCurveFacts,
   createGaloisGroupObject, inspectProjectAlgebraFreshness,
+  compareProjectAlgebraLocusEvidence, projectSavedAlgebraLocusEvidence,
+  resolveProjectAlgebraLocusInspection,
   type AlgebraObjectRecord, type AlgebraObjectRef,
   type AlgebraRecipeGraph, type Math3DProject, type ProjectAlgebraEvidence,
+  type ProjectAlgebraLocusReturn, type ProjectAlgebraLocusInspection,
   type SageAlgebraicLocusScene, type SageAlgebraicLocusSample,
   type SageAlgebraicSingularityScene } from "@math3d/core";
 import type { SageGaloisResult, SageModuleInvariantResult, SageChainHomologyResult, SageFiniteFieldResult } from "@math3d/core";
@@ -25,6 +29,8 @@ import SageLocalExtensionWorkspace from "./SageLocalExtensionWorkspace";
 import SageEllipticCurveBuilder from "./SageEllipticCurveBuilder";
 import SageEllipticCurveVisualization from "./SageEllipticCurveVisualization";
 import SageAlgebraicLocusBuilder from "./SageAlgebraicLocusBuilder";
+import SageAlgebraicLocusPlot from "./SageAlgebraicLocusPlot";
+import SageAlgebraicSingularityView from "./SageAlgebraicSingularityView";
 import SageSchemeBuilder from "./SageSchemeBuilder";
 import SageSchemeTools from "./SageSchemeTools";
 import SageCommandPalette from "./SageCommandPalette";
@@ -47,6 +53,10 @@ export type CASAlgebraWorkspaceProps = Omit<SageServicesWorkspaceProps, "structu
   onSaveLocusScene?: (scene: SageAlgebraicLocusScene) => void | Promise<void>;
   onSaveLocusSample?: (sample: SageAlgebraicLocusSample) => void | Promise<void>;
   onOpenLocusGeometry?: (documentId: string) => void | Promise<void>;
+  onPromoteLocusCurve?: (choice: ProjectAlgebraLocusReturn,
+    componentIndex: number) => void | Promise<void>;
+  requestedSelection?: { projectId: string; target: AlgebraObjectRef;
+    contentHash: string; evidence?: ProjectAlgebraLocusReturn | null; token: number } | null;
   onSaveLocusSingularity?: (analysis: SageAlgebraicSingularityScene) => void | Promise<void>;
   onSaveRecipe: (recipe: AlgebraRecipeGraph) => void | Promise<void>;
   onAppendRecipeEvidence: (base: Math3DProject, evidence: ProjectAlgebraEvidence) => Math3DProject | Promise<Math3DProject>;
@@ -69,10 +79,17 @@ const readSavedSelection = (project: Math3DProject | null): unknown => {
 };
 
 export default function CASAlgebraWorkspace({ project, onCreateStructure, onSaveEvidence, onSaveRecipe,
-  onSaveLocusScene, onSaveLocusSample, onOpenLocusGeometry, onSaveLocusSingularity, onAppendRecipeEvidence, onOpenProjects,
-  onInstallGalleryExample, workspaceContext = "cas", ...props }: CASAlgebraWorkspaceProps) {
+  onSaveLocusScene, onSaveLocusSample, onOpenLocusGeometry, onPromoteLocusCurve,
+  onSaveLocusSingularity, onAppendRecipeEvidence, onOpenProjects,
+  onInstallGalleryExample, requestedSelection, workspaceContext = "cas", ...props }: CASAlgebraWorkspaceProps) {
   const [selection, setSelection] = useState<AlgebraObjectRef | null>(() =>
-    resolveStructureSelection(project, readSavedSelection(project)));
+    resolveStructureSelection(project, requestedSelection && requestedSelection.projectId === project?.identity.id
+      ? requestedSelection.target : readSavedSelection(project)));
+  const [selectedSavedChoice, setSelectedSavedChoice] = useState<ProjectAlgebraLocusReturn | null>(
+    requestedSelection?.evidence ?? null);
+  const [comparisonChoice, setComparisonChoice] = useState<ProjectAlgebraLocusReturn | null>(null);
+  const [handoffError, setHandoffError] = useState("");
+  const [handoffNotice, setHandoffNotice] = useState("");
   const [selectionFocus, setSelectionFocus] = useState(0);
   const [selectedEvidenceId, setSelectedEvidenceId] = useState<string | null>(() =>
     project?.algebraEvidence?.find((item) => item.request.target.objectId === selection?.objectId)?.id ?? null);
@@ -97,9 +114,13 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
     if (evidence && evidence.request.target.objectId !== selection?.objectId)
       setSelection(evidence.request.target);
   }, [project?.identity.revision, selectedEvidenceId]);
+  useEffect(() => { setSelectedSavedChoice(requestedSelection?.evidence ?? null);
+    setComparisonChoice(null); },
+    [requestedSelection?.token, project?.identity.id]);
 
   const select = (ref: AlgebraObjectRef) => {
     setSelection(ref);
+    setComparisonChoice(null);
     setCommandOperation(null);
     setCommandRecipe(null);
     setSelectionFocus((value) => value + 1);
@@ -107,7 +128,71 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
     if (project) try { localStorage.setItem(structureSelectionKey(project.identity.id), JSON.stringify(ref)); }
     catch { /* Selection still works when local storage is unavailable. */ }
   };
+  useEffect(() => {
+    if (!requestedSelection) return;
+    const checked = requestedSelection.projectId === project?.identity.id
+      ? resolveStructureSelection(project, requestedSelection.target) : null;
+    const record = checked ? project?.algebraObjects?.find(entry => entry.id === checked.objectId)
+      ?.revisions[checked.revision - 1] : null;
+    if (!checked || checked.objectId !== requestedSelection.target.objectId ||
+        checked.revision !== requestedSelection.target.revision ||
+        record?.contentHash !== requestedSelection.contentHash) {
+      setHandoffError("The requested Project algebra source is unavailable. Reopen it from the Project list.");
+      setHandoffNotice("");
+      return;
+    }
+    setHandoffError("");
+    const entry = project?.algebraObjects?.find(item => item.id === checked.objectId);
+    const freshness = inspectProjectAlgebraFreshness(project!).find(item => item.objectId === checked.objectId);
+    setHandoffNotice(entry?.archived || checked.revision !== entry?.revisions.length ||
+      freshness?.status === "stale"
+      ? "Opened the pinned algebra revision for inspection. Prepare a new locus from a current, fresh source."
+      : "");
+    select(checked);
+  }, [requestedSelection?.token, project?.identity.id]);
   const chosen = selectedStructure(project, selection);
+  const savedEvidenceChoices = useMemo(() => project && chosen ?
+    projectSavedAlgebraLocusEvidence(project, { objectId: chosen.record.id,
+      revision: chosen.record.revision }) : [],
+    [project, chosen?.record.id, chosen?.record.revision]);
+  const savedLocus = useMemo(() => {
+    if (!selectedSavedChoice) return null;
+    if (!project) return { inspection: null, error: "The saved locus Project is unavailable." };
+    try { return { inspection: resolveProjectAlgebraLocusInspection(project, selectedSavedChoice),
+      error: null }; }
+    catch (error) { return { inspection: null,
+      error: `The saved locus evidence changed: ${(error as Error).message}` }; }
+  }, [project, selectedSavedChoice]);
+  const savedScene = savedLocus?.inspection?.kind === "singularity" ? savedLocus.inspection.analysis.scene :
+    savedLocus?.inspection?.kind === "sampled" ? savedLocus.inspection.sample.scene :
+    savedLocus?.inspection?.kind === "exact" ? savedLocus.inspection.scene : null;
+  const activeSavedLocus: ProjectAlgebraLocusInspection | null = savedScene && chosen &&
+    savedScene.source.target.id === chosen.record.id &&
+    savedScene.source.target.revision === chosen.record.revision
+    ? savedLocus!.inspection : null;
+  const savedContour = activeSavedLocus?.kind === "sampled" &&
+    activeSavedLocus.sample.kind === "curve" && activeSavedLocus.sample.scene.domain.bounds.length === 2
+    ? (() => { try { return { components: locusCurveComponents(activeSavedLocus.sample), error: null }; }
+      catch (error) { return { components: null, error: (error as Error).message }; } })() : null;
+  const comparison = useMemo(() => {
+    if (!project || !selectedSavedChoice || !comparisonChoice || !activeSavedLocus) return null;
+    try { return { value: compareProjectAlgebraLocusEvidence(project,
+      selectedSavedChoice, comparisonChoice), error: null }; }
+    catch (error) { return { value: null,
+      error: `The saved locus comparison changed: ${(error as Error).message}` }; }
+  }, [project, selectedSavedChoice, comparisonChoice, activeSavedLocus]);
+  const exportComparison = () => {
+    if (!project || !selectedSavedChoice || !comparisonChoice) return;
+    try {
+      const report = compareProjectAlgebraLocusEvidence(project, selectedSavedChoice, comparisonChoice);
+      const url = URL.createObjectURL(new Blob([canonicalJsonStringify(report)],
+        { type: "application/json" }));
+      const link = document.createElement("a");
+      link.href = url; link.download = `math3d-locus-comparison-${report.comparisonHash.slice(-12)}.json`;
+      document.body.appendChild(link); link.click(); link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) { setHandoffError(`Saved locus comparison could not export: ${String(error)}`); }
+  };
   const chooseCommand = (command: SagePaletteAction) => {
     const token = ++commandSequence.current;
     if (command.kind === "operation") { setCommandOperation({ id: command.id, token });
@@ -173,6 +258,9 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
     ? describeStructure(chosen.record, project) : null;
 
   const explorer = <div data-testid="cas-structures-explorer" style={{ display: "grid", gap: 12 }}>
+    {handoffError && <div role="alert">{handoffError}</div>}
+    {savedLocus?.error && !handoffError && <div role="alert">{savedLocus.error}</div>}
+    {handoffNotice && <div role="status">{handoffNotice}</div>}
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
       <h2 style={{ fontSize: 16, margin: 0, whiteSpace: "nowrap" }}>Project structures</h2>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
@@ -327,6 +415,104 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
     {chosen.record.definition.kind === "elliptic-curve" &&
       <SageEllipticCurveVisualization key={`${chosen.record.id}@${chosen.record.revision}`}
         project={project} curve={chosen.record} />}
+    {savedEvidenceChoices.length > 0 && <section data-testid="cas-saved-locus-choices"
+      style={{ display: "grid", gap: 6, border: "1px solid #c7d9ed", borderRadius: 8, padding: 10 }}>
+      <strong>Saved locus evidence</strong>
+      <small>Inspect a saved Project checkpoint. Opening it does not run a new calculation.</small>
+      {savedEvidenceChoices.map(choice => <div key={choice.documentId} style={{ display: "flex", gap: 6,
+        alignItems: "center", flexWrap: "wrap" }}><button type="button"
+        data-testid={`cas-saved-locus-choice-${choice.documentId}`}
+        aria-pressed={selectedSavedChoice?.documentId === choice.documentId &&
+          selectedSavedChoice.documentHash === choice.documentHash}
+        style={{ ...action, textAlign: "left" }} onClick={() => {
+          try {
+            resolveProjectAlgebraLocusInspection(project, choice);
+            setHandoffError(""); setSelectedSavedChoice(choice); setComparisonChoice(null);
+          } catch (error) { setHandoffError(`Saved locus could not open: ${String(error)}`); }
+        }}>
+        {choice.analysisHash ? `Exact tangent at (${choice.inspectionPoint?.join(", ")})` :
+          choice.sampleHash ? "Bounded numerical sample" : "Uncomputed exact contract"}
+        {` · ${choice.sourceStatus} · ${choice.documentId.slice(-8)}`}
+      </button>{activeSavedLocus && selectedSavedChoice?.documentId !== choice.documentId &&
+        <button type="button" style={action} data-testid={`cas-saved-locus-compare-${choice.documentId}`}
+          onClick={() => setComparisonChoice(choice)}>Compare with selected</button>}</div>)}
+    </section>}
+    {comparison?.error && <div role="alert">{comparison.error}</div>}
+    {comparison?.value && <section data-testid="cas-saved-locus-comparison"
+      style={{ display: "grid", gap: 5, border: "1px solid #c7d9ed", borderRadius: 8, padding: 10 }}>
+      <strong>Saved locus contract comparison</strong>
+      <div>{comparison.value.left.label} ↔ {comparison.value.right.label}</div>
+      <div>Source revision: {comparison.value.sameSourceRevision ? "same" : "different"} ·
+        exact equations: {comparison.value.sameEquations ? "same" : "different"}</div>
+      <div>Real bounds: {comparison.value.sameRealBounds ? "same" : "different"} ·
+        precision: {comparison.value.samePrecision ? "same" : "different"} ·
+        exact scene: {comparison.value.sameExactScene ? "same" : "different"}</div>
+      <div>Left: {comparison.value.left.kind}{comparison.value.left.method
+        ? ` · ${comparison.value.left.method} · ${comparison.value.left.sampleCount} evaluations` : ""}
+        {` · ${comparison.value.left.sourceStatus}`}</div>
+      <div>Right: {comparison.value.right.kind}{comparison.value.right.method
+        ? ` · ${comparison.value.right.method} · ${comparison.value.right.sampleCount} evaluations` : ""}
+        {` · ${comparison.value.right.sourceStatus}`}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 8 }}>
+        {([comparison.value.left, comparison.value.right] as const).map((side, index) =>
+          <div key={side.documentId} data-testid={index === 0 ? "cas-comparison-left" : "cas-comparison-right"}
+            style={{ border: "1px solid #dbe2ea", borderRadius: 6, padding: 8, overflowWrap: "anywhere" }}>
+            <strong>{index === 0 ? "Left" : "Right"} · {side.label}</strong>
+            <div>Checkpoint: {side.documentId} @ {side.documentRevision}</div>
+            <div>Exact equations: {side.equations.map(item => `${item} = 0`).join("; ")}</div>
+            <div>Real bounds: {side.realBounds.map(bound =>
+              `${bound.variable} ∈ [${bound.min}, ${bound.max}]`).join(" · ")}</div>
+            <div>Precision: tolerance {side.precision.tolerance}; sample cap {side.precision.maxSamples}</div>
+            {side.classification && <div>Tangent classification: {side.classification}</div>}
+            {side.warnings.length > 0 && <div>Sample warnings: {side.warnings.join(" ")}</div>}
+            <small>Checkpoint hash: {side.documentHash}<br />Exact scene hash: {side.sceneHash}</small>
+          </div>)}
+      </div>
+      <small>This compares saved contracts and evidence metadata; it does not claim equal loci or numerical overlap.</small>
+      <button type="button" style={action} onClick={exportComparison}>Export comparison JSON</button>
+      <button type="button" style={action} onClick={() => setComparisonChoice(null)}>Close comparison</button>
+    </section>}
+    {activeSavedLocus && selectedSavedChoice && <section
+      data-testid={activeSavedLocus.kind === "singularity" ? "cas-saved-tangent-inspection" :
+        "cas-saved-locus-inspection"} style={{ display: "grid", gap: 8 }}>
+      <strong>{activeSavedLocus.kind === "singularity" ? "Saved exact tangent evidence" :
+        activeSavedLocus.kind === "sampled" ? "Saved bounded locus sample" :
+        "Saved exact locus contract"} · read-only</strong>
+      {activeSavedLocus.kind === "singularity" ?
+        <SageAlgebraicSingularityView analysis={activeSavedLocus.analysis} /> : <>
+          <div><strong>Exact equations:</strong> {savedScene?.source.equations.join(" = 0; ")} = 0</div>
+          <div><strong>Source:</strong> {savedScene?.source.target.label}@{savedScene?.source.target.revision}
+            · {savedScene?.sceneHash}</div>
+          <div><strong>Real bounds:</strong> {savedScene?.domain.bounds.map(bound =>
+            `${bound.variable} ∈ [${bound.min}, ${bound.max}]`).join(" · ")}</div>
+          {activeSavedLocus.kind === "sampled" ? <>
+            <SageAlgebraicLocusPlot sample={activeSavedLocus.sample} />
+            <div>{activeSavedLocus.sample.warnings.join(" ")}</div>
+          </> : <div>Exact source contract only; the numerical locus is uncomputed.</div>}
+        </>}
+      {onOpenLocusGeometry && <button type="button" style={action} onClick={() => {
+        try {
+          resolveProjectAlgebraLocusInspection(project, selectedSavedChoice);
+          void Promise.resolve(onOpenLocusGeometry(selectedSavedChoice.documentId))
+            .catch(error => setHandoffError(`Saved Geometry could not open: ${String(error)}`));
+        } catch (error) { setHandoffError(`Saved Geometry could not open: ${String(error)}`); }
+      }}>Open saved {activeSavedLocus.kind === "singularity" ? "tangent" :
+        activeSavedLocus.kind === "sampled" ? "sampled" : "exact"} Geometry</button>}
+      {onPromoteLocusCurve && savedContour && <div data-testid="cas-saved-locus-components"
+        style={{ display: "grid", gap: 5 }}>
+        {savedContour.error && <small>{savedContour.error}</small>}
+        {savedContour.components?.map((component, index) => <button key={index} type="button"
+          style={action} data-testid={`cas-open-saved-locus-curve-${index}`}
+          disabled={selectedSavedChoice.sourceStatus !== "current"} onClick={() => {
+            void Promise.resolve().then(() => onPromoteLocusCurve(selectedSavedChoice, index))
+              .catch(error => setHandoffError(`Saved contour could not open in Curves: ${String(error)}`));
+          }}>{savedContour.components!.length === 1 ? "Open bounded contour in Curves" :
+            `Open contour ${index + 1} of ${savedContour.components!.length} in Curves`}
+          {` · ${component.points.length - 1} segments · ${component.closed ? "closed" : "open"}`}
+        </button>)}
+        <small>Each Curve uses one explicitly selected numerical component and retains its saved Geometry source. Branching contours stay in Geometry.</small>
+      </div>}
+    </section>}
     {onSaveLocusScene && onSaveLocusSample && onSaveLocusSingularity && (chosen.record.definition.kind === "ideal" ||
       chosen.record.definition.kind === "polynomial-ring") &&
       <SageAlgebraicLocusBuilder key={`${chosen.record.id}@${chosen.record.revision}`}

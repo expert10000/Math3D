@@ -3,6 +3,7 @@ import type { Math3DProject } from "./math3dProject";
 import { parseSageAlgebraicLocusScene, sageAlgebraicLocusSceneStatus,
   type SageAlgebraicLocusScene } from "./sageAlgebraicLocusScene";
 import { parseSageAlgebraicLocusSample, type SageAlgebraicLocusSample } from "./sageAlgebraicLocusSampling";
+import { inspectProjectAlgebraFreshness } from "./projectAlgebraRegistry";
 
 export const PROJECT_ALGEBRA_OPEN_IN_SCHEMA_VERSION = 1 as const;
 export type ProjectAlgebraOpenInAction = Readonly<{
@@ -17,6 +18,72 @@ export type ProjectAlgebraOpenInAction = Readonly<{
   enabled: boolean;
   disabledReason: string | null;
 }>;
+
+export type ProjectAlgebraCasHandoff = Readonly<{
+  schemaVersion: typeof PROJECT_ALGEBRA_OPEN_IN_SCHEMA_VERSION;
+  id: "algebra.prepare-locus-cas";
+  source: ProjectAlgebraOpenInAction["source"];
+  label: "Prepare locus in CAS";
+  enabled: boolean;
+  disabledReason: string | null;
+}>;
+
+/** A Project-to-CAS selection handoff; no scene is computed or saved here. */
+export const projectAlgebraCasHandoff = (project: Math3DProject, target: AlgebraObjectRef):
+  ProjectAlgebraCasHandoff => {
+  const entry = project.algebraObjects?.find(item => item.id === target.objectId);
+  const record = entry?.revisions[target.revision - 1];
+  const source = { projectId: project.identity.id, objectId: target.objectId,
+    revision: target.revision, contentHash: record?.contentHash ?? "" };
+  let disabledReason: string | null = null;
+  if (!record || entry?.archived || record.revision !== entry.revisions.length)
+    disabledReason = "Choose the current unarchived algebra object revision.";
+  else if (inspectProjectAlgebraFreshness(project).find(item => item.objectId === record.id)?.status !== "fresh")
+    disabledReason = "Refresh this algebra object's stale dependencies before preparing a locus.";
+  else if (record.definition.kind !== "ideal" && record.definition.kind !== "polynomial-ring")
+    disabledReason = "A real locus requires a polynomial ring or ideal.";
+  else {
+    const ambientRef = record.definition.kind === "ideal" ? record.definition.ambientRing : target;
+    const ambient = project.algebraObjects?.find(item => item.id === ambientRef.objectId)
+      ?.revisions[ambientRef.revision - 1];
+    const coefficientRef = ambient?.definition.kind === "polynomial-ring"
+      ? ambient.definition.coefficientDomain : null;
+    const coefficient = coefficientRef ? project.algebraObjects?.find(item => item.id === coefficientRef.objectId)
+      ?.revisions[coefficientRef.revision - 1] : null;
+    if (ambient?.definition.kind !== "polynomial-ring" ||
+        ambient.definition.variables.length < 1 || ambient.definition.variables.length > 3 ||
+        coefficient?.definition.kind !== "rational-field")
+      disabledReason = "Real locus preparation requires a pinned QQ polynomial ring with 1–3 variables.";
+  }
+  return { schemaVersion: PROJECT_ALGEBRA_OPEN_IN_SCHEMA_VERSION,
+    id: "algebra.prepare-locus-cas", source, label: "Prepare locus in CAS",
+    enabled: disabledReason === null, disabledReason };
+};
+
+export const resolveProjectAlgebraCasHandoff = (project: Math3DProject, target: AlgebraObjectRef,
+  choice: ProjectAlgebraCasHandoff): AlgebraObjectRef => {
+  const current = projectAlgebraCasHandoff(project, target);
+  if (!current.enabled || !choice.enabled || current.schemaVersion !== choice.schemaVersion ||
+      current.id !== choice.id || current.source.projectId !== choice.source.projectId ||
+      current.source.objectId !== choice.source.objectId ||
+      current.source.revision !== choice.source.revision ||
+      current.source.contentHash !== choice.source.contentHash)
+    throw new TypeError("The algebra source changed; review the CAS handoff again.");
+  return target;
+};
+
+/** Recheck the selected source and its prepared exact scene before local CAS work. */
+export const resolveProjectAlgebraPreparedLocus = (project: Math3DProject, target: AlgebraObjectRef,
+  scene: SageAlgebraicLocusScene, choice: ProjectAlgebraCasHandoff): SageAlgebraicLocusScene => {
+  resolveProjectAlgebraCasHandoff(project, target, choice);
+  const checked = parseSageAlgebraicLocusScene(scene, project);
+  if (checked.source.target.id !== target.objectId ||
+      checked.source.target.revision !== target.revision ||
+      checked.source.target.contentHash !== choice.source.contentHash ||
+      sageAlgebraicLocusSceneStatus(checked, project) !== "current")
+    throw new TypeError("The prepared locus source changed; validate it again.");
+  return checked;
+};
 
 /** Exact algebra is kept separate from its bounded numerical visualization. */
 export const projectAlgebraOpenInActions = (project: Math3DProject, target: AlgebraObjectRef,

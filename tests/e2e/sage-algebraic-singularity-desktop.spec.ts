@@ -97,5 +97,61 @@ test("SAGE-F03 distinguishes cusp and node tangent views, then independently reo
       "ordinary-cusp", "ordinary-real-node"]);
     expect(analyses.every((item: { scene: { source: { target: { contentHash: string } } } }) =>
       item.scene.source.target.contentHash === ring.contentHash)).toBe(true);
+    await fresh.getByTestId("project-gallery-layout-toggle").click();
+    const details = fresh.getByTestId("project-detail-toggle");
+    if (await details.getAttribute("aria-pressed") === "false") await details.click();
+    await fresh.getByTestId("project-detail-tab-documents").click();
+    const savedMenu = fresh.getByTestId(`project-algebra-open-in-${ring.id}`);
+    await savedMenu.locator("summary").click();
+    const tangentActions = savedMenu.getByRole("button", { name: "Open exact tangent view in Geometry" });
+    await expect(tangentActions).toHaveCount(2);
+    await expect(savedMenu).toContainText("Jacobian evidence and source remain pinned");
+    await tangentActions.first().click();
+    const cuspDocumentId = core.algebraicSingularityGeometryDocument(cusp).identity.id;
+    await expect(ctx.page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id", cuspDocumentId);
+    await ctx.page.getByTestId("projects-toggle").click();
+    await ctx.page.getByTestId(`project-algebra-return-${cuspDocumentId}`)
+      .getByRole("button", { name: "Return to algebra source in CAS" }).click();
+    await expect(ctx.page.getByTestId("cas-algebra-workspace").getByTestId("cas-structures-explorer")
+      .getByRole("button", { name: /R @1/ })).toHaveAttribute("aria-current", "true");
+    const savedInspection = ctx.page.getByTestId("cas-saved-tangent-inspection");
+    await expect(savedInspection).toContainText("Saved exact tangent evidence · read-only");
+    await expect(savedInspection).toContainText("Ordinary cusp");
+    await expect(savedInspection).toContainText("Jacobian at point");
+    await expect(ctx.page.getByTestId("cas-locus-preview")).toHaveCount(0);
+    const savedChoices = ctx.page.getByTestId("cas-saved-locus-choices")
+      .locator('button[data-testid^="cas-saved-locus-choice-"]');
+    await expect(savedChoices).toHaveCount(2);
+    await ctx.page.getByTestId("cas-saved-locus-choices")
+      .getByRole("button", { name: "Compare with selected" }).click();
+    const comparison = ctx.page.getByTestId("cas-saved-locus-comparison");
+    await expect(comparison).toContainText("Source revision: same");
+    await expect(comparison).toContainText("exact equations: different");
+    await expect(comparison).toContainText("Real bounds: same");
+    await expect(comparison).toContainText("exact scene: different");
+    await expect(comparison.getByTestId("cas-comparison-left")).toContainText("y^2-x^3 = 0");
+    await expect(comparison.getByTestId("cas-comparison-right")).toContainText("y^2-x^2*(x+1) = 0");
+    const comparisonPath = test.info().outputPath("cusp-node.comparison.json");
+    await ctx.app.evaluate(({ session }, target) => session.defaultSession.once("will-download",
+      (_event, item) => item.setSavePath(target)), comparisonPath);
+    await comparison.getByRole("button", { name: "Export comparison JSON" }).click();
+    await expect.poll(() => { try { return readFileSync(comparisonPath).length; } catch { return 0; } })
+      .toBeGreaterThan(100);
+    const report = JSON.parse(readFileSync(comparisonPath, "utf8"));
+    const { comparisonHash, ...reportBody } = report;
+    expect(report).toMatchObject({ format: "math3d.saved-locus-comparison",
+      projectId: project.identity.id, sameSourceRevision: true,
+      sameEquations: false, sameRealBounds: true,
+      left: { equations: ["y^2-x^3"], classification: "ordinary-cusp" },
+      right: { equations: ["y^2-x^2*(x+1)"], classification: "ordinary-real-node" } });
+    expect(comparisonHash).toBe(core.structuralHash(reportBody));
+    await comparison.getByRole("button", { name: "Close comparison" }).click();
+    await expect(comparison).toHaveCount(0);
+    await savedChoices.nth(1).click();
+    await expect(savedInspection).toContainText("Ordinary real node");
+    await savedChoices.first().click();
+    await expect(savedInspection).toContainText("Ordinary cusp");
+    await savedInspection.getByRole("button", { name: "Open saved tangent Geometry" }).click();
+    await expect(ctx.page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id", cuspDocumentId);
   } finally { await closeSurfaceApp(ctx); }
 });

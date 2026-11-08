@@ -125,9 +125,9 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pyinstaller numpy scipy sympy vtk
+          python -m pip install -c python/worker/build-requirements.freeze.txt -c python/worker/requirements.freeze.txt pyinstaller numpy scipy sympy vtk
           python -c "import numpy, scipy, sympy, vtk; print('Python worker smoke dependencies available')"
-          python -m pip install pygalmesh
+          python -m pip install -c python/worker/requirements.freeze.txt pygalmesh
           if ($LASTEXITCODE -ne 0) {
             Write-Warning "Optional dependency pygalmesh failed to install; continuing without mesh.generate support."
             $global:LASTEXITCODE = 0

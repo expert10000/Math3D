@@ -213,6 +213,15 @@ test("PC05 links a declared Surface coordinate to a saved Mesh pane", async () =
     await canvas.click({ position: { x: bounds.width / 2, y: bounds.height / 2 } });
     await expect(meshPane.getByTestId("project-composition-linked-coordinate")).toContainText("Coordinate marker only");
     await expect(view.getByTestId("project-composition-probe-status")).toContainText("local");
+    await expect(view.getByTestId("project-composition-cursor-status")).toContainText("pinned to the shared cursor");
+    await view.getByTestId("project-composition-cursor-link").click();
+    await expect(view.getByTestId("project-composition-cursor-link")).toHaveText("Link scientific cursor");
+    await canvas.click({ position: { x: bounds.width / 2, y: bounds.height / 2 } });
+    await expect(view.getByTestId("project-composition-cursor-status")).toHaveCount(0);
+    await expect(meshPane.getByTestId("project-composition-linked-coordinate")).toContainText("Coordinate marker only");
+    await view.getByTestId("project-composition-cursor-link").click();
+    await canvas.click({ position: { x: bounds.width / 2, y: bounds.height / 2 } });
+    await expect(view.getByTestId("project-composition-cursor-status")).toContainText("pinned to the shared cursor");
     await expect(surfacePane.getByTestId("project-composition-linked-coordinate")).toHaveCount(0);
     await view.getByRole("button", { name: "Close" }).click();
     await page.reload();

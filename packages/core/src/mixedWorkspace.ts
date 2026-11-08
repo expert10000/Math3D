@@ -24,6 +24,7 @@ import { normalizeDerivedFieldDocument, vectorFieldDerivedShape,
   type DerivedFieldDocument } from "./derivedFieldDocument";
 import { normalizeTemporalFieldSourceDocument, type TemporalFieldSourceDocument } from "./temporalFieldSourceDocument";
 import { normalizeQuantumStudyDocument, type QuantumStudyDocument } from "./quantumStudyDocument";
+import { normalizeStudyRecordV1, type StudyRecordV1 } from "./studyRecord";
 
 export const MIXED_WORKSPACE_FORMAT = "math3d.mixed-workspace" as const;
 export const MIXED_WORKSPACE_SCHEMA_VERSION = 1 as const;
@@ -64,6 +65,7 @@ export type MixedWorkspaceDocument = Readonly<{
   scientificScenes?: readonly ScientificSceneLibraryReference[];
   timeSources?: readonly TemporalFieldSourceDocument[];
   quantumStudies?: readonly QuantumStudyDocument[];
+  studies?: readonly StudyRecordV1[];
 }>;
 export type MixedWorkspaceReplayAdapter = (entry: MixedWorkspaceEntry) => KernelWorkspaceDocument;
 export type MixedWorkspaceReplayAdapters = Partial<Record<KernelWorkspaceModule, MixedWorkspaceReplayAdapter>>;
@@ -98,7 +100,7 @@ const identityEquals = (left: DocumentIdentity, right: DocumentIdentity): boolea
 
 export const normalizeMixedWorkspaceDocument = (value: unknown): ValidationResult<MixedWorkspaceDocument> => {
   const errors: string[] = [];
-  if (!record(value) || !exact(value, ["format", "schemaVersion", "entries", "activeDocumentIds", "results", "artifacts", "relations", "committedSelection", "constructions"], ["scientificScenes", "scientificSelections", "derivedFields", "timeSources", "quantumStudies"]) ||
+  if (!record(value) || !exact(value, ["format", "schemaVersion", "entries", "activeDocumentIds", "results", "artifacts", "relations", "committedSelection", "constructions"], ["scientificScenes", "scientificSelections", "derivedFields", "timeSources", "quantumStudies", "studies"]) ||
       value.format !== MIXED_WORKSPACE_FORMAT || value.schemaVersion !== MIXED_WORKSPACE_SCHEMA_VERSION) return { ok: false, errors: ["Invalid mixed workspace envelope."] };
   if (!Array.isArray(value.entries) || value.entries.length > 512) errors.push("Invalid mixed workspace entries.");
   const entries: MixedWorkspaceEntry[] = [];
@@ -274,6 +276,17 @@ export const normalizeMixedWorkspaceDocument = (value: unknown): ValidationResul
         errors.push("Duplicate quantum study IDs.");
     }
   }
+  const studies: StudyRecordV1[] = [];
+  if (value.studies !== undefined) {
+    if (!Array.isArray(value.studies) || value.studies.length > 32) errors.push("Invalid Project Study collection.");
+    else for (const candidate of value.studies) {
+      const checked = normalizeStudyRecordV1(candidate);
+      if (!checked.ok) errors.push(...checked.errors);
+      else studies.push(checked.value);
+    }
+    if (new Set(studies.map(study => study.id)).size !== studies.length)
+      errors.push("Duplicate Project Study IDs.");
+  }
   try { if (canonicalJsonByteLength(value) > MAX_MIXED_WORKSPACE_BYTES) errors.push("Mixed workspace exceeds the compact format limit."); }
   catch (error) { errors.push(String((error as Error).message ?? error)); }
   if (errors.length) return { ok: false, errors };
@@ -281,7 +294,8 @@ export const normalizeMixedWorkspaceDocument = (value: unknown): ValidationResul
     ...(value.timeSources === undefined ? {} : { timeSources }),
     committedSelection: selection, constructions,
     ...(value.derivedFields === undefined ? {} : { derivedFields }),
-    ...(value.scientificSelections === undefined ? {} : { scientificSelections }) }) as unknown as MixedWorkspaceDocument };
+    ...(value.scientificSelections === undefined ? {} : { scientificSelections }),
+    ...(value.studies === undefined ? {} : { studies }) }) as unknown as MixedWorkspaceDocument };
 };
 
 export const createMixedWorkspaceDocument = (input: Omit<MixedWorkspaceDocument, "format" | "schemaVersion">): MixedWorkspaceDocument => {
