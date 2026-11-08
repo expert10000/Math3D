@@ -24,7 +24,7 @@ import { resolveLinkedCoordinateProbe, resolveSavedCoordinateProbe, type LinkedC
 import { resolveExactProjectCompositionSource } from "../projects/projectCompositionSource";
 import { compositionCursorDraft, compositionCursorProbe } from "./compositionCursor";
 import { scientificCursorBus } from "./scientificCursor";
-import { currentCurveSurfacePair, curveSurfaceCursorDraft, projectCurveSurfaceParameter } from "../curveAnalysis/curveSurfaceCursor";
+import { currentCurveSurfacePair, curveSurfaceCursorDraft, curveSurfaceReturnDraft, projectCurveSurfaceParameter } from "../curveAnalysis/curveSurfaceCursor";
 
 type RenderMesh = SurfaceMeshData & { id: string; color: number; opacity: number; transform?: {
   position: { x: number; y: number; z: number }; rotation: { x: number; y: number; z: number }; scale: { x: number; y: number; z: number };
@@ -273,6 +273,7 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
   const [externalCurveProbe, setExternalCurveProbe] = useState<{ slot: 0 | 1; uv: { u: number; v: number }; token: number } | null>(null);
   const [curveTraceId, setCurveTraceId] = useState("");
   const [curveParameter, setCurveParameter] = useState(0.5);
+  const [chartCoordinate, setChartCoordinate] = useState({ u: "0.5", v: "0.25" });
   const [cursorStatus, setCursorStatus] = useState("");
   const cursorOriginViewId = `project-composition:${project.identity.id}`;
   const [observationTitle, setObservationTitle] = useState("Comparison observation");
@@ -399,6 +400,8 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
   const cameraLinked = cameraMode === "linked" && !!cameraQualification;
   const onPick = (next: Pick) => {
     setPick(next); setExternalCursorProbe(null);
+    if (next.uv && selectedTrace?.surfaceId === next.memberId)
+      setChartCoordinate({ u: String(next.uv.u), v: String(next.uv.v) });
     setLinked(current => linkable && next.uv ? { uv: next.uv!, token: (current?.token ?? 0) + 1 } : null);
     if (!cursorLinked) return;
     const result = compositionCursorDraft(project, resolved.members, next, cursorOriginViewId);
@@ -497,11 +500,30 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
           const projected = projectCurveSurfaceParameter(shared, project, selectedTrace.surfaceId);
           if (projected.status === "matched") {
             setLinked(null); setExternalCursorProbe(null);
+            setChartCoordinate({ u: String(projected.value.u), v: String(projected.value.v) });
             setExternalCurveProbe(current => ({ slot: selectedTrace.slot, uv: projected.value, token: (current?.token ?? 0) + 1 }));
             setCursorStatus("Shared saved Curve parameter on its exact Surface chart.");
           }
         } catch (error) { setCursorStatus(`Cursor withheld: ${String((error as Error).message)}`); }
       }}>Share Curve parameter</button>
+      <label>Surface u <input data-testid="project-composition-chart-u" type="number" step="any" value={chartCoordinate.u}
+        onChange={event => setChartCoordinate(current => ({ ...current, u: event.target.value }))} /></label>
+      <label>Surface v <input data-testid="project-composition-chart-v" type="number" step="any" value={chartCoordinate.v}
+        onChange={event => setChartCoordinate(current => ({ ...current, v: event.target.value }))} /></label>
+      <button type="button" data-testid="project-composition-return-curve" disabled={!cursorLinked} onClick={() => {
+        if (!chartCoordinate.u.trim() || !chartCoordinate.v.trim()) { setCursorStatus("Cursor withheld: Surface chart coordinate is incomplete."); return; }
+        const picked = { surfaceId: selectedTrace.surfaceId, revision: selectedTrace.pair.surface.identity.revision,
+          hash: selectedTrace.pair.surface.identity.structuralHash,
+          uv: { u: Number(chartCoordinate.u), v: Number(chartCoordinate.v) } };
+        const draft = curveSurfaceReturnDraft(project, selectedTrace.pair.curve.identity.id, picked, cursorOriginViewId);
+        if (draft.status !== "matched") { setCursorStatus(`Cursor withheld: ${draft.reason}`); return; }
+        try {
+          scientificCursorBus.publishProject(draft.value, draft.value.source);
+          setCurveParameter(draft.value.position[0]!); setLinked(null); setExternalCursorProbe(null);
+          setExternalCurveProbe(current => ({ slot: selectedTrace.slot, uv: picked.uv, token: (current?.token ?? 0) + 1 }));
+          setCursorStatus("Returned exact Surface chart coordinate to its saved Curve parameter.");
+        } catch (error) { setCursorStatus(`Cursor withheld: ${String((error as Error).message)}`); }
+      }}>Return Surface u,v to Curve</button>
       <small>Only the recorded Curve-to-chart relation and bounded parameter map can place this marker.</small>
     </section>}
     {mode === "overlay" && !resolved.error && <p role="status" style={{ margin: 0 }}>
