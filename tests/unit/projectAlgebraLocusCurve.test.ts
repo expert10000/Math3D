@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildSageAlgebraicLocusScene, createAlgebraObjectRecord, createMath3DProject,
   createMixedWorkspaceDocument, createProjectAlgebraObjectId, orderedLocusCurvePoints,
-  parseMath3DProject, projectAlgebraLocusReturn, promoteSavedAlgebraLocusCurve,
+  locusCurveComponents, parseMath3DProject, projectAlgebraLocusReturn, promoteSavedAlgebraLocusCurve,
   sampleSageAlgebraicLocus, serializeMath3DProject, upsertMath3DProjectAlgebraObject,
   upsertMath3DProjectAlgebraicLocusSample, upsertProjectAlgebraLocusCurve } from "@math3d/core";
 
@@ -65,5 +65,30 @@ describe("saved algebra locus to Curve", () => {
     const historicalChoice = projectAlgebraLocusReturn(historical, choice.documentId)!;
     expect(() => promoteSavedAlgebraLocusCurve(historical, historicalChoice))
       .toThrow(/current saved bounded contour/);
+  });
+
+  it("requires an explicit component and retains both disjoint contours independently", () => {
+    const { project, scene } = fixture();
+    const sample = sampleSageAlgebraicLocus(scene("(x^2+y^2-1)*(x^2+y^2-4)"));
+    const components = locusCurveComponents(sample);
+    expect(components).toHaveLength(2);
+    expect(components.every(item => item.closed && item.points.length > 8)).toBe(true);
+    expect(components.reduce((sum, item) => sum + item.points.length - 1, 0))
+      .toBe(sample.segments.length);
+    const saved = upsertMath3DProjectAlgebraicLocusSample(project, sample);
+    const choice = projectAlgebraLocusReturn(saved, saved.workspace.entries[0]!.expected.id)!;
+    expect(() => promoteSavedAlgebraLocusCurve(saved, choice)).toThrow(/explicitly/);
+    expect(() => promoteSavedAlgebraLocusCurve(saved, choice, 2)).toThrow(/unavailable/);
+    const first = upsertProjectAlgebraLocusCurve(saved, choice, 0);
+    const second = upsertProjectAlgebraLocusCurve(first.project, choice, 1);
+    expect(first.curve.identity.id).not.toBe(second.curve.identity.id);
+    expect(first.curve.source.definition.settings).toMatchObject({ componentIndex: 0,
+      componentCount: 2, sampleHash: sample.resultHash });
+    expect(second.curve.source.definition.settings).toMatchObject({ componentIndex: 1,
+      componentCount: 2, sampleHash: sample.resultHash });
+    const reopened = parseMath3DProject(serializeMath3DProject(second.project));
+    expect(reopened.workspace.entries.filter(item => item.module === "curve")).toHaveLength(2);
+    expect(reopened.workspace.relations.filter(item => item.operation === "algebra.locus-sample-curve"))
+      .toHaveLength(2);
   });
 });
