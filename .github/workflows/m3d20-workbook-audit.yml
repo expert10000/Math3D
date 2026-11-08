@@ -86,6 +86,10 @@ jobs:
           Invoke-Install -Label 'renderer npm install' -Command { npm --prefix renderer install } -Directory 'renderer/node_modules'
       - name: Install scientific Python dependencies
         run: python -m pip install numpy scipy sympy vtk
+      - name: Check Graph pointer regression and workspace shell
+        run: npm --prefix renderer test -- src/graph2d/graph2dPointerCoordinates.test.ts src/graph2d/GraphsWorkspace.test.tsx
+      - name: Typecheck the diagnostic candidate
+        run: npm run typecheck:noemit
       - name: Build the application
         run: npm run build:core
       - name: Run only SCI-19 with Electron context tracing
