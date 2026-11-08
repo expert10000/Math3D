@@ -35,6 +35,10 @@ test("M3D20-04 saves and cold-reopens a Study layout of existing Project documen
     await expect(studies.getByTestId("project-study-linked-result")).toContainText("Graph (1, 1)");
     await studies.getByTestId("project-study-preview-toggle-pane-1").click();
     await expect(studies.locator(".graph2d-probe-linked")).toHaveCount(1);
+    await studies.getByTestId("project-study-preview-toggle-pane-1").click();
+    await expect(studies.getByTestId("project-study-pane-preview")).toHaveCount(0);
+    await studies.getByTestId("project-study-preview-toggle-pane-1").click();
+    await expect(studies.locator(".graph2d-probe-linked")).toHaveCount(1);
     await projects.getByTestId("project-save").click();
     await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).workspace.studies?.length)).toBe(1);
     await page.reload();
