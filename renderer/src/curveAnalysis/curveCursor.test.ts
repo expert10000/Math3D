@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { replaceCurveDocumentSource } from "@math3d/core";
+import { instantiateMath3DProjectTemplate, replaceCurveDocumentSource } from "@math3d/core";
 import { ScientificCursorBus } from "../components/scientificCursor";
 import { curveDocumentFromLegacyDefinition } from "./curveDocumentAdapter";
 import { adaptCurveDefinition } from "./infrastructure";
-import { curveParameterCursorDraft, projectCurveParameterCursor } from "./curveCursor";
+import { curveParameterCursorDraft, projectCurveParameterCursor, projectRestoredCurveParameterCursor,
+  restoredCurveParameterCursorDraft } from "./curveCursor";
+import { curveEditorSeed } from "../projects/nativeProjectRestore";
 import type { SemanticCurvePick } from "./probe";
 
 const definition = adaptCurveDefinition({ id: "cursor-parabola", revision: 1, label: "Parabola",
@@ -40,5 +42,40 @@ describe("M3D20-03 Curve parameter cursor", () => {
     expect(projectCurveParameterCursor({ ...cursor, frame: { ...cursor.frame, axes: [{
       ...cursor.frame.axes[0]!, unit: "ms" }] } }, document, definition).status).toBe("incompatible-source");
     expect(projectCurveParameterCursor({ ...cursor, position: [2] }, document, definition).status).toBe("outside");
+  });
+});
+
+describe("M3D20-03 saved native Curve cursor", () => {
+  const project = instantiateMath3DProjectTemplate("derivative-study", "native-curve-cursor");
+  const saved = project.workspace.entries.find(entry => entry.module === "curve")!.checkpoint;
+  if (saved.format !== "math3d.curve-document") throw Error("Fixture");
+  const seed = curveEditorSeed(saved);
+  const editor = { formulas: { x: seed.x, y: seed.y }, domain: { tMin: seed.min, tMax: seed.max, closed: seed.closed } };
+  const nativeDefinition = adaptCurveDefinition({ id: "saved-promotion", revision: 1, label: "Saved promotion",
+    representation: "parametric", dimension: 2, expressions: { x: seed.x, y: seed.y },
+    domain: { parameter: "t", min: seed.min, max: seed.max, closed: seed.closed, periodic: false } });
+  const nativePick = { identity: nativeDefinition.identity, t: 1, normalizedParameter: (1 - seed.min) / (seed.max - seed.min),
+    worldPoint: [1, 1, 0] } as SemanticCurvePick;
+  it("shares and adopts the exact restored source parameter", () => {
+    const draft = restoredCurveParameterCursorDraft(saved, editor, nativeDefinition, nativePick, "curve-viewer");
+    expect(draft.ok).toBe(true);
+    if (!draft.ok) return;
+    const cursor = new ScientificCursorBus().publishProject(draft.value, draft.value.source);
+    expect(projectRestoredCurveParameterCursor(cursor, saved, editor)).toEqual({
+      status: "matched", value: (1 - seed.min) / (seed.max - seed.min),
+    });
+  });
+  it("refuses unsynchronized editor formulas, stale sources and changed parameter units", () => {
+    const draft = restoredCurveParameterCursorDraft(saved, editor, nativeDefinition, nativePick, "curve-viewer");
+    if (!draft.ok) throw Error(draft.errors.join(" "));
+    const cursor = new ScientificCursorBus().publishProject(draft.value, draft.value.source);
+    expect(restoredCurveParameterCursorDraft(saved, { ...editor, formulas: { ...editor.formulas, y: "t^3" } },
+      nativeDefinition, nativePick, "curve-viewer").ok).toBe(false);
+    expect(projectRestoredCurveParameterCursor(cursor, saved, { ...editor, formulas: { ...editor.formulas, y: "t^3" } }).status).toBe("incompatible-source");
+    const revised = replaceCurveDocumentSource(saved, { ...saved.source, definition: { ...saved.source.definition,
+      expressions: { x: "x", y: "x^3" } } });
+    expect(projectRestoredCurveParameterCursor(cursor, revised, editor).status).toBe("incompatible-source");
+    expect(projectRestoredCurveParameterCursor({ ...cursor, frame: { ...cursor.frame, axes: [{ ...cursor.frame.axes[0]!, unit: "s" }] } },
+      saved, editor).status).toBe("incompatible-source");
   });
 });
