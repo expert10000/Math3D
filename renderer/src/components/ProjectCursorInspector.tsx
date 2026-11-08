@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { listProjectScientificSelections, matchesScientificSourceGeneration,
-  viewerSourceFromDocument, type Math3DProject,
+import { listProjectScientificSelections, matchesScientificSourceGeneration, readProjectCoordinateFrame,
+  viewerSourceFromDocument, type AdapterFrame, type Math3DProject,
   type ScientificSelection } from "@math3d/core";
 import { projectCursorFromSavedPoint } from "./projectCursorAdapter";
 import { scientificCursorBus, type ProjectScientificCursor } from "./scientificCursor";
 import { VECTOR3D_CURSOR_FRAME } from "../vectorfield3d/vectorFieldCursor";
+import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 
 export function vectorPointCursorAvailability(project: Math3DProject, selection: ScientificSelection): string | null {
   if (selection.identity.kind !== "authored" || selection.geometry.kind !== "point") return "Point selection required.";
@@ -23,10 +24,40 @@ export function vectorPointCursorAvailability(project: Math3DProject, selection:
   return null;
 }
 
+export function projectPointCursorFrame(project: Math3DProject, selection: ScientificSelection):
+  { frame: AdapterFrame; reason: null } | { frame: null; reason: string } {
+  if (selection.source?.kind !== "document") return { frame: null, reason: "Pinned document point required." };
+  const entry = project.workspace.entries.find(item => item.expected.id === selection.source.documentId);
+  if (!entry) return { frame: null, reason: "Source document is unavailable." };
+  if (entry.module === "vector3d") {
+    const reason = vectorPointCursorAvailability(project, selection);
+    return reason ? { frame: null, reason } : { frame: VECTOR3D_CURSOR_FRAME, reason: null };
+  }
+  if (entry.module !== "mesh" && entry.module !== "surface")
+    return { frame: null, reason: "Only Field, Surface and Mesh points are supported here." };
+  if (selection.identity.kind !== "authored" || selection.geometry.kind !== "point" || !selection.source.checkpoint)
+    return { frame: null, reason: "Point selection and pinned source checkpoint required." };
+  const document = verifyMixedWorkspaceReplay(project.workspace).get(entry.expected.id);
+  if (!document || !matchesScientificSourceGeneration(viewerSourceFromDocument(document),
+    viewerSourceFromDocument({ identity: entry.expected })) ||
+    selection.source.checkpoint.revision !== document.identity.revision ||
+    selection.source.checkpoint.structuralHash !== document.identity.structuralHash)
+    return { frame: null, reason: "Saved point source checkpoint is stale or unavailable." };
+  const declaration = readProjectCoordinateFrame(document);
+  if (declaration.status !== "declared" || !declaration.value)
+    return { frame: null, reason: "Source has no valid declared coordinate frame." };
+  const axes = declaration.value.axes.map(name => ({ name, dimension: "length", unit: declaration.value!.unit }));
+  if (selection.frame.kind !== "cartesian" || selection.frame.axes.length !== 3 ||
+      selection.frame.axes.some((axis, index) => axis.name !== axes[index]?.name || axis.unit !== axes[index]?.unit) ||
+      selection.geometry.position.length !== 3 || !selection.geometry.position.every(Number.isFinite))
+    return { frame: null, reason: "Saved point axes or units differ from the source declaration." };
+  return { frame: { kind: "cartesian", frameId: declaration.value.frame, axes }, reason: null };
+}
+
 const belongsToProject = (project: Math3DProject, cursor: ProjectScientificCursor): boolean => {
   const entry = project.workspace.entries.find(item => item.expected.id === cursor.source.documentId);
   return !!entry && entry.module === cursor.sourceModule &&
-    matchesScientificSourceGeneration(cursor.source, viewerSourceFromDocument(entry.checkpoint));
+    matchesScientificSourceGeneration(cursor.source, viewerSourceFromDocument({ identity: entry.expected }));
 };
 
 export function ProjectCursorInspector({ project }: { project: Math3DProject }) {
@@ -36,15 +67,16 @@ export function ProjectCursorInspector({ project }: { project: Math3DProject }) 
   const points = useMemo(() => listProjectScientificSelections(project).filter(item => {
     if (item.identity.kind !== "authored" || item.geometry.kind !== "point" || item.source?.kind !== "document") return false;
     const documentId = item.source.documentId;
-    return project.workspace.entries.some(entry => entry.expected.id === documentId && entry.module === "vector3d");
+    return project.workspace.entries.some(entry => entry.expected.id === documentId &&
+      ["vector3d", "surface", "mesh"].includes(entry.module));
   }), [project]);
   useEffect(() => {
     if (!linked) return;
     return scientificCursorBus.subscribe(event => setCursor(event.kind === "project" && belongsToProject(project, event) ? event : null));
   }, [linked, project]);
-  const pin = (id: string) => {
+  const pin = (id: string, frame: AdapterFrame) => {
     try {
-      const result = projectCursorFromSavedPoint(project, id, VECTOR3D_CURSOR_FRAME, "project-inspector");
+      const result = projectCursorFromSavedPoint(project, id, frame, "project-inspector");
       if (!result.ok) { setMessage(result.errors.join(" ")); return; }
       const published = scientificCursorBus.publishProject(result.value, result.value.source);
       setCursor(published);
@@ -60,13 +92,13 @@ export function ProjectCursorInspector({ project }: { project: Math3DProject }) 
       {cursor.sourceModule} · {cursor.position.map(value => Number(value.toPrecision(6))).join(", ")} · {cursor.mode}
     </p>}
     {linked && !cursor && <p>No current Project cursor.</p>}
-    {!!points.length && <div><strong>Saved Vector Field points</strong><ul>{points.map(selection => {
+    {!!points.length && <div><strong>Saved source points</strong><ul>{points.map(selection => {
       if (selection.identity.kind !== "authored") return null;
       const id = selection.identity.id;
-      const reason = vectorPointCursorAvailability(project, selection);
+      const { frame, reason } = projectPointCursorFrame(project, selection);
       return <li key={id}><button type="button" disabled={!!reason || !linked}
         data-testid={`project-cursor-pin-${id}`} title={reason ?? "Publish this pinned point"}
-        onClick={() => pin(id)}>Pin point {selection.geometry.kind === "point" ?
+        onClick={() => { if (frame) pin(id, frame); }}>Pin point {selection.geometry.kind === "point" ?
           selection.geometry.position.map(value => Number(value.toPrecision(6))).join(", ") : ""}</button>
         {reason && <small> {reason}</small>}</li>;
     })}</ul></div>}

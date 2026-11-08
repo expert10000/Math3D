@@ -26,7 +26,9 @@ export function projectCursorFromSavedPoint(project: Math3DProject, selectionId:
   const reference = referenceFromScientificSelection(selection, currentSource, entry.module,
     normalizedFrame.value, "point");
   if (!reference.ok) return { ok: false, errors: reference.errors };
+  const resourceSha256 = document.format === "math3d.mesh-document" ?
+    document.source.resource.checksum.slice("sha256:".length) : reference.value.resourceSha256;
   return { ok: true, value: { source: reference.value.source, sourceModule: entry.module,
     frame: reference.value.frame, position: [...selection.geometry.position],
-    resourceSha256: reference.value.resourceSha256, originViewId, mode } };
+    resourceSha256, originViewId, mode } };
 }
