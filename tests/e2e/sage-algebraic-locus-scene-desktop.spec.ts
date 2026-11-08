@@ -244,9 +244,23 @@ test("saved exact locus opens read-only in CAS and returns to its Geometry check
     await ctx.page.reload();
     await ctx.page.getByTestId("projects-toggle").click();
     await ctx.page.getByTestId(`project-open-saved-${project.identity.id}`).click();
+    await ctx.page.getByTestId("workspace-nav-cas").click();
+    const cas = ctx.page.getByTestId("cas-algebra-workspace");
+    await cas.getByTestId("cas-structures-explorer").getByRole("button", { name: /R @1/ }).click();
+    const savedChoices = cas.getByTestId("cas-saved-locus-choices");
+    await expect(savedChoices.getByRole("button")).toHaveCount(1);
+    await savedChoices.getByRole("button", { name: /Uncomputed exact contract/ }).click();
+    const savedExact = cas.getByTestId("cas-saved-locus-inspection");
+    await expect(savedExact).toContainText("Saved exact locus contract · read-only");
+    await expect(savedExact).toContainText("x^2+y^2-1 = 0");
+    await expect(savedExact).toContainText("numerical locus is uncomputed");
+    await expect(savedExact.getByTestId("cas-locus-plot")).toHaveCount(0);
+    await savedExact.getByRole("button", { name: "Open saved exact Geometry" }).click();
+    await expect(ctx.page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id", documentId);
+    await ctx.page.getByTestId("projects-toggle").click();
     const panel = ctx.page.getByTestId("project-explorer-panel");
-    await panel.getByTestId("project-gallery-layout-toggle").click();
     const details = panel.getByTestId("project-detail-toggle");
+    if (await details.count() === 0) await panel.getByTestId("project-gallery-layout-toggle").click();
     if (await details.getAttribute("aria-pressed") === "false") await details.click();
     await panel.getByTestId("project-detail-tab-documents").click();
     const menu = panel.getByTestId(`project-algebra-open-in-${ring.id}`);
@@ -256,11 +270,7 @@ test("saved exact locus opens read-only in CAS and returns to its Geometry check
     await ctx.page.getByTestId("projects-toggle").click();
     await ctx.page.getByTestId(`project-algebra-return-${documentId}`)
       .getByRole("button", { name: "Return to algebra source in CAS" }).click();
-    const savedExact = ctx.page.getByTestId("cas-saved-locus-inspection");
     await expect(savedExact).toContainText("Saved exact locus contract · read-only");
-    await expect(savedExact).toContainText("x^2+y^2-1 = 0");
-    await expect(savedExact).toContainText("numerical locus is uncomputed");
-    await expect(savedExact.getByTestId("cas-locus-plot")).toHaveCount(0);
     await savedExact.getByRole("button", { name: "Open saved exact Geometry" }).click();
     await expect(ctx.page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id", documentId);
   } finally { await closeSurfaceApp(ctx); }

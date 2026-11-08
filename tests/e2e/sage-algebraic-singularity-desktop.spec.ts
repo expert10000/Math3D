@@ -119,6 +119,12 @@ test("SAGE-F03 distinguishes cusp and node tangent views, then independently reo
     await expect(savedInspection).toContainText("Ordinary cusp");
     await expect(savedInspection).toContainText("Jacobian at point");
     await expect(ctx.page.getByTestId("cas-locus-preview")).toHaveCount(0);
+    const savedChoices = ctx.page.getByTestId("cas-saved-locus-choices").getByRole("button");
+    await expect(savedChoices).toHaveCount(2);
+    await savedChoices.nth(1).click();
+    await expect(savedInspection).toContainText("Ordinary real node");
+    await savedChoices.first().click();
+    await expect(savedInspection).toContainText("Ordinary cusp");
     await savedInspection.getByRole("button", { name: "Open saved tangent Geometry" }).click();
     await expect(ctx.page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id", cuspDocumentId);
   } finally { await closeSurfaceApp(ctx); }
