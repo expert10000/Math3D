@@ -25,6 +25,7 @@ describe("Project saved result presentation", () => {
     const html = render();
     expect(html).toContain("Recorded numerical result");
     expect(html).toContain("numerical approximations");
+    expect(html).toContain('data-testid="project-result-verification" data-scope="not-checked"');
     expect(html).toContain("Source document");
     expect(html).toContain("Saved Graph</button>");
     expect(html).toContain("<code>m</code>");

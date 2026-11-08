@@ -18,6 +18,7 @@ import { isScientificEquilibrium } from "../projects/scientificEquilibriumWorkbo
 import type { ProjectResourceReader } from "../projects/projectResources";
 import { verifySavedMeshResult } from "../projects/projectSavedMeshResultComparison";
 import { projectResultSourceLink } from "../projects/projectResultSourceLink";
+import { presentProjectResultVerification } from "../projects/projectResultVerification";
 
 const ProjectSavedMeshGenerationPreview = React.lazy(() => import("./ProjectSavedMeshGenerationPreview").then(module => ({ default: module.ProjectSavedMeshGenerationPreview })));
 
@@ -109,6 +110,11 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
     try { return { checked: verifySavedMeshResult(project, meshResult.resultId, readResource), error: null }; }
     catch (error) { return { checked: null, error: (error as Error).message }; }
   }, [project, meshResult, readResource]);
+  const resultVerification = result && presentProjectResultVerification({
+    kind: meshResult ? "mesh" : isRegionResult(result.provenance.operation.type) ? "field" : "other",
+    savedMeshChecked: !!meshVerification?.checked,
+    sourceCurrent: regionSourcePresentation(regionResultStatuses[result.resultId]).tone === "current",
+  });
   const artifact = active?.kind === "artifact" ? artifacts.find(item => item.handle.artifactId === active.id) : undefined;
   const resultStatus = result && inspection?.results.find(item => item.id === result.resultId);
   const artifactStatus = artifact && inspection?.artifacts.find(item => item.id === artifact.handle.artifactId);
@@ -170,6 +176,8 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
           <p data-testid="project-result-claim">Mathematical claim: <strong>{resultClaim!.label}</strong>
             {` · ${resultClaim!.meaning}`}
             {resultStatus?.missingArtifactIds.length ? ` · ${resultStatus.missingArtifactIds.length} unavailable artifact(s)` : ""}</p>
+          <p data-testid="project-result-verification" data-scope={resultVerification!.scope}>
+            Independent check: <strong>{resultVerification!.label}</strong> · {resultVerification!.detail}</p>
           {meshResult && <div data-testid="project-saved-mesh-evidence" style={{ border: "1px solid #cbd5e1", borderRadius: 8, padding: 10 }}>
             <strong>Exact saved Mesh evidence</strong>
             {meshVerification?.checked ? <><p>Result {meshResult.resultId} · hash {meshVerification.checked.resultHash}<br />
