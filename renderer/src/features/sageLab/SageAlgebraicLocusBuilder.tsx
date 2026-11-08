@@ -2,7 +2,8 @@ import { useState, type FormEvent } from "react";
 import { algebraicLocusGeometryDocument, buildSageAlgebraicLocusScene, canonicalJsonStringify,
   sampleSageAlgebraicLocus, sampledAlgebraicLocusGeometryDocument,
   analyzeSageAlgebraicSingularity, algebraicSingularityGeometryDocument,
-  projectAlgebraOpenInActions, resolveProjectAlgebraOpenIn, type ProjectAlgebraOpenInAction,
+  projectAlgebraCasHandoff, projectAlgebraOpenInActions, resolveProjectAlgebraCasHandoff,
+  resolveProjectAlgebraOpenIn, type ProjectAlgebraCasHandoff, type ProjectAlgebraOpenInAction,
   type AlgebraObjectRef, type Math3DProject, type SageAlgebraicLocusScene,
   type SageAlgebraicLocusSample, type SageAlgebraicSingularityScene } from "@math3d/core";
 import SageAlgebraicLocusPlot from "./SageAlgebraicLocusPlot";
@@ -35,13 +36,16 @@ export default function SageAlgebraicLocusBuilder({ project, target, onSave, onS
     { min: "-2", max: "2" }]);
   const [tolerance, setTolerance] = useState("0.001");
   const [maxSamples, setMaxSamples] = useState("50000");
-  const [preview, setPreview] = useState<{ signature: string; scene: SageAlgebraicLocusScene } | null>(null);
+  const [preview, setPreview] = useState<{ signature: string; scene: SageAlgebraicLocusScene;
+    choice: ProjectAlgebraCasHandoff } | null>(null);
   const [sampled, setSampled] = useState<{ signature: string; sample: SageAlgebraicLocusSample } | null>(null);
   const [point, setPoint] = useState(["0", "0", "0"]);
   const [inspected, setInspected] = useState<{ signature: string; analysis: SageAlgebraicSingularityScene } | null>(null);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
-  const signature = JSON.stringify({ target, polynomial, bounds: bounds.slice(0, variables.length), tolerance, maxSamples });
+  const handoff = projectAlgebraCasHandoff(project, target);
+  const signature = JSON.stringify({ projectId: project.identity.id, target, polynomial,
+    bounds: bounds.slice(0, variables.length), tolerance, maxSamples });
   const scene = preview?.signature === signature ? preview.scene : null;
   const sample = sampled?.signature === signature ? sampled.sample : null;
   const analysisSignature = `${signature}/${JSON.stringify(point.slice(0, variables.length))}`;
@@ -50,11 +54,12 @@ export default function SageAlgebraicLocusBuilder({ project, target, onSave, onS
   const prepare = (event: FormEvent) => {
     event.preventDefault(); setMessage(""); setPreview(null); setSampled(null); setInspected(null);
     try {
+      resolveProjectAlgebraCasHandoff(project, target, handoff);
       const prepared = buildSageAlgebraicLocusScene(project, target, {
         ...(record?.definition.kind === "polynomial-ring" ? { polynomial } : {}),
         bounds: bounds.slice(0, variables.length).map((item) => ({ min: Number(item.min), max: Number(item.max) })),
         tolerance: Number(tolerance), maxSamples: Number(maxSamples) });
-      setPreview({ signature, scene: prepared });
+      setPreview({ signature, scene: prepared, choice: handoff });
     } catch (error) { setMessage(String((error as Error).message ?? error)); }
   };
   const openInGeometry = async (choice: ProjectAlgebraOpenInAction) => {
@@ -116,8 +121,10 @@ export default function SageAlgebraicLocusBuilder({ project, target, onSave, onS
         value={tolerance} onChange={(event) => setTolerance(event.target.value)} required /></label>
       <label>Sample cap<input aria-label="Locus sample cap" type="number" step="1" min="1000" max="200000"
         value={maxSamples} onChange={(event) => setMaxSamples(event.target.value)} required /></label>
-      <button type="submit" disabled={busy}>Validate & preview locus</button>
+      <button type="submit" disabled={busy || !handoff.enabled}
+        title={handoff.disabledReason ?? undefined}>Validate & preview locus</button>
     </form>
+    {handoff.disabledReason && <div role="status">{handoff.disabledReason} Saved evidence remains available for inspection.</div>}
     <div data-testid="cas-open-in-geometry" role="group" aria-label="Open in Geometry destinations"
       style={{ display: "grid", gap: 5, border: "1px solid #dbe2ea", borderRadius: 6, padding: 8 }}>
       <strong>Open in…</strong>
