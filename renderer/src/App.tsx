@@ -50430,25 +50430,6 @@ case "mobius":
       dependencyRevisions: { "differential-geometry": definition.identity.surfaceRevision },
     });
     const requestId = `surface-curvature:${definition.identity.key}:${Date.now()}`;
-    const dependencyRequest = createSurfaceAnalysisRequest({
-      requestId: `surface-differential:${definition.identity.key}`,
-      kind: "differential-geometry",
-      definition,
-      domain: "surface",
-      method,
-      requestedOutputs: ["normalized curvature source", "validity masks", "method provenance"],
-    });
-    const dependencyPayload: SurfaceAnalysisPayload = {
-      version: 1,
-      surfaceId: definition.identity.surfaceId,
-      surfaceRevision: definition.identity.surfaceRevision,
-      representation: definition.representation,
-      method,
-      units: definition.units,
-      orientation: definition.orientation,
-      warnings: definition.warnings,
-      data: { kind: "summary", values: { sampleCount: surfaceCurvatureSource.sampleCount, source: "represented Surface" } },
-    };
     const request = createSurfaceAnalysisRequest({
       requestId,
       kind: "curvature-field",
@@ -50457,14 +50438,6 @@ case "mobius":
       method,
       parameters: { histogramBins: 16, classificationTolerance: "scale-aware", directionPolicy: "undefined-at-umbilic-or-uncertain", cacheKey },
       requestedOutputs: ["K", "H", "k1", "k2", "d1", "d2", "shapeIndex", "curvedness", "masks", "classifications", "statistics"],
-    });
-    setSurfaceAnalysisResultStore((store) => {
-      let next = store;
-      const existingDependency = getSurfaceAnalysisResult(next, definition.identity, "differential-geometry");
-      if (existingDependency?.state !== "ready") {
-        next = publishSurfaceAnalysisResult({ store: next, registry: surfaceAnalysisRegistryRef.current, request: dependencyRequest, payload: dependencyPayload, backend: "Represented Surface adapter" });
-      }
-      return next;
     });
     const started = performance.now();
     const final = await surfaceCurvatureSchedulerRef.current.run({
@@ -50727,17 +50700,6 @@ case "mobius":
   useEffect(() => {
     if (!canonicalSurfaceProbe) return;
     const definition = activeCanonicalSurfaceDefinition;
-    const dependencyRequest = createSurfaceAnalysisRequest({
-      requestId: `surface-probe-dependency:${definition.identity.key}`,
-      kind: "differential-geometry", definition, domain: "surface", method: surfaceProbeMethod,
-      requestedOutputs: ["local represented differential data"],
-    });
-    const dependencyPayload: SurfaceAnalysisPayload = {
-      version: 1, surfaceId: definition.identity.surfaceId, surfaceRevision: definition.identity.surfaceRevision,
-      representation: definition.representation, method: surfaceProbeMethod, units: definition.units,
-      orientation: definition.orientation, warnings: definition.warnings,
-      data: { kind: "summary", values: { source: "local probe", probeId: canonicalSurfaceProbe.probeId } },
-    };
     const request = createSurfaceAnalysisRequest({
       requestId: canonicalSurfaceProbe.probeId,
       kind: "surface-probe", definition, domain: "point", method: surfaceProbeMethod,
@@ -50745,13 +50707,7 @@ case "mobius":
       requestedOutputs: ["position", "domain coordinate", "normal", "tangent basis", "I", "II", "H", "K", "k1", "k2", "d1", "d2", "classification", "normal curvature", "evidence"],
     });
     const payload = createSurfaceProbePayload({ definition, method: surfaceProbeMethod, probe: canonicalSurfaceProbe });
-    setSurfaceAnalysisResultStore((store) => {
-      let next = store;
-      if (getSurfaceAnalysisResult(next, definition.identity, "differential-geometry")?.state !== "ready") {
-        next = publishSurfaceAnalysisResult({ store: next, registry: surfaceAnalysisRegistryRef.current, request: dependencyRequest, payload: dependencyPayload, backend: "Local Surface adapter" });
-      }
-      return publishSurfaceAnalysisResult({ store: next, registry: surfaceAnalysisRegistryRef.current, request, payload, backend: "Local differential-geometry probe" });
-    });
+    setSurfaceAnalysisResultStore((store) => publishSurfaceAnalysisResult({ store, registry: surfaceAnalysisRegistryRef.current, request, payload, backend: "Local differential-geometry probe" }));
   }, [activeCanonicalSurfaceDefinition, canonicalSurfaceProbe, surfaceProbeAngleDeg, surfaceProbeMethod]);
 
   const handleToggleSurfaceProbeEvidence = useCallback(() => {

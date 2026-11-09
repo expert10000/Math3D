@@ -9,6 +9,7 @@ import {
   createSurfaceAnalysisResultStore,
   getSurfaceAnalysisDefinition,
   getSurfaceAnalysisResult,
+  invalidateSurfaceAnalysisResult,
   inspectSurfaceAnalysisResult,
   publishSurfaceAnalysisResult,
   resolveSurfaceRevision,
@@ -58,7 +59,7 @@ describe("Surface Analysis canonical infrastructure", () => {
     const registry = createSurfaceAnalysisRegistry();
     expect(getSurfaceAnalysisDefinition(registry, "curvature-field")).toMatchObject({
       domain: "surface",
-      dependencies: [{ kind: "differential-geometry" }],
+      dependencies: [{ kind: "surface-definition" }],
     });
     expect(getSurfaceAnalysisDefinition(registry, "derived-surface-mesh")).toMatchObject({
       domain: "derived-mesh",
@@ -162,6 +163,26 @@ describe("Surface Analysis canonical infrastructure", () => {
     }
     expect(store.history.map(record => record.kind)).toEqual(["surface-features", "surface-curves", "surface-definition"]);
     expect(getSurfaceAnalysisResult(store, definition.identity, "differential-geometry")).toBeNull();
+  });
+
+  it("tracks curvature and probe against the exact source instead of an adapter summary", () => {
+    const definition = adaptSurfaceDefinition(inputs[2]);
+    const registry = createSurfaceAnalysisRegistry();
+    let store = createSurfaceAnalysisResultStore();
+    for (const [kind, domain] of [["surface-definition", "surface"], ["curvature-field", "surface"], ["surface-probe", "point"]] as const) {
+      store = publishSurfaceAnalysisResult({ store, registry,
+        request: createSurfaceAnalysisRequest({ requestId: kind, kind, definition, domain, method: "surface-sampling" }),
+        now: store.history.length + 1 });
+    }
+    for (const kind of ["curvature-field", "surface-probe"] as const) {
+      const result = getSurfaceAnalysisResult(store, definition.identity, kind)!;
+      expect(result.dependencies).toMatchObject([{ kind: "surface-definition", state: "ready", resultVersion: 1 }]);
+      expect(isAnalysisResultCurrent(store, result)).toBe(true);
+    }
+    expect(getSurfaceAnalysisResult(store, definition.identity, "differential-geometry")).toBeNull();
+    store = invalidateSurfaceAnalysisResult(store, definition.identity, "surface-definition", "default", 4);
+    expect(getSurfaceAnalysisResult(store, definition.identity, "curvature-field")?.state).toBe("stale");
+    expect(getSurfaceAnalysisResult(store, definition.identity, "surface-probe")?.state).toBe("stale");
   });
 
   it("marks prior-revision Surface results stale when a new revision publishes", () => {
