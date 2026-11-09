@@ -1030,6 +1030,7 @@ import {
   type MeshDiagnosticsAnalysisPayload,
 } from "./mesh/analysisResultStore";
 import { qualifyMeshAnalysisResult } from "./mesh/meshResultQualification";
+import { presentMeshActiveAnalysisResult } from "./mesh/meshResultPresentation";
 import { MeshAnalysisKernelBridge } from "./mesh/meshAnalysisKernelBridge";
 import { MeshDifferentialScientificJob } from "./mesh/meshDifferentialScientificJob";
 import {
@@ -74957,7 +74958,7 @@ case "mobius":
       outcome.result.source.revision === meshAnalysisKernelBridge.source()?.revision
     ) ?? null
     : null;
-  const meshActiveAnalysisResult: MeshActiveAnalysisResultSummary = focusedKernelAnalysisKind
+  const meshActiveAnalysisCandidate: MeshActiveAnalysisResultSummary = focusedKernelAnalysisKind
     ? {
       ...meshActiveAnalysisResultBase,
       metadata: [
@@ -74976,6 +74977,9 @@ case "mobius":
       ],
     }
     : meshActiveAnalysisResultBase;
+  const meshActiveAnalysisPresentation = presentMeshActiveAnalysisResult({ summary: meshActiveAnalysisCandidate,
+    qualification: focusedKernelQualification, kind: focusedKernelAnalysisKind, mesh: activeMeshAnalysisIdentity });
+  const meshActiveAnalysisResult = meshActiveAnalysisPresentation.summary;
   const meshAnalysisWorkflowValidationLabel = surfaceMeshAnalyzeDiagnostics
     ? surfaceMeshAnalyzeDiagnostics.state === "Healthy"
       ? "Validated"
@@ -80147,6 +80151,7 @@ case "mobius":
                       } : undefined}
                       surfaceMeshLabel={surfaceMeshLabel}
                       meshActiveAnalysisResult={meshActiveAnalysisResult}
+                      meshActiveAnalysisEvidence={meshActiveAnalysisPresentation.evidence}
                       meshAnalysisComputationHistory={meshAnalysisComputationHistory}
                       meshSelectedScientificFields={meshSelectedScientificFields}
                       meshWorkspaceSummary={meshWorkspaceInspectorSummary}

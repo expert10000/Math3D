@@ -36,6 +36,7 @@ import { getMeshHealthBlockers } from "./mesh/meshHealth";
 import { type MeshDifferentialGeometrySummary } from "./mesh/meshDifferentialGeometry";
 import { SURFACE_FEATURE_CLASSES, SURFACE_FEATURE_LABELS, type SurfaceFeatureClass, type SurfaceFeatureExtractionResult } from "./mesh/surfaceFeatureExtraction";
 import { type MeshActiveAnalysisResultSummary } from "./mesh/activeAnalysisResult";
+import type { MeshResultEvidencePresentation } from "./mesh/meshResultPresentation";
 import { buildMeshBenchmarkVerificationRows, meshBenchmarkVerificationPasses, type MeshBenchmarkVerificationRow } from "./mesh/meshBenchmarkVerification";
 import { type MeshQualityReport, type MeshQualityReportPhase } from "./mesh/meshQualityReport";
 import type { DatasetKind, VolumeDataset } from "./scene/datasets";
@@ -9655,6 +9656,7 @@ export type SurfacesRightPanelProps = {
   paramId: ParamSurfaceId;
   surfaceMeshLabel: string;
   meshActiveAnalysisResult: MeshActiveAnalysisResultSummary;
+  meshActiveAnalysisEvidence: MeshResultEvidencePresentation;
   meshAnalysisComputationHistory: MeshAnalysisComputationRecord[];
   meshSelectedScientificFields: MeshEntityScientificFields | null;
   meshWorkspaceSummary: MeshWorkspaceInspectorSummary;
@@ -9938,6 +9940,7 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   paramId,
   surfaceMeshLabel,
   meshActiveAnalysisResult,
+  meshActiveAnalysisEvidence,
   meshAnalysisComputationHistory,
   meshSelectedScientificFields,
   meshWorkspaceSummary,
@@ -12213,6 +12216,12 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                   >
                     {meshActiveAnalysisResult.state}
                   </span>
+                </div>
+                <div data-testid="mesh-analysis-result-qualification" data-status={meshActiveAnalysisEvidence.status} style={{ display: "grid", gap: 3, borderTop: "1px solid #e2e8f0", paddingTop: 7, fontSize: 10 }}>
+                  <div><strong>{meshActiveAnalysisEvidence.status}</strong> · {meshActiveAnalysisEvidence.reason}</div>
+                  <div><strong>Mathematical claim:</strong> {meshActiveAnalysisEvidence.claim}</div>
+                  <div><strong>Independent check:</strong> {meshActiveAnalysisEvidence.independentCheck}</div>
+                  <div><strong>Recorded source:</strong> {meshActiveAnalysisEvidence.source}</div>
                 </div>
                 <div
                   data-testid="mesh-analysis-result-definition"
