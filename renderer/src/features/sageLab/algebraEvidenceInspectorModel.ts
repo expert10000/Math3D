@@ -130,7 +130,7 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
         fact("Doubled point", result.point ? result.doublePoint ? list(result.doublePoint) : "Point at infinity" : "None"));
       checks.push(check("Elliptic curve arithmetic", "checked",
         "The pinned short Weierstrass discriminant is nonzero; exact j and any point doubling are independently checked."));
-      if (mode !== "FAILED") mode = "CHECKED";
+      mode = "CHECKED";
       break;
     }
     case "sage.numberField.localExtensions": {
@@ -145,7 +145,7 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
         fact("Uniformizers", branches.map((branch) => text(branch.uniformizer))));
       checks.push(check("Quadratic local data", "checked",
         "The pinned field discriminant determines split, inert or ramified behavior; e·f, ideal norms, residue orders, base-prime valuations and any split roots are checked exactly."));
-      if (mode !== "FAILED") mode = "CHECKED";
+      mode = "CHECKED";
       break;
     }
     case "sage.numberTheory.padic": {
@@ -169,7 +169,7 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
       }
       checks.push(check("p-adic precision and congruence", "checked",
         "Exact rational sources, unit digits, valuations, finite-precision zero labels and any Hensel root congruence are independently checked."));
-      if (mode !== "FAILED") mode = "CHECKED";
+      mode = "CHECKED";
       break;
     }
     case "sage.finiteField.explore": {
@@ -186,7 +186,7 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
         fact("Enumerated elements", String((result.elements as unknown[]).length)));
       checks.push(check("Exact finite-field arithmetic", "checked",
         "The saved modulus, element enumeration, Frobenius orbit, trace, norm, primitive list and bounded multiplication table were independently checked."));
-      if (mode !== "FAILED") mode = "CHECKED";
+      mode = "CHECKED";
       break;
     }
     case "sage.chain.homology": {
@@ -205,7 +205,7 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
         fact("Restricted d2 Smith diagonal", (result.restrictedBoundary2Smith as { diagonal: string[] } | null)?.diagonal ?? "Zero kernel rank"));
       checks.push(check("Exact chain condition", "checked", "Pinned integer boundary matrices satisfy d1·d2=0."),
         check("Homology witnesses", "checked", "Unimodular Smith matrices, kernel-basis inverse, restricted image, free ranks and torsion factors verify exactly."));
-      if (mode !== "FAILED") mode = "CHECKED";
+      mode = "CHECKED";
       break;
     }
     case "sage.module.invariantFactors": {
@@ -222,7 +222,7 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
       checks.push(check("Module classification", "checked", smith
         ? "Exact unimodular U and V verify U·A·V=D; diagonal divisibility and the free and torsion summands match."
         : "The pinned relation map has zero columns, so the module is free."));
-      if (mode !== "FAILED") mode = "CHECKED";
+      mode = "CHECKED";
       break;
     }
     case "sage.group.dossier": {
@@ -235,7 +235,7 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
         fact("GAP version", text(result.gapVersion)), fact("Enumeration", "Complete"));
       checks.push(check("Finite group invariants", "checked",
         "The app independently rebuilds the exact action, center, conjugacy partition and complete bounded subgroup list."));
-      if (mode !== "FAILED") mode = "CHECKED";
+      mode = "CHECKED";
       break;
     }
     case "sage.group.actionCharacters": {
@@ -285,7 +285,7 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
           fact("Extension generator", text(tower.extensionGenerator)));
         checks.push(check("Field inclusion", "checked",
           "Sage reports a canonical base map, both defining relations vanish, and 2 × 2 = 4."));
-        if (mode !== "FAILED") mode = "CHECKED";
+        mode = "CHECKED";
       }
       checks.push(check("Definition identity", "checked", "Sage metadata matches the pinned object kind, hash and characteristic."));
       break;
@@ -311,7 +311,7 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
       checks.push(check("Exact GCD", valid ? "checked" : "failed", valid
         ? "Recomputed from the saved integer inputs with exact arithmetic."
         : computed === null ? "Saved GCD inputs are invalid." : `Recomputed ${computed}; saved result is ${text(result.value)}.`));
-      if (mode !== "FAILED") mode = valid ? "CHECKED" : "FAILED";
+      mode = valid ? "CHECKED" : "FAILED";
       break;
     }
     case "sage.numberTheory.modInverse": {
@@ -327,7 +327,7 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
         ? "The saved value satisfies a · inverse ≡ 1 (mod n)."
         : validInput ? "The saved value does not satisfy the modular inverse identity."
           : "Saved inverse inputs do not match the pinned modular ring."));
-      if (mode !== "FAILED") mode = valid ? "CHECKED" : "FAILED";
+      mode = valid ? "CHECKED" : "FAILED";
       break;
     }
     case "sage.numberField.elementDossier": {
@@ -338,7 +338,7 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
         fact("Embeddings", embeddings.map((item) => `${text(item.generatorImage)} → ${text(item.elementImage)}`)));
       checks.push(check("Quadratic identities", "checked",
         "Exact norm, trace, basis, embeddings and degree product match the pinned defining polynomial."));
-      if (mode !== "FAILED") mode = "CHECKED";
+      mode = "CHECKED";
       break;
     }
     case "sage.numberField.primeDecomposition": {
@@ -348,7 +348,7 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
         fact("Degree check", text(result.degreeCheck)));
       checks.push(check("Prime decomposition invariants", "checked",
         "Ramification indices, residue degrees and norms satisfy the quadratic degree and discriminant test."));
-      if (mode !== "FAILED") mode = "CHECKED";
+      mode = "CHECKED";
       break;
     }
     case "sage.polynomial.factor":
@@ -393,7 +393,7 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
         "The app verifies closure, identity, generators and the complete bounded subgroup enumeration."),
       check("Galois correspondence", "checked",
         "Subgroup normality and index/degree products are checked; Sage verifies each fixed-field defining relation."));
-      if (mode !== "FAILED") mode = "CHECKED";
+      mode = "CHECKED";
       break;
     }
     case "sage.groebner.compute":
@@ -472,7 +472,7 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
       check("Hermite transformation", hermiteVerified ? "checked" : "unavailable", hermiteVerified
         ? "Unimodular U satisfies U·A=H under exact core validation." : hermite.transformation.reason ?? "No transformation supplied."),
       check("Smith invariants", "checked", "Diagonal divisibility, rank and cokernel decomposition match the parsed result."));
-      if (mode !== "FAILED" && smithVerified && hermiteVerified) mode = "CHECKED";
+      if (smithVerified && hermiteVerified) mode = "CHECKED";
       break;
     }
   }

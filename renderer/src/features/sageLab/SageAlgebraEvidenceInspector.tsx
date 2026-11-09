@@ -15,8 +15,8 @@ const Facts = ({ items }: { items: readonly InspectorFact[] }) => <dl className=
   </div>)}
 </dl>;
 
-export default function SageAlgebraEvidenceInspector({ model, section }: {
-  model: AlgebraEvidenceInspectorModel; section: Section }) {
+export default function SageAlgebraEvidenceInspector({ model, section, onExport }: {
+  model: AlgebraEvidenceInspectorModel; section: Section; onExport?: () => void }) {
   return <div data-testid={`cas-evidence-${section}`} className="sage-evidence-inspector"
     data-qualification={model.qualification.status}>
     <div style={{ fontSize: 11, color: "#64748b" }}>Saved object-linked Sage evidence</div>
@@ -31,6 +31,8 @@ export default function SageAlgebraEvidenceInspector({ model, section }: {
         model.mode === "COMPUTED" ?
           "Saved output integrity is checked; mathematical verification is limited to the checks listed under Verification." :
           "A saved evidence check failed; result values are withheld when integrity fails."}</p>
+      {model.qualification.canUseResult && onExport && <button type="button" onClick={onExport}>
+        Export evidence JSON</button>}
     </>}
     {section === "verification" ? <>
       <div data-testid="cas-evidence-verification-mode" className={`sage-evidence-mode sage-evidence-mode-${model.mode.toLowerCase()}`}>

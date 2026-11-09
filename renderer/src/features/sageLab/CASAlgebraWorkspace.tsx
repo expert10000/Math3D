@@ -41,6 +41,7 @@ import SageObjectOperations from "./SageObjectOperations";
 import SageRecipes from "./SageRecipes";
 import SageAlgebraEvidenceInspector from "./SageAlgebraEvidenceInspector";
 import { algebraEvidenceInspectorModel } from "./algebraEvidenceInspectorModel";
+import { algebraEvidenceInspectorExportJson } from "./algebraEvidenceInspectorExport";
 import { createQuotientStarter, describeStructure, resolveStructureSelection, selectedStructure,
   structureDisplay, structureSelectionKey, type StructureStarterKind } from "./sageStructuresModel";
 
@@ -94,6 +95,7 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
   const [selectedEvidenceId, setSelectedEvidenceId] = useState<string | null>(() =>
     project?.algebraEvidence?.find((item) => item.request.target.objectId === selection?.objectId)?.id ?? null);
   const [evidenceFocus, setEvidenceFocus] = useState(0);
+  const [evidenceExportError, setEvidenceExportError] = useState("");
   const [builder, setBuilder] = useState<"ring" | "ideal" | "group" | "module" | "chain" | "curve" | "scheme" | null>(null);
   const [quotientName, setQuotientName] = useState("");
   const [quotientError, setQuotientError] = useState("");
@@ -206,6 +208,20 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
     item.request.target.objectId === chosen?.record.id) ?? null;
   const evidenceModel = project && selectedEvidence ? algebraEvidenceInspectorModel(project, selectedEvidence) : null;
   const canUseSpecializedEvidence = evidenceModel?.qualification.canDerive && evidenceModel.mode !== "FAILED";
+  const exportEvidence = () => {
+    if (!project || !selectedEvidence) return;
+    try {
+      const content = algebraEvidenceInspectorExportJson(project, selectedEvidence);
+      const url = URL.createObjectURL(new Blob([content], { type: "application/json;charset=utf-8" }));
+      const link = document.createElement("a");
+      link.href = url; link.download = `math3d-cas-evidence-${selectedEvidence.id}.json`;
+      document.body.appendChild(link); link.click(); link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setEvidenceExportError("");
+    } catch (error) {
+      setEvidenceExportError(error instanceof Error ? error.message : "CAS evidence could not export.");
+    }
+  };
   const savedGaloisGroup = selectedEvidence && selectedEvidence.request.operation === "sage.galois.analyze"
     ? project?.algebraObjects?.find((entry) => { const definition = entry.revisions.at(-1)?.definition;
       return definition?.kind === "finite-group" && definition.source?.evidenceId === selectedEvidence.id; }) : null;
@@ -217,6 +233,7 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       catch { /* Inspector selection remains available without local storage. */ }
     }
     setSelectedEvidenceId(id);
+    setEvidenceExportError("");
     setEvidenceFocus((value) => value + 1);
   };
   const freshness = project ? inspectProjectAlgebraFreshness(project) : [];
@@ -594,7 +611,9 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
         onInspectEvidence={inspectEvidence} />,
       evidence: evidenceModel && selectedEvidence ? {
         focusKey: `${selectedEvidence.id}:${evidenceFocus}`,
-        result: <><SageAlgebraEvidenceInspector model={evidenceModel} section="result" />
+        result: <><SageAlgebraEvidenceInspector model={evidenceModel} section="result"
+          onExport={evidenceModel.qualification.canUseResult ? exportEvidence : undefined} />
+          {evidenceExportError && <p role="alert">{evidenceExportError}</p>}
           {canUseSpecializedEvidence && selectedEvidence.request.operation === "sage.galois.analyze" &&
             <SageGaloisViewer key={selectedEvidence.id} result={selectedEvidence.result as SageGaloisResult}
               groupLabel={savedGaloisGroup?.revisions.at(-1)?.label} saveError={groupError}
