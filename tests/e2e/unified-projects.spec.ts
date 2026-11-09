@@ -700,7 +700,8 @@ test("PRJ05 inspects stale lineage, provenance and missing artifacts without ope
     await panel.getByTestId("project-detail-tab-results").click();
     const browser = panel.getByTestId("project-results-browser");
     await expect(browser.getByTestId(`project-result-select-${result.resultId}`)).toBeVisible();
-    await expect(browser.getByTestId("project-result-detail")).toContainText("Unavailable");
+    await expect(browser.getByTestId("project-result-axis-integrity")).toContainText("Source unavailable");
+    await expect(browser.getByTestId("project-result-claim")).toContainText("1 unavailable artifact(s)");
     await browser.getByTestId(`project-artifact-select-${handle.artifactId}`).click();
     await expect(browser.getByTestId("project-result-detail")).toContainText("100 bytes");
     await expect(browser.getByTestId("project-result-detail")).toContainText(core.structuralHash("missing"));
