@@ -2,6 +2,8 @@
 
 Start with the [first-run Project guide](FIRST_RUN_PROJECT_STUDY.md) for a journey that uses built-in data. For a computation or import that does not work, identify the **operation**, **host**, and **source** before changing settings. A host facility probe, an installed runtime, and support for a particular scientific operation are three different checks.
 
+In the desktop app, open **Compute Center → Overview** for the Runtime Center summary, then **Open route diagnostics** for the individual Sage checks and managed engines. A route marked **checking** has not returned a fresh probe; **limited** means the route responded but advertised no supported operations. The Docker manager and the Sage Docker operation route have separate status. The Jobs panel records admission and backend outcomes for the current app session; a completed job still needs its saved Result's source and mathematical checks.
+
 ## Choose the matching route
 
 | Host | Available route | What to check first |

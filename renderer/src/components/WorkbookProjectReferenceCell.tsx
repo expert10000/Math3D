@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import type { KernelWorkspaceModule } from "@math3d/core";
+import { inspectProjectStudyMembers, type KernelWorkspaceModule } from "@math3d/core";
 import {
   createNotebookReference,
   inspectNotebookReference,
@@ -47,10 +47,14 @@ export const WorkbookProjectReferenceCell: React.FC<Props> = ({ reference, readO
   const sourceEntry = validReference && project?.workspace.entries.find((entry) => entry.expected.id === validReference.source.documentId);
   const targetEntry = validReference?.kind === "document" ? sourceEntry : null;
   const result = validReference?.kind === "result" ? inspection?.result : null;
-  const currentTitle = targetEntry && context ? titleFor(targetEntry, context) : result?.provenance.operation.type ?? validReference?.targetId;
+  const study = validReference?.kind === "study" ? inspection?.study : null;
+  const currentTitle = targetEntry && context ? titleFor(targetEntry, context) :
+    study?.title ?? result?.provenance.operation.type ?? validReference?.targetId;
   const options = project ? [
     ...project.workspace.entries.map((entry) => ({ value: `d:${entry.expected.id}`, label: `${entry.module} · ${titleFor(entry, context!)}` })),
     ...project.workspace.results.map((entry) => ({ value: `r:${entry.resultId}`, label: `Analysis · ${entry.provenance.operation.type} · source r${entry.provenance.source.revision}` })),
+    ...(project.workspace.studies ?? []).map((entry) => ({ value: `s:${entry.id}`,
+      label: `Study · ${entry.title} · ${entry.members.length} member(s)` })),
   ] : [];
 
   const link = () => {
@@ -58,7 +62,7 @@ export const WorkbookProjectReferenceCell: React.FC<Props> = ({ reference, readO
     try {
       const latest = getProject();
       if (!latest?.live) throw new Error("Open the saved project in Projects before linking a cell.");
-      const kind = selection.startsWith("d:") ? "document" : "result";
+      const kind = selection.startsWith("d:") ? "document" : selection.startsWith("r:") ? "result" : "study";
       onChange(createNotebookReference(latest.project, kind, selection.slice(2)));
       setContext(latest);
       setError(null);
@@ -69,7 +73,7 @@ export const WorkbookProjectReferenceCell: React.FC<Props> = ({ reference, readO
 
   return <div data-testid="workbook-project-reference-cell" style={{ border: "1px solid #bfdbfe", borderRadius: 8, background: "#f8fbff", padding: 10, display: "grid", gap: 7, fontSize: 11 }}>
     <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-      <strong>Project document or result</strong>
+      <strong>Project document, result or Study</strong>
       <button type="button" onClick={refresh} style={{ fontSize: 11 }}>Refresh status</button>
     </div>
     {error && <div role="status" style={{ color: "#b42318" }}>{error}</div>}
@@ -77,7 +81,7 @@ export const WorkbookProjectReferenceCell: React.FC<Props> = ({ reference, readO
     {!context?.live && <button type="button" onClick={onOpenProjects} style={{ width: "fit-content", fontSize: 11 }}>Open Projects</button>}
     {context?.live && !readOnly && <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
       <select data-testid="workbook-project-reference-target" value={selection} onChange={(event) => setSelection(event.target.value)} style={{ minWidth: 180, maxWidth: "100%", flex: 1 }}>
-        <option value="">Choose a Project document or result…</option>
+        <option value="">Choose a Project document, result or Study…</option>
         {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
       </select>
       <button type="button" onClick={link} disabled={!selection}>Link selection</button>
@@ -85,13 +89,17 @@ export const WorkbookProjectReferenceCell: React.FC<Props> = ({ reference, readO
     {reference && !validReference && <div role="status" style={{ color: "#b42318" }}>Invalid saved Project reference. Choose a new target from the active Project.</div>}
     {validReference ? <div data-testid="workbook-project-reference-status" style={{ borderTop: "1px solid #dbeafe", paddingTop: 7, display: "grid", gap: 3 }}>
       <strong>{currentTitle ?? validReference.targetId}</strong>
-      <span>{validReference.kind === "document" ? "Document" : "Saved result"} · source revision {validReference.source.revision} · {inspection?.status ?? "unresolved"}</span>
+      <span>{validReference.kind === "document" ? "Document" : validReference.kind === "study" ? "Saved Study" : "Saved result"} · source revision {validReference.source.revision} · {inspection?.status ?? "unresolved"}</span>
       <span style={{ overflowWrap: "anywhere", color: "#64748b" }}>{validReference.targetId}</span>
       <span>{inspection?.reason ?? "Open the referenced Project to verify this link."}</span>
       <WorkbookProvenance project={project ?? null} reference={validReference} reader={context?.readArtifact} />
+      {study && project && <ul data-testid="workbook-study-members" style={{ margin: 0, paddingLeft: 18 }}>
+        {inspectProjectStudyMembers(project, study).map(member =>
+          <li key={member.memberId}>{member.memberId}: {member.status}</li>)}
+      </ul>}
       {!readOnly && <WorkbookAnalysisRerun context={context} reference={validReference} onRelink={onChange} />}
-      <button type="button" disabled={!context?.live || !sourceEntry || inspection?.status === "different-project" || inspection?.status === "missing"} onClick={() => sourceEntry && onOpenDocument(sourceEntry.expected.id, sourceEntry.module)} style={{ width: "fit-content", fontSize: 11 }}>
-        {validReference.kind === "result" ? "Open source document" : "Open current document"}
+      <button type="button" disabled={!context?.live || !sourceEntry || inspection?.status !== "current"} onClick={() => sourceEntry && onOpenDocument(sourceEntry.expected.id, sourceEntry.module)} style={{ width: "fit-content", fontSize: 11 }}>
+        Open exact source document
       </button>
     </div> : <div>No target linked yet. The cell will store a Project ID, target ID and source generation.</div>}
   </div>;

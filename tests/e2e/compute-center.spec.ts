@@ -13,9 +13,13 @@ test("Compute Center shows live diagnostics and opens Runtimes", async () => {
     await expect(center.getByRole("region", { name: "Local backends" })).toContainText("CGAL");
     await expect(center.getByRole("region", { name: "Local backends" })).toContainText("VTK");
     await expect(center.getByRole("region", { name: "Broker jobs" })).toContainText("Scientific broker history");
+    await expect(center.getByTestId("runtime-center-sage-routes")).toContainText("Sage Docker");
+    await expect(center.getByTestId("runtime-route-sage-docker"))
+      .toHaveAttribute("data-state", /ready|limited|unavailable/, { timeout: 30_000 });
+    await expect(center.getByTestId("runtime-route-sage-private")).toContainText("Version:");
     await expect(center.getByTestId("compute-center-python-admission")).not.toBeEmpty();
     await expect(center.getByTestId("compute-center-memory")).not.toBeEmpty();
-    await center.getByRole("button", { name: "Runtimes", exact: true }).click();
+    await center.getByRole("button", { name: "Open route diagnostics" }).click();
     await expect(center.getByTestId("sage-runtime-local")).toContainText("Checked", { timeout: 30_000 });
     await expect(center.getByTestId("sage-runtime-docker")).toContainText("Checked", { timeout: 30_000 });
     await expect(center.getByTestId("sage-runtime-local")).toContainText("Environment: WSL Ubuntu");

@@ -10,8 +10,26 @@ export type ComputeJobRecord = Readonly<{
   phase?: string;
   backendId?: string;
   failure?: string;
+  failureCode?: string;
+  attemptCount?: number;
   updatedAt: number;
 }>;
+
+export type ComputeJobPresentation = Readonly<{ label: string; detail: string;
+  tone: "current" | "pending" | "warning" | "error" }>;
+const admissionFailures = new Set(["invalid-request", "duplicate-job", "capability-unavailable",
+  "transport-unavailable"]);
+
+export function presentComputeJob(job: ComputeJobRecord): ComputeJobPresentation {
+  if (job.status === "routing") return { label: "Checking route", detail: "Checking admission and backend capability.", tone: "pending" };
+  if (job.status === "running") return { label: "Running", detail: job.phase ?? "The backend is processing this job.", tone: "pending" };
+  if (job.status === "complete") return { label: "Completed", detail: "The backend returned a result. Inspect its Result record for scientific verification.", tone: "current" };
+  if (job.status === "cancelled") return { label: "Cancelled", detail: job.failure ?? "The job was cancelled before completion.", tone: "warning" };
+  const code = job.failureCode;
+  const label = code && admissionFailures.has(code) ? "Not admitted" : code === "stale-source" ?
+    "Source changed" : code === "deadline-exceeded" ? "Timed out" : "Failed";
+  return { label, detail: job.failure ?? code ?? "The job failed without a reported reason.", tone: "error" };
+}
 
 const listeners = new Set<() => void>();
 let jobs: readonly ComputeJobRecord[] = [];
@@ -50,10 +68,12 @@ export function recordScientificJobEvent(event: ScientificJobEvent): void {
     ...existing,
     status: event.type === "scientific-job.cancelled" ? "cancelled" :
       event.type === "scientific-job.failed" || event.type === "scientific-job.timed-out" || event.type === "scientific-job.stale-rejected" ? "failed" :
-      event.type === "scientific-job.completed" ? "complete" : "running",
+      event.type === "scientific-job.completed" ? "complete" :
+        event.type === "scientific-job.submitted" ? "routing" : "running",
     progress,
     phase: event.progress?.message ?? existing.phase,
     failure: event.failureCode ?? existing.failure,
+    failureCode: event.failureCode ?? existing.failureCode,
     updatedAt: Date.now(),
   });
 }
@@ -78,12 +98,17 @@ export function observeBrokerJob<T extends ScientificBrokerOutcome>(
       phase: existing?.phase,
       backendId: outcome.ok ? outcome.backend.backendId : outcome.attempts.at(-1)?.backendId ?? existing?.backendId,
       failure: outcome.ok ? undefined : outcome.message,
+      failureCode: outcome.ok ? undefined : outcome.code,
+      attemptCount: outcome.attempts.length,
       updatedAt: Date.now(),
     });
     return outcome;
   }, (error: unknown) => {
     brokerSettled.add(jobId);
-    publish({ jobId, operationType, status: "failed", progress: null, failure: error instanceof Error ? error.message : String(error), updatedAt: Date.now() });
+    const existing = jobs.find((item) => item.jobId === jobId);
+    publish({ jobId, operationType, status: "failed", progress: existing?.progress ?? null,
+      backendId: existing?.backendId, failure: error instanceof Error ? error.message : String(error),
+      updatedAt: Date.now() });
     throw error;
   });
 }

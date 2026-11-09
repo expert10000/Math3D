@@ -51,7 +51,7 @@ import { checkSavedRegionResultSources, type SavedRegionSourceStatus } from
   "./vectorfield3d/checkSavedRegionResultSources";
 import { WorkbookPublication, type PublicationKind } from "./components/WorkbookPublication";
 import { loadProjectResources } from "./projects/projectResourceArchive";
-import { createPortableNotebookPublication, notebookPublicationManifest, notebookPublicationMarkdown, notebookPublicationManifestHtml, portableNotebookPublicationHtml } from "./workbook/notebookPublication";
+import { createNotebookPublicationEvidenceSnapshot, createPortableNotebookPublication, notebookPublicationManifest, notebookPublicationMarkdown, notebookPublicationManifestHtml, portableNotebookPublicationHtml } from "./workbook/notebookPublication";
 import { algebraReproManifestMarkdown, createAlgebraReproManifest } from "./workbook/algebraReproManifest";
 import { freezeWorkbookSnapshot, workbookSnapshotQualification } from "@math3d/workbook";
 import { rerunNotebookAnalysis } from "./workbook/notebookRerun";
@@ -77917,6 +77917,12 @@ case "mobius":
       downloadTextFile(algebraReproManifestMarkdown(manifest), base + ".algebra.md", "text/markdown");
       return;
     }
+    if (kind === "evidence-json") {
+      const snapshot = createNotebookPublicationEvidenceSnapshot([book], reportProject,
+        context?.readArtifact, selected, reportReader);
+      downloadTextFile(canonicalJsonStringify(snapshot), base + ".evidence.json", "application/json");
+      return;
+    }
     if (kind === "markdown") {
       downloadTextFile(buildWorkbooksMarkdown([book], book.id, reportProject, selected, context?.readArtifact, reportReader), base + ".report.md", "text/markdown"); return;
     }
@@ -80461,6 +80467,7 @@ case "mobius":
         onCurrentProjectChange={(project, resources) => { activeNotebookProjectRef.current = project; activeNotebookProjectResourcesRef.current = resources ?? null; setNotebookProjectVersion((version) => version + 1); }}
         verifiedQuantumScene={verifiedQuantumSceneTitle && quantumSceneReference ? { format: verifiedQuantumSceneFormat, title: verifiedQuantumSceneTitle, ...quantumSceneReference } : null}
         onImportQuantumScene={() => handleMenuCommand("file:open-quantum-scene")}
+        onOpenCasGallery={() => { setProjectsOpen(false); setNumberTheoryWorkspaceOpen(false); setCasWorkspaceOpen(true); }}
         onImportScientificScene={() => handleMenuCommand("file:open-scientific-scene")}
         onOpenQuantumScene={async (reference) => {
           if (!window.quantumScenes?.openReference) throw new TypeError("Verified quantum scenes are available only in the desktop app.");

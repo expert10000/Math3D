@@ -2,7 +2,7 @@
 
 **Product roadmap · Architecture / UX / Scientific interoperability / Release engineering**<br>
 **Prepared:** 2026-11-05<br>
-**Updated:** 2026-11-07<br>
+**Updated:** 2026-11-09<br>
 **Target:** Math3D 2.0.0 General Availability (GA)<br>
 **Status:** Architecture, workflow, documentation, and release-gate work is merged to `main`; RC1, RC2, and GA are not declared. Root and renderer packages still report 1.7.0, and no `v2.0.0` tag exists.<br>
 **Primary product claim:** *Construct, compute, analyze, compare, document, and publish connected mathematical objects in one scientific workspace.*
@@ -972,6 +972,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 - `M3D20-06c feat(jobs): consistent admission/cancellation/failure presentation`.
 - `M3D20-06d test(runtime): offline, mismatched version, crashed worker, permission guard`.
 
+**Runtime Center slice (2026-11-09):** Compute Center now aggregates the existing Python diagnostics, CGAL check, VTK bridge, broker discovery, managed engine status, and separate Local WSL, Docker, and private Sage probes. The overview reports route state, version, transport, and advertised operation count without treating a healthy container as proof of a usable Sage operation. A route whose identity or version differs from its capability manifest is unavailable. Job history distinguishes route refusal, cancellation, stale source, timeout, execution failure, and backend completion; completion directs users to the saved Result for scientific verification. Unit cases cover offline routes, a crashed worker, version mismatch, permission denial, missing operations, and late events; desktop smoke covers route diagnostics. This is source-checkout evidence only. Installed-runtime truth, the full route/permission matrix, and exact-candidate host receipts remain open.
+
 **Exit:** an installed desktop reports only actual capabilities; no implied verified Docker/Sage route when unavailable.
 
 ### M3D20-07 — Workbook and Notes convergence (P0)
@@ -980,6 +982,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 - `M3D20-07b feat(notes): link exact scientific selections and result revisions`.
 - `M3D20-07c feat(publication): immutable evidence snapshot and omissions manifest`.
 - `M3D20-07d test(workbook): source changed, missing sidecar, independent import/export`.
+
+**Workbook and Notes slice (2026-11-09):** Workbook reference blocks can cite the exact saved Study generation and inspect each Study member when reopened. The Study view lists only checksum-qualified Workbook citations and distinguishes current from historical links. Workbook publication has a deterministic JSON evidence snapshot with a content hash and omissions manifest; changed citations withhold result values and artifact claims. A pinned QWZ band selection can become a source-bound Project Note, with reverse navigation from the Study and explicit current, stale, or missing status. Focused tests cover source change, missing payloads, tampered payloads, package import, and exact Note anchor validation. This is a bounded research narrative path; the full flagship Study matrix and installed-runtime validation remain open.
 
 **Exit:** all flagship Studies can create a trustworthy research narrative; source changes are visibly qualified and export cannot invent evidence.
 
@@ -990,6 +994,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 - `M3D20-08c feat(gallery): QWZ/SSH/hydrogen scientific set`.
 - `M3D20-08d feat(gallery): CAS and provenance demonstration set`.
 - `M3D20-08e test(gallery): open/reopen/reset/cross-platform fallback`.
+
+**Guided Gallery slice (2026-11-09):** Projects now offers a 15-card guided Study view alongside the existing starter list. Every card states a question, objects, operations, expected insight, prerequisites, platform scope, asset expectation, offline behaviour, first-open path, reset path and a scientific limitation. Seven built-in Project journeys add exact, saved Study layouts only when opened through the guided route; ordinary starter copies retain their prior content. The QWZ, SSH and hydrogen cards open the desktop verified-scene chooser and explicitly require an external producer bundle. The algebra card opens the existing CAS example gallery, where four validated definition chains can be saved to a named Project. Unit tests cover catalog routes and independent Study copies; desktop tests cover filtering, a full Study restart and a saved algebra example. The [Gallery acceptance matrix](CURATED_STUDY_GALLERY.md) records what is verified and what remains outside this slice. Browser/mobile presentation, complete scientific fixtures, numeric asset budgets, screenshots and the full 08 exit gate remain open.
 
 **Exit:** 10–15 genuinely working, explanation-rich starters rather than a wall of unconnected thumbnails.
 

@@ -5,7 +5,7 @@ import { join, resolve, sep } from "node:path";
 import { launchRepoElectron } from "./helpers/electronLauncher";
 
 test("Lab QWZ study handoff stages both exact scenes in a new Math3D Project", async () => {
-  test.setTimeout(180_000);
+  test.setTimeout(240_000);
   const root = await mkdtemp(join(tmpdir(), "m3d-qi08-ui-"));
   const handoff = join(root, "study");
   const runId = "run-05ce1036d70c466eb4f900944a85c474";
@@ -71,6 +71,17 @@ test("Lab QWZ study handoff stages both exact scenes in a new Math3D Project", a
     await expect(studies.getByTestId("project-study-quantum-linked-k")).toContainText("Linked k=");
     await projects.getByTestId("project-save").click();
     await expect(projects.getByTestId("project-message")).toContainText("Saved", { timeout: 60_000 });
+    await studies.getByTestId("project-study-note-on-pin").click();
+    const notes = projects.getByTestId("project-notes-panel");
+    await expect(notes).toBeVisible();
+    await expect(notes.locator('[data-testid^="note-draft-"]')).toContainText("study · Session draft");
+    await notes.getByTestId("notes-save").click();
+    await expect(notes.getByTestId("notes-message")).toContainText("Saved 1 Note", { timeout: 60_000 });
+    await expect(notes.getByText("Pinned k observation")).toBeVisible();
+    await notes.getByRole("button", { name: "Back to Project" }).click();
+    if (!await studies.getByTestId("project-study-view").count())
+      await studies.locator('[data-testid^="project-study-open-"]').click();
+    await expect(studies.getByTestId("project-study-note-references")).toContainText("Pinned k observation");
     await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1") || "null")?.workspace.entries
       .filter((entry: { module: string }) => entry.module === "quantum").length ?? 0), { timeout: 60_000 }).toBe(2);
     const project = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
@@ -79,6 +90,9 @@ test("Lab QWZ study handoff stages both exact scenes in a new Math3D Project", a
     expect(project.workspace.quantumStudies[0].templateId).toBe("qwz");
     expect(project.workspace.quantumStudies[0].panels.map((panel: { role: string }) => panel.role)).toEqual(["curvature", "bands"]);
     expect(project.workspace.studies[0].layout.mode).toBe("quad");
+    expect(project.notes).toHaveLength(1);
+    expect(project.notes[0].anchor).toMatchObject({ kind: "study-selection",
+      studyId: project.workspace.studies[0].id, memberId: "bands" });
     expect(project.workspace.entries.filter((entry: { module: string }) => entry.module === "quantum")
       .every((entry: { checkpoint: { linkedViews?: unknown[] } }) => entry.checkpoint.linkedViews?.length === 1)).toBe(true);
     await app.close();
@@ -100,6 +114,14 @@ test("Lab QWZ study handoff stages both exact scenes in a new Math3D Project", a
     await reopenedStudies.locator('[data-testid^="project-study-open-"]').click();
     await expect(reopenedStudies.getByTestId("project-study-panes")).toHaveAttribute("data-layout", "quad");
     await expect(reopenedStudies.getByTestId("project-study-qwz-pin-status")).toContainText("Pinned band sample 0");
+    await expect(reopenedStudies.getByTestId("project-study-note-references")).toContainText("Pinned k observation · current");
+    await reopenedStudies.getByTestId("project-study-note-references").getByRole("button", { name: "Open Note" }).click();
+    const reopenedNotes = reopenedProjects.getByTestId("project-notes-panel");
+    await expect(reopenedNotes.getByText("Pinned k observation")).toBeVisible();
+    await expect(reopenedNotes.getByText(/Study .*selection qwz:band-0:/)).toBeVisible();
+    await reopenedNotes.getByRole("button", { name: "Back to Project" }).click();
+    if (!await reopenedStudies.getByTestId("project-study-view").count())
+      await reopenedStudies.locator('[data-testid^="project-study-open-"]').click();
     await expect(reopenedStudies.getByTestId("project-study-qwz-cursor-status")).toContainText("Berry curvature", { timeout: 60_000 });
     const exportEvidence = async (name: string) => {
       const target = join(root, name);

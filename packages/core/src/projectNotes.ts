@@ -33,6 +33,8 @@ export type ProjectNoteAnchor =
   | Readonly<{ kind: "subentity"; source: ScientificSourceGeneration; objectId: string; entityKind: "face" | "edge" | "vertex"; entityId: string; topologyHash: StructuralHash; barycentric?: NotePoint3 }>
   | Readonly<{ kind: "entity-selection"; source: ScientificSourceGeneration; objectId: string; entityKind: "face" | "edge" | "vertex"; entityId: string; topologyHash: StructuralHash }>
   | Readonly<{ kind: "result"; source: ScientificSourceGeneration; resultId: string; resultHash: StructuralHash }>
+  | Readonly<{ kind: "study-selection"; source: ScientificSourceGeneration; studyId: StableDocumentId;
+      studyHash: StructuralHash; memberId: string; selectionId: string }>
   | Readonly<{ kind: "graph-selection"; source: ScientificSourceGeneration; objectId: string; objectHash: StructuralHash;
       probe?: Readonly<{ x: number; y: number; parameter?: number; rowId?: string }> }>
   | Readonly<{ kind: "workbook-block"; workbookId: StableDocumentId; workbookRevision: number; blockId: string; blockHash: StructuralHash }>;
@@ -68,6 +70,8 @@ export type ProjectNoteAnchorResolver = Readonly<{
   objectShape?: (documentId: StableDocumentId, objectId: string) => StructuralHash | null;
   subentityTopology?: (documentId: StableDocumentId, objectId: string, entityKind: "face" | "edge" | "vertex", entityId: string) => StructuralHash | null;
   result?: (resultId: string) => Readonly<{ source: ScientificSourceGeneration; hash: StructuralHash }> | null;
+  studySelection?: (studyId: StableDocumentId, memberId: string, selectionId: string) => Readonly<{
+    hash: StructuralHash; source: ScientificSourceGeneration; status: "current" | "stale" | "missing" }> | null;
   graphObject?: (documentId: StableDocumentId, objectId: string) => StructuralHash | null;
   workbookBlock?: (workbookId: StableDocumentId, blockId: string) => Readonly<{ revision: number; hash: StructuralHash }> | null;
 }>;
@@ -140,6 +144,11 @@ export const normalizeProjectNoteAnchor = (value: unknown): ProjectNoteAnchor | 
     } else if (value.kind === "result") {
       if (!exact(value, ["kind", "source", "resultId", "resultHash"]) ||
         !id(value.resultId) || !isStructuralHash(value.resultHash)) return null;
+    } else if (value.kind === "study-selection") {
+      if (!exact(value, ["kind", "source", "studyId", "studyHash", "memberId", "selectionId"]) ||
+        !isStableDocumentId(value.studyId) || !value.studyId.startsWith("math3d:study:") ||
+        !isStructuralHash(value.studyHash) || !id(value.memberId) || !id(value.selectionId) ||
+        value.memberId.length > 160 || value.selectionId.length > 160) return null;
     } else if (value.kind === "graph-selection") {
       if (!exact(value, "probe" in value ? ["kind", "source", "objectId", "objectHash", "probe"] : ["kind", "source", "objectId", "objectHash"]) ||
         !id(value.objectId) || !isStructuralHash(value.objectHash)) return null;
@@ -288,6 +297,17 @@ export const inspectProjectNoteAnchor = (candidate: unknown, resolver: ProjectNo
     if (!result || !isScientificSourceGeneration(result.source) || !isStructuralHash(result.hash) ||
       !matchesScientificSourceGeneration(result.source, anchor.source) || result.hash !== anchor.resultHash)
       return { status: "missing", reason: "The exact saved result is unavailable.", currentSource };
+  }
+  if (anchor.kind === "study-selection") {
+    const linked = resolver.studySelection?.(anchor.studyId, anchor.memberId, anchor.selectionId);
+    if (!linked || linked.status === "missing")
+      return { status: "missing", reason: "The pinned Study selection or a member is unavailable.", currentSource };
+    if (linked.hash !== anchor.studyHash || linked.status === "stale" ||
+      !matchesScientificSourceGeneration(linked.source, anchor.source))
+      return { status: "stale", reason: "The Study, pinned selection, or member generation changed.", currentSource };
+    return matchesScientificSourceGeneration(anchor.source, currentSource)
+      ? { status: "current", reason: "Study pin and member generation match; external scientific bytes still require verification.", currentSource }
+      : { status: "stale", reason: "Study selection source generation changed.", currentSource };
   }
   return matchesScientificSourceGeneration(anchor.source, currentSource)
     ? { status: "current", reason: "Source generation matches.", currentSource }

@@ -2,8 +2,11 @@ import React, { useCallback, useEffect, useSyncExternalStore, useState } from "r
 import { cgalHealth } from "../../services/cgalMeshClient";
 import { getMeshBackendCapabilities } from "../../services/meshBackend";
 import { getPythonWorkerDiagnostics, type PythonWorkerDiagnosticsSnapshot } from "../../services/pythonWorkerDiagnosticsClient";
+import { sageExecutionRegistry, type SageBackend } from "../../services/sageOperationExecution";
 import type { ScientificBackendCapabilitySnapshot } from "@math3d/kernel";
-import { discoverScientificBackends, getComputeJobs, subscribeComputeJobs, type ComputeJobRecord } from "./scientificJobTelemetry";
+import { discoverScientificBackends, getComputeJobs, presentComputeJob, subscribeComputeJobs,
+  type ComputeJobRecord } from "./scientificJobTelemetry";
+import { buildRuntimeCapabilityReport, type RuntimeProbeResult, type RuntimeState } from "./runtimeCapabilityReport";
 import ComputeEngineManagerPanel from "../computeEngines/ComputeEngineManagerPanel";
 import SageRuntimeInspector from "./SageRuntimeInspector";
 
@@ -32,7 +35,8 @@ const labelFor = (job: ComputeJobRecord) => ({
   "number-theory.mod-inverse": "Modular inverse",
   "sage.console.execute": "Sage Console",
 } as Record<string, string>)[job.operationType] ?? job.operationType;
-const statusColor = (ok: boolean | null) => ok === null ? "#64748b" : ok ? "#16803e" : "#a2530b";
+const statusColor = (status: RuntimeState) => status === "ready" ? "#16803e" :
+  status === "unavailable" ? "#a2530b" : "#64748b";
 const formatBytes = (bytes: number) => `${(bytes / 1024 ** 3).toFixed(2)} GB`;
 
 export default function ComputeCenterPanel({ onClose, initialTab = "overview" }: { onClose: () => void; initialTab?: "overview" | "runtimes" }) {
@@ -43,6 +47,8 @@ export default function ComputeCenterPanel({ onClose, initialTab = "overview" }:
   const [engines, setEngines] = useState<ComputeEngineSnapshot | null>(null);
   const [memory, setMemory] = useState<MemorySnapshot | null>(null);
   const [brokerBackends, setBrokerBackends] = useState<readonly ScientificBackendCapabilitySnapshot[]>([]);
+  const [sageProbes, setSageProbes] = useState<Partial<Record<SageBackend, RuntimeProbeResult>>>({});
+  const [checkedAt, setCheckedAt] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const capabilities = getMeshBackendCapabilities();
@@ -59,14 +65,23 @@ export default function ComputeCenterPanel({ onClose, initialTab = "overview" }:
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
-    const [healthResult, engineResult, brokerResult] = await Promise.allSettled([
-      cgalHealth(),
-      window.computeEngines?.getStatus() ?? Promise.resolve(null),
-      discoverScientificBackends(),
+    setPython(null); setCgal(null); setEngines(null); setBrokerBackends([]);
+    setSageProbes({}); setCheckedAt(0); setError(null);
+    const [[healthResult, engineResult, brokerResult], sageResults] = await Promise.all([
+      Promise.allSettled([cgalHealth(),
+        window.computeEngines?.getStatus() ?? Promise.resolve(null), discoverScientificBackends()]),
+      Promise.allSettled((["local", "docker", "private"] as const)
+        .map(backend => sageExecutionRegistry.probeBackend(backend))),
     ]);
     setCgal(healthResult.status === "fulfilled" ? healthResult.value : { ok: false, error: "State check failed" });
-    if (engineResult.status === "fulfilled") setEngines(engineResult.value);
-    if (brokerResult.status === "fulfilled") setBrokerBackends(brokerResult.value);
+    setEngines(engineResult.status === "fulfilled" ? engineResult.value : null);
+    setBrokerBackends(brokerResult.status === "fulfilled" ? brokerResult.value : []);
+    setSageProbes(Object.fromEntries((["local", "docker", "private"] as const).map((backend, index) => {
+      const result = sageResults[index];
+      return [backend, result?.status === "fulfilled" ? { probe: result.value } :
+        { error: result?.reason instanceof Error ? result.reason.message : "Route probe failed" }];
+    })) as Record<SageBackend, RuntimeProbeResult>);
+    setCheckedAt(Date.now());
     setError(engineResult.status === "rejected" ? "Compute engine status could not be read." : null);
     await refreshLive();
     setRefreshing(false);
@@ -83,15 +98,11 @@ export default function ComputeCenterPanel({ onClose, initialTab = "overview" }:
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
-  const sage = engines?.engines.find((engine) => engine.id === "sage");
-  const entries: Array<{ name: string; ok: boolean | null; detail: string }> = [
-    { name: "JavaScript", ok: true, detail: "Local renderer" },
-    { name: "Web Worker", ok: typeof Worker !== "undefined", detail: typeof Worker !== "undefined" ? "Browser worker available" : "Unavailable" },
-    { name: "Python", ok: python ? python.available : null, detail: python?.statusMessage ?? "Checking…" },
-    { name: "VTK", ok: !vtkBridge ? false : python ? python.available : null, detail: !vtkBridge ? "Bridge unavailable" : python?.available ? "Bridge and Python worker ready" : "Waiting for Python worker" },
-    { name: "CGAL", ok: cgal?.ok ?? null, detail: cgal ? cgal.ok ? "State check passed" : cgal.error ?? "Unavailable" : "Checking…" },
-    { name: "Sage Docker", ok: sage ? sage.healthy : null, detail: sage ? sage.statusText : "Checking…" },
-  ];
+  const runtimeReport = buildRuntimeCapabilityReport({ webWorker: typeof Worker !== "undefined",
+    python, cgal, vtkBridge, engines, broker: brokerBackends, sage: sageProbes, checkedAt });
+  const localRoutes = runtimeReport.routes.filter(route => route.group === "local");
+  const sageRoutes = runtimeReport.routes.filter(route => route.group === "sage");
+  const brokerRoutes = runtimeReport.routes.filter(route => route.group === "broker");
   const activeBrokerJobs = jobs.filter((job) => job.status === "routing" || job.status === "running").length;
 
   return <div data-testid="compute-center-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }} style={{ position: "fixed", inset: 0, zIndex: 2650, background: "rgba(15, 23, 42, 0.4)", display: "grid", placeItems: "center", padding: 12 }}>
@@ -107,12 +118,31 @@ export default function ComputeCenterPanel({ onClose, initialTab = "overview" }:
       {error && <div role="status" style={{ color: "#b42318" }}>{error}</div>}
       {activeTab === "overview" && <>
       <section style={card} aria-label="Local backends"><h3 style={{ margin: "0 0 10px", fontSize: 14 }}>Local</h3><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 8 }}>
-        {entries.map((entry) => <div key={entry.name} style={{ display: "flex", gap: 8, alignItems: "start", background: "white", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 10px" }}><span aria-label={entry.ok === null ? "Checking" : entry.ok ? "Available" : "Unavailable"} style={{ color: statusColor(entry.ok), fontWeight: 800 }}>{entry.ok === null ? "○" : entry.ok ? "✓" : "○"}</span><div><strong style={{ fontSize: 12 }}>{entry.name}</strong><div style={{ fontSize: 11, color: "#64748b", overflowWrap: "anywhere" }}>{entry.detail}</div></div></div>)}
+        {localRoutes.map((entry) => <div key={entry.id} data-testid={`runtime-route-${entry.id}`} style={{ display: "flex", gap: 8, alignItems: "start", background: "white", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 10px" }}><span aria-label={entry.state} style={{ color: statusColor(entry.state), fontWeight: 800 }}>{entry.state === "ready" ? "✓" : "○"}</span><div><strong style={{ fontSize: 12 }}>{entry.label}</strong><div style={{ fontSize: 11, color: "#64748b", overflowWrap: "anywhere" }}>{entry.detail}</div>{entry.version && <small>Version {entry.version}{entry.transport ? ` · ${entry.transport}` : ""}</small>}</div></div>)}
       </div><div style={{ color: "#64748b", fontSize: 11, marginTop: 10 }}>Broker routes discovered from active scientific job adapters</div>
-      {brokerBackends.length ? <div data-testid="compute-center-broker-backends" style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 5 }}>{brokerBackends.map((backend) => <span key={backend.backendId} title={backend.operations.map((operation) => operation.operationType).join(", ")} style={{ background: "white", border: "1px solid #dbe4f0", borderRadius: 6, padding: "4px 7px", fontSize: 11 }}>{backend.availability === "available" ? "✓" : "○"} {backend.backendId} · {backend.transport}</span>)}</div> : <div style={{ color: "#64748b", fontSize: 11 }}>No broker adapters active yet.</div>}
+      {brokerRoutes.length ? <div data-testid="compute-center-broker-backends" style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 5 }}>{brokerRoutes.map((backend) => <span key={backend.id} data-testid={`runtime-route-${backend.id}`} title={backend.detail} style={{ background: "white", border: "1px solid #dbe4f0", borderRadius: 6, padding: "4px 7px", fontSize: 11 }}>{backend.state === "ready" ? "✓" : "○"} {backend.label} · {backend.transport} · v{backend.version} · {backend.state}</span>)}</div> : <div style={{ color: "#64748b", fontSize: 11 }}>No broker adapters active yet.</div>}
       <button type="button" style={{ ...button, marginTop: 10 }} onClick={() => setActiveTab("runtimes")}>Open Runtimes</button></section>
+      <section style={card} aria-label="Sage routes" data-testid="runtime-center-sage-routes"><h3 style={{ margin: "0 0 6px", fontSize: 14 }}>Sage routes</h3>
+        <p style={{ fontSize: 11, color: "#64748b" }}>Each route uses its own live health and capability manifest. A running Docker container alone does not verify the Sage operation route.</p>
+        <div data-testid="runtime-center-checked-at" style={{ fontSize: 11, color: "#64748b", marginBottom: 7 }}>
+          {runtimeReport.checkedAt ? `Checked ${new Date(runtimeReport.checkedAt).toLocaleString()}` : "Checking routes…"}</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 8 }}>{sageRoutes.map(entry =>
+          <div key={entry.id} data-testid={`runtime-route-${entry.id}`} data-state={entry.state} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 8, padding: 9, fontSize: 11 }}>
+            <strong>{entry.label}</strong> · <span style={{ color: statusColor(entry.state) }}>{entry.state}</span>
+            <div>{entry.detail}</div><div>Version: {entry.version ?? "Not reported"} · {entry.transport ?? "Transport not reported"}</div>
+          </div>)}</div>
+        <button type="button" style={{ ...button, marginTop: 9 }} onClick={() => setActiveTab("runtimes")}>Open route diagnostics</button>
+      </section>
       <section style={card} aria-label="Broker jobs"><h3 style={{ margin: "0 0 4px", fontSize: 14 }}>Jobs</h3><div style={{ color: "#64748b", fontSize: 11, marginBottom: 10 }}>Scientific broker history in this app session: Curve, Volume, Mesh differential, and Sage jobs.</div>
-        {jobs.length === 0 ? <div data-testid="compute-center-empty-jobs" style={{ color: "#64748b", fontSize: 12 }}>No broker jobs have run in this session.</div> : <div style={{ display: "grid", gap: 6 }}>{jobs.map((job) => <div key={job.jobId} style={{ display: "grid", gridTemplateColumns: "minmax(120px, 1fr) auto auto", gap: 10, alignItems: "center", border: "1px solid #e2e8f0", borderRadius: 7, background: "white", padding: "8px 10px", fontSize: 12 }}><div><strong>{labelFor(job)}</strong><div title={job.jobId} style={{ color: "#64748b", fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{job.backendId ?? job.phase ?? job.jobId}</div></div><span style={{ textTransform: "capitalize", color: job.status === "failed" ? "#b42318" : job.status === "complete" ? "#16803e" : "#1d4ed8" }}>{job.status}</span><span>{job.progress === null ? "—" : `${Math.round(job.progress * 100)}%`}</span>{job.failure && <div style={{ gridColumn: "1 / -1", color: "#b42318", fontSize: 11 }}>{job.failure}</div>}</div>)}</div>}
+        {jobs.length === 0 ? <div data-testid="compute-center-empty-jobs" style={{ color: "#64748b", fontSize: 12 }}>No broker jobs have run in this session.</div> : <div style={{ display: "grid", gap: 6 }}>{jobs.map((job) => {
+          const presentation = presentComputeJob(job);
+          return <div key={job.jobId} data-testid={`compute-job-${job.jobId}`} style={{ display: "grid", gridTemplateColumns: "minmax(120px, 1fr) auto auto", gap: 10, alignItems: "center", border: "1px solid #e2e8f0", borderRadius: 7, background: "white", padding: "8px 10px", fontSize: 12 }}>
+            <div><strong>{labelFor(job)}</strong><div title={job.jobId} style={{ color: "#64748b", fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{job.backendId ?? job.jobId}{job.attemptCount ? ` · ${job.attemptCount} route attempt(s)` : ""}</div></div>
+            <span data-tone={presentation.tone} style={{ color: presentation.tone === "error" ? "#b42318" : presentation.tone === "current" ? "#16803e" : "#1d4ed8" }}>{presentation.label}</span>
+            <span>{job.progress === null ? "—" : `${Math.round(job.progress * 100)}%`}</span>
+            <div style={{ gridColumn: "1 / -1", color: presentation.tone === "error" ? "#b42318" : "#64748b", fontSize: 11 }}>{presentation.detail}</div>
+          </div>;
+        })}</div>}
       </section>
       <section style={card} aria-label="Resources"><h3 style={{ margin: "0 0 10px", fontSize: 14 }}>Resources</h3><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10, fontSize: 12 }}>
         <div><strong>Renderer CPU</strong><div data-testid="compute-center-cpu">{memory?.ok && memory.cpuPercent !== undefined ? `${memory.cpuPercent.toFixed(1)}%` : "Unavailable"}</div></div>
