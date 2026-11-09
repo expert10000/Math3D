@@ -9,6 +9,24 @@ export type MeshResultQualification = Readonly<{
   canUseCurrentValues: boolean;
 }>;
 
+/** Prefer the record for the visible controls; retain the latest other variant for historical context. */
+export const selectFocusedMeshResult = (input: {
+  store: MeshAnalysisResultStore;
+  mesh: MeshAnalysisMeshIdentity | null;
+  kind: MeshAnalysisResultKind | null;
+  variant?: string;
+  parameters?: MeshAnalysisParameters;
+}): MeshAnalysisResult | null => {
+  const { store, mesh, kind, variant, parameters } = input;
+  if (!mesh || !kind) return null;
+  const candidates = Object.values(store.entries)
+    .filter(result => result.kind === kind && result.identity.key === mesh.key)
+    .sort((left, right) => right.updatedAt - left.updatedAt);
+  const parameterHash = parameters === undefined ? null : analysisParameterHash(parameters);
+  return candidates.find(result => (variant === undefined || result.variant === variant) &&
+    (parameterHash === null || result.parameterHash === parameterHash)) ?? candidates[0] ?? null;
+};
+
 export const qualifyMeshAnalysisResult = (input: {
   store: MeshAnalysisResultStore;
   mesh: MeshAnalysisMeshIdentity | null;

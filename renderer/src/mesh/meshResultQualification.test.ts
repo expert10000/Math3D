@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createMeshAnalysisResultStore, invalidateMeshAnalysisResult, upsertMeshAnalysisResult,
   type MeshAnalysisMeshIdentity } from "./analysisResultStore";
-import { qualifyMeshAnalysisResult } from "./meshResultQualification";
+import { qualifyMeshAnalysisResult, selectFocusedMeshResult } from "./meshResultQualification";
 
 const mesh: MeshAnalysisMeshIdentity = { meshId: "m", revision: "v1", key: "m@v1",
   label: "Mesh", sourceLabel: "import:mesh", vertexCount: 4, faceCount: 2 };
@@ -46,5 +46,17 @@ describe("Mesh result qualification", () => {
     expect(qualifyMeshAnalysisResult({ store, mesh,
       result: store.entries[`${mesh.key}:curvature:default`]!, kind: "curvature" }))
       .toMatchObject({ status: "historical", canUseCurrentValues: false });
+  });
+
+  it("selects the exact visible variant before a newer unrelated run", () => {
+    let store = upsertMeshAnalysisResult(createMeshAnalysisResultStore(), { kind: "quality", mesh,
+      variant: "threshold-8", parameters: { threshold: 8 }, payload: { metric: 1 }, now: 1 });
+    store = upsertMeshAnalysisResult(store, { kind: "quality", mesh,
+      variant: "threshold-9", parameters: { threshold: 9 }, payload: { metric: 2 }, now: 2 });
+    expect(selectFocusedMeshResult({ store, mesh, kind: "quality", variant: "threshold-8",
+      parameters: { threshold: 8 } })?.variant).toBe("threshold-8");
+    expect(selectFocusedMeshResult({ store, mesh, kind: "quality", variant: "threshold-10" })?.variant)
+      .toBe("threshold-9");
+    expect(selectFocusedMeshResult({ store, mesh: { ...mesh, key: "other@v1" }, kind: "quality" })).toBeNull();
   });
 });

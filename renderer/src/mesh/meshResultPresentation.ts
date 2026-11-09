@@ -32,7 +32,7 @@ export const presentMeshActiveAnalysisResult = (input: {
   return {
     summary: canShow ? summary : {
       ...summary,
-      state: qualification.status === "computing" ? "Running" : "Unavailable",
+      state: qualification.status === "computing" || summary.state === "Running" ? "Running" : "Unavailable",
       statistics: [], percentiles: [], extrema: [], histogram: [], display: undefined, probe: undefined,
       warnings: [...new Set([...summary.warnings, qualification.reason])],
     },

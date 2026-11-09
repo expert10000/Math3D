@@ -45,4 +45,11 @@ describe("Mesh active result presentation", () => {
     expect(localGeodesic.summary.statistics).toEqual(summary.statistics);
     expect(localGeodesic.evidence.status).toBe("session-local");
   });
+
+  it("retains a running state while withholding any previous numerical values", () => {
+    const presented = presentMeshActiveAnalysisResult({ summary: { ...summary, state: "Running" }, mesh, kind: "quality",
+      qualification: { status: "unavailable", reason: "Result not published", canUseCurrentValues: false } });
+    expect(presented.summary.state).toBe("Running");
+    expect(presented.summary.statistics).toEqual([]);
+  });
 });

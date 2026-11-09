@@ -183,6 +183,22 @@ describe("selectMeshActiveAnalysisResult", () => {
     expect(result.metadata).toContainEqual({ label: "Time", value: "1.25 ms" });
     expect(result.metadata).toContainEqual({ label: "Cached", value: "Yes" });
     expect(result.metadata).toContainEqual({ label: "Computed", value: "timestamp:99" });
+    expect(result.field?.unit).toBe("mesh units^-2");
+    expect(result.metadata).toContainEqual({ label: "Units", value: "mesh units^-2" });
+  });
+
+  it("keeps curvature dimensions distinct and preserves quality metric units", () => {
+    const curvatureStats = summarizeMeshScalarField(Float32Array.from([1, 2, 3]), null, 3);
+    const mean = selectMeshActiveAnalysisResult(baseInput({ curvatureField: "H",
+      curvatureFieldLabel: "Mean curvature H", curvatureStats }));
+    const principal = selectMeshActiveAnalysisResult(baseInput({ curvatureField: "k1",
+      curvatureFieldLabel: "Principal curvature k1", curvatureStats }));
+    const quality = selectMeshActiveAnalysisResult(baseInput({ section: "mesh-quality",
+      qualityMetric: "triangleArea", qualityReport }));
+    expect(mean.field?.unit).toBe("mesh units^-1");
+    expect(principal.field?.unit).toBe("mesh units^-1");
+    expect(quality.field?.unit).toBe("mesh units^2");
+    expect(quality.metadata.filter(entry => entry.label === "Units")).toHaveLength(1);
   });
 
   it("reports canonical field-calculus conventions and cache state", () => {

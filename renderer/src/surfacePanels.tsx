@@ -12235,6 +12235,7 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                     ["Quantity", meshActiveAnalysisResult.quantity],
                     ["Method", meshActiveAnalysisResult.method],
                     ["Domain", meshActiveAnalysisResult.domain],
+                    ["Units", meshActiveAnalysisResult.field?.unit ?? "not recorded"],
                   ] as const).map(([label, value]) => (
                     <div key={`mesh-analysis-definition-${label}`} style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
                       <span style={{ color: "#64748b" }}>{label}</span>
