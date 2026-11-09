@@ -586,7 +586,7 @@ function SurfaceResultLayersInspector({ payload, qualification, compareLabel, on
             <button type="button" disabled={!qualification.canUseCurrentActions || layer.state !== "ready"} onClick={() => onAction(layer.layerId, "frame")}>Frame</button>
             <button type="button" disabled={!qualification.canUseCurrentActions} onClick={() => onAction(layer.layerId, "save")}>Save</button>
             <button type="button" disabled={!qualification.canUseCurrentActions} onClick={() => onAction(layer.layerId, "compare")}>Compare</button>
-            <button type="button" onClick={() => onAction(layer.layerId, "export")}>Export</button>
+            <button type="button" disabled={qualification.status === "unavailable"} onClick={() => onAction(layer.layerId, "export")}>Export</button>
             <button type="button" onClick={() => onAction(layer.layerId, "recompute")}>Recompute</button>
             <button type="button" onClick={() => onAction(layer.layerId, "remove")}>Remove</button>
           </div>

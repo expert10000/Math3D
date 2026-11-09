@@ -421,6 +421,7 @@ import {
   updateSurfaceResultLayer,
 } from "./surfaceAnalysis/surfaceResultLayers";
 import { qualifySurfaceLayerResult } from "./surfaceAnalysis/surfaceLayerQualification";
+import { createSurfaceLayerEvidence } from "./surfaceAnalysis/surfaceLayerEvidence";
 import { createSurfaceChartDiagnostics, createSurfaceChartPayload, type SurfaceChartSample } from "./surfaceAnalysis/surfaceChartDiagnostics";
 import { getSurfaceAnalysisPreset } from "./surfaceAnalysis/presets";
 import {
@@ -50934,9 +50935,13 @@ case "mobius":
       return;
     }
     if (action === "export") {
-      const serializable = { ...layer, confidence: "confidence" in layer ? Array.from(layer.confidence) : undefined };
-      const url = URL.createObjectURL(new Blob([JSON.stringify(serializable, null, 2)], { type: "application/json" }));
-      const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${layer.layerKind}-${activeCanonicalSurfaceDefinition.identity.surfaceRevision}.json`; anchor.click(); URL.revokeObjectURL(url);
+      if (!activeSurfaceLayerResult || activeSurfaceLayerQualification.status === "unavailable") return;
+      const evidence = createSurfaceLayerEvidence({ definition: activeCanonicalSurfaceDefinition,
+        result: activeSurfaceLayerResult, layer, qualification: activeSurfaceLayerQualification });
+      const url = URL.createObjectURL(new Blob([JSON.stringify(evidence, null, 2)], { type: "application/json" }));
+      const anchor = document.createElement("a"); anchor.href = url;
+      anchor.download = `${layer.layerKind}-r${layer.identity.surfaceRevision}-v${activeSurfaceLayerResult.resultVersion}.json`;
+      anchor.click(); URL.revokeObjectURL(url);
       return;
     }
     const firstPoint = "points" in layer ? layer.points[0] ?? layer.polylines[0]?.[0] : layer.polylines[0]?.[0];
@@ -50966,7 +50971,7 @@ case "mobius":
       if (["umbilic", "parabolic", "critical-point", "representation-singularity"].includes(layer.layerKind)) setSurfaceFeatureOverlayVisible(visible);
     }
     publishSurfaceLayerResult(resultKind, { ...activeSurfaceLayerPayload, layers: nextLayers } as SurfaceCurveLayersPayload | SurfaceFeatureLayersPayload);
-  }, [activeCanonicalSurfaceDefinition.identity, activeSurfaceLayerPayload, activeSurfaceLayerQualification.canUseCurrentActions, handleCollectSurfaceCurveLayers, handleCollectSurfaceFeatureLayers, publishSurfaceLayerResult, surfaceSampleSet?.samples]);
+  }, [activeCanonicalSurfaceDefinition, activeSurfaceLayerPayload, activeSurfaceLayerQualification, activeSurfaceLayerResult, handleCollectSurfaceCurveLayers, handleCollectSurfaceFeatureLayers, publishSurfaceLayerResult, surfaceSampleSet?.samples]);
 
   const surfaceChartSamples = useMemo<SurfaceChartSample[]>(() => {
     const definition = activeCanonicalSurfaceDefinition;
