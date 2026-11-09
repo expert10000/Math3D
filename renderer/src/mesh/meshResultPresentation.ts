@@ -29,14 +29,18 @@ export const presentMeshActiveAnalysisResult = (input: {
       reason: "This view summarizes local Mesh display state without a matching kernel result record.", source },
   };
   const canShow = qualification.canUseCurrentValues && summary.state === "Ready";
+  const status = qualification.status === "current" && !canShow ? "unavailable" : qualification.status;
+  const reason = qualification.status === "current" && !canShow
+    ? "The recorded result is current, but this view has no completed matching summary."
+    : qualification.reason;
   return {
     summary: canShow ? summary : {
       ...summary,
       state: qualification.status === "computing" || summary.state === "Running" ? "Running" : "Unavailable",
       statistics: [], percentiles: [], extrema: [], histogram: [], display: undefined, probe: undefined,
-      warnings: [...new Set([...summary.warnings, qualification.reason])],
+      warnings: [...new Set([...summary.warnings, reason])],
     },
-    evidence: { status: qualification.status, claim: canShow ? claim : `${summary.quantity} is withheld as a current numerical result.`,
-      independentCheck, reason: qualification.reason, source },
+    evidence: { status, claim: canShow ? claim : `${summary.quantity} is withheld as a current numerical result.`,
+      independentCheck, reason, source },
   };
 };

@@ -9659,6 +9659,7 @@ export type SurfacesRightPanelProps = {
   meshActiveAnalysisResult: MeshActiveAnalysisResultSummary;
   meshActiveAnalysisEvidence: MeshResultEvidencePresentation;
   onExportMeshActiveResultEvidence?: () => void;
+  onExportMeshActiveResultSummaryCsv?: () => void;
   meshAnalysisComputationHistory: MeshAnalysisComputationRecord[];
   meshAnalysisHistoryQualifications: Record<string, MeshResultQualification>;
   meshActiveResultHistoryId: string | null;
@@ -9946,6 +9947,7 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   meshActiveAnalysisResult,
   meshActiveAnalysisEvidence,
   onExportMeshActiveResultEvidence,
+  onExportMeshActiveResultSummaryCsv,
   meshAnalysisComputationHistory,
   meshAnalysisHistoryQualifications,
   meshActiveResultHistoryId,
@@ -12232,6 +12234,8 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                 </div>
                 <button type="button" data-testid="mesh-analysis-export-evidence" disabled={!onExportMeshActiveResultEvidence}
                   onClick={onExportMeshActiveResultEvidence} style={{ justifySelf: "start", marginBottom: 6 }}>Export JSON evidence</button>
+                <button type="button" data-testid="mesh-analysis-export-summary-csv" disabled={!onExportMeshActiveResultSummaryCsv}
+                  onClick={onExportMeshActiveResultSummaryCsv} style={{ justifySelf: "start", marginBottom: 6 }}>Export summary CSV</button>
                 <button type="button" data-testid="mesh-analysis-open-history" disabled={!meshActiveResultHistoryId}
                   onClick={() => { setSelectedAnalysisComputationId(meshActiveResultHistoryId); setInspectorPanelTab("history"); }}
                   style={{ justifySelf: "start", marginBottom: 6 }}>Inspect recorded run</button>

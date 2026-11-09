@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createMeshAnalysisResultStore, upsertMeshAnalysisResult,
   type MeshAnalysisMeshIdentity } from "./analysisResultStore";
 import type { MeshActiveAnalysisResultSummary } from "./activeAnalysisResult";
-import { createMeshActiveResultEvidence } from "./meshActiveResultEvidence";
+import { createMeshActiveResultEvidence, meshActiveResultSummaryCsv } from "./meshActiveResultEvidence";
 import { qualifyMeshAnalysisResult } from "./meshResultQualification";
 import { presentMeshActiveAnalysisResult } from "./meshResultPresentation";
 
@@ -31,6 +31,11 @@ describe("Mesh active result evidence", () => {
       summary: { unit: "mesh units^2", statistics: [{ label: "Mean", value: "0.5000" }] } });
     expect(evidence?.qualification.independentCheck).toMatch(/does not independently prove/);
     expect(JSON.parse(JSON.stringify(evidence)).result.parameterHash).toBe('{"threshold":8}');
+    const csv = meshActiveResultSummaryCsv(evidence!);
+    expect(csv).toContain("qualification,Status,current,");
+    expect(csv).toContain("statistics,Mean,0.5000,mesh units^2");
+    expect(csv).toContain("result,Version,1,");
+    expect(csv).toContain("source,Revision,v4:f2,");
   });
 
   it("exports historical provenance without stale numerical statistics", () => {
@@ -44,6 +49,9 @@ describe("Mesh active result evidence", () => {
     expect(evidence?.qualification.status).toBe("historical");
     expect(evidence?.summary.statistics).toEqual([]);
     expect(evidence?.result?.variant).toBe("threshold-8");
+    const csv = meshActiveResultSummaryCsv(evidence!);
+    expect(csv).toContain("qualification,Status,historical,");
+    expect(csv).not.toContain("statistics,Mean");
   });
 
   it("refuses to substitute a different Mesh generation", () => {
@@ -53,5 +61,21 @@ describe("Mesh active result evidence", () => {
       result: Object.values(store.entries)[0]!, summary,
       presentation: { status: "historical", reason: "different source", claim: "historical",
         independentCheck: "none", source: "other" } })).toThrow(/source generation/);
+  });
+
+  it("rejects noncurrent summaries containing numeric fields", () => {
+    const store = upsertMeshAnalysisResult(createMeshAnalysisResultStore(), { kind: "quality", mesh,
+      payload: { area: 0.5 }, now: 1 });
+    expect(() => createMeshActiveResultEvidence({ mesh, result: Object.values(store.entries)[0]!, summary,
+      presentation: { status: "historical", reason: "changed settings", claim: "withheld",
+        independentCheck: "none", source: "sample" } })).toThrow(/cannot contain numerical values/);
+  });
+
+  it("quotes spreadsheet formula and comma-bearing source labels", () => {
+    const presented = presentMeshActiveAnalysisResult({ summary, mesh: { ...mesh, label: '=RUN("x"), unsafe' }, kind: null,
+      qualification: { status: "unavailable", reason: "No record", canUseCurrentValues: false } });
+    const evidence = createMeshActiveResultEvidence({ mesh: { ...mesh, label: '=RUN("x"), unsafe' },
+      result: null, summary: presented.summary, presentation: presented.evidence });
+    expect(meshActiveResultSummaryCsv(evidence!)).toContain('source,Label,"\'=RUN(""x""), unsafe",');
   });
 });

@@ -172,6 +172,15 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     expect(evidence).toMatchObject({ format: "math3d.mesh-active-result-evidence/v1",
       source: { revision: expect.any(String) }, result: { kind: "curvature", version: expect.any(Number) },
       qualification: { status: "current" }, summary: { unit: "mesh units^-2" } });
+    const summaryCsvPath = test.info().outputPath("mesh-active-result-summary.csv");
+    await ctx.app.evaluate(({ session }, target) =>
+      session.defaultSession.once("will-download", (_event, item) => item.setSavePath(target)), summaryCsvPath);
+    await page.getByTestId("mesh-analysis-export-summary-csv").click();
+    await expect.poll(() => existsSync(summaryCsvPath)).toBe(true);
+    const summaryCsv = await readFile(summaryCsvPath, "utf8");
+    expect(summaryCsv).toContain("qualification,Status,current,");
+    expect(summaryCsv).toContain("summary,Unit,mesh units^-2,");
+    expect(summaryCsv).toContain("statistics,Mean,");
     await page.getByTestId("mesh-analysis-open-history").click();
     await expect(page.getByTestId("mesh-analysis-history-detail")).toHaveAttribute("data-qualification", "current");
     await page.getByTestId("shared-inspector-tab-analysis").click();

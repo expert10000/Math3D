@@ -1032,7 +1032,7 @@ import {
 import { qualifyMeshAnalysisResult, qualifyMeshComputationRecord, selectFocusedMeshResult } from "./mesh/meshResultQualification";
 import { presentMeshActiveAnalysisResult } from "./mesh/meshResultPresentation";
 import { presentMeshVisualReadout } from "./mesh/meshVisualReadout";
-import { createMeshActiveResultEvidence } from "./mesh/meshActiveResultEvidence";
+import { createMeshActiveResultEvidence, meshActiveResultSummaryCsv } from "./mesh/meshActiveResultEvidence";
 import { MeshAnalysisKernelBridge } from "./mesh/meshAnalysisKernelBridge";
 import { MeshDifferentialScientificJob } from "./mesh/meshDifferentialScientificJob";
 import {
@@ -75002,6 +75002,13 @@ case "mobius":
     anchor.download = `mesh-analysis-${meshActiveResultEvidence.result?.kind ?? "local"}-v${meshActiveResultEvidence.result?.version ?? 0}.json`;
     anchor.click(); URL.revokeObjectURL(url);
   };
+  const handleExportMeshActiveResultSummaryCsv = () => {
+    if (!meshActiveResultEvidence) return;
+    const url = URL.createObjectURL(new Blob([meshActiveResultSummaryCsv(meshActiveResultEvidence)], { type: "text/csv;charset=utf-8" }));
+    const anchor = document.createElement("a"); anchor.href = url;
+    anchor.download = `mesh-analysis-${meshActiveResultEvidence.result?.kind ?? "local"}-v${meshActiveResultEvidence.result?.version ?? 0}-summary.csv`;
+    anchor.click(); URL.revokeObjectURL(url);
+  };
   const meshAnalysisWorkflowValidationLabel = surfaceMeshAnalyzeDiagnostics
     ? surfaceMeshAnalyzeDiagnostics.state === "Healthy"
       ? "Validated"
@@ -80175,6 +80182,7 @@ case "mobius":
                       meshActiveAnalysisResult={meshActiveAnalysisResult}
                       meshActiveAnalysisEvidence={meshActiveAnalysisPresentation.evidence}
                       onExportMeshActiveResultEvidence={meshActiveResultEvidence ? handleExportMeshActiveResultEvidence : undefined}
+                      onExportMeshActiveResultSummaryCsv={meshActiveResultEvidence ? handleExportMeshActiveResultSummaryCsv : undefined}
                       meshAnalysisComputationHistory={meshAnalysisComputationHistory}
                       meshAnalysisHistoryQualifications={meshAnalysisHistoryQualifications}
                       meshActiveResultHistoryId={meshActiveResultHistoryId}

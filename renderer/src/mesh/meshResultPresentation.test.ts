@@ -52,4 +52,11 @@ describe("Mesh active result presentation", () => {
     expect(presented.summary.state).toBe("Running");
     expect(presented.summary.statistics).toEqual([]);
   });
+
+  it("does not call a pending local summary current merely because a recorded result is ready", () => {
+    const presented = presentMeshActiveAnalysisResult({ summary: { ...summary, state: "Running" }, mesh, kind: "quality",
+      qualification: { status: "current", reason: "Recorded result current", canUseCurrentValues: true } });
+    expect(presented.evidence.status).toBe("unavailable");
+    expect(presented.summary.statistics).toEqual([]);
+  });
 });
