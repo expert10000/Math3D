@@ -2,7 +2,7 @@
 
 **Product roadmap · Architecture / UX / Scientific interoperability / Release engineering**<br>
 **Prepared:** 2026-11-05<br>
-**Updated:** 2026-11-07<br>
+**Updated:** 2026-11-09<br>
 **Target:** Math3D 2.0.0 General Availability (GA)<br>
 **Status:** Architecture, workflow, documentation, and release-gate work is merged to `main`; RC1, RC2, and GA are not declared. Root and renderer packages still report 1.7.0, and no `v2.0.0` tag exists.<br>
 **Primary product claim:** *Construct, compute, analyze, compare, document, and publish connected mathematical objects in one scientific workspace.*
@@ -963,6 +963,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 - `M3D20-06b feat(ui): Runtime Center status, versions, health and diagnostic links`.
 - `M3D20-06c feat(jobs): consistent admission/cancellation/failure presentation`.
 - `M3D20-06d test(runtime): offline, mismatched version, crashed worker, permission guard`.
+
+**Runtime Center slice (2026-11-09):** Compute Center now aggregates the existing Python diagnostics, CGAL check, VTK bridge, broker discovery, managed engine status, and separate Local WSL, Docker, and private Sage probes. The overview reports route state, version, transport, and advertised operation count without treating a healthy container as proof of a usable Sage operation. A route whose identity or version differs from its capability manifest is unavailable. Job history distinguishes route refusal, cancellation, stale source, timeout, execution failure, and backend completion; completion directs users to the saved Result for scientific verification. Unit cases cover offline routes, a crashed worker, version mismatch, permission denial, missing operations, and late events; desktop smoke covers route diagnostics. This is source-checkout evidence only. Installed-runtime truth, the full route/permission matrix, and exact-candidate host receipts remain open.
 
 **Exit:** an installed desktop reports only actual capabilities; no implied verified Docker/Sage route when unavailable.
 

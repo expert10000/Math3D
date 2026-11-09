@@ -65,6 +65,8 @@ export default function ComputeCenterPanel({ onClose, initialTab = "overview" }:
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
+    setPython(null); setCgal(null); setEngines(null); setBrokerBackends([]);
+    setSageProbes({}); setCheckedAt(0); setError(null);
     const [[healthResult, engineResult, brokerResult], sageResults] = await Promise.all([
       Promise.allSettled([cgalHealth(),
         window.computeEngines?.getStatus() ?? Promise.resolve(null), discoverScientificBackends()]),
@@ -122,6 +124,8 @@ export default function ComputeCenterPanel({ onClose, initialTab = "overview" }:
       <button type="button" style={{ ...button, marginTop: 10 }} onClick={() => setActiveTab("runtimes")}>Open Runtimes</button></section>
       <section style={card} aria-label="Sage routes" data-testid="runtime-center-sage-routes"><h3 style={{ margin: "0 0 6px", fontSize: 14 }}>Sage routes</h3>
         <p style={{ fontSize: 11, color: "#64748b" }}>Each route uses its own live health and capability manifest. A running Docker container alone does not verify the Sage operation route.</p>
+        <div data-testid="runtime-center-checked-at" style={{ fontSize: 11, color: "#64748b", marginBottom: 7 }}>
+          {runtimeReport.checkedAt ? `Checked ${new Date(runtimeReport.checkedAt).toLocaleString()}` : "Checking routes…"}</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 8 }}>{sageRoutes.map(entry =>
           <div key={entry.id} data-testid={`runtime-route-${entry.id}`} data-state={entry.state} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 8, padding: 9, fontSize: 11 }}>
             <strong>{entry.label}</strong> · <span style={{ color: statusColor(entry.state) }}>{entry.state}</span>

@@ -53,10 +53,14 @@ export function buildRuntimeCapabilityReport(input: RuntimeReportInputs): Runtim
   const sage = (["local", "docker", "private"] as const).map((backend) => {
     const result = input.sage[backend];
     const probe = result?.probe;
-    const healthy = probe?.health.available === true && probe.manifest.availability === "available";
+    const mismatch = probe && (probe.backend !== backend || probe.backendId !== probe.manifest.backendId ||
+      probe.backendVersion !== probe.manifest.adapterVersion ||
+      (probe.health.engineVersion ?? null) !== probe.manifest.sageVersion);
+    const healthy = probe?.health.available === true && probe.manifest.availability === "available" && !mismatch;
     const state: RuntimeState = !result ? "checking" : !healthy ? "unavailable" :
       probe.operations.length ? "ready" : "limited";
-    const detail = result?.error ?? (probe ? !healthy ?
+    const detail = result?.error ?? (probe ? mismatch ?
+      "Route identity or version differs from its capability manifest" : !healthy ?
       probe.manifest.unavailableReason ?? probe.health.status :
       probe.operations.length ? `${probe.operations.length} advertised operation(s)` :
         "Healthy route; no operations advertised" : "Checking route health");
