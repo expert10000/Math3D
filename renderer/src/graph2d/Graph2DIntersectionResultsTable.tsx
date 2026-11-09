@@ -6,6 +6,7 @@ import { downloadGraph2DNumericalDataset } from "./downloadGraph2DNumericalDatas
 import { downloadGraph2DResultsCsv } from "./downloadGraph2DResultsCsv";
 import { Graph2DNumericalResultsTable, type Graph2DResultColumn,
   type Graph2DResultFilter } from "./Graph2DNumericalResultsTable";
+import { Graph2DResultEvidence } from "./Graph2DResultEvidence";
 
 const filters: readonly Graph2DResultFilter<Graph2DIntersectionCandidate>[] = [
   { id: "all", label: "All", include: () => true },
@@ -49,7 +50,14 @@ export function Graph2DIntersectionResultsTable({ analysis, document, onSelectio
       item.estimatedXError, item.quality,
       item.confidence, item.method, item.source.documentId, item.source.revision, analysis.status,
       analysis.interval.min, analysis.interval.max]));
+  const evidence = <Graph2DResultEvidence current={current} resultId={analysis.resultId}
+    source={analysis.source} claim="bounded intersection scan"
+    method={analysis.publication.provenance.operation.algorithm} units="Graph x and y world units"
+    limitation="Crossing and possible tangency classifications are numerical, not certified isolation." />;
+  if (!current) return <div data-testid="graph2d-intersection-results-table"
+    data-source-hash={analysis.source.structuralHash}>{evidence}</div>;
   return <div data-testid="graph2d-intersection-results-table" data-source-hash={analysis.source.structuralHash}>
+    {evidence}
     <small>x est. uses the residual and local slope difference at a crossing. It is a linear estimate, not a certified bound; possible tangencies have no such estimate.</small>
     <dl className="graph2d-critical-summary">
       <div><dt>Crossings</dt><dd>{analysis.candidates.filter(item => item.classification === "crossing").length}</dd></div>
