@@ -444,6 +444,8 @@ export function SurfaceAnalysisInspectorPanel({
             {result?.computeTimeMs != null && <div><strong>Compute time:</strong> {result.computeTimeMs.toFixed(1)} ms</div>}
             {!presentation.canUseCurrentValues && result?.payload?.data.kind === "curvature" &&
               <div data-testid="surface-curvature-withheld" role="status">Curvature values are withheld until this Surface result is current.</div>}
+            {!presentation.canUseCurrentValues && result?.payload?.data.kind === "chart" &&
+              <div data-testid="surface-chart-withheld" role="status">Chart values are withheld until this Surface result is current.</div>}
             {curvature && (
               <section data-testid="surface-curvature-result" style={{ display: "grid", gap: 6, marginTop: 5, paddingTop: 7, borderTop: "1px solid #e2e8f0" }}>
                 <div><strong>Valid domain:</strong> {curvature.validDomainCount.toLocaleString()} / {curvature.sampleCount.toLocaleString()}</div>

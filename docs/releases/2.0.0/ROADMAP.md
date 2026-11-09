@@ -959,6 +959,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **Surface layer convergence slice (2026-11-09):** Collected Surface curve and feature layers now depend on the real source definition; collecting them no longer creates a synthetic ready differential-geometry result. The Inspector distinguishes current, historical and unavailable layer evidence, states the collected-geometry claim separately from the absence of an independent mathematical check, and withholds current actions when source evidence is stale. JSON exports include source units, method, dependencies, result version, warnings and qualification. Visibility and selection edits preserve the scientific result version and computation history; collection removal is recorded as an edit. Unit and desktop checks cover the source dependency and Inspector presentation. Broader cross-module card and Inspector convergence remains open.
 
+**Surface Inspector evidence slice (2026-11-09):** Curvature and local probe records now depend on the real Surface definition rather than a synthetic differential-geometry summary. The native Inspector qualifies the exact selected result as current, historical or unavailable, separates its sampled or approximated claim from the independent-check scope, and withholds stale curvature, probe and chart values and their current actions. Chart JSON now carries the result version, source units, method, dependencies, warnings and qualification; chart overlay visibility edits do not add computation history. Unit, component and desktop checks cover these bounded paths. Mesh, Graph, Field, CAS and Quantum convergence remains open.
+
 ### M3D20-06 — Runtime Center (P0)
 
 - `M3D20-06a feat(runtime): aggregate local/remote capability reports`.

@@ -15,7 +15,7 @@ export function SurfaceAnalysisContractCard({
 }) {
   const state = qualification.status === "current" ? "ready" : qualification.status;
   const method = result?.payload?.method ?? "source-defined";
-  const stateColor = state === "ready" ? "#15803d" : state === "error" || state === "cancelled" ? "#b42318" : "#9a3412";
+  const stateColor = state === "ready" ? "#15803d" : state === "unavailable" ? "#b42318" : "#9a3412";
   return (
     <section
       data-testid="surface-analysis-contract"

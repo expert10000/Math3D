@@ -423,6 +423,7 @@ import { qualifySurfaceLayerResult } from "./surfaceAnalysis/surfaceLayerQualifi
 import { createSurfaceLayerEvidence } from "./surfaceAnalysis/surfaceLayerEvidence";
 import { editSurfaceLayerDisplay } from "./surfaceAnalysis/surfaceLayerDisplay";
 import { presentSurfaceAnalysisResult } from "./surfaceAnalysis/surfaceResultPresentation";
+import { createSurfaceChartEvidence, editSurfaceChartOverlay, serializeSurfaceChartEvidence } from "./surfaceAnalysis/surfaceChartEvidence";
 import { createSurfaceChartDiagnostics, createSurfaceChartPayload, type SurfaceChartSample } from "./surfaceAnalysis/surfaceChartDiagnostics";
 import { getSurfaceAnalysisPreset } from "./surfaceAnalysis/presets";
 import {
@@ -43463,6 +43464,7 @@ const App: React.FC = () => {
     () => getSurfaceAnalysisResult<SurfaceAnalysisPayload>(surfaceAnalysisResultStore, activeCanonicalSurfaceDefinition.identity, "chart-diagnostics"),
     [activeCanonicalSurfaceDefinition.identity, surfaceAnalysisResultStore]
   );
+  const activeSurfaceChartPresentation = presentSurfaceAnalysisResult(activeCanonicalSurfaceDefinition, activeSurfaceChartResult, surfaceAnalysisResultStore);
   const activeDerivedSurfaceMeshResult = useMemo(
     () => getSurfaceAnalysisResult<SurfaceAnalysisPayload>(surfaceAnalysisResultStore, activeCanonicalSurfaceDefinition.identity, "derived-surface-mesh"),
     [activeCanonicalSurfaceDefinition.identity, surfaceAnalysisResultStore]
@@ -51045,7 +51047,7 @@ case "mobius":
     publishSurfaceChart,
     surfaceChartSamples.length,
   ]);
-  const activeSurfaceChart = activeSurfaceChartResult?.state === "ready" && activeSurfaceChartResult.payload?.data.kind === "chart"
+  const activeSurfaceChart = activeSurfaceChartPresentation.canUseCurrentValues && activeSurfaceChartResult?.payload?.data.kind === "chart"
     ? activeSurfaceChartResult.payload.data
     : null;
   const selectSurfaceChartIndices = useCallback((indices: ArrayLike<number>) => {
@@ -51067,20 +51069,24 @@ case "mobius":
   const handleToggleSurfaceChartOverlay = useCallback((kind: "boundary" | "seam" | "orientation-flip" | "degenerate") => {
     const next = { ...surfaceChartOverlayVisibility, [kind]: !surfaceChartOverlayVisibility[kind] };
     setSurfaceChartOverlayVisibility(next);
-    publishSurfaceChart(next);
-  }, [publishSurfaceChart, surfaceChartOverlayVisibility]);
+    setSurfaceAnalysisResultStore((store) => editSurfaceChartOverlay(store, activeCanonicalSurfaceDefinition.identity, kind));
+  }, [activeCanonicalSurfaceDefinition.identity, surfaceChartOverlayVisibility]);
   const handleSaveSurfaceChart = useCallback(() => {
-    if (!activeSurfaceChartResult) return;
+    if (!activeSurfaceChartResult || !activeSurfaceChartPresentation.canUseCurrentValues) return;
     const identity = activeCanonicalSurfaceDefinition.identity;
     const id = `saved:${identity.key}:chart-diagnostics`;
     setSurfaceAnalysisWorkspaceDocument((document) => ({ ...document, savedResults: [...document.savedResults.filter((entry) => entry.id !== id), { id, resultKey: `${identity.key}:chart-diagnostics:default`, kind: "chart-diagnostics", variant: "default", identity, label: `Chart diagnostics · ${identity.label}`, visible: true }] }));
-  }, [activeCanonicalSurfaceDefinition.identity, activeSurfaceChartResult]);
+  }, [activeCanonicalSurfaceDefinition.identity, activeSurfaceChartPresentation.canUseCurrentValues, activeSurfaceChartResult]);
   const handleExportSurfaceChart = useCallback(() => {
-    if (!activeSurfaceChartResult?.payload) return;
-    const json = JSON.stringify(activeSurfaceChartResult.payload, (_key, value) => ArrayBuffer.isView(value) ? Array.from(value as unknown as ArrayLike<number>) : value, 2);
+    if (!activeSurfaceChartResult || !activeSurfaceChartPresentation.canUseCurrentValues) return;
+    const evidence = createSurfaceChartEvidence({ definition: activeCanonicalSurfaceDefinition,
+      result: activeSurfaceChartResult, qualification: activeSurfaceChartPresentation });
+    const json = serializeSurfaceChartEvidence(evidence);
     const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
-    const anchor = document.createElement("a"); anchor.href = url; anchor.download = `surface-chart-${activeCanonicalSurfaceDefinition.identity.surfaceRevision}.json`; anchor.click(); URL.revokeObjectURL(url);
-  }, [activeCanonicalSurfaceDefinition.identity.surfaceRevision, activeSurfaceChartResult?.payload]);
+    const anchor = document.createElement("a"); anchor.href = url;
+    anchor.download = `surface-chart-r${activeSurfaceChartResult.identity.surfaceRevision}-v${activeSurfaceChartResult.resultVersion}.json`;
+    anchor.click(); URL.revokeObjectURL(url);
+  }, [activeCanonicalSurfaceDefinition, activeSurfaceChartPresentation, activeSurfaceChartResult]);
 
   const surfaceDerivedMeshCandidate = useMemo(() => {
     const chunk = surfaceViewerKind === "mesh" && surfaceMeshData
