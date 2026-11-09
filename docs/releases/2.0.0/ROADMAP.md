@@ -2,7 +2,7 @@
 
 **Product roadmap · Architecture / UX / Scientific interoperability / Release engineering**<br>
 **Prepared:** 2026-11-05<br>
-**Updated:** 2026-11-07<br>
+**Updated:** 2026-11-09<br>
 **Target:** Math3D 2.0.0 General Availability (GA)<br>
 **Status:** Architecture, workflow, documentation, and release-gate work is merged to `main`; RC1, RC2, and GA are not declared. Root and renderer packages still report 1.7.0, and no `v2.0.0` tag exists.<br>
 **Primary product claim:** *Construct, compute, analyze, compare, document, and publish connected mathematical objects in one scientific workspace.*
@@ -957,12 +957,22 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **Curve result integrity slice (2026-11-08):** Curve preset layers compute their displayed series from sampled positions, so exact derivative capability no longer produces an "exact, zero uncertainty" label for those values. The uncertainty is explicitly unknown; sampling tolerance remains a recorded input, not a proven error bound. CSV exports leave invalid or masked values blank, and SVG omits masked points. Cards and the selected Inspector share a current/historical/unavailable qualification and state their sampled claim separately from independent verification; stale cards cannot be selected, framed or saved as current. JSON, CSV and SVG retain historical result identity for inspection. Unit and desktop checks cover this bounded Curve path. Broader shared actions and cross-module Inspector convergence remain open.
 
+**Surface layer convergence slice (2026-11-09):** Collected Surface curve and feature layers now depend on the real source definition; collecting them no longer creates a synthetic ready differential-geometry result. The Inspector distinguishes current, historical and unavailable layer evidence, states the collected-geometry claim separately from the absence of an independent mathematical check, and withholds current actions when source evidence is stale. JSON exports include source units, method, dependencies, result version, warnings and qualification. Visibility and selection edits preserve the scientific result version and computation history; collection removal is recorded as an edit. Unit and desktop checks cover the source dependency and Inspector presentation. Broader cross-module card and Inspector convergence remains open.
+
+**Surface Inspector evidence slice (2026-11-09):** Curvature and local probe records now depend on the real Surface definition rather than a synthetic differential-geometry summary. The native Inspector qualifies the exact selected result as current, historical or unavailable, separates its sampled or approximated claim from the independent-check scope, and withholds stale curvature, probe and chart values and their current actions. Chart JSON now carries the result version, source units, method, dependencies, warnings and qualification; chart overlay visibility edits do not add computation history. Unit, component and desktop checks cover these bounded paths. Mesh, Graph, Field, CAS and Quantum convergence remains open.
+
+**Mesh active-result convergence slice (2026-11-09):** Mesh Analyze now qualifies its focused result against the exact Mesh generation, variant, parameters and dependency versions before labeling the kernel resource current. The active card separates the computed quantity claim from the absence of an independent numerical proof and withholds statistics from noncurrent records; session-local results are named as such. A JSON evidence export records the exact source revision, result version, settings, dependencies, method, units and the qualified visible summary without raw hidden values. Curvature K uses inverse-square Mesh length units, H/k1/k2 inverse-length, and quality metrics retain their declared units. Unit and desktop checks cover the current card and export. Wider Mesh action convergence and Graph, Field, CAS and Quantum Inspectors remain open.
+
+**Mesh result action and publication slice (2026-11-09):** Active Mesh provenance now resolves the envelope for its exact published artifact, including variant, settings and source; an unrelated later run cannot supply its authority or worker backend. The floating measurements and field overlays follow the active card's qualification, with session-local values labeled and noncurrent numerical readouts withheld. The active card links to its exact computation-history version, where replaced runs remain inspectable as historical snapshots. JSON export refuses noncurrent numerical leakage, and a long-form summary CSV carries source identity, result version, method, units, claim, check scope and qualified statistics. CSV contains Inspector summaries rather than dense per-entity arrays. Focused unit and desktop checks cover these bounded actions; a shared cross-module action contract and Graph, Field, CAS and Quantum Inspector convergence remain open.
+
 ### M3D20-06 — Runtime Center (P0)
 
 - `M3D20-06a feat(runtime): aggregate local/remote capability reports`.
 - `M3D20-06b feat(ui): Runtime Center status, versions, health and diagnostic links`.
 - `M3D20-06c feat(jobs): consistent admission/cancellation/failure presentation`.
 - `M3D20-06d test(runtime): offline, mismatched version, crashed worker, permission guard`.
+
+**Runtime Center slice (2026-11-09):** Compute Center now aggregates the existing Python diagnostics, CGAL check, VTK bridge, broker discovery, managed engine status, and separate Local WSL, Docker, and private Sage probes. The overview reports route state, version, transport, and advertised operation count without treating a healthy container as proof of a usable Sage operation. A route whose identity or version differs from its capability manifest is unavailable. Job history distinguishes route refusal, cancellation, stale source, timeout, execution failure, and backend completion; completion directs users to the saved Result for scientific verification. Unit cases cover offline routes, a crashed worker, version mismatch, permission denial, missing operations, and late events; desktop smoke covers route diagnostics. This is source-checkout evidence only. Installed-runtime truth, the full route/permission matrix, and exact-candidate host receipts remain open.
 
 **Exit:** an installed desktop reports only actual capabilities; no implied verified Docker/Sage route when unavailable.
 
@@ -973,6 +983,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 - `M3D20-07c feat(publication): immutable evidence snapshot and omissions manifest`.
 - `M3D20-07d test(workbook): source changed, missing sidecar, independent import/export`.
 
+**Workbook and Notes slice (2026-11-09):** Workbook reference blocks can cite the exact saved Study generation and inspect each Study member when reopened. The Study view lists only checksum-qualified Workbook citations and distinguishes current from historical links. Workbook publication has a deterministic JSON evidence snapshot with a content hash and omissions manifest; changed citations withhold result values and artifact claims. A pinned QWZ band selection can become a source-bound Project Note, with reverse navigation from the Study and explicit current, stale, or missing status. Focused tests cover source change, missing payloads, tampered payloads, package import, and exact Note anchor validation. This is a bounded research narrative path; the full flagship Study matrix and installed-runtime validation remain open.
+
 **Exit:** all flagship Studies can create a trustworthy research narrative; source changes are visibly qualified and export cannot invent evidence.
 
 ### M3D20-08 — Curated Gallery/Studies (P0)
@@ -982,6 +994,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 - `M3D20-08c feat(gallery): QWZ/SSH/hydrogen scientific set`.
 - `M3D20-08d feat(gallery): CAS and provenance demonstration set`.
 - `M3D20-08e test(gallery): open/reopen/reset/cross-platform fallback`.
+
+**Guided Gallery slice (2026-11-09):** Projects now offers a 15-card guided Study view alongside the existing starter list. Every card states a question, objects, operations, expected insight, prerequisites, platform scope, asset expectation, offline behaviour, first-open path, reset path and a scientific limitation. Seven built-in Project journeys add exact, saved Study layouts only when opened through the guided route; ordinary starter copies retain their prior content. The QWZ, SSH and hydrogen cards open the desktop verified-scene chooser and explicitly require an external producer bundle. The algebra card opens the existing CAS example gallery, where four validated definition chains can be saved to a named Project. Unit tests cover catalog routes and independent Study copies; desktop tests cover filtering, a full Study restart and a saved algebra example. The [Gallery acceptance matrix](CURATED_STUDY_GALLERY.md) records what is verified and what remains outside this slice. Browser/mobile presentation, complete scientific fixtures, numeric asset budgets, screenshots and the full 08 exit gate remain open.
 
 **Exit:** 10–15 genuinely working, explanation-rich starters rather than a wall of unconnected thumbnails.
 

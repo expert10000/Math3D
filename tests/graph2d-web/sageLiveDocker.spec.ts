@@ -112,13 +112,16 @@ test.describe.serial("live Docker Sage operation journey", () => {
     await page.getByTestId("top-compute-center-button").click();
     const jobs = page.getByTestId("compute-center").getByRole("region", { name: "Broker jobs" });
     for (const item of cases) {
-      const recorded = jobs.getByText(item.job, { exact: true }).last().locator("../..");
-      await expect(recorded).toContainText("complete");
+      const recorded = jobs.getByText(item.job, { exact: true }).locator("../..").filter({ hasText: /completed/i });
+      await expect(recorded).toHaveCount(1);
       await expect(recorded).toContainText("sage-docker");
     }
     const inverseJobs = jobs.getByText("Modular inverse", { exact: true });
     await expect(inverseJobs).toHaveCount(2);
-    await expect(inverseJobs.first().locator("../..")).toContainText("failed");
-    await expect(inverseJobs.first().locator("../..")).toContainText("does not exist");
+    const inverseRecords = inverseJobs.locator("../..");
+    await expect(inverseRecords.filter({ hasText: /completed/i })).toHaveCount(1);
+    const failedInverse = inverseRecords.filter({ hasText: /failed/i });
+    await expect(failedInverse).toHaveCount(1);
+    await expect(failedInverse).toContainText("does not exist");
   });
 });

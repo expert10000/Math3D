@@ -9,7 +9,7 @@ import type { ProjectResourceReader } from "../projects/projectResources";
 
 type Status = "current" | "stale" | "missing" | "different-project" | "unanchored" | "invalid";
 type Citation = { workbookId: string; stageId: WorkbookStageId; blockId: string; blockTitle: string;
-  targetId: string; kind: "document" | "result"; source: ScientificSourceGeneration; origin: string; status: Status; reason: string };
+  targetId: string; kind: NotebookReference["kind"]; source: ScientificSourceGeneration; origin: string; status: Status; reason: string };
 type NoteUse = { workbookId: string; stageId: WorkbookStageId; blockId: string; blockTitle: string;
   noteId: string; noteTitle: string; revision: number; status: Status };
 type LoadedWorkbook = { reference: NonNullable<Math3DProject["workbooks"]>[number]; workbook: Workbook | null };
@@ -115,6 +115,7 @@ export const ProjectResearchLinks: React.FC<Props> = ({ project, titles, workboo
       return <><span>{result?.provenance.operation.type ?? anchor.resultId} · source r{anchor.source.revision} g{anchor.source.generation}</span>
         <button type="button" disabled={!result || status === "missing"} onClick={() => onInspectResult(anchor.resultId)}>Inspect result</button></>;
     }
+    if (anchor.kind === "study-selection") return <span>Study {anchor.studyId} · selection {anchor.selectionId} · r{anchor.source.revision}</span>;
     return <><span>{titles.get(anchor.source.documentId) ?? anchor.source.documentId} · r{anchor.source.revision} g{anchor.source.generation}</span>
       {documentButton(anchor.source.documentId, "Open document", status)}</>;
   };
@@ -130,11 +131,11 @@ export const ProjectResearchLinks: React.FC<Props> = ({ project, titles, workboo
         {research.workbooks.map(({ reference, workbook }) => !workbook && <p key={reference.id} className="project-research-unavailable" data-testid={`project-research-workbook-unavailable-${reference.id}`}>{reference.title}: Workbook payload unavailable. Its citations cannot be inspected.</p>)}
         {research.citations.length || research.noteUses.length ? <ul>{research.citations.map((item, index) => <li key={`${item.workbookId}:${item.blockId}:${index}`} data-testid={`project-research-citation-${index}`}>
           <strong>{research.workbooks.find(loaded => loaded.reference.id === item.workbookId)?.reference.title} / {item.blockTitle}</strong>
-          <small>{item.origin} · {item.kind === "document" ? titles.get(item.targetId) ?? item.targetId : project.workspace.results.find(result => result.resultId === item.targetId)?.provenance.operation.type ?? item.targetId} · r{item.source.revision} g{item.source.generation}</small>
+          <small>{item.origin} · {item.kind === "study" ? project.workspace.studies?.find(study => study.id === item.targetId)?.title ?? item.targetId : item.kind === "document" ? titles.get(item.targetId) ?? item.targetId : project.workspace.results.find(result => result.resultId === item.targetId)?.provenance.operation.type ?? item.targetId} · r{item.source.revision} g{item.source.generation}</small>
           <span className="project-freshness-badge" data-tone={tone(item.status)} title={item.reason}>{statusText(item.status)}</span>
           <div className="project-research-actions"><button type="button" onClick={() => onOpenWorkbookBlock(item.workbookId, item.stageId, item.blockId)}>Open block</button>
             {item.kind === "document" ? documentButton(item.targetId, "Open document", item.status) :
-              <button type="button" disabled={item.status === "missing" || item.status === "different-project"} onClick={() => onInspectResult(item.targetId)}>Inspect result</button>}</div>
+              item.kind === "result" ? <button type="button" disabled={item.status === "missing" || item.status === "different-project"} onClick={() => onInspectResult(item.targetId)}>Inspect result</button> : null}</div>
         </li>)}{research.noteUses.map((item, index) => <li key={`${item.workbookId}:${item.blockId}:note:${index}`} data-testid={`project-research-note-use-${index}`}>
           <strong>{research.workbooks.find(loaded => loaded.reference.id === item.workbookId)?.reference.title} / {item.blockTitle}</strong>
           <small>Note dependency · {item.noteTitle} · r{item.revision}</small>

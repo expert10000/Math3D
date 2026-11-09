@@ -51,4 +51,25 @@ describe("GK09 Mesh analysis artifact bridge", () => {
     expect(bridge.get(store, identity, "normals", "area-weighted-v1")?.state).toBe("ready");
     expect(bridge.artifactRegistry().listMetadata()[0]).toMatchObject({ status: "clean", availability: "available" });
   });
+
+  it("binds authority to the exact artifact and rejects another variant, settings or source", () => {
+    const mesh = triangle();
+    const adapter = MeshDocumentAdapter.fromMesh(mesh);
+    const bridge = new MeshAnalysisKernelBridge(() => adapter);
+    const identity = createMeshAnalysisMeshIdentity(mesh);
+    let store = bridge.upsert(createMeshAnalysisResultStore(), { kind: "quality", variant: "metric-a-v1",
+      mesh: identity, parameters: { metric: "a" }, payload: { value: 1 } });
+    const first = store.entries[`${identity.key}:quality:metric-a-v1`]!;
+    const firstEnvelope = bridge.envelopeFor(first);
+    expect(firstEnvelope?.provenance.operation.algorithm).toBe("metric-a-v1");
+    store = bridge.upsert(store, { kind: "quality", variant: "metric-b-v1",
+      mesh: identity, parameters: { metric: "b" }, payload: { value: 2 } });
+    expect(bridge.envelopeFor(first)?.resultId).toBe(firstEnvelope?.resultId);
+    expect(bridge.envelopeFor({ ...first, variant: "metric-b-v1" })).toBeNull();
+    expect(bridge.envelopeFor({ ...first, parameters: { metric: "other" } })).toBeNull();
+    expect(bridge.envelopeFor({ ...first, payload: { value: 1 } })).toBeNull();
+    const edited = triangle(); edited.positions[5] = 0.5;
+    adapter.replaceMesh(edited);
+    expect(bridge.envelopeFor(first)).toBeNull();
+  });
 });

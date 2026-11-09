@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   createMixedWorkspaceDocument,
+  createProjectStudyFromDocuments,
   instantiateMath3DProjectTemplate,
+  renameProjectStudy,
   replaceMath3DProjectWorkspace,
   updateMath3DProjectMetadata,
 } from "@math3d/core";
@@ -77,5 +79,43 @@ describe("NOTE01 project-backed notebook references", () => {
         : item),
     }));
     expect(inspectNotebookReference(changed, resultRef).status).toBe("missing");
+  });
+
+  it("pins a Study record and every member generation without copying source documents", () => {
+    const initial = study();
+    const graphEntry = initial.workspace.entries.find(entry => entry.module === "graph2d")!;
+    const other = initial.workspace.entries.find(entry => entry.expected.id !== graphEntry.expected.id)!;
+    const project = createProjectStudyFromDocuments(initial, "workbook-study-citation", "Linked evidence",
+      [other.expected.id, graphEntry.expected.id]);
+    const saved = project.workspace.studies![0]!;
+    const reference = createNotebookReference(project, "study", saved.id);
+    expect(reference.kind).toBe("study");
+    expect(normalizeNotebookReference(JSON.parse(JSON.stringify(reference)))).toEqual(reference);
+    expect(inspectNotebookReference(project, reference)).toMatchObject({ status: "current",
+      study: { id: saved.id } });
+    expect(JSON.stringify(reference)).not.toContain("Linked evidence");
+    expect(JSON.stringify(reference)).not.toContain("pinnedSelectionIds");
+    expect(normalizeNotebookReference({ ...reference, studyHash: "bad" })).toBeNull();
+    expect(normalizeNotebookReference({ ...reference, extra: "unexpected" })).toBeNull();
+
+    const renamed = renameProjectStudy(project, saved.id, "Revised study");
+    expect(inspectNotebookReference(renamed, reference).status).toBe("stale");
+    const graph = graphEntry.checkpoint;
+    if (graph.format !== "math3d.graph2d-document") throw new Error("Expected a Graph document.");
+    const edited = new Graph2DCommandAdapter(graph).commitScene({
+      source: { ...graph.source, objects: [] }, display: { ...graph.display, objects: [] },
+      selection: { objectId: null, probe: null },
+    }, "delete");
+    const changed = replaceMath3DProjectWorkspace(project, createMixedWorkspaceDocument({
+      ...project.workspace, entries: project.workspace.entries.map(entry =>
+        entry.expected.id === graph.identity.id ? { ...entry, expected: edited.identity, checkpoint: edited } : entry),
+    }));
+    expect(inspectNotebookReference(changed, reference)).toMatchObject({ status: "stale",
+      reason: expect.stringContaining("member-2") });
+    const missing = replaceMath3DProjectWorkspace(project, createMixedWorkspaceDocument({
+      ...project.workspace, studies: [],
+    }));
+    expect(inspectNotebookReference(missing, reference).status).toBe("missing");
+    expect(inspectNotebookReference(instantiateMath3DProjectTemplate("catenary-study", "other-study"), reference).status).toBe("different-project");
   });
 });

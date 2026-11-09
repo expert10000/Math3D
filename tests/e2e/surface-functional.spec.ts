@@ -204,6 +204,9 @@ test.describe("Surface functional flow", () => {
       await ctx.page.getByTestId("surface-collect-curve-layers").click();
       const layers = ctx.page.getByTestId("surface-result-layers");
       await expect(layers).toBeVisible();
+      await expect(ctx.page.getByTestId("surface-layer-qualification")).toHaveAttribute("data-status", "current");
+      await expect(ctx.page.getByTestId("surface-layer-claim")).toContainText("Curves were collected");
+      await expect(ctx.page.getByTestId("surface-layer-verification")).toContainText("not been independently verified");
       for (const kind of ["geodesic", "principal-k1", "principal-k2", "asymptotic", "level"]) {
         await expect(ctx.page.getByTestId(`surface-result-layer-${kind}`)).toBeVisible();
       }
@@ -220,6 +223,8 @@ test.describe("Surface functional flow", () => {
 
       await ctx.page.getByTestId("surface-computation-surface-features").click();
       await ctx.page.getByTestId("surface-collect-feature-layers").click();
+      await expect(ctx.page.getByTestId("surface-layer-qualification")).toHaveAttribute("data-status", "current");
+      await expect(ctx.page.getByTestId("surface-layer-claim")).toContainText("Features were collected");
       for (const kind of ["ridge", "valley", "umbilic", "parabolic", "critical-point", "representation-singularity"]) {
         await expect(ctx.page.getByTestId(`surface-result-layer-${kind}`)).toBeVisible();
       }
@@ -251,11 +256,18 @@ test.describe("Surface functional flow", () => {
       await compute.click();
       const chart = ctx.page.getByTestId("surface-chart-result");
       await expect(chart).toBeVisible();
+      await expect(ctx.page.getByTestId("surface-result-qualification")).toHaveAttribute("data-status", "current");
+      await expect(ctx.page.getByTestId("surface-result-claim")).toContainText("Metric and distortion diagnostics");
+      await expect(ctx.page.getByTestId("surface-result-verification")).toContainText("not independently verified");
       await expect(ctx.page.getByTestId("surface-chart-metric-statistics")).toContainText("det(g)");
       await expect(ctx.page.getByTestId("surface-chart-domain-view")).toBeVisible();
       const boundary = chart.getByRole("button", { name: "Hide Chart boundary", exact: true });
+      const historyBefore = await ctx.page.getByTestId("surface-analysis-contract").textContent();
+      const recordCount = historyBefore?.match(/Shared result history: (\d+)/)?.[1];
       await boundary.click();
       await expect(chart.getByRole("button", { name: "Show Chart boundary", exact: true })).toBeVisible();
+      expect(recordCount).toBeDefined();
+      await expect(ctx.page.getByTestId("surface-analysis-contract")).toContainText(`Shared result history: ${recordCount}`);
       await chart.getByRole("button", { name: "Save", exact: true }).click();
       await chart.getByRole("button", { name: "Recompute", exact: true }).click();
       await expect(ctx.page.getByTestId("surface-analysis-contract-state")).toHaveText("ready");

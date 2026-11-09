@@ -57,7 +57,7 @@ test("Project Gallery filters starters and saved projects and keeps browsing sep
     await page.getByTestId("projects-toggle").click();
     await panel.getByRole("button", { name: "Starter projects", exact: true }).click();
     await panel.getByTestId("project-library-module").selectOption("Workbook");
-    await expect(panel.locator(".project-starter-card")).toHaveCount(4);
+    await expect(panel.locator(".project-starter-card")).toHaveCount(5);
     await panel.getByTestId("project-library-search").fill("edge path");
     await expect(panel.locator(".project-starter-card")).toHaveCount(1);
     await expect(panel.getByTestId("project-template-select")).toHaveValue("edge-path-evidence");

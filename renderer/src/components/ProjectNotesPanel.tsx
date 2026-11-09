@@ -10,14 +10,15 @@ import { resolveProjectSavedMeshComparisonNoteTarget } from "../projects/project
 import type { ProjectResourceReader } from "../projects/projectResources";
 import { ProjectNoteLiveValues, type NoteValuePatch } from "./ProjectNoteLiveValues";
 
-type Filter = "all" | "scene" | "object" | "result" | "workbook" | "comparison";
+type Filter = "all" | "scene" | "object" | "result" | "study" | "workbook" | "comparison";
 const category = (anchor: ProjectNote["anchor"]): Exclude<Filter, "all"> | "global" =>
-  anchor?.kind === "comparison" || anchor?.kind === "saved-mesh-comparison" ? "comparison" : anchor?.kind === "document" ? "scene" : anchor?.kind === "object-local" || anchor?.kind === "subentity" || anchor?.kind === "entity-selection" || anchor?.kind === "graph-selection" ? "object" :
+  anchor?.kind === "comparison" || anchor?.kind === "saved-mesh-comparison" ? "comparison" : anchor?.kind === "study-selection" ? "study" : anchor?.kind === "document" ? "scene" : anchor?.kind === "object-local" || anchor?.kind === "subentity" || anchor?.kind === "entity-selection" || anchor?.kind === "graph-selection" ? "object" :
     anchor?.kind === "result" ? "result" : anchor?.kind === "workbook-block" ? "workbook" : "global";
 
 const anchorLabel = (anchor: ProjectNote["anchor"]) => !anchor ? "Unanchored" :
   anchor.kind === "comparison" ? `Comparison ${anchor.compositionId} · A r${anchor.members[0].revision} · B r${anchor.members[1].revision} · ${anchor.alignment}` :
     anchor.kind === "saved-mesh-comparison" ? `Saved Mesh comparison ${anchor.comparisonId} · ${anchor.metricPath}` :
+    anchor.kind === "study-selection" ? `Study ${anchor.studyId} · selection ${anchor.selectionId}` :
     anchor.kind === "workbook-block" ? `Workbook block ${anchor.blockId}` : anchor.kind === "result" ? `Result ${anchor.resultId}` :
     anchor.kind === "graph-selection" ? `Graph ${anchor.objectId}${anchor.probe ? ` · probe (${anchor.probe.x}, ${anchor.probe.y})` : ""}` :
     "objectId" in anchor ? `${anchor.objectId}${"entityId" in anchor ? ` · ${anchor.entityKind} ${anchor.entityId}` : ""}` : `Document ${anchor.source.documentId}`;
@@ -145,7 +146,7 @@ export const ProjectNotesPanel: React.FC<{
     </div>}
     <label style={{ display: "grid", gap: 4, marginTop: 10 }}>Search Notes<input data-testid="notes-search" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
     <div aria-label="Note filters" style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 8 }}>
-      {(["all", "scene", "object", "result", "workbook", "comparison"] as const).map((item) => <button type="button" key={item} aria-pressed={filter === item} onClick={() => setFilter(item)}>{item[0]!.toUpperCase() + item.slice(1)}</button>)}
+      {(["all", "scene", "object", "result", "study", "workbook", "comparison"] as const).map((item) => <button type="button" key={item} aria-pressed={filter === item} onClick={() => setFilter(item)}>{item[0]!.toUpperCase() + item.slice(1)}</button>)}
     </div>
     {drafts.length > 0 && <div style={{ marginTop: 10 }}><strong>Session drafts ({drafts.length})</strong>
       <button type="button" data-testid="notes-save" disabled={busy || !project || drafts.some((draft) => !draft.title.trim() || !draft.body.trim())} onClick={onSaveDrafts} style={{ marginLeft: 7 }}>Save to Project</button>

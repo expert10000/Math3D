@@ -47,6 +47,7 @@ import { ProjectRelationshipMap } from "./ProjectRelationshipMap";
 import { ProjectCursorInspector } from "./ProjectCursorInspector";
 import { ProjectStudiesPanel } from "./ProjectStudiesPanel";
 import { addQualifiedStudyGraphCurveLink } from "../projects/studyGraphCurveLink";
+import { prepareCuratedStudyProject } from "../projects/curatedStudyProject";
 const ProjectCompositionView = React.lazy(() => import("./ProjectCompositionView").then(module => ({ default: module.ProjectCompositionView })));
 const QuantumNativeOverlayView = React.lazy(() => import("./QuantumNativeOverlayView").then(module => ({ default: module.QuantumNativeOverlayView })));
 const ProjectSavedMeshResultComparisonView = React.lazy(() => import("./ProjectSavedMeshResultComparisonView").then(module => ({ default: module.ProjectSavedMeshResultComparisonView })));
@@ -69,7 +70,7 @@ import { exportProjectFile, exportProjectCheckpointFile, inspectProjectCompatibi
 import { ProjectCompatibilityPanel } from "./ProjectCompatibilityPanel";
 import { captureProjectResources, captureProjectResourcesAsync, exportProjectPackage, parseProjectPackage, projectResourceInventory, MAX_PROJECT_PACKAGE_BYTES, type ProjectResourceReader, type VerifiedProjectResources } from "../projects/projectResources";
 import { canReuseProjectResourceArchive, commitProjectResources, loadProjectResources, stageProjectBackupResources } from "../projects/projectResourceArchive";
-import { canonicalJsonStringify, structuralHash, VECTOR_FIELD3D_REGION_RESULT_TYPE,
+import { canonicalJsonStringify, inspectProjectNoteAnchor, structuralHash, VECTOR_FIELD3D_REGION_RESULT_TYPE,
   VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE,
   type ProjectNoteAnchor, type StableDocumentId } from "@math3d/core";
 import type { CombinedRegionSourceStatus, SavedRegionSourceStatus } from
@@ -98,7 +99,8 @@ import { createProjectComparisonNote, inspectProjectComparisonNote } from "../pr
 import { declareLegacyGeometryCoordinateFrame, declareLegacyMeshCoordinateFrame,
   declareLegacySurfaceCoordinateFrame } from "../projects/projectLegacyCoordinateFrame";
 import { bindProjectNoteDrafts, createProjectNoteDraft, type NoteCaptureKind, type ProjectNoteDraft } from "../projects/projectNoteDrafts";
-import { createProjectNoteSelectionAnchor, type NoteSelectionDescriptor } from "../projects/projectNoteTargets";
+import { createProjectNoteSelectionAnchor, projectNoteSourceResolver, type NoteSelectionDescriptor } from "../projects/projectNoteTargets";
+import { createProjectStudySelectionNoteAnchor } from "../projects/projectStudyNoteAnchor";
 import { resolveProjectNoteValues } from "../projects/projectNoteValues";
 import { projectAnalysisAvailability, type ProjectAnalysisRoute } from "../projects/projectAnalysisAvailability";
 import { verifyProjectQuantumSceneDocuments } from "../projects/quantumSceneAdmission";
@@ -123,6 +125,7 @@ type Props = {
   onCurrentProjectChange?: (project: Math3DProject, resources?: VerifiedProjectResources) => void;
   verifiedQuantumScene?: ProjectQuantumSceneReference | null;
   onImportQuantumScene?: () => void;
+  onOpenCasGallery?: () => void;
   onImportScientificScene?: () => void;
   onOpenQuantumScene?: (reference: ProjectQuantumSceneReference) => Promise<void>;
   onVerifyQuantumSceneDocument?: (reference: ProjectQuantumSceneReference) => Promise<QuantumSceneDocument>;
@@ -153,7 +156,7 @@ type Props = {
   activeProjectDocumentId?: string | null;
   onRestoreWorkspace?: (workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources, owner?: Math3DProject) => void;
 };
-export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open, onOpenChange, onCurrentProjectChange, verifiedQuantumScene, onImportQuantumScene, onImportScientificScene, onOpenQuantumScene, onVerifyQuantumSceneDocument, onRelinkQuantumScene, verifiedScientificScene, onOpenScientificScene, onRelinkScientificScene, captureActiveWorkbook, onOpenWorkbook, onViewProjectWorkbook, onViewProjectDetail, noteRequest, resultRequest, pairRequest, regionResultStatuses = {}, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAlgebra, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeEvidence, activeProjectDocumentId }) => {
+export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open, onOpenChange, onCurrentProjectChange, verifiedQuantumScene, onImportQuantumScene, onOpenCasGallery, onImportScientificScene, onOpenQuantumScene, onVerifyQuantumSceneDocument, onRelinkQuantumScene, verifiedScientificScene, onOpenScientificScene, onRelinkScientificScene, captureActiveWorkbook, onOpenWorkbook, onViewProjectWorkbook, onViewProjectDetail, noteRequest, resultRequest, pairRequest, regionResultStatuses = {}, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAlgebra, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeEvidence, activeProjectDocumentId }) => {
 
   const loadedProject = useRef<Math3DProject | null>(null);
   const resourceSession = useRef<VerifiedProjectResources | undefined>(undefined);
@@ -567,6 +570,15 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       return copy ? [[item.id, copy]] : [];
     }));
   }, [library, project]);
+  const guidedCopies = useMemo(() => {
+    let activeId: string | null = null;
+    try { activeId = readActiveProjectId(); } catch { /* Saved bytes are validated on open. */ }
+    const guidedLibrary = { ...library, entries: library.entries.filter(entry => entry.tags.includes("curated-study-v1")) };
+    return Object.fromEntries([...MATH3D_PROJECT_TEMPLATES, ...NOTEBOOK_STARTERS].flatMap(item => {
+      const copy = findProjectStarterCopy(guidedLibrary, item.id, activeId);
+      return copy ? [[item.id, copy]] : [];
+    }));
+  }, [library, project]);
   const display = (next: Math3DProject, savedPreview: boolean, keepManagement = false, resolved?: ReturnType<typeof verifyMixedWorkspaceReplay>) => {
     if (!keepManagement) workspacePanel.current?.scrollTo({ top: 0 });
     const tree = buildProjectExplorer(next, resolved ?? verifyMixedWorkspaceReplay(next.workspace));
@@ -703,6 +715,18 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const openNoteTarget = (note: ProjectNote) => {
     const anchor = note.anchor;
     if (!anchor) return;
+    if (anchor.kind === "study-selection") {
+      const current = project?.identity.id === note.projectId ? project : notesProject;
+      const checked = current && inspectProjectNoteAnchor(note,
+        projectNoteSourceResolver(current.identity.id, current.workspace));
+      if (!checked || checked.status !== "current") {
+        setNotesMessage("The exact Study selection or its source generation is unavailable."); return;
+      }
+      setStudyFocus(previous => ({ id: anchor.studyId, token: (previous?.token ?? 0) + 1 }));
+      setQuick(false); setDetailView(true); setDetailPage("overview");
+      setNotesOpen(false); onOpenChange(true);
+      return;
+    }
     if (anchor.kind === "comparison") {
       const current = project?.identity.id === note.projectId ? project : notesProject;
       if (!current || inspectProjectComparisonNote(current, note, comparisonResource).status !== "current") {
@@ -1492,11 +1516,13 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       setMessage("Review editor compatibility before opening this saved project.");
     } catch (error) { setMessage(`Saved project unavailable: ${(error as Error).message}`); }
   };
-  const previewTemplate = async (id: ProjectStarterId) => {
+  const previewTemplate = async (id: ProjectStarterId, curated = false) => {
     if (busy) return;
     const sequence = ++importSequence.current;
     try {
-      const copy = findProjectStarterCopy(parseProjectLibrary(localStorage.getItem(PROJECT_LIBRARY_KEY)), id, readActiveProjectId());
+      const available = parseProjectLibrary(localStorage.getItem(PROJECT_LIBRARY_KEY));
+      const copy = findProjectStarterCopy(curated ? { ...available, entries: available.entries.filter(entry => entry.tags.includes("curated-study-v1")) } :
+        available, id, readActiveProjectId());
       if (copy) {
         const next = loadLibraryProject(localStorage, copy.id), resources = await loadProjectResources(next);
         if (sequence !== importSequence.current) return;
@@ -1507,19 +1533,21 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       const token = crypto.randomUUID(), bundle = id === "catenoid-evidence" ? await takePreparedNotebookStarter(id) :
         NOTEBOOK_STARTERS.some(item => item.id === id) ? instantiateNotebookStarter(id as NotebookStarterId, token) : { project: instantiateMath3DProjectTemplate(id, token), resources: undefined };
       if (sequence !== importSequence.current) return;
-      const next = bundle.project;
+      const next = curated ? prepareCuratedStudyProject(bundle.project, id, token) : bundle.project;
       const inspection = "inspection" in bundle ? bundle.inspection as ProjectCompatibility : inspectProjectCompatibility(next, transferOptions(bundle.resources));
       setIncoming({ ...inspection, resources: bundle.resources, inputKind: "Independent starter project" });
       setMessage("Starter preview ready. Current work is unchanged until you choose to open it.");
     } catch (error) { if (sequence === importSequence.current) { setIncoming(null); setMessage(`Starter unavailable: ${(error as Error).message}`); } }
   };
-  const openTemplate = async (id: ProjectStarterId, newCopy = false) => {
+  const openTemplate = async (id: ProjectStarterId, newCopy = false, curated = false) => {
     if (busy || openingStarter.current) return;
     openingStarter.current = true;
     const sequence = ++importSequence.current;
     try {
       if (!newCopy) {
-        const activeId = readActiveProjectId(), copy = findProjectStarterCopy(parseProjectLibrary(localStorage.getItem(PROJECT_LIBRARY_KEY)), id, activeId);
+        const activeId = readActiveProjectId(), available = parseProjectLibrary(localStorage.getItem(PROJECT_LIBRARY_KEY));
+        const copy = findProjectStarterCopy(curated ? { ...available, entries: available.entries.filter(entry => entry.tags.includes("curated-study-v1")) } :
+          available, id, activeId);
         if (copy) {
           loadLibraryProject(localStorage, copy.id);
           if (hasOpenProject && copy.id === activeId && !preview && !managed && project?.identity.id === copy.id) {
@@ -1538,7 +1566,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       if (sequence !== importSequence.current) return;
       performance.clearMeasures("project-open:starter-construction");
       performance.measure("project-open:starter-construction", { start: starterStart, end: performance.now() });
-      const next = bundle.project;
+      const next = curated ? prepareCuratedStudyProject(bundle.project, id, token) : bundle.project;
       const inspectionStart = performance.now();
       const inspection = "inspection" in bundle ? bundle.inspection as ProjectCompatibility : inspectProjectCompatibility(next, transferOptions(bundle.resources));
       const candidate = { ...inspection, resources: bundle.resources, inputKind: "Independent starter project" };
@@ -1830,11 +1858,15 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         <div className="project-gallery-browse-controls">
           <div className="project-gallery-filters" aria-label="Project collection">{["All projects", "Starter projects", "Your saved projects", "Favorites"].map(value => <button type="button" key={value} aria-pressed={collection === value} onClick={() => setCollection(value)}>{value}</button>)}</div>
           <div className="project-gallery-search-row"><label>Search projects<input data-testid="project-library-search" type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search names, topics or tags" /></label>
-            <label>Module<select data-testid="project-library-module" value={moduleFilter} onChange={event => setModuleFilter(event.target.value)}>{["All modules", "Graph", "3D vector field", "Curve", "Surface", "Mesh", "Volume", "Geometry", "Topology", "Complex", "Quantum scene", "Workbook", "Notes", "Analysis"].map(value => <option key={value}>{value}</option>)}</select></label>
+            <label>Module<select data-testid="project-library-module" value={moduleFilter} onChange={event => setModuleFilter(event.target.value)}>{["All modules", "Graph", "3D vector field", "Curve", "Surface", "Mesh", "Volume", "Geometry", "Topology", "Complex", "Quantum scene", "Algebra", "Workbook", "Notes", "Analysis"].map(value => <option key={value}>{value}</option>)}</select></label>
             {(query || moduleFilter !== "All modules") && <button type="button" onClick={() => { setQuery(""); setModuleFilter("All modules"); }}>Clear filters</button>}
           </div>
         </div>
-        {(collection === "All projects" || collection === "Starter projects") && <ProjectTemplatesPanel query={query} moduleFilter={moduleFilter} copies={starterCopies} onPreview={id => { void previewTemplate(id); }} onOpen={(id) => { void openTemplate(id); }} onNewCopy={id => { void openTemplate(id, true); }} busy={busy} />}
+        {(collection === "All projects" || collection === "Starter projects") && <ProjectTemplatesPanel query={query} moduleFilter={moduleFilter} copies={starterCopies} guidedCopies={guidedCopies} onPreview={id => { void previewTemplate(id); }} onOpen={(id) => { void openTemplate(id); }} onNewCopy={id => { void openTemplate(id, true); }}
+          onPreviewCurated={id => { void previewTemplate(id, true); }} onOpenCurated={id => { void openTemplate(id, false, true); }}
+          onNewCuratedCopy={id => { void openTemplate(id, true, true); }}
+          onImportQuantumScene={onImportQuantumScene} quantumImportAvailable={!!window.quantumScenes?.open}
+          onOpenCasGallery={onOpenCasGallery} busy={busy} />}
         {collection !== "Starter projects" && <>
         <h3>Your saved projects ({library.entries.length})</h3><p>Favorites first, then recent. Open a project or preview its documents and compatibility.</p>
         {libraryMessage && <p role="status" data-testid="project-library-message">{libraryMessage}</p>}
@@ -1999,6 +2031,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
             <ProjectCursorInspector project={project} />
             <ProjectStudiesPanel project={project} documents={dashboardDocuments} resources={resourceSession.current}
               focusStudy={studyFocus}
+              workbookBytes={projectWorkbookBytes}
+              onOpenWorkbookBlock={busy ? undefined : (id, stageId, blockId) => {
+                void openProjectWorkbook(id, true, stageId, blockId); }}
               editable={!preview && !managed && !busy}
               onCreate={(studyTitle, ids) => stageStudy(source => createProjectStudyFromDocuments(source,
                 crypto.randomUUID(), studyTitle, ids), "Study created.")}
@@ -2011,6 +2046,14 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                 "QWZ k selection pinned in Study.")}
               onUnpinQwz={id => stageStudy(source => unpinProjectQwzSample(source, id),
                 "QWZ k selection removed from Study.")}
+              onCapturePinnedNote={(studyId, memberId, selectionId) => {
+                try {
+                  const anchor = createProjectStudySelectionNoteAnchor(project, studyId, memberId, selectionId);
+                  captureAnchoredNote(anchor, "Pinned k observation", "Add your observation about this saved k selection.");
+                  openProjectNotes();
+                } catch (error) { setNotesMessage(`Study Note capture failed: ${(error as Error).message}`); }
+              }}
+              onOpenNote={id => openProjectNotes(id)}
               onOpenQuantumSource={openLinkedQuantumScene}
               onOpenDocument={(id, module) => viewBesideProject(id, module)} />
           </div>}

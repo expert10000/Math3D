@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { launchRepoElectron } from "./helpers/electronLauncher";
 
-test("Workbook Project document and result references survive save and reopen", async () => {
+test("Workbook Project document, result and Study references survive save and reopen", async () => {
   const profile = mkdtempSync(path.join(os.tmpdir(), "math3d-notebook-reference-"));
   let app: ElectronApplication | null = null;
   try {
@@ -24,6 +24,16 @@ test("Workbook Project document and result references survive save and reopen", 
     await expect(projects.getByTestId("project-import-preview")).toContainText("Minimal Surface Study");
     await projects.getByTestId("project-import-open").click();
     await expect(projects.getByTestId("project-message")).toContainText("Opened supported project");
+    await projects.getByTestId("project-gallery-layout-toggle").click();
+    const studies = projects.getByTestId("project-studies-panel");
+    const studySourceId = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!)
+      .workspace.entries[0].expected.id as string);
+    await studies.getByLabel("Study title").fill("Workbook cited Study");
+    await studies.getByTestId(`project-study-choose-${studySourceId}`).check();
+    await studies.getByTestId("project-study-create-button").click();
+    await projects.getByTestId("project-save").click();
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!)
+      .workspace.studies?.length)).toBe(1);
     await page.getByRole("button", { name: "Close project explorer" }).click();
 
     await page.getByRole("button", { name: "Surfaces", exact: true }).first().click();
@@ -48,6 +58,15 @@ test("Workbook Project document and result references survive save and reopen", 
     await resultSelect.selectOption(resultValue!);
     await resultCell.getByRole("button", { name: "Link selection" }).click();
     await expect(resultCell.getByTestId("workbook-project-reference-status")).toContainText("current");
+    await page.getByRole("button", { name: "Project reference", exact: true }).click();
+    const studyCell = page.getByTestId("workbook-project-reference-cell").last();
+    const studySelect = studyCell.getByTestId("workbook-project-reference-target");
+    const studyValue = await studySelect.locator('option[value^="s:"]').first().getAttribute("value");
+    expect(studyValue).toMatch(/^s:/);
+    await studySelect.selectOption(studyValue!);
+    await studyCell.getByRole("button", { name: "Link selection" }).click();
+    await expect(studyCell.getByTestId("workbook-project-reference-status")).toContainText("Saved Study");
+    await expect(studyCell.getByTestId("workbook-study-members")).toContainText("current-reference");
     const linked = await page.evaluate(() => {
       const books = JSON.parse(localStorage.getItem("math3d.workbooks.v1") ?? "[]");
       return books.flatMap((book: any) => book.stages.flatMap((stage: any) => stage.blocks))
@@ -56,15 +75,17 @@ test("Workbook Project document and result references survive save and reopen", 
     expect(linked).toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: "document", targetId: target.slice(2) }),
       expect.objectContaining({ kind: "result", targetId: resultValue!.slice(2) }),
+      expect.objectContaining({ kind: "study", targetId: studyValue!.slice(2) }),
     ]));
 
     await page.reload();
     await page.getByRole("button", { name: "Surfaces", exact: true }).first().click();
     await page.getByRole("button", { name: "Workbook", exact: true }).first().click();
     const reopened = page.getByTestId("workbook-project-reference-cell");
-    await expect(reopened).toHaveCount(2);
+    await expect(reopened).toHaveCount(3);
     await expect(reopened.first().getByTestId("workbook-project-reference-status")).toContainText("current");
     await expect(reopened.last().getByTestId("workbook-project-reference-status")).toContainText("current");
+    await expect(reopened.last().getByTestId("workbook-study-members")).toContainText("current-reference");
     await expect(reopened.last()).toContainText("saved project preview");
   } finally {
     if (app) await app.close();

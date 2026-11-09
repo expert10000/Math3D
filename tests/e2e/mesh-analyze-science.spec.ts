@@ -1,4 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import {
   closeSurfaceApp,
   launchSurfaceApp,
@@ -153,10 +155,35 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(activeResult).toContainText(/Differential Geometry/i);
     await expect(activeResult).toContainText(/Gaussian curvature K/i);
     await expect(page.getByTestId("mesh-analysis-active-result-state")).toHaveText("Ready");
+    await expect(page.getByTestId("mesh-analysis-result-qualification")).toHaveAttribute("data-status", "current");
+    await expect(page.getByTestId("mesh-analyze-measurement-qualification")).toHaveAttribute("data-status", "current");
+    await expect(page.getByTestId("mesh-analysis-result-qualification")).toContainText("does not independently prove");
     await expect(page.getByTestId("mesh-analysis-result-statistics")).toBeVisible();
     await expect(page.getByTestId("mesh-analysis-result-definition")).toContainText(/Method\s*Angle defect/i);
     await expect(page.getByTestId("mesh-analysis-result-definition")).toContainText(/Domain\s*\d+ vertices/i);
     await expect(page.getByTestId("mesh-analysis-result-definition")).toContainText(/Quantity\s*Gaussian curvature K/i);
+    await expect(page.getByTestId("mesh-analysis-result-definition")).toContainText(/Units\s*mesh units\^-2/i);
+    const evidencePath = test.info().outputPath("mesh-active-result-evidence.json");
+    await ctx.app.evaluate(({ session }, target) =>
+      session.defaultSession.once("will-download", (_event, item) => item.setSavePath(target)), evidencePath);
+    await page.getByTestId("mesh-analysis-export-evidence").click();
+    await expect.poll(() => existsSync(evidencePath)).toBe(true);
+    const evidence = JSON.parse(await readFile(evidencePath, "utf8"));
+    expect(evidence).toMatchObject({ format: "math3d.mesh-active-result-evidence/v1",
+      source: { revision: expect.any(String) }, result: { kind: "curvature", version: expect.any(Number) },
+      qualification: { status: "current" }, summary: { unit: "mesh units^-2" } });
+    const summaryCsvPath = test.info().outputPath("mesh-active-result-summary.csv");
+    await ctx.app.evaluate(({ session }, target) =>
+      session.defaultSession.once("will-download", (_event, item) => item.setSavePath(target)), summaryCsvPath);
+    await page.getByTestId("mesh-analysis-export-summary-csv").click();
+    await expect.poll(() => existsSync(summaryCsvPath)).toBe(true);
+    const summaryCsv = await readFile(summaryCsvPath, "utf8");
+    expect(summaryCsv).toContain("qualification,Status,current,");
+    expect(summaryCsv).toContain("summary,Unit,mesh units^-2,");
+    expect(summaryCsv).toContain("statistics,Mean,");
+    await page.getByTestId("mesh-analysis-open-history").click();
+    await expect(page.getByTestId("mesh-analysis-history-detail")).toHaveAttribute("data-qualification", "current");
+    await page.getByTestId("shared-inspector-tab-analysis").click();
     await expect(page.getByTestId("mesh-analysis-result-percentiles")).toContainText(/P05.*P50.*P95/i);
     await expect(page.getByTestId("mesh-analysis-result-provenance")).toContainText(/Backend.*Revision/i);
     await expect(page.getByTestId("mesh-analysis-result-warnings")).toBeVisible();
@@ -170,6 +197,7 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(page.getByTestId("mesh-analysis-result-metadata")).toContainText(/Cached\s*(?:Yes|No)/i);
     await page.getByTestId("mesh-analysis-feature-mean-curvature").click();
     await expect(page.getByTestId("mesh-analysis-context-result")).toHaveText("Mean curvature H");
+    await expect(page.getByTestId("mesh-analysis-result-definition")).toContainText(/Units\s*mesh units\^-1/i);
     await expect(activeResult).toBeInViewport();
     await page.getByTestId("mesh-analysis-feature-gaussian-curvature").click();
     await expect(page.getByTestId("mesh-analysis-context-result")).toHaveText("Gaussian curvature K");
@@ -330,7 +358,7 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(page.getByTestId("mesh-analyze-health-badge")).toContainText(/State check:\s*Warning/i);
     await expect(page.getByTestId("mesh-analyze-health-badge")).toContainText(/3 suspected intersections/i);
     await expect(page.getByTestId("mesh-inspector-diagnostics-card")).toContainText(/Warning/i);
-    await expect(page.getByTestId("mesh-inspector-canonical-health")).toContainText(/Canonical MeshHealthResult.*Backend.*Status/is);
+    await expect(page.getByTestId("mesh-inspector-canonical-health")).toContainText(/Canonical mesh state.*Backend.*Status/is);
     await expect(page.getByTestId("mesh-analyze-clean-counts")).toHaveCount(0);
     await expect(page.getByTestId("mesh-analyze-diagnostics-boundary-count")).toBeVisible();
     await expect(page.getByTestId("mesh-analyze-diagnostics-boundary-count")).toContainText(/Boundary:\s*0 clean/i);

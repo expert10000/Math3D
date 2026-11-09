@@ -562,6 +562,13 @@ const normalizeScientificResult = (
   input: MeshActiveAnalysisResultInput
 ): MeshActiveAnalysisResultSummary => {
   const metadataMethod = base.metadata.find((entry) => entry.label === "Method")?.value;
+  const inferredUnit = input.curvatureField === "K" ? "mesh units^-2"
+    : input.curvatureField === "H" || input.curvatureField === "k1" || input.curvatureField === "k2"
+      ? "mesh units^-1" : undefined;
+  const unit = base.metadata.find((entry) => entry.label === "Units")?.value ??
+    (input.section === "differential-geometry" || input.section === "chart-analysis" ? inferredUnit : undefined);
+  const metadata = unit && !base.metadata.some((entry) => entry.label === "Units")
+    ? [...base.metadata, { label: "Units", value: unit }] : base.metadata;
   const provenance = base.provenance?.slice() ?? [];
   const addProvenance = (label: string, value: string | null | undefined) => {
     if (!value || provenance.some((entry) => entry.label === label)) return;
@@ -614,6 +621,7 @@ const normalizeScientificResult = (
           ? "vector"
           : "scalar",
     source: input.meshLabel,
+    ...(unit ? { unit } : {}),
   };
   const statisticsRange = input.curvatureStats
     ? { min: input.curvatureStats.min, max: input.curvatureStats.max }
@@ -637,6 +645,7 @@ const normalizeScientificResult = (
       : "current mesh"),
     percentiles: base.percentiles ?? [],
     provenance,
+    metadata,
     warnings: [...warnings],
     field,
     display,

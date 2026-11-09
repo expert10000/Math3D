@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { graphEditor, openGraphType, saveGraphEditor } from "../e2e/helpers/graphAuthoring";
+import { openGeometryServices } from "./sageGeometryServices";
 
 test("web Number Theory uses shared Sage operations, cancellation, Inspector, and runtimes", async ({ page }) => {
   const requests: Array<{ operation: string; backend: string; params: Record<string, unknown> }> = [];
@@ -197,10 +198,7 @@ test("Surface and Geometry Services share the same Sage operation and Analysis d
   await surface.getByRole("button", { name: "Run", exact: true }).click();
   await expect(page.getByTestId("sage-analysis-result")).toContainText("Simplified expression");
 
-  await page.getByRole("button", { name: "Geometry", exact: true }).first().click();
-  await page.getByTestId("geometry-professional-panel-services").click({ force: true });
-  const geometry = page.getByTestId("scientific-services-geometry");
-  await expect(geometry).toBeVisible();
+  const geometry = await openGeometryServices(page);
   await geometry.getByLabel("Services preset").selectOption("Basic");
   await geometry.getByLabel("SageMath backend").selectOption("docker");
   await geometry.getByRole("button", { name: "Run", exact: true }).click();
@@ -211,7 +209,44 @@ test("Surface and Geometry Services share the same Sage operation and Analysis d
   expect((requests[1] as { jobId?: string }).jobId).not.toBe((requests[0] as { jobId?: string }).jobId);
   await page.getByTestId("top-compute-center-button").click();
   await expect(page.getByTestId("compute-center").getByRole("region", { name: "Broker jobs" })).toContainText("Symbolic simplification");
-  await expect(page.getByTestId("compute-center").getByRole("region", { name: "Broker jobs" })).toContainText("complete");
+  await expect(page.getByTestId("compute-center").getByRole("region", { name: "Broker jobs" })).toContainText("Completed");
+});
+
+test("a failed Sage inverse still permits Geometry Services and a later computation", async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.route("http://127.0.0.1:8767/**", async (route) => {
+    const headers = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET,POST,OPTIONS", "access-control-allow-headers": "content-type" };
+    if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers });
+    if (route.request().url().endsWith("/health")) return route.fulfill({ status: 200, contentType: "application/json", headers,
+      body: JSON.stringify({ engine: "sagemath", engineVersion: "10.6", available: true, status: "ok",
+        operations: ["sage.numberTheory.modInverse", "sage.groebner.compute"] }) });
+    const request = route.request().postDataJSON() as { operation: string };
+    const failed = request.operation === "sage.numberTheory.modInverse";
+    await route.fulfill({ status: 200, contentType: "application/json", headers,
+      body: JSON.stringify({ engine: "sagemath", operation: request.operation, success: !failed,
+        ...(failed ? { error: "inverse does not exist" } : { result: { text: "y^2 - 1/2" }, latex: "y^2 - 1/2" }), warnings: [] }) });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Palette", exact: true }).click();
+  await page.getByPlaceholder("Type a command (examples: export, screenshot, run stage)...").fill("Open backend services panel");
+  await page.getByRole("button", { name: "Open backend services panel", exact: true }).click();
+  const surface = page.getByTestId("scientific-services-surface");
+  await surface.getByLabel("Services preset").selectOption("All");
+  await surface.getByLabel("SageMath backend").selectOption("docker");
+  await surface.getByLabel("Operation").selectOption("sage.numberTheory.modInverse");
+  await surface.getByLabel("Integer", { exact: true }).fill("2");
+  await surface.getByLabel("Modulus (greater than 1)").fill("4");
+  await surface.getByRole("button", { name: "Run", exact: true }).click();
+  await expect(surface).toContainText("does not exist");
+  const geometry = await openGeometryServices(page);
+  await geometry.getByLabel("Services preset").selectOption("All");
+  await geometry.getByLabel("Operation").selectOption("sage.groebner.compute");
+  await geometry.getByRole("button", { name: "Run", exact: true }).click();
+  await expect(geometry).toContainText("y^2 - 1/2");
+  await page.getByTestId("top-compute-center-button").click();
+  const jobs = page.getByTestId("compute-center").getByRole("region", { name: "Broker jobs" });
+  await expect(jobs.getByText("Modular inverse", { exact: true }).locator("../..")).toContainText(/failed/i);
+  await expect(jobs.getByText("Gröbner basis", { exact: true }).locator("../..")).toContainText(/completed/i);
 });
 
 test("Surface and Geometry route polynomial factor and exact roots through Compute jobs", async ({ page }) => {

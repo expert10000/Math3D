@@ -11,10 +11,12 @@ import type {
   SurfaceDerivedMeshPayload,
 } from "../surfaceAnalysis/contracts";
 import type { DerivedSurfaceMeshRecord } from "../surfaceAnalysis/derivedSurfaceMesh";
-import type { SurfaceAnalysisResult } from "../surfaceAnalysis/infrastructure";
+import type { SurfaceAnalysisResult, SurfaceAnalysisResultStore } from "../surfaceAnalysis/infrastructure";
+import { presentSurfaceAnalysisResult } from "../surfaceAnalysis/surfaceResultPresentation";
 import type { SurfaceAnalysisExecutionState } from "../surfaceAnalysis/scheduler";
 import { SURFACE_ANALYSIS_PRESETS, type SurfaceAnalysisPresetLayer } from "../surfaceAnalysis/presets";
 import { SurfaceAnalysisContractCard } from "./SurfaceAnalysisContractCard";
+import type { SurfaceLayerQualification } from "../surfaceAnalysis/surfaceLayerQualification";
 
 export type SurfaceComputationId =
   | "differential-geometry"
@@ -355,6 +357,7 @@ export function SurfaceCurvatureDisplayControls({
 export function SurfaceAnalysisInspectorPanel({
   definition,
   result,
+  store,
   preferredTab,
   historyCount,
   savedResultCount,
@@ -367,6 +370,7 @@ export function SurfaceAnalysisInspectorPanel({
 }: {
   definition: CanonicalSurfaceDefinition;
   result: SurfaceAnalysisResult<SurfaceAnalysisPayload> | null;
+  store: SurfaceAnalysisResultStore;
   preferredTab?: "result" | "probe";
   historyCount: number;
   savedResultCount: number;
@@ -398,6 +402,7 @@ export function SurfaceAnalysisInspectorPanel({
   };
   layerActions?: {
     payload: SurfaceCurveLayersPayload | SurfaceFeatureLayersPayload;
+    qualification: SurfaceLayerQualification;
     compareLabel: string;
     onAction: (layerId: string, action: "toggle" | "select" | "frame" | "save" | "compare" | "export" | "recompute" | "remove") => void;
   };
@@ -414,22 +419,33 @@ export function SurfaceAnalysisInspectorPanel({
   derivedMeshInspection?: { record: DerivedSurfaceMeshRecord; payload: SurfaceDerivedMeshPayload | null };
 }) {
   const payloadKind = result?.payload?.data.kind ?? "none";
+  const presentation = presentSurfaceAnalysisResult(definition, result, store);
   const warnings = result?.payload?.warnings ?? definition.warnings;
-  const curvature = result?.payload?.data.kind === "curvature" ? result.payload.data : null;
+  const curvature = presentation.canUseCurrentValues && result?.payload?.data.kind === "curvature" ? result.payload.data : null;
   const showProbe = preferredTab === "probe" || result?.payload?.data.kind === "local-probe";
   return (
     <section data-testid="surface-analysis-inspector" style={{ display: "grid", gap: 8, marginBottom: 10 }}>
-      <SurfaceAnalysisContractCard definition={definition} result={result} historyCount={historyCount} />
+      <SurfaceAnalysisContractCard definition={definition} result={result} historyCount={historyCount} qualification={presentation} />
       <div
         style={{ border: "1px solid #e2e8f0", borderRadius: 8, background: "#fff", padding: 8, fontSize: 10.5 }}
       >
         <div style={{ display: "grid", gap: 4 }}>
+            <div data-testid="surface-result-qualification" data-status={presentation.status} style={{ color: presentation.status === "current" ? "#166534" : "#9a3412" }}>
+              <strong>{presentation.status}</strong> · {presentation.reason}
+            </div>
+            <div data-testid="surface-result-claim"><strong>Mathematical claim:</strong> {presentation.claim}</div>
+            <div data-testid="surface-result-verification"><strong>Independent check:</strong> {presentation.verification}</div>
+            {result?.payload && <div data-testid="surface-result-source"><strong>Recorded source:</strong> {result.identity.surfaceId}@{result.identity.surfaceRevision} · {result.payload.units.length} · {result.payload.method}</div>}
             <div><strong>State:</strong> {result?.state ?? "queued"}</div>
             <div><strong>Result:</strong> {result?.kind ?? "surface-definition"} · {payloadKind}</div>
             <div><strong>Method:</strong> {result?.payload?.method ?? "source-defined"}</div>
             <div><strong>Backend:</strong> {result?.backend ?? "pending"}</div>
             <div><strong>Saved:</strong> {savedResultCount ? `${savedResultCount} result reference${savedResultCount === 1 ? "" : "s"}` : "not saved"}</div>
             {result?.computeTimeMs != null && <div><strong>Compute time:</strong> {result.computeTimeMs.toFixed(1)} ms</div>}
+            {!presentation.canUseCurrentValues && result?.payload?.data.kind === "curvature" &&
+              <div data-testid="surface-curvature-withheld" role="status">Curvature values are withheld until this Surface result is current.</div>}
+            {!presentation.canUseCurrentValues && result?.payload?.data.kind === "chart" &&
+              <div data-testid="surface-chart-withheld" role="status">Chart values are withheld until this Surface result is current.</div>}
             {curvature && (
               <section data-testid="surface-curvature-result" style={{ display: "grid", gap: 6, marginTop: 5, paddingTop: 7, borderTop: "1px solid #e2e8f0" }}>
                 <div><strong>Valid domain:</strong> {curvature.validDomainCount.toLocaleString()} / {curvature.sampleCount.toLocaleString()}</div>
@@ -468,7 +484,9 @@ export function SurfaceAnalysisInspectorPanel({
             {derivedMeshInspection && <SurfaceDerivedMeshInspector {...derivedMeshInspection} />}
             {!!warnings.length && <div style={{ color: "#9a3412" }}>{warnings.join(" · ")}</div>}
         </div>
-        {showProbe && (probeActions ? (
+        {showProbe && !presentation.canUseCurrentValues && result?.payload?.data.kind === "local-probe" &&
+          <div data-testid="surface-probe-withheld" role="status">Probe values are withheld until this Surface result is current.</div>}
+        {showProbe && presentation.canUseCurrentValues && (probeActions ? (
           <SurfaceLocalProbeInspector {...probeActions} />
         ) : (
           probeRows.length ? (
@@ -559,10 +577,15 @@ function SurfaceChartDiagnosticsInspector({ chart, focusedIndex, onSelectIndex, 
   );
 }
 
-function SurfaceResultLayersInspector({ payload, compareLabel, onAction }: NonNullable<Parameters<typeof SurfaceAnalysisInspectorPanel>[0]["layerActions"]>) {
+function SurfaceResultLayersInspector({ payload, qualification, compareLabel, onAction }: NonNullable<Parameters<typeof SurfaceAnalysisInspectorPanel>[0]["layerActions"]>) {
   return (
     <section data-testid="surface-result-layers" style={{ display: "grid", gap: 6, marginTop: 6, paddingTop: 7, borderTop: "1px solid #e2e8f0" }}>
       <strong>{payload.kind === "curve-layers" ? "Surface Curves" : "Surface Features"} · {payload.layers.length} layers</strong>
+      <div data-testid="surface-layer-qualification" data-status={qualification.status} style={{ color: qualification.status === "current" ? "#166534" : "#9a3412" }}>
+        <strong>{qualification.status}</strong> · {qualification.reason}
+      </div>
+      <div data-testid="surface-layer-claim"><strong>Mathematical claim:</strong> {qualification.claim}</div>
+      <div data-testid="surface-layer-verification"><strong>Independent check:</strong> {qualification.verification}</div>
       {payload.layers.map((layer) => {
         const statistics = layer.statistics;
         const statisticsLabel = "totalLength" in statistics
@@ -574,14 +597,14 @@ function SurfaceResultLayersInspector({ payload, compareLabel, onAction }: NonNu
           <div style={{ color: "#64748b" }}>Seed: {layer.selectionSource.kind}{layer.selectionSource.references.length ? ` (${layer.selectionSource.references.join(", ")})` : ""} · boundary: {layer.policy.boundaryBehavior}</div>
           {!!layer.warnings.length && <div style={{ color: "#9a3412" }}>{layer.warnings.join(" · ")}</div>}
           <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
-            <button type="button" onClick={() => onAction(layer.layerId, "toggle")}>{layer.visible ? "Hide" : "Show"}</button>
-            <button type="button" disabled={layer.state !== "ready"} onClick={() => onAction(layer.layerId, "select")}>Select</button>
-            <button type="button" disabled={layer.state !== "ready"} onClick={() => onAction(layer.layerId, "frame")}>Frame</button>
-            <button type="button" onClick={() => onAction(layer.layerId, "save")}>Save</button>
-            <button type="button" onClick={() => onAction(layer.layerId, "compare")}>Compare</button>
-            <button type="button" onClick={() => onAction(layer.layerId, "export")}>Export</button>
+            <button type="button" disabled={!qualification.canUseCurrentActions} onClick={() => onAction(layer.layerId, "toggle")}>{layer.visible ? "Hide" : "Show"}</button>
+            <button type="button" disabled={!qualification.canUseCurrentActions || layer.state !== "ready"} onClick={() => onAction(layer.layerId, "select")}>Select</button>
+            <button type="button" disabled={!qualification.canUseCurrentActions || layer.state !== "ready"} onClick={() => onAction(layer.layerId, "frame")}>Frame</button>
+            <button type="button" disabled={!qualification.canUseCurrentActions} onClick={() => onAction(layer.layerId, "save")}>Save</button>
+            <button type="button" disabled={!qualification.canUseCurrentActions} onClick={() => onAction(layer.layerId, "compare")}>Compare</button>
+            <button type="button" disabled={qualification.status === "unavailable"} onClick={() => onAction(layer.layerId, "export")}>Export</button>
             <button type="button" onClick={() => onAction(layer.layerId, "recompute")}>Recompute</button>
-            <button type="button" onClick={() => onAction(layer.layerId, "remove")}>Remove</button>
+            <button type="button" disabled={!qualification.canUseCurrentActions} onClick={() => onAction(layer.layerId, "remove")}>Remove</button>
           </div>
         </article>;
       })}
