@@ -1999,6 +1999,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
             <ProjectCursorInspector project={project} />
             <ProjectStudiesPanel project={project} documents={dashboardDocuments} resources={resourceSession.current}
               focusStudy={studyFocus}
+              workbookBytes={projectWorkbookBytes}
+              onOpenWorkbookBlock={busy ? undefined : (id, stageId, blockId) => {
+                void openProjectWorkbook(id, true, stageId, blockId); }}
               editable={!preview && !managed && !busy}
               onCreate={(studyTitle, ids) => stageStudy(source => createProjectStudyFromDocuments(source,
                 crypto.randomUUID(), studyTitle, ids), "Study created.")}
