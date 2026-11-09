@@ -1029,6 +1029,7 @@ import {
   type MeshCurvatureAnalysisPayload,
   type MeshDiagnosticsAnalysisPayload,
 } from "./mesh/analysisResultStore";
+import { qualifyMeshAnalysisResult } from "./mesh/meshResultQualification";
 import { MeshAnalysisKernelBridge } from "./mesh/meshAnalysisKernelBridge";
 import { MeshDifferentialScientificJob } from "./mesh/meshDifferentialScientificJob";
 import {
@@ -74930,12 +74931,19 @@ case "mobius":
   const focusedKernelHydratedResult = focusedKernelAnalysisRecord && activeMeshAnalysisIdentity
     ? getMeshAnalysisResult(meshAnalysisResultStore, activeMeshAnalysisIdentity, focusedKernelAnalysisRecord.kind, focusedKernelAnalysisRecord.variant)
     : null;
-  const focusedKernelResourceState = focusedKernelAnalysisRecord == null ? "unavailable"
-    : focusedKernelAnalysisRecord.state === "queued" || focusedKernelAnalysisRecord.state === "running" ? "computing"
-    : focusedKernelHydratedResult?.state === "stale" || focusedKernelAnalysisRecord.state === "stale" ? "stale"
-    : focusedKernelAnalysisRecord.state === "error" ? "failed"
-    : focusedKernelAnalysisRecord.state === "ready" && focusedKernelHydratedResult?.payload ? "current"
-    : "unavailable";
+  const focusedExpectedVariant = analysisFocusedSection === "mesh-quality" ? meshQualityResultVariant
+    : analysisFocusedSection === "differential-geometry" || analysisFocusedSection === "curvature-lines" ? "discrete-differential-geometry-v2"
+    : analysisFocusedSection === "surface-features" ? "classification-v1"
+    : analysisFocusedSection === "ridges-valleys" ? "principal-extrema-v1"
+    : analysisFocusedSection === "diagnostics" ? meshDiagnosticsResultVariant : undefined;
+  const focusedExpectedParameters = analysisFocusedSection === "mesh-quality" ? meshQualityResultParameters
+    : analysisFocusedSection === "differential-geometry" || analysisFocusedSection === "curvature-lines" ? MESH_DIFFERENTIAL_GEOMETRY_PARAMETERS
+    : analysisFocusedSection === "surface-features" ? surfaceFeatureParameters
+    : analysisFocusedSection === "ridges-valleys" ? ridgeValleyParameters : undefined;
+  const focusedKernelQualification = qualifyMeshAnalysisResult({ store: meshAnalysisResultStore,
+    mesh: activeMeshAnalysisIdentity, result: focusedKernelHydratedResult, kind: focusedKernelAnalysisKind,
+    variant: focusedExpectedVariant, parameters: focusedExpectedParameters });
+  const focusedKernelResourceState = focusedKernelQualification.status === "historical" ? "stale" : focusedKernelQualification.status;
   const focusedKernelEnvelope = focusedKernelAnalysisKind
     ? [...meshAnalysisKernelBridge.results()].reverse().find((result) =>
       result.provenance.operation.type === `mesh.analyze.${focusedKernelAnalysisKind}` &&
