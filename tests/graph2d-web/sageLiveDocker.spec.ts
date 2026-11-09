@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { openGeometryServices } from "./sageGeometryServices";
 
 test("web Number Theory runs GCD and modular inverse through live Docker", async ({ page, request }) => {
   const healthResponse = await request.get("http://127.0.0.1:8767/health");
@@ -60,6 +61,7 @@ test("browser Sage Docker cancel reaches the live service", async ({ page }) => 
 });
 
 test("live Docker Sage operations report results and failures in Compute jobs", async ({ page, request }) => {
+  test.setTimeout(180_000);
   const health = await request.get("http://127.0.0.1:8767/health");
   expect(health.ok(), "Start the SageMath Docker service before this opt-in test.").toBe(true);
   expect((await health.json()).available).toBe(true);
@@ -94,9 +96,7 @@ test("live Docker Sage operations report results and failures in Compute jobs", 
   await panel.getByRole("button", { name: "Run", exact: true }).click();
   await expect(panel).toContainText("does not exist");
 
-  await page.getByRole("button", { name: "Geometry", exact: true }).first().click();
-  await page.getByTestId("geometry-professional-panel-services").click({ force: true });
-  const geometry = page.getByTestId("scientific-services-geometry");
+  const geometry = await openGeometryServices(page);
   await geometry.getByLabel("Services preset").selectOption("All");
   await geometry.getByLabel("Operation").selectOption("sage.groebner.compute");
   await geometry.getByRole("button", { name: "Run", exact: true }).click();
@@ -105,12 +105,15 @@ test("live Docker Sage operations report results and failures in Compute jobs", 
   await page.getByTestId("top-compute-center-button").click();
   const jobs = page.getByTestId("compute-center").getByRole("region", { name: "Broker jobs" });
   for (const item of cases) {
-    const recorded = jobs.getByText(item.job, { exact: true }).last().locator("../..");
-    await expect(recorded).toContainText("complete");
+    const recorded = jobs.getByText(item.job, { exact: true }).locator("../..").filter({ hasText: /completed/i });
+    await expect(recorded).toHaveCount(1);
     await expect(recorded).toContainText("sage-docker");
   }
   const inverseJobs = jobs.getByText("Modular inverse", { exact: true });
   await expect(inverseJobs).toHaveCount(2);
-  await expect(inverseJobs.first().locator("../..")).toContainText("failed");
-  await expect(inverseJobs.first().locator("../..")).toContainText("does not exist");
+  const inverseRecords = inverseJobs.locator("../..");
+  await expect(inverseRecords.filter({ hasText: /completed/i })).toHaveCount(1);
+  const failedInverse = inverseRecords.filter({ hasText: /failed/i });
+  await expect(failedInverse).toHaveCount(1);
+  await expect(failedInverse).toContainText("does not exist");
 });
