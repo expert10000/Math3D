@@ -132,10 +132,13 @@ describe("shared Graphs numerical result browser", () => {
     const markup = renderToStaticMarkup(<Graph2DPhaseEquilibriaTable artifact={artifact}
       document={document} objectId="function_1" />);
     expect(markup).toContain("Approximate equilibria");
+    expect(markup).toContain("viewport sampled equilibrium candidates");
+    expect(markup).toContain("Independent check");
     expect(markup).toContain("Export results");
     const preview = renderToStaticMarkup(<Graph2DPhaseEquilibriaTable artifact={artifact}
       document={document} objectId="function_1" readOnlyPreview />);
     expect(preview).toContain("Transient equilibria preview");
+    expect(preview).toContain("transient viewport equilibrium preview");
     expect(preview).not.toContain("Export results");
   });
 });

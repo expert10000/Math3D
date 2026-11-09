@@ -5,6 +5,7 @@ import { downloadGraph2DResultJson } from "./downloadGraph2DResultJson";
 import { downloadGraph2DResultsCsv } from "./downloadGraph2DResultsCsv";
 import { Graph2DNumericalResultsTable, type Graph2DResultColumn,
   type Graph2DResultFilter } from "./Graph2DNumericalResultsTable";
+import { Graph2DResultEvidence } from "./Graph2DResultEvidence";
 
 type Equilibrium = Graph2DPhasePortraitArtifact["equilibria"][number];
 const filters: readonly Graph2DResultFilter<Equilibrium>[] = [
@@ -50,6 +51,12 @@ export function Graph2DPhaseEquilibriaTable({ artifact, document, objectId, budg
       document.identity.id, document.identity.revision, document.display.viewport.xMin,
       document.display.viewport.xMax, document.display.viewport.yMin, document.display.viewport.yMax]));
   return <div data-testid="graph2d-phase-equilibria-table">
+    <Graph2DResultEvidence current resultId={resultKey} source={{ documentId: document.identity.id,
+      revision: document.identity.revision, structuralHash: document.identity.structuralHash,
+      generation: document.identity.revision }}
+      claim={readOnlyPreview ? "transient viewport equilibrium preview" : "viewport sampled equilibrium candidates"}
+      method="bounded viewport sampling and local linearization" units="Graph x and y world units"
+      limitation="Candidate isolation and local stability classifications are approximate." />
     <p role="status"><strong>{readOnlyPreview ? "Transient equilibria preview" :
       artifact.analysis.status === "complete" ? "Approximate equilibria" :
       artifact.analysis.status === "partial" ? "Incomplete equilibrium scan" : "Equilibria unavailable"}</strong>
