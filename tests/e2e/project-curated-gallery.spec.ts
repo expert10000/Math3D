@@ -10,7 +10,7 @@ test("guided Study Gallery explains real Project and external-scene routes witho
     await panel.getByRole("button", { name: "Starter projects", exact: true }).click();
     await expect(panel.getByTestId("project-template-card-catenary-study")).toBeVisible();
     await panel.getByTestId("project-gallery-guided").click();
-    await expect(panel.locator(".curated-study-card")).toHaveCount(14);
+    await expect(panel.locator(".curated-study-card")).toHaveCount(15);
     const catenary = panel.getByTestId("curated-study-card-catenary-study");
     await expect(catenary).toContainText("How does a catenary generate a catenoid?");
     await expect(catenary).toContainText("Graph profile, Curve snapshot, revolution Surface");
@@ -36,6 +36,38 @@ test("guided Study Gallery explains real Project and external-scene routes witho
     const opened = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     expect(opened.metadata.tags).toContain("catenary-study");
     expect(opened.workspace.entries.map((entry: { module: string }) => entry.module)).toEqual(["graph2d", "curve", "surface"]);
+  } finally { await closeSurfaceApp(ctx); }
+});
+
+test("Algebra Gallery route saves a validated structure into the active Project", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByRole("button", { name: "Starter projects", exact: true }).click();
+    await panel.getByTestId("project-gallery-guided").click();
+    await panel.getByTestId("curated-study-open-catenary-study").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Opened supported project", { timeout: 60_000 });
+    const projectId = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).identity.id as string);
+    await panel.getByTestId("project-gallery-layout-toggle").click();
+    await panel.getByTestId("project-detail-toggle").click();
+    await panel.getByRole("button", { name: "Starter projects", exact: true }).click();
+    await panel.getByTestId("project-gallery-guided").click();
+    await panel.getByTestId("project-library-module").selectOption("Algebra");
+    const card = panel.getByTestId("curated-study-card-cas-structures");
+    await expect(panel.locator(".curated-study-card")).toHaveCount(1);
+    await card.locator("summary").click();
+    await expect(card).toContainText("do not constitute a Galois correspondence Study");
+    await card.getByTestId("curated-study-open-cas-structures").click();
+    const algebra = page.getByTestId("cas-algebra-gallery");
+    await expect(algebra).toBeVisible();
+    await algebra.locator("summary").click();
+    await expect(algebra.getByTestId("cas-gallery-gf5")).toContainText("characteristic = 5");
+    await algebra.getByTestId("cas-gallery-gf5").getByRole("button", { name: "Save example" }).click();
+    await expect(algebra.getByTestId("cas-gallery-status")).toContainText("Saved Five-element field in Project", { timeout: 60_000 });
+    await expect.poll(() => page.evaluate(id => JSON.parse(localStorage.getItem(`math3d.project.v1.payload.${id}`)!)
+      .algebraObjects?.length ?? 0, projectId)).toBeGreaterThan(0);
   } finally { await closeSurfaceApp(ctx); }
 });
 

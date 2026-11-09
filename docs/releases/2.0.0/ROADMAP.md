@@ -987,6 +987,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 - `M3D20-08d feat(gallery): CAS and provenance demonstration set`.
 - `M3D20-08e test(gallery): open/reopen/reset/cross-platform fallback`.
 
+**Guided Gallery slice (2026-11-09):** Projects now offers a 15-card guided Study view alongside the existing starter list. Every card states a question, objects, operations, expected insight, prerequisites, platform scope, asset expectation, offline behaviour, first-open path, reset path and a scientific limitation. Seven built-in Project journeys add exact, saved Study layouts only when opened through the guided route; ordinary starter copies retain their prior content. The QWZ, SSH and hydrogen cards open the desktop verified-scene chooser and explicitly require an external producer bundle. The algebra card opens the existing CAS example gallery, where four validated definition chains can be saved to a named Project. Unit tests cover catalog routes and independent Study copies; desktop tests cover filtering, a full Study restart and a saved algebra example. The [Gallery acceptance matrix](CURATED_STUDY_GALLERY.md) records what is verified and what remains outside this slice. Browser/mobile presentation, complete scientific fixtures, numeric asset budgets, screenshots and the full 08 exit gate remain open.
+
 **Exit:** 10–15 genuinely working, explanation-rich starters rather than a wall of unconnected thumbnails.
 
 ### M3D20-09 — UI coherence and command palette (P0/P1)

@@ -5,8 +5,9 @@ export type CuratedStarterId = Math3DProjectTemplateId | NotebookStarterId;
 export type CuratedStudy = Readonly<{
   id: string;
   route: Readonly<{ kind: "project"; starterId: CuratedStarterId }> |
-    Readonly<{ kind: "verified-quantum-import"; model: "qwz" | "ssh" | "hydrogen" }>;
-  field: "Geometry" | "Fields" | "Topology" | "Analysis" | "Quantum" | "Provenance";
+    Readonly<{ kind: "verified-quantum-import"; model: "qwz" | "ssh" | "hydrogen" }> |
+    Readonly<{ kind: "cas-gallery" }>;
+  field: "Geometry" | "Fields" | "Topology" | "Analysis" | "Quantum" | "Algebra" | "Provenance";
   question: string;
   objects: string;
   operations: string;
@@ -108,6 +109,17 @@ export const CURATED_STUDIES: readonly CuratedStudy[] = Object.freeze([
     "Producer orbital field and derived visual representations", "Import a verified hydrogen scene bundle",
     "The saved scene declares its quantity and producer provenance.",
     "Amplitude and density are distinct quantities; no bundle or producer is included."),
+  { id: "cas-structures", route: { kind: "cas-gallery" }, field: "Algebra",
+    question: "How do a field, group, ideal and module retain exact definitions?",
+    objects: "GF(5), cyclic C4, a nilpotent ideal and a torsion module",
+    operations: "Open the CAS examples and save a validated definition chain into a named Project",
+    insight: "Each example stores its parent objects and a primary structure with expected answers and a failure case.",
+    prerequisites: "A named Project is needed to save an example; computation backends have separate capability checks.",
+    platforms: ["desktop", "browser"], approximateAssets: "Small built-in algebra definitions; no scene sidecar.",
+    offline: "Definition examples are bundled and can be saved offline; backend calculations depend on the selected route.",
+    firstOpen: "Opens CAS / Algebra. Expand Curated algebra examples and choose a validated structure.",
+    reset: "Create another named Project or save a different example; existing object revisions stay in the original Project.",
+    limitation: "These four structural examples do not constitute a Galois correspondence Study or a verified Sage computation." },
 ]);
 
 export const curatedStudy = (id: string) => CURATED_STUDIES.find(item => item.id === id) ?? null;
@@ -122,6 +134,8 @@ export function validateCuratedStudyCatalog(): void {
       throw new TypeError(`Curated Study ${item.id} has no working Project starter.`);
     if (item.route.kind === "verified-quantum-import" && item.id !== `quantum-${item.route.model}`)
       throw new TypeError(`Curated Study ${item.id} has an invalid quantum route.`);
+    if (item.route.kind === "cas-gallery" && item.id !== "cas-structures")
+      throw new TypeError(`Curated Study ${item.id} has an invalid CAS route.`);
     if (!item.platforms.length || Object.values(item).some(value => typeof value === "string" && !value.trim()))
       throw new TypeError(`Curated Study ${item.id} has incomplete guidance.`);
   }

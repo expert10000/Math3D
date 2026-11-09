@@ -125,6 +125,7 @@ type Props = {
   onCurrentProjectChange?: (project: Math3DProject, resources?: VerifiedProjectResources) => void;
   verifiedQuantumScene?: ProjectQuantumSceneReference | null;
   onImportQuantumScene?: () => void;
+  onOpenCasGallery?: () => void;
   onImportScientificScene?: () => void;
   onOpenQuantumScene?: (reference: ProjectQuantumSceneReference) => Promise<void>;
   onVerifyQuantumSceneDocument?: (reference: ProjectQuantumSceneReference) => Promise<QuantumSceneDocument>;
@@ -155,7 +156,7 @@ type Props = {
   activeProjectDocumentId?: string | null;
   onRestoreWorkspace?: (workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources, owner?: Math3DProject) => void;
 };
-export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open, onOpenChange, onCurrentProjectChange, verifiedQuantumScene, onImportQuantumScene, onImportScientificScene, onOpenQuantumScene, onVerifyQuantumSceneDocument, onRelinkQuantumScene, verifiedScientificScene, onOpenScientificScene, onRelinkScientificScene, captureActiveWorkbook, onOpenWorkbook, onViewProjectWorkbook, onViewProjectDetail, noteRequest, resultRequest, pairRequest, regionResultStatuses = {}, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAlgebra, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeEvidence, activeProjectDocumentId }) => {
+export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open, onOpenChange, onCurrentProjectChange, verifiedQuantumScene, onImportQuantumScene, onOpenCasGallery, onImportScientificScene, onOpenQuantumScene, onVerifyQuantumSceneDocument, onRelinkQuantumScene, verifiedScientificScene, onOpenScientificScene, onRelinkScientificScene, captureActiveWorkbook, onOpenWorkbook, onViewProjectWorkbook, onViewProjectDetail, noteRequest, resultRequest, pairRequest, regionResultStatuses = {}, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAlgebra, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeEvidence, activeProjectDocumentId }) => {
 
   const loadedProject = useRef<Math3DProject | null>(null);
   const resourceSession = useRef<VerifiedProjectResources | undefined>(undefined);
@@ -1857,14 +1858,15 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         <div className="project-gallery-browse-controls">
           <div className="project-gallery-filters" aria-label="Project collection">{["All projects", "Starter projects", "Your saved projects", "Favorites"].map(value => <button type="button" key={value} aria-pressed={collection === value} onClick={() => setCollection(value)}>{value}</button>)}</div>
           <div className="project-gallery-search-row"><label>Search projects<input data-testid="project-library-search" type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search names, topics or tags" /></label>
-            <label>Module<select data-testid="project-library-module" value={moduleFilter} onChange={event => setModuleFilter(event.target.value)}>{["All modules", "Graph", "3D vector field", "Curve", "Surface", "Mesh", "Volume", "Geometry", "Topology", "Complex", "Quantum scene", "Workbook", "Notes", "Analysis"].map(value => <option key={value}>{value}</option>)}</select></label>
+            <label>Module<select data-testid="project-library-module" value={moduleFilter} onChange={event => setModuleFilter(event.target.value)}>{["All modules", "Graph", "3D vector field", "Curve", "Surface", "Mesh", "Volume", "Geometry", "Topology", "Complex", "Quantum scene", "Algebra", "Workbook", "Notes", "Analysis"].map(value => <option key={value}>{value}</option>)}</select></label>
             {(query || moduleFilter !== "All modules") && <button type="button" onClick={() => { setQuery(""); setModuleFilter("All modules"); }}>Clear filters</button>}
           </div>
         </div>
         {(collection === "All projects" || collection === "Starter projects") && <ProjectTemplatesPanel query={query} moduleFilter={moduleFilter} copies={starterCopies} guidedCopies={guidedCopies} onPreview={id => { void previewTemplate(id); }} onOpen={(id) => { void openTemplate(id); }} onNewCopy={id => { void openTemplate(id, true); }}
           onPreviewCurated={id => { void previewTemplate(id, true); }} onOpenCurated={id => { void openTemplate(id, false, true); }}
           onNewCuratedCopy={id => { void openTemplate(id, true, true); }}
-          onImportQuantumScene={onImportQuantumScene} quantumImportAvailable={!!window.quantumScenes?.open} busy={busy} />}
+          onImportQuantumScene={onImportQuantumScene} quantumImportAvailable={!!window.quantumScenes?.open}
+          onOpenCasGallery={onOpenCasGallery} busy={busy} />}
         {collection !== "Starter projects" && <>
         <h3>Your saved projects ({library.entries.length})</h3><p>Favorites first, then recent. Open a project or preview its documents and compatibility.</p>
         {libraryMessage && <p role="status" data-testid="project-library-message">{libraryMessage}</p>}

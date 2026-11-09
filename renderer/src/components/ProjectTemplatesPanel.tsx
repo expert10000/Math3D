@@ -76,10 +76,11 @@ export const StarterArtwork: React.FC<{ id: ProjectStarterId }> = ({ id }) => <s
 
 export const ProjectTemplatesPanel: React.FC<{ onPreview: (id: ProjectStarterId) => void; onOpen: (id: ProjectStarterId) => void; onNewCopy: (id: ProjectStarterId) => void;
   onPreviewCurated: (id: ProjectStarterId) => void; onOpenCurated: (id: ProjectStarterId) => void; onNewCuratedCopy: (id: ProjectStarterId) => void;
-  onImportQuantumScene?: () => void; quantumImportAvailable?: boolean;
+  onImportQuantumScene?: () => void; quantumImportAvailable?: boolean; onOpenCasGallery?: () => void;
   copies: Partial<Record<ProjectStarterId, ProjectLibraryEntry>>; guidedCopies: Partial<Record<ProjectStarterId, ProjectLibraryEntry>>;
   busy: boolean; query?: string; moduleFilter?: string }> = ({ onPreview, onOpen, onNewCopy,
-    onPreviewCurated, onOpenCurated, onNewCuratedCopy, onImportQuantumScene, quantumImportAvailable = false, copies, guidedCopies, busy, query = "", moduleFilter = "All modules" }) => {
+    onPreviewCurated, onOpenCurated, onNewCuratedCopy, onImportQuantumScene, quantumImportAvailable = false,
+    onOpenCasGallery, copies, guidedCopies, busy, query = "", moduleFilter = "All modules" }) => {
   const [id, setId] = useState<ProjectStarterId>("catenary-study");
   const [view, setView] = useState<"starters" | "studies">("starters");
   const matches = starters.filter(item => (moduleFilter === "All modules" || PROJECT_STARTER_MODULES[item.id].includes(moduleFilter)) &&
@@ -87,7 +88,7 @@ export const ProjectTemplatesPanel: React.FC<{ onPreview: (id: ProjectStarterId)
   const guided = CURATED_STUDIES.filter(item => {
     const starterId = curatedStarterId(item);
     const haystack = [item.question, item.objects, item.operations, item.insight, item.field,
-      starterId ? starters.find(starter => starter.id === starterId)?.title : item.route.kind === "verified-quantum-import" ? item.route.model : ""].join(" ").toLowerCase();
+      starterId ? starters.find(starter => starter.id === starterId)?.title : item.route.kind === "verified-quantum-import" ? item.route.model : "CAS algebra examples"].join(" ").toLowerCase();
     return (moduleFilter === "All modules" || item.field === moduleFilter || moduleFilter === "Quantum scene" && item.field === "Quantum" ||
       starterId !== null && PROJECT_STARTER_MODULES[starterId].includes(moduleFilter)) &&
       haystack.includes(query.trim().toLowerCase());
@@ -99,12 +100,12 @@ export const ProjectTemplatesPanel: React.FC<{ onPreview: (id: ProjectStarterId)
       <button type="button" data-testid="project-gallery-all-starters" aria-pressed={view === "starters"} onClick={() => setView("starters")}>All starters ({matches.length})</button>
     </div>
     {view === "studies" && <>
-      <p className="curated-study-intro">Choose a scientific question, inspect its saved sources, and follow the stated limitations. Quantum cards require your own verified scene bundle.</p>
+      <p className="curated-study-intro">Choose a scientific question, inspect its saved sources, and follow the stated limitations. Quantum cards require your own verified scene bundle; CAS examples save into a named Project.</p>
       {!guided.length && <p className="project-gallery-empty">No guided Studies match. Try another search or module.</p>}
       <div className="curated-study-grid">{guided.map(item => <CuratedStudyCard key={item.id} item={item}
         starterTitle={curatedStarterId(item) ? starters.find(starter => starter.id === curatedStarterId(item))?.title : undefined}
         hasCopy={!!(curatedStarterId(item) && guidedCopies[curatedStarterId(item)!])} busy={busy}
-        quantumImportAvailable={quantumImportAvailable} onImportQuantumScene={onImportQuantumScene}
+        quantumImportAvailable={quantumImportAvailable} onImportQuantumScene={onImportQuantumScene} onOpenCasGallery={onOpenCasGallery}
         onOpen={onOpenCurated} onPreview={onPreviewCurated} onNewCopy={onNewCuratedCopy} />)}</div>
     </>}
     {view === "starters" && <>
@@ -131,18 +132,19 @@ export const ProjectTemplatesPanel: React.FC<{ onPreview: (id: ProjectStarterId)
   </section>;
 };
 
-const CuratedStudyCard: React.FC<{ item: CuratedStudy; starterTitle?: string; hasCopy: boolean; busy: boolean;
-  quantumImportAvailable: boolean; onImportQuantumScene?: () => void;
+export const CuratedStudyCard: React.FC<{ item: CuratedStudy; starterTitle?: string; hasCopy: boolean; busy: boolean;
+  quantumImportAvailable: boolean; onImportQuantumScene?: () => void; onOpenCasGallery?: () => void;
   onOpen: (id: ProjectStarterId) => void; onPreview: (id: ProjectStarterId) => void; onNewCopy: (id: ProjectStarterId) => void }> =
-  ({ item, starterTitle, hasCopy, busy, quantumImportAvailable, onImportQuantumScene, onOpen, onPreview, onNewCopy }) => {
+  ({ item, starterTitle, hasCopy, busy, quantumImportAvailable, onImportQuantumScene, onOpenCasGallery, onOpen, onPreview, onNewCopy }) => {
     const starter = item.route.kind === "project" ? item.route.starterId : null;
-    const title = starterTitle ?? (item.route.kind === "verified-quantum-import" ? item.route.model.toUpperCase() : item.question);
+    const quantum = item.route.kind === "verified-quantum-import";
+    const title = starterTitle ?? (quantum ? item.route.model.toUpperCase() : item.route.kind === "cas-gallery" ? "Algebra structures" : item.question);
     return <article className="curated-study-card" data-testid={`curated-study-card-${item.id}`}>
       <div className="curated-study-art">{starter ? <StarterArtwork id={starter} /> :
-        <div className="curated-study-quantum-art" aria-hidden="true">ψ</div>}</div>
+        <div className="curated-study-quantum-art" aria-hidden="true">{quantum ? "ψ" : "𝔄"}</div>}</div>
       <div className="curated-study-content">
         <div className="curated-study-badges"><span>{item.field}</span><span>{item.platforms.join(" · ")}</span>
-          <span>{starter ? curatedStudyHasLayout(starter) ? "Saved Study layout" : "Built-in Project" : "External verified scene"}</span></div>
+          <span>{starter ? curatedStudyHasLayout(starter) ? "Saved Study layout" : "Built-in Project" : quantum ? "External verified scene" : "Built-in algebra examples"}</span></div>
         <h4>{title}</h4>
         <p className="curated-study-question">{item.question}</p>
         <dl><div><dt>Objects</dt><dd>{item.objects}</dd></div><div><dt>Do</dt><dd>{item.operations}</dd></div>
@@ -156,10 +158,11 @@ const CuratedStudyCard: React.FC<{ item: CuratedStudy; starterTitle?: string; ha
           <button type="button" data-testid={`curated-study-open-${item.id}`} disabled={busy} onClick={() => onOpen(starter)}>{hasCopy ? "Resume Project" : "Open Project"}</button>
           <button type="button" data-testid={`curated-study-preview-${item.id}`} disabled={busy} onClick={() => onPreview(starter)}>Preview</button>
           {hasCopy && <button type="button" data-testid={`curated-study-reset-${item.id}`} disabled={busy} onClick={() => onNewCopy(starter)}>New copy</button>}
-        </> : <button type="button" data-testid={`curated-study-import-${item.id}`}
+        </> : quantum ? <button type="button" data-testid={`curated-study-import-${item.id}`}
           disabled={busy || !quantumImportAvailable || !onImportQuantumScene} onClick={onImportQuantumScene}>
-          Choose verified scene bundle</button>}</div>
-        {!starter && !quantumImportAvailable && <small>Scene import requires the desktop app.</small>}
+          Choose verified scene bundle</button> : <button type="button" data-testid="curated-study-open-cas-structures"
+          disabled={busy || !onOpenCasGallery} onClick={onOpenCasGallery}>Open CAS examples</button>}</div>
+        {quantum && !quantumImportAvailable && <small>Scene import requires the desktop app.</small>}
       </div>
     </article>;
   };

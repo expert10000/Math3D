@@ -7,7 +7,7 @@ describe("curated Study Gallery contract", () => {
   it("maps every actionable Project card to an existing starter with complete guidance", () => {
     expect(validateCuratedStudyCatalog()).toBeUndefined();
     const ids = new Set([...MATH3D_PROJECT_TEMPLATES, ...NOTEBOOK_STARTERS].map(item => item.id));
-    expect(CURATED_STUDIES).toHaveLength(14);
+    expect(CURATED_STUDIES).toHaveLength(15);
     for (const item of CURATED_STUDIES) {
       expect(curatedStudy(item.id)).toBe(item);
       expect([item.question, item.objects, item.operations, item.insight, item.prerequisites,
@@ -27,5 +27,12 @@ describe("curated Study Gallery contract", () => {
       expect(item.firstOpen).toContain("no scene is bundled");
       expect(item.offline).toContain("local saved bundle");
     }
+  });
+  it("links the existing structural CAS examples without promising a Sage result", () => {
+    const item = curatedStudy("cas-structures")!;
+    expect(item.route).toEqual({ kind: "cas-gallery" });
+    expect(item.objects).toContain("GF(5)");
+    expect(item.prerequisites).toContain("named Project");
+    expect(item.limitation).toContain("do not constitute a Galois correspondence Study");
   });
 });
