@@ -340,3 +340,13 @@ export const isGraph2DCriticalPointCurrent = (candidate: Graph2DCriticalPoint, d
   candidate.source.documentId === document.identity.id && candidate.source.revision === document.identity.revision &&
   candidate.source.structuralHash === document.identity.structuralHash &&
   document.source.objects.some((entry) => entry.id === candidate.objectId);
+
+/** A zero-candidate scan still has a source generation that must be checked. */
+export const isGraph2DCriticalAnalysisCurrent = (analysis: Graph2DCriticalPointAnalysis,
+  document: Graph2DDocument): boolean => {
+  const source = analysis.publication.provenance.source;
+  return source.documentId === document.identity.id && source.revision === document.identity.revision &&
+    source.structuralHash === document.identity.structuralHash &&
+    document.source.objects.some(entry => entry.id === analysis.objectId) &&
+    analysis.candidates.every(candidate => isGraph2DCriticalPointCurrent(candidate, document));
+};

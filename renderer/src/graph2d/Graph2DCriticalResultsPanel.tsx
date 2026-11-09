@@ -1,4 +1,4 @@
-import { graph2DConstructionActionsFromCandidates, isGraph2DCriticalCandidateAlreadySaved,
+import { graph2DConstructionActionsFromCandidates, isGraph2DCriticalAnalysisCurrent, isGraph2DCriticalCandidateAlreadySaved,
   isGraph2DCriticalPointCurrent,
   GRAPH2D_MAX_CONSTRUCTIONS, type Graph2DCriticalPoint, type Graph2DCriticalPointAnalysis,
   GRAPH2D_ANALYSIS_QUALITY_MEANINGS, type Graph2DConstructionAction,
@@ -11,6 +11,7 @@ import { downloadGraph2DResultsCsv } from "./downloadGraph2DResultsCsv";
 import { Graph2DUnresolvedCoverage } from "./Graph2DUnresolvedCoverage";
 import { Graph2DNumericalResultsTable, type Graph2DResultColumn,
   type Graph2DResultFilter } from "./Graph2DNumericalResultsTable";
+import { Graph2DResultEvidence } from "./Graph2DResultEvidence";
 
 type Props = Readonly<{
   analysis: Graph2DCriticalPointAnalysis;
@@ -48,6 +49,7 @@ export function Graph2DCriticalResultsPanel({ analysis, document, analysisBudget
   const [selectedIds, setSelectedIds] = useState<readonly string[]>([]);
   const [actionError, setActionError] = useState("");
   useEffect(() => { setSelectedIds([]); setActionError(""); }, [analysis.publication.resultId]);
+  const current = isGraph2DCriticalAnalysisCurrent(analysis, document);
   const counts = useMemo(() => ({
     zero: analysis.candidates.filter(item => item.kind === "zero").length,
     extrema: analysis.candidates.filter(isExtremum).length,
@@ -78,9 +80,16 @@ export function Graph2DCriticalResultsPanel({ analysis, document, analysisBudget
   const batchZeros = analysis.candidates.filter(item => item.kind === "zero" && validForSave(item));
   const batchExtrema = analysis.candidates.filter(item => isExtremum(item) && validForSave(item));
   const batchInflections = analysis.candidates.filter(item => item.kind === "inflection" && validForSave(item));
+  const evidence = <Graph2DResultEvidence current={current} resultId={analysis.publication.resultId}
+    source={analysis.publication.provenance.source} claim="bounded critical-point scan"
+    method={analysis.publication.provenance.operation.algorithm} units="Graph x and y world units"
+    limitation="Refinement and residual tolerance do not certify completeness or uniqueness." />;
+  if (!current) return <section className="graph2d-critical-points" data-testid="graph2d-critical-points"
+    aria-label="Zeros extrema and inflections"><h3>Numerical analysis</h3>{evidence}</section>;
   return <section className="graph2d-critical-points" data-testid="graph2d-critical-points"
     data-source-hash={document.identity.structuralHash} aria-label="Zeros extrema and inflections">
     <h3>{readOnlyPreview ? "Transient frame analysis" : "Numerical analysis"}</h3>
+    {evidence}
     {readOnlyPreview && <p role="status">Preview values only · 2,000 evaluation budget · results change with each settled frame. Apply the parameter value to create committed analysis evidence.</p>}
     <p className={analysis.status === "incomplete" ? "graph2d-critical-status-partial" : undefined}
       role="status" data-testid="graph2d-critical-scan-status">

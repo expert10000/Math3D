@@ -71,6 +71,20 @@ describe("shared Graphs numerical result browser", () => {
     expect(plot).toContain('data-focused-interval-id="');
   });
 
+  it("withholds a critical scan when its recorded source is no longer current", () => {
+    const document = scene();
+    const critical = analyzeGraph2DCriticalPoints({ document, objectId: "function_1",
+      interval: { min: -2, max: 2 } });
+    const changed = { ...document, identity: { ...document.identity, revision: document.identity.revision + 1 } };
+    const markup = renderToStaticMarkup(<Graph2DCriticalResultsPanel analysis={critical}
+      document={changed} analysisBudget={12000} onAnalysisBudgetChange={() => {}} />);
+    expect(markup).toContain("Historical numerical result");
+    expect(markup).toContain(critical.publication.resultId);
+    expect(markup).not.toContain("Export results");
+    expect(markup).not.toContain("Zeros</dt>");
+    expect(markup).not.toContain("Numerical analysis results");
+  });
+
   it("shows equilibrium summary and disables export for transient previews", () => {
     const document = scene();
     const artifact = { equilibria: [{ x: 0, y: 0, residual: 1e-9,
