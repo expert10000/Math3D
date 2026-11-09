@@ -8,6 +8,7 @@ import { addMath3DProjectAlgebraEvidence, buildAlgebraOperationRequest, createAl
   createProjectAlgebraObjectId, upsertMath3DProjectAlgebraObject,
   type AlgebraObjectDefinition, type Math3DProject } from "@math3d/core";
 import { algebraEvidenceInspectorModel } from "./algebraEvidenceInspectorModel";
+import { qualifyAlgebraEvidence } from "./algebraEvidenceQualification";
 import SageAlgebraEvidenceInspector from "./SageAlgebraEvidenceInspector";
 
 const empty = () => createMath3DProject(createMixedWorkspaceDocument({ entries: [], activeDocumentIds: [],
@@ -22,6 +23,24 @@ const provenance = (jobId: string) => ({ engine: "sagemath" as const, version: "
   jobId, elapsedMs: 17, warnings: [] });
 
 describe("SAGE-B06 saved algebra evidence Inspector", () => {
+  it("qualifies integrity and pinned revision separately from current lineage", () => {
+    const { project, record } = withObject(empty(), "Z", { kind: "integer-ring" });
+    const request = buildAlgebraOperationRequest(project, { objectId: record.id, revision: 1 },
+      "sage.numberTheory.gcd", "docker", { values: ["84", "30"] });
+    const evidence = createProjectAlgebraEvidence(project.identity.id, project.algebraObjects!, request,
+      { value: "6" }, provenance("b06-qualification"));
+    const saved = addMath3DProjectAlgebraEvidence(project, evidence);
+    expect(qualifyAlgebraEvidence(saved, evidence)).toMatchObject({
+      status: "current", canUseResult: true, canDerive: true,
+      revision: 1, definitionHash: record.contentHash });
+    const revised = upsertMath3DProjectAlgebraObject(saved, createAlgebraObjectRecord({ id: record.id,
+      revision: 2, label: "Integers", definition: { kind: "integer-ring" } }));
+    expect(qualifyAlgebraEvidence(revised, evidence)).toMatchObject({
+      status: "historical", canUseResult: true, canDerive: false });
+    expect(qualifyAlgebraEvidence(saved, { ...evidence,
+      resultHash: "sha256:" + "0".repeat(64) })).toMatchObject({
+      status: "invalid", canUseResult: false, canDerive: false });
+  });
   it("independently checks GCD and catches a mathematically wrong saved value", () => {
     const { project, record } = withObject(empty(), "Z", { kind: "integer-ring" });
     const request = buildAlgebraOperationRequest(project, { objectId: record.id, revision: 1 },
