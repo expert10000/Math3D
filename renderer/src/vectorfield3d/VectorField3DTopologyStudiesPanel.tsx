@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { computeVectorField3DBasinMap, computeVectorField3DPoincareSection,
-  projectVectorField3DTopologyStatus, type AnalysisResultEnvelope,
+  isVectorField3DTopologyPublicationCurrent, projectVectorField3DTopologyStatus, type AnalysisResultEnvelope,
   type BasinMapStudy, type Math3DProject, type PoincareStudy,
   type VectorField3DDocument } from "@math3d/core";
 
@@ -33,6 +33,8 @@ export function VectorField3DTopologyStudiesPanel({ document, project, onSave,
     ["vector3d.basin-map", "vector3d.poincare-section"].includes(
       result.provenance.operation.type) &&
     result.provenance.source.documentId === document.identity.id) ?? [];
+  const basinCurrent = basin !== null && isVectorField3DTopologyPublicationCurrent(basin.publication, document);
+  const sectionCurrent = section !== null && isVectorField3DTopologyPublicationCurrent(section.publication, document);
   return <section aria-label="Saved topology studies" data-gf06-section="analyze"
     data-testid="gf41-gf42-topology-studies">
     <h5>Basin map and Poincaré section</h5>
@@ -52,11 +54,11 @@ export function VectorField3DTopologyStudiesPanel({ document, project, onSave,
               axes[1].max - axes[1].min) / 12, solver })))}>
           Compute bounded basin map</button>
         {basin && <div role="status" data-testid="gf41-basin-status">
-          {basin.cells.length} seeds · {String(basin.publication.summary.captured)} captured ·
+          {basinCurrent ? <>{basin.cells.length} seeds · {String(basin.publication.summary.captured)} captured ·
           {" "}{String(basin.publication.summary.boundary)} boundary ·
           {" "}{String(basin.publication.summary.inconclusive)} inconclusive ·
-          {" "}{basin.totalEvaluations} evaluations.
-          <button type="button" disabled={!onSave} onClick={() => run(() => {
+          {" "}{basin.totalEvaluations} evaluations.</> : "Previous basin preview withheld: source changed."}
+          <button type="button" disabled={!onSave || !basinCurrent} onClick={() => run(() => {
             onSave?.(basin.publication); setMessage("Basin recipe saved in Project."); })}>
             Save basin recipe</button>
         </div>}
@@ -75,9 +77,10 @@ export function VectorField3DTopologyStudiesPanel({ document, project, onSave,
             solver, maxCrossings: 32, tangencyTolerance: 1e-4 })))}>
           Compute oriented crossings</button>
         {section && <div role="status" data-testid="gf42-section-status">
-          {section.crossings.length} crossings · {section.tangencies} tangencies withheld ·
-          {" "}{section.outsideSection} outside segment · {section.totalEvaluations} evaluations.
-          <button type="button" disabled={!onSave} onClick={() => run(() => {
+          {sectionCurrent ? <>{section.crossings.length} crossings · {section.tangencies} tangencies withheld ·
+          {" "}{section.outsideSection} outside segment · {section.totalEvaluations} evaluations.</> :
+            "Previous section preview withheld: source changed."}
+          <button type="button" disabled={!onSave || !sectionCurrent} onClick={() => run(() => {
             onSave?.(section.publication); setMessage("Section recipe saved in Project."); })}>
             Save section recipe</button>
         </div>}
@@ -85,7 +88,7 @@ export function VectorField3DTopologyStudiesPanel({ document, project, onSave,
     </>}
     {!!message && <p role="status">{message}</p>}
     {saved.map(result => {
-      const status = projectVectorField3DTopologyStatus(project!, result);
+      const status = projectVectorField3DTopologyStatus(project!, result, document);
       return <div key={result.resultId} data-testid="gf41-gf42-saved-result">
         <span>{result.provenance.operation.type} · {status.status === "current" ?
           "current" : `values withheld: ${status.reason}`}</span>

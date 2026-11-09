@@ -219,8 +219,16 @@ export function computeVectorField3DPoincareSection(document: VectorField3DDocum
       evaluations, started) };
 }
 
+/** Also applies to a session-local study before it is saved in a Project. */
+export function isVectorField3DTopologyPublicationCurrent(result: AnalysisResultEnvelope,
+  document: VectorField3DDocument): boolean {
+  const source = result.provenance.source;
+  return document.identity.id === source.documentId && document.identity.revision === source.revision &&
+    document.identity.structuralHash === source.structuralHash && source.generation === source.revision;
+}
+
 export function projectVectorField3DTopologyStatus(project: Math3DProject,
-  result: AnalysisResultEnvelope): TopologyStudyStatus {
+  result: AnalysisResultEnvelope, liveDocument?: VectorField3DDocument): TopologyStudyStatus {
   const kind = result.provenance.operation.type;
   if (kind !== "vector3d.basin-map" && kind !== "vector3d.poincare-section")
     return { status: "withheld", reason: "wrong-result-type" };
@@ -232,9 +240,8 @@ export function projectVectorField3DTopologyStatus(project: Math3DProject,
   const document = entry.checkpoint;
   if (entry.expected.revision !== document.identity.revision ||
       entry.expected.structuralHash !== document.identity.structuralHash ||
-      document.identity.revision !== source.revision ||
-      document.identity.structuralHash !== source.structuralHash ||
-      source.generation !== source.revision)
+      !isVectorField3DTopologyPublicationCurrent(result, document) ||
+      (liveDocument && !isVectorField3DTopologyPublicationCurrent(result, liveDocument)))
     return { status: "withheld", reason: "source-changed" };
   if (document.source.field.kind !== "expressions")
     return { status: "withheld", reason: "source-unverified" };

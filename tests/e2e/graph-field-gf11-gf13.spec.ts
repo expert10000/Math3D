@@ -41,12 +41,16 @@ test("GF-11–13 save region checks and a trajectory Curve across Project reopen
     await region.getByRole("button", { name: "Compute and save" }).click();
     await expect(region.getByTestId("gf11-saved-result")).toContainText("stokes");
     await expect(region.getByTestId("gf11-saved-result")).toContainText("midpoint-curl-flux-vs-simpson-circulation");
+    await expect(region.getByTestId("gf11-saved-result").getByRole("button", { name: "Export evidence CSV" }))
+      .toBeVisible();
     const seeds = explorer.getByTestId("gf13-trajectory-promotion");
     await seeds.getByLabel("Physical points (x, y, z; one per line)").fill("1, 0, 0");
     await seeds.getByRole("button", { name: "Save seed recipe" }).click();
     await seeds.getByRole("button", { name: "Promote trajectory to Curve" }).click();
     await expect(seeds.getByTestId("gf13-saved-curve")).toContainText("current");
     await expect(region.getByTestId("gf11-saved-result")).toContainText("source-changed");
+    await expect(region.getByTestId("gf11-saved-result").getByRole("button", { name: "Export evidence CSV" }))
+      .toHaveCount(0);
     await page.getByTestId("projects-toggle").click();
     await projects.getByTestId("project-save").click();
     await expect(projects.getByTestId("project-message")).toContainText("Saved");
