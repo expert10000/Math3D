@@ -420,6 +420,7 @@ import {
   removeSurfaceResultLayer,
   updateSurfaceResultLayer,
 } from "./surfaceAnalysis/surfaceResultLayers";
+import { qualifySurfaceLayerResult } from "./surfaceAnalysis/surfaceLayerQualification";
 import { createSurfaceChartDiagnostics, createSurfaceChartPayload, type SurfaceChartSample } from "./surfaceAnalysis/surfaceChartDiagnostics";
 import { getSurfaceAnalysisPreset } from "./surfaceAnalysis/presets";
 import {
@@ -50900,15 +50901,19 @@ case "mobius":
     setRightPanelTab("inspector");
   }, [activeCanonicalSurfaceDefinition, activeSurfaceCurvatureField, packedPolylineTuples, publishSurfaceLayerResult, ridgeValleyParameters, ridgeValleyResult, showRidges, showValleys, surfaceFeatureClass, surfaceFeatureOverlayVisible, surfaceFeatureParameters, surfaceFeatureResult, surfaceMeshData?.positions]);
 
-  const activeSurfaceLayerPayload = activeSurfaceComputation === "surface-curves" && activeSurfaceCurvesResult?.payload?.data.kind === "curve-layers"
-    ? activeSurfaceCurvesResult.payload.data
-    : activeSurfaceComputation === "surface-features" && activeSurfaceFeaturesResult?.payload?.data.kind === "feature-layers"
-      ? activeSurfaceFeaturesResult.payload.data
+  const activeSurfaceLayerResult = activeSurfaceComputation === "surface-curves" ? activeSurfaceCurvesResult
+    : activeSurfaceComputation === "surface-features" ? activeSurfaceFeaturesResult : null;
+  const activeSurfaceLayerQualification = qualifySurfaceLayerResult(activeCanonicalSurfaceDefinition, activeSurfaceLayerResult, surfaceAnalysisResultStore);
+  const activeSurfaceLayerPayload = activeSurfaceComputation === "surface-curves" && activeSurfaceLayerResult?.payload?.data.kind === "curve-layers"
+    ? activeSurfaceLayerResult.payload.data
+    : activeSurfaceComputation === "surface-features" && activeSurfaceLayerResult?.payload?.data.kind === "feature-layers"
+      ? activeSurfaceLayerResult.payload.data
       : null;
   const handleSurfaceLayerAction = useCallback((layerId: string, action: "toggle" | "select" | "frame" | "save" | "compare" | "export" | "recompute" | "remove") => {
     if (!activeSurfaceLayerPayload) return;
     const layer = activeSurfaceLayerPayload.layers.find((entry) => entry.layerId === layerId);
     if (!layer) return;
+    if (!activeSurfaceLayerQualification.canUseCurrentActions && !["export", "recompute", "remove"].includes(action)) return;
     const resultKind = activeSurfaceLayerPayload.kind === "curve-layers" ? "surface-curves" : "surface-features";
     if (action === "recompute") {
       if (resultKind === "surface-curves") handleCollectSurfaceCurveLayers(); else handleCollectSurfaceFeatureLayers();
@@ -50961,7 +50966,7 @@ case "mobius":
       if (["umbilic", "parabolic", "critical-point", "representation-singularity"].includes(layer.layerKind)) setSurfaceFeatureOverlayVisible(visible);
     }
     publishSurfaceLayerResult(resultKind, { ...activeSurfaceLayerPayload, layers: nextLayers } as SurfaceCurveLayersPayload | SurfaceFeatureLayersPayload);
-  }, [activeCanonicalSurfaceDefinition.identity, activeSurfaceLayerPayload, handleCollectSurfaceCurveLayers, handleCollectSurfaceFeatureLayers, publishSurfaceLayerResult, surfaceSampleSet?.samples]);
+  }, [activeCanonicalSurfaceDefinition.identity, activeSurfaceLayerPayload, activeSurfaceLayerQualification.canUseCurrentActions, handleCollectSurfaceCurveLayers, handleCollectSurfaceFeatureLayers, publishSurfaceLayerResult, surfaceSampleSet?.samples]);
 
   const surfaceChartSamples = useMemo<SurfaceChartSample[]>(() => {
     const definition = activeCanonicalSurfaceDefinition;
@@ -80126,6 +80131,7 @@ case "mobius":
                       } : undefined}
                       layerActions={activeSurfaceLayerPayload ? {
                         payload: activeSurfaceLayerPayload,
+                        qualification: activeSurfaceLayerQualification,
                         compareLabel: surfaceLayerCompareLabel,
                         onAction: handleSurfaceLayerAction,
                       } : undefined}

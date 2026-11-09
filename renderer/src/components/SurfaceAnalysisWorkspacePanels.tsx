@@ -15,6 +15,7 @@ import type { SurfaceAnalysisResult } from "../surfaceAnalysis/infrastructure";
 import type { SurfaceAnalysisExecutionState } from "../surfaceAnalysis/scheduler";
 import { SURFACE_ANALYSIS_PRESETS, type SurfaceAnalysisPresetLayer } from "../surfaceAnalysis/presets";
 import { SurfaceAnalysisContractCard } from "./SurfaceAnalysisContractCard";
+import type { SurfaceLayerQualification } from "../surfaceAnalysis/surfaceLayerQualification";
 
 export type SurfaceComputationId =
   | "differential-geometry"
@@ -398,6 +399,7 @@ export function SurfaceAnalysisInspectorPanel({
   };
   layerActions?: {
     payload: SurfaceCurveLayersPayload | SurfaceFeatureLayersPayload;
+    qualification: SurfaceLayerQualification;
     compareLabel: string;
     onAction: (layerId: string, action: "toggle" | "select" | "frame" | "save" | "compare" | "export" | "recompute" | "remove") => void;
   };
@@ -559,10 +561,15 @@ function SurfaceChartDiagnosticsInspector({ chart, focusedIndex, onSelectIndex, 
   );
 }
 
-function SurfaceResultLayersInspector({ payload, compareLabel, onAction }: NonNullable<Parameters<typeof SurfaceAnalysisInspectorPanel>[0]["layerActions"]>) {
+function SurfaceResultLayersInspector({ payload, qualification, compareLabel, onAction }: NonNullable<Parameters<typeof SurfaceAnalysisInspectorPanel>[0]["layerActions"]>) {
   return (
     <section data-testid="surface-result-layers" style={{ display: "grid", gap: 6, marginTop: 6, paddingTop: 7, borderTop: "1px solid #e2e8f0" }}>
       <strong>{payload.kind === "curve-layers" ? "Surface Curves" : "Surface Features"} · {payload.layers.length} layers</strong>
+      <div data-testid="surface-layer-qualification" data-status={qualification.status} style={{ color: qualification.status === "current" ? "#166534" : "#9a3412" }}>
+        <strong>{qualification.status}</strong> · {qualification.reason}
+      </div>
+      <div data-testid="surface-layer-claim"><strong>Mathematical claim:</strong> {qualification.claim}</div>
+      <div data-testid="surface-layer-verification"><strong>Independent check:</strong> {qualification.verification}</div>
       {payload.layers.map((layer) => {
         const statistics = layer.statistics;
         const statisticsLabel = "totalLength" in statistics
@@ -574,11 +581,11 @@ function SurfaceResultLayersInspector({ payload, compareLabel, onAction }: NonNu
           <div style={{ color: "#64748b" }}>Seed: {layer.selectionSource.kind}{layer.selectionSource.references.length ? ` (${layer.selectionSource.references.join(", ")})` : ""} · boundary: {layer.policy.boundaryBehavior}</div>
           {!!layer.warnings.length && <div style={{ color: "#9a3412" }}>{layer.warnings.join(" · ")}</div>}
           <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
-            <button type="button" onClick={() => onAction(layer.layerId, "toggle")}>{layer.visible ? "Hide" : "Show"}</button>
-            <button type="button" disabled={layer.state !== "ready"} onClick={() => onAction(layer.layerId, "select")}>Select</button>
-            <button type="button" disabled={layer.state !== "ready"} onClick={() => onAction(layer.layerId, "frame")}>Frame</button>
-            <button type="button" onClick={() => onAction(layer.layerId, "save")}>Save</button>
-            <button type="button" onClick={() => onAction(layer.layerId, "compare")}>Compare</button>
+            <button type="button" disabled={!qualification.canUseCurrentActions} onClick={() => onAction(layer.layerId, "toggle")}>{layer.visible ? "Hide" : "Show"}</button>
+            <button type="button" disabled={!qualification.canUseCurrentActions || layer.state !== "ready"} onClick={() => onAction(layer.layerId, "select")}>Select</button>
+            <button type="button" disabled={!qualification.canUseCurrentActions || layer.state !== "ready"} onClick={() => onAction(layer.layerId, "frame")}>Frame</button>
+            <button type="button" disabled={!qualification.canUseCurrentActions} onClick={() => onAction(layer.layerId, "save")}>Save</button>
+            <button type="button" disabled={!qualification.canUseCurrentActions} onClick={() => onAction(layer.layerId, "compare")}>Compare</button>
             <button type="button" onClick={() => onAction(layer.layerId, "export")}>Export</button>
             <button type="button" onClick={() => onAction(layer.layerId, "recompute")}>Recompute</button>
             <button type="button" onClick={() => onAction(layer.layerId, "remove")}>Remove</button>
