@@ -205,6 +205,7 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
   const selectedEvidence = project?.algebraEvidence?.find((item) => item.id === selectedEvidenceId &&
     item.request.target.objectId === chosen?.record.id) ?? null;
   const evidenceModel = project && selectedEvidence ? algebraEvidenceInspectorModel(project, selectedEvidence) : null;
+  const canUseSpecializedEvidence = evidenceModel?.qualification.canDerive && evidenceModel.mode !== "FAILED";
   const savedGaloisGroup = selectedEvidence && selectedEvidence.request.operation === "sage.galois.analyze"
     ? project?.algebraObjects?.find((entry) => { const definition = entry.revisions.at(-1)?.definition;
       return definition?.kind === "finite-group" && definition.source?.evidenceId === selectedEvidence.id; }) : null;
@@ -594,7 +595,7 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       evidence: evidenceModel && selectedEvidence ? {
         focusKey: `${selectedEvidence.id}:${evidenceFocus}`,
         result: <><SageAlgebraEvidenceInspector model={evidenceModel} section="result" />
-          {selectedEvidence.request.operation === "sage.galois.analyze" &&
+          {canUseSpecializedEvidence && selectedEvidence.request.operation === "sage.galois.analyze" &&
             <SageGaloisViewer key={selectedEvidence.id} result={selectedEvidence.result as SageGaloisResult}
               groupLabel={savedGaloisGroup?.revisions.at(-1)?.label} saveError={groupError}
               onOpenGroup={savedGaloisGroup ? () => select({ objectId: savedGaloisGroup.id,
@@ -606,17 +607,17 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
                   }).catch((error) => setGroupError(String(error))); }
                 catch (error) { setGroupError(String(error)); }
               } : undefined} />}
-          {selectedEvidence.request.operation === "sage.group.dossier" && project &&
+          {canUseSpecializedEvidence && selectedEvidence.request.operation === "sage.group.dossier" && project &&
             <SageFiniteGroupViewer key={selectedEvidence.id} project={project} evidence={selectedEvidence} />}
-          {selectedEvidence.request.operation === "sage.group.actionCharacters" &&
+          {canUseSpecializedEvidence && selectedEvidence.request.operation === "sage.group.actionCharacters" &&
             <SageGroupActionViewer key={selectedEvidence.id} evidence={selectedEvidence} />}
-          {selectedEvidence.request.operation === "sage.module.invariantFactors" &&
+          {canUseSpecializedEvidence && selectedEvidence.request.operation === "sage.module.invariantFactors" &&
             <SageModuleInvariantViewer key={selectedEvidence.id}
               result={selectedEvidence.result as SageModuleInvariantResult} />}
-          {selectedEvidence.request.operation === "sage.chain.homology" &&
+          {canUseSpecializedEvidence && selectedEvidence.request.operation === "sage.chain.homology" &&
             <SageChainHomologyViewer key={selectedEvidence.id}
               result={selectedEvidence.result as SageChainHomologyResult} />}
-          {selectedEvidence.request.operation === "sage.finiteField.explore" &&
+          {canUseSpecializedEvidence && selectedEvidence.request.operation === "sage.finiteField.explore" &&
             <SageFiniteFieldViewer key={selectedEvidence.id}
               result={selectedEvidence.result as SageFiniteFieldResult} />}</>,
         structure: <SageAlgebraEvidenceInspector model={evidenceModel} section="structure" />,

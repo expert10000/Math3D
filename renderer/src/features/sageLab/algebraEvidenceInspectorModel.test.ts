@@ -46,10 +46,20 @@ describe("SAGE-B06 saved algebra evidence Inspector", () => {
     expect(invalid.checks).toContainEqual(expect.objectContaining({
       label: "Saved evidence integrity", status: "failed" }));
     expect(invalid.structure).toContainEqual({ label: "Status", value: "Invalid evidence" });
+    const invalidMarkup = renderToStaticMarkup(createElement(SageAlgebraEvidenceInspector,
+      { model: invalid, section: "result" }));
+    expect(invalidMarkup).toContain('data-qualification="invalid"');
+    expect(invalidMarkup).toContain("Result values withheld");
+    expect(invalidMarkup).not.toContain("Greatest common divisor</dt>");
     const historical = algebraEvidenceInspectorModel(revised, evidence);
     expect(historical.qualification.status).toBe("historical");
     expect(historical.structure).toContainEqual({ label: "Status", value: "Historical revision" });
     expect(historical.result).toContainEqual({ label: "Greatest common divisor", value: "6" });
+    const historicalMarkup = renderToStaticMarkup(createElement(SageAlgebraEvidenceInspector,
+      { model: historical, section: "result" }));
+    expect(historicalMarkup).toContain('data-qualification="historical"');
+    expect(historicalMarkup).toContain("Source: historical");
+    expect(historicalMarkup).toContain("Greatest common divisor");
   });
   it("independently checks GCD and catches a mathematically wrong saved value", () => {
     const { project, record } = withObject(empty(), "Z", { kind: "integer-ring" });
