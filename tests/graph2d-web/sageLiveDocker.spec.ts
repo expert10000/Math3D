@@ -115,8 +115,11 @@ test.describe.serial("live Docker Sage operation journey", () => {
     const jobs = page.getByTestId("compute-center").getByRole("region", { name: "Broker jobs" });
     for (const item of cases) {
       const recorded = jobs.getByText(item.job, { exact: true }).locator("../..").filter({ hasText: /completed/i });
-      await expect(recorded).toHaveCount(1);
-      await expect(recorded).toContainText("sage-docker");
+      const expectedCount = item.operation === "sage.groebner.compute" ? 2 : 1;
+      await expect(recorded).toHaveCount(expectedCount);
+      for (let index = 0; index < expectedCount; index++) {
+        await expect(recorded.nth(index)).toContainText("sage-docker");
+      }
     }
     const inverseJobs = jobs.getByText("Modular inverse", { exact: true });
     await expect(inverseJobs).toHaveCount(2);
