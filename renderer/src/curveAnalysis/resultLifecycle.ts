@@ -132,7 +132,8 @@ const buildLayerPayload = (definition: CanonicalCurveDefinition, layer: CurvePre
     }
     return segment[index];
   });
-  const uncertainty = definition.derivatives.second === "exact" ? { kind: "exact" as const, absolute: 0, note: "Exact derivative capability." } : { kind: "bounded" as const, absolute: definition.sampling.tolerance ?? null, note: "Bounded by the active sampling tolerance." };
+  const uncertainty = { kind: "unknown" as const, absolute: null,
+    note: "Computed from sampled positions; the sampling tolerance is not a proven result error bound." };
   return { version: 1, kind: "scientific-layer", label: layer.label, method: layer.method, unit: layer.unit.replace("position-unit", definition.units.position), statistics: summarize(value), uncertainty, warnings: [...definition.warnings, ...(points.length < 3 ? ["At least three samples are required for differential evidence."] : [])], series: { parameter, value, valid: value.map(finite) } };
 };
 
@@ -216,12 +217,20 @@ const csvCell = (value: unknown): string => `"${String(value ?? "").replace(/"/g
 export const curveResultToCsv = (card: CurveResultCard, definition: CanonicalCurveDefinition): string => {
   const manifest = JSON.stringify(stable(createCurveResultExportManifest(card, definition)));
   const lines = [`# Math3D-Curve-Manifest: ${manifest}`, "parameter,value,valid"];
-  card.series?.parameter.forEach((parameter, index) => lines.push([parameter, card.series!.value[index], card.series!.valid?.[index] ?? Number.isFinite(card.series!.value[index])].map(csvCell).join(",")));
+  card.series?.parameter.forEach((parameter, index) => {
+    const value = card.series!.value[index];
+    const valid = Number.isFinite(parameter) && Number.isFinite(value) &&
+      (card.series!.valid?.[index] ?? true);
+    lines.push([Number.isFinite(parameter) ? parameter : null, valid ? value : null, valid]
+      .map(csvCell).join(","));
+  });
   return lines.join("\n");
 };
 const esc = (value: string): string => value.replace(/[&<>\"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[character]!));
 export const curveResultToSvg = (card: CurveResultCard, definition: CanonicalCurveDefinition): string => {
-  const series = card.series; const pairs = series ? series.parameter.map((x, index) => ({ x, y: series.value[index] })).filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y)) : [];
+  const series = card.series; const pairs = series ? series.parameter
+    .map((x, index) => ({ x, y: series.value[index], valid: series.valid?.[index] ?? true }))
+    .filter((point) => point.valid && Number.isFinite(point.x) && Number.isFinite(point.y)) : [];
   const xs = pairs.map((point) => point.x), ys = pairs.map((point) => point.y); const minX = xs.length ? Math.min(...xs) : 0, maxX = xs.length ? Math.max(...xs) : 1, minY = ys.length ? Math.min(...ys) : 0, maxY = ys.length ? Math.max(...ys) : 1;
   const points = pairs.map((point) => `${20 + 600 * (point.x - minX) / Math.max(1e-15, maxX - minX)},${220 - 190 * (point.y - minY) / Math.max(1e-15, maxY - minY)}`).join(" ");
   const manifest = esc(JSON.stringify(stable(createCurveResultExportManifest(card, definition))));

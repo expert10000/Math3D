@@ -42,7 +42,40 @@ const hash = (value: unknown): string => {
 };
 const finitePoint = (point: Vec3) => point.length === 3 && point.every(Number.isFinite);
 const distance = (a: Vec3, b: Vec3) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
-const cleanLines = (lines: ReadonlyArray<ReadonlyArray<Vec3>>): Vec3[][] => lines.map((line) => line.filter(finitePoint)).filter((line) => line.length >= 2);
+const cleanLines = (lines: ReadonlyArray<ReadonlyArray<Vec3>>): Vec3[][] => lines.flatMap(line => {
+  const runs: Vec3[][] = [];
+  let run: Vec3[] = [];
+  for (const point of line) {
+    if (finitePoint(point)) run.push(point);
+    else { if (run.length >= 2) runs.push(run); run = []; }
+  }
+  if (run.length >= 2) runs.push(run);
+  return runs;
+});
+const cleanMappedLines = (lines: ReadonlyArray<ReadonlyArray<Vec3>>,
+  parameters: ReadonlyArray<ReadonlyArray<readonly [number, number]>>) => {
+  if (lines.length !== parameters.length)
+    throw new TypeError("Surface layer parameter lines must match the geometry lines.");
+  const polylines: Vec3[][] = [], parameterPolylines: Array<Array<readonly [number, number]>> = [];
+  lines.forEach((line, lineIndex) => {
+    const mapped = parameters[lineIndex];
+    if (line.length !== mapped.length)
+      throw new TypeError("Surface layer parameter points must match geometry points.");
+    let spatial: Vec3[] = [], chart: Array<readonly [number, number]> = [];
+    const flush = () => {
+      if (spatial.length >= 2) { polylines.push(spatial); parameterPolylines.push(chart); }
+      spatial = []; chart = [];
+    };
+    line.forEach((point, index) => {
+      const uv = mapped[index]!;
+      if (finitePoint(point) && uv.length === 2 && uv.every(Number.isFinite)) {
+        spatial.push(point); chart.push(uv);
+      } else flush();
+    });
+    flush();
+  });
+  return { polylines, parameterPolylines };
+};
 const lineStatistics = (lines: ReadonlyArray<ReadonlyArray<Vec3>>) => {
   const lengths = lines.map((line) => line.slice(1).reduce((sum, point, index) => sum + distance(line[index], point), 0));
   return {
@@ -71,7 +104,13 @@ export const createSurfaceCurveLayer = (args: {
   warnings?: readonly string[];
   visible?: boolean;
 }): SurfaceCurveResultLayer => {
-  const polylines = cleanLines(args.polylines ?? []);
+  const cleaned = args.parameterPolylines
+    ? cleanMappedLines(args.polylines ?? [], args.parameterPolylines)
+    : { polylines: cleanLines(args.polylines ?? []), parameterPolylines: undefined };
+  const { polylines, parameterPolylines } = cleaned;
+  const inputPointCount = (args.polylines ?? []).reduce((sum, line) => sum + line.length, 0);
+  const retainedPointCount = polylines.reduce((sum, line) => sum + line.length, 0);
+  const omitted = inputPointCount - retainedPointCount;
   const method = surfaceLayerMethod(args.definition, args.method);
   const parameters = { ...(args.parameters ?? {}) };
   const selectionSource = args.selectionSource ?? defaultSource;
@@ -80,8 +119,10 @@ export const createSurfaceCurveLayer = (args: {
     layerId, identity: args.definition.identity, layerKind: args.layerKind, label: args.label ?? args.layerKind, state: polylines.length ? "ready" : "empty",
     visible: args.visible ?? true, selected: false, method, parameters, selectionSource,
     policy: { ...DEFAULT_SURFACE_LAYER_POLICY, periodicDomain: args.definition.domain.kind === "parameter" && (!!args.definition.domain.u.periodic || !!args.definition.domain.v.periodic), ...(args.policy ?? {}) },
-    polylines, parameterPolylines: args.parameterPolylines, statistics: lineStatistics(polylines),
-    warnings: polylines.length ? [...(args.warnings ?? [])] : [...(args.warnings ?? []), "No computed polyline is currently available for this layer."],
+    polylines, parameterPolylines, statistics: lineStatistics(polylines),
+    warnings: [...(args.warnings ?? []),
+      ...(omitted ? [`${omitted} invalid or isolated Surface sample(s) were omitted; disconnected runs remain separate.`] : []),
+      ...(!polylines.length ? ["No computed polyline is currently available for this layer."] : [])],
   };
 };
 
@@ -99,9 +140,24 @@ export const createSurfaceFeatureLayer = (args: {
   warnings?: readonly string[];
   visible?: boolean;
 }): SurfaceFeatureResultLayer => {
-  const points = (args.points ?? []).filter(finitePoint);
-  const polylines = cleanLines(args.polylines ?? []);
-  const confidence = args.confidence?.length === points.length ? Float32Array.from(args.confidence) : new Float32Array(points.length).fill(1);
+  const inputPoints = args.points ?? [];
+  const retainedIndices = inputPoints.flatMap((point, index) => finitePoint(point) ? [index] : []);
+  const points = retainedIndices.map(index => inputPoints[index]!);
+  const inputPolylines = args.polylines ?? [];
+  const polylines = cleanLines(inputPolylines);
+  const omittedPoints = inputPoints.length - points.length;
+  const omittedCurveSamples = inputPolylines.reduce((sum, line) => sum + line.length, 0)
+    - polylines.reduce((sum, line) => sum + line.length, 0);
+  if (args.confidence && args.confidence.length !== inputPoints.length)
+    throw new TypeError("Surface feature confidence must match the input feature points.");
+  if (args.confidence) for (let index = 0; index < args.confidence.length; index += 1) {
+    const value = args.confidence[index];
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1)
+      throw new RangeError("Surface feature confidence must be finite and within [0, 1].");
+  }
+  const confidence = args.confidence
+    ? Float32Array.from(retainedIndices.map(index => args.confidence![index]!))
+    : new Float32Array();
   let confidenceSum = 0;
   for (const value of confidence) confidenceSum += value;
   const method = surfaceLayerMethod(args.definition, args.method);
@@ -115,7 +171,11 @@ export const createSurfaceFeatureLayer = (args: {
     policy: { ...DEFAULT_SURFACE_LAYER_POLICY, periodicDomain: args.definition.domain.kind === "parameter" && (!!args.definition.domain.u.periodic || !!args.definition.domain.v.periodic), ...(args.policy ?? {}) },
     points, polylines, confidence,
     statistics: { pointCount: points.length, curveCount: polylines.length, curvePointCount: polylines.reduce((sum, line) => sum + line.length, 0), meanConfidence: confidence.length ? confidenceSum / confidence.length : null },
-    warnings: populated ? [...(args.warnings ?? [])] : [...(args.warnings ?? []), "No computed feature geometry is currently available for this layer."],
+    warnings: [...(args.warnings ?? []),
+      ...(omittedPoints ? [`${omittedPoints} invalid Surface feature point(s) were omitted.`] : []),
+      ...(omittedCurveSamples ? [`${omittedCurveSamples} invalid or isolated Surface feature curve sample(s) were omitted; disconnected runs remain separate.`] : []),
+      ...(!args.confidence && points.length ? ["Feature point confidence is unavailable for this layer."] : []),
+      ...(!populated ? ["No computed feature geometry is currently available for this layer."] : [])],
   };
 };
 
@@ -134,7 +194,12 @@ export const updateSurfaceResultLayer = <T extends SurfaceCurveResultLayer | Sur
   layers: readonly T[] | readonly SurfaceCurveResultLayer[] | readonly SurfaceFeatureResultLayer[],
   layerId: string,
   patch: Partial<Pick<T, "visible" | "selected">>
-): Array<SurfaceCurveResultLayer | SurfaceFeatureResultLayer> => layers.map((layer) => layer.layerId === layerId ? { ...layer, ...patch } : patch.selected ? { ...layer, selected: false } : layer);
+): Array<SurfaceCurveResultLayer | SurfaceFeatureResultLayer> => {
+  if (!layers.some(layer => layer.layerId === layerId)) return [...layers];
+  return layers.map((layer) => layer.layerId === layerId
+    ? { ...layer, ...patch }
+    : patch.selected ? { ...layer, selected: false } : layer);
+};
 
 export const removeSurfaceResultLayer = (
   layers: readonly SurfaceCurveResultLayer[] | readonly SurfaceFeatureResultLayer[],

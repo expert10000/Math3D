@@ -1,6 +1,6 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { inspectProjectStudyMembers, qualifyProjectQwzPair, qualifyProjectQwzQuadStudy,
-  type KernelWorkspaceModule, type Math3DProject } from "@math3d/core";
+  type KernelWorkspaceModule, type Math3DProject, type ProjectQuantumSceneReference } from "@math3d/core";
 import type { VerifiedProjectResources } from "../projects/projectResources";
 import { qualifyStudyGraphCurveLink, studyHasQualifiedGraphCurveLink } from "../projects/studyGraphCurveLink";
 import { StudyGraphCurveControl } from "./StudyGraphCurveControl";
@@ -11,20 +11,31 @@ const StudyPanePreview = lazy(() => import("./StudyPanePreview").then(module => 
 type DocumentChoice = Readonly<{ id: string; title: string; module: KernelWorkspaceModule }>;
 type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoice[]; editable: boolean;
   resources?: VerifiedProjectResources;
+  focusStudy?: Readonly<{ id: string; token: number }> | null;
   onCreate: (title: string, ids: readonly string[]) => void; onRename: (id: string, title: string) => void;
   onFork: (id: string, title: string) => void; onLink: (id: string) => void;
   onCreateQwz: (quantumStudyId: string) => void;
+  onPinQwz: (studyId: string, sampleIndex: number) => void;
+  onUnpinQwz: (studyId: string) => void;
+  onOpenQuantumSource?: (reference: ProjectQuantumSceneReference) => Promise<void>;
   onOpenDocument: (id: string, module: KernelWorkspaceModule) => void }>;
 
 /** A Study is a saved layout of references; opening a pane delegates to its owning document. */
-export function ProjectStudiesPanel({ project, documents, editable, resources, onCreate, onRename, onFork,
-  onLink, onCreateQwz, onOpenDocument }: Props) {
+export function ProjectStudiesPanel({ project, documents, editable, resources, focusStudy, onCreate, onRename, onFork,
+  onLink, onCreateQwz, onPinQwz, onUnpinQwz, onOpenQuantumSource, onOpenDocument }: Props) {
   const [selected, setSelected] = useState<string[]>([]);
   const [title, setTitle] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [visiblePaneId, setVisiblePaneId] = useState<string | null>(null);
+  const viewRef = useRef<HTMLDivElement>(null);
   const studies = project.workspace.studies ?? [];
+  useEffect(() => {
+    const study = studies.find(item => item.id === focusStudy?.id);
+    if (!study) return;
+    setOpenId(study.id); setEditTitle(study.title); setVisiblePaneId(null);
+    window.requestAnimationFrame(() => viewRef.current?.scrollIntoView({ block: "nearest" }));
+  }, [focusStudy?.token, project.identity.id]);
   const open = studies.find(study => study.id === openId) ?? null;
   const graphCurvePair = open ? qualifyStudyGraphCurveLink(project, open) : null;
   const graphCurveLinked = !!open && !!graphCurvePair && studyHasQualifiedGraphCurveLink(open, graphCurvePair);
@@ -57,7 +68,7 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, o
         setOpenId(study.id); setEditTitle(study.title); setVisiblePaneId(null);
       }}>{study.title}</button> · {study.layout.mode} · {study.members.length} members
     </li>)}</ul>
-    {open && <div data-testid="project-study-view" data-study-id={open.id}>
+    {open && <div ref={viewRef} data-testid="project-study-view" data-study-id={open.id}>
       <h5>{open.title}</h5>
       {editable && <div><label>Rename Study <input aria-label="Rename Study" value={editTitle}
         onChange={event => setEditTitle(event.target.value)} /></label>
@@ -67,7 +78,8 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, o
       {graphCurvePair && !graphCurveLinked && editable && <button type="button" data-testid="project-study-link-graph-curve"
         onClick={() => onLink(open.id)}>Link promoted Graph and Curve</button>}
       {graphCurvePair && graphCurveLinked && <StudyGraphCurveControl project={project} pair={graphCurvePair} studyId={open.id} />}
-      {qwzPair && <StudyQwzCursorControl project={project} pair={qwzPair} />}
+      {qwzPair && <StudyQwzCursorControl project={project} pair={qwzPair} study={open}
+        editable={editable} onPin={onPinQwz} onUnpin={onUnpinQwz} />}
       <div data-testid="project-study-panes" data-layout={open.layout.mode} style={{ display: "grid",
         gridTemplateColumns: open.layout.mode === "single" || open.layout.mode === "tabs" ? "1fr" : "repeat(2, minmax(0, 1fr))", gap: 8 }}>
         {open.layout.panes.map(pane => {
@@ -75,10 +87,18 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, o
           const choice = choiceById.get(member.documentId);
           const status = statusByMember.get(member.memberId) ?? "missing-document";
           const workspaceEntry = project.workspace.entries.find(entry => entry.expected.id === member.documentId);
+          const quantumDocument = qwzPair && [qwzPair.curvature, qwzPair.bands]
+            .find(document => document.identity.id === member.documentId);
+          const quantumReference = quantumDocument && project.quantumScenes?.find(reference =>
+            reference.sceneFingerprint === quantumDocument.source.sceneFingerprint &&
+            reference.directory === quantumDocument.location.directory);
           return <div key={pane.paneId} data-testid={`project-study-pane-${pane.paneId}`} style={{ border: "1px solid #cbd5e1", padding: 8, minWidth: 0, overflow: "hidden" }}>
             <strong>{choice?.title ?? member.documentId}</strong><p>{member.role} · {statusLabel[status]} · saved r{member.expected.revision}</p>
-            <button type="button" disabled={!workspaceEntry}
-              onClick={() => { if (workspaceEntry) onOpenDocument(member.documentId, workspaceEntry.module); }}>Open source document</button>
+            {quantumDocument ? <button type="button" data-testid={`project-study-open-source-${pane.paneId}`}
+              disabled={!quantumReference || !onOpenQuantumSource}
+              onClick={() => { if (quantumReference) void onOpenQuantumSource?.(quantumReference); }}>
+              Verify and view source scene</button> : <button type="button" disabled={!workspaceEntry}
+              onClick={() => { if (workspaceEntry) onOpenDocument(member.documentId, workspaceEntry.module); }}>Open source document</button>}
             <button type="button" data-testid={`project-study-preview-toggle-${pane.paneId}`}
               onClick={() => setVisiblePaneId(current => current === pane.paneId ? null : pane.paneId)}>
               {visiblePaneId === pane.paneId ? "Hide preview" : "Show preview"}</button>

@@ -51,6 +51,20 @@ test("Lab QWZ study handoff stages both exact scenes in a new Math3D Project", a
     await studies.getByLabel("Band sample index").fill("0");
     await studies.getByTestId("project-study-share-qwz-k").click();
     await expect(studies.getByTestId("project-study-qwz-cursor-status")).toContainText("Berry curvature", { timeout: 60_000 });
+    await studies.getByTestId("project-study-pin-qwz-k").click();
+    await expect(studies.getByTestId("project-study-qwz-pin-status")).toContainText("Pinned band sample 0");
+    await studies.getByLabel("Band sample index").fill("1");
+    await studies.getByTestId("project-study-share-qwz-k").click();
+    await expect(studies.getByTestId("project-study-pin-qwz-k")).toHaveText("Update pinned k", { timeout: 60_000 });
+    await studies.getByTestId("project-study-pin-qwz-k").click();
+    await expect(studies.getByTestId("project-study-qwz-pin-status")).toContainText("Pinned band sample 1");
+    await studies.getByTestId("project-study-unpin-qwz-k").click();
+    await expect(studies.getByTestId("project-study-qwz-pin-status")).toHaveCount(0);
+    await studies.getByLabel("Band sample index").fill("0");
+    await studies.getByTestId("project-study-share-qwz-k").click();
+    await expect(studies.getByTestId("project-study-pin-qwz-k")).toBeVisible({ timeout: 60_000 });
+    await studies.getByTestId("project-study-pin-qwz-k").click();
+    await expect(studies.getByTestId("project-study-qwz-pin-status")).toContainText("Pinned band sample 0");
     await expect(studies.getByTestId("project-study-quantum-linked-k")).toContainText("Linked k=");
     await studies.getByTestId("project-study-preview-toggle-inspector").click();
     await expect(studies.getByTestId("project-study-qwz-inspector")).toContainText("Chern number: -1", { timeout: 60_000 });
@@ -85,17 +99,49 @@ test("Lab QWZ study handoff stages both exact scenes in a new Math3D Project", a
     await expect(reopenedStudies).toBeVisible();
     await reopenedStudies.locator('[data-testid^="project-study-open-"]').click();
     await expect(reopenedStudies.getByTestId("project-study-panes")).toHaveAttribute("data-layout", "quad");
+    await expect(reopenedStudies.getByTestId("project-study-qwz-pin-status")).toContainText("Pinned band sample 0");
+    await expect(reopenedStudies.getByTestId("project-study-qwz-cursor-status")).toContainText("Berry curvature", { timeout: 60_000 });
+    const exportEvidence = async (name: string) => {
+      const target = join(root, name);
+      await app.evaluate(({ session }, path) => session.defaultSession.once("will-download",
+        (_event, item) => item.setSavePath(path)), target);
+      await reopenedStudies.getByTestId("project-study-export-qwz-evidence").click();
+      await expect.poll(async () => {
+        try { return JSON.parse(await readFile(target, "utf8")); } catch { return null; }
+      }, { timeout: 60_000 }).not.toBeNull();
+      return JSON.parse(await readFile(target, "utf8"));
+    };
+    const verifiedEvidence = await exportEvidence("qwz-verified-evidence.json");
+    expect(verifiedEvidence.schema).toBe("math3d.qwz-study-evidence/v1");
+    expect(verifiedEvidence.source.resultSha256).toBe(scenes[0].resultSha256);
+    expect(verifiedEvidence.verification).toMatchObject({ status: "verified", omissions: [],
+      selection: { band: { sampleIndex: 0 }, curvature: { sampleIndex: expect.any(Number) },
+        projection: { strategy: "nearest-lowest-index" } } });
+    await reopenedStudies.getByTestId("project-study-open-source-curvature").click();
+    await expect(reopenedPage.getByTestId("quantum-scene-preview")).toBeVisible({ timeout: 60_000 });
+    await reopenedPage.getByTestId("quantum-scene-close").click();
+    await expect(reopenedPage.getByTestId("quantum-scene-preview")).toHaveCount(0);
+    await expect(reopenedStudies.getByTestId("project-study-view")).toHaveAttribute("data-study-id", project.workspace.studies[0].id);
+    await expect(reopenedStudies.getByTestId("project-study-qwz-pin-status")).toContainText("Pinned band sample 0");
     await reopenedStudies.getByTestId("project-study-preview-toggle-curvature").click();
     await expect(reopenedStudies.getByTestId("project-study-quantum-view")).toHaveAttribute("data-role", "curvature", { timeout: 60_000 });
-    await reopenedStudies.getByLabel("Band sample index").fill("0");
-    await reopenedStudies.getByTestId("project-study-share-qwz-k").click();
-    await expect(reopenedStudies.getByTestId("project-study-qwz-cursor-status")).toContainText("Berry curvature", { timeout: 60_000 });
+    await expect(reopenedStudies.getByTestId("project-study-quantum-linked-k")).toContainText("Linked k=");
     const blob = join(handoff, names[0], "curvature.f64"), original = await readFile(blob);
     const changed = Buffer.from(original); changed[0] ^= 1; await writeFile(blob, changed);
+    await reopenedStudies.getByTestId("project-study-open-source-curvature").click();
+    await expect(reopenedProjects.getByTestId("project-quantum-scene-message")).toContainText("Scene unavailable", { timeout: 60_000 });
+    await expect(reopenedPage.getByTestId("quantum-scene-preview")).toHaveCount(0);
     await reopenedStudies.getByTestId("project-study-preview-toggle-curvature").click();
     await reopenedStudies.getByTestId("project-study-preview-toggle-curvature").click();
     await expect(reopenedStudies.getByTestId("project-study-quantum-withheld")).toContainText(/changed|hash|checksum|integrity/i, { timeout: 60_000 });
+    await reopenedStudies.getByTestId("project-study-share-qwz-k").click();
+    await expect(reopenedStudies.getByTestId("project-study-qwz-cursor-status")).toContainText("withheld", { timeout: 60_000 });
+    await expect(reopenedStudies.getByTestId("project-study-qwz-pin-status")).toContainText("Pinned band sample 0");
     await expect(reopenedStudies.getByTestId("project-study-panes")).toHaveAttribute("data-layout", "quad");
+    const withheldEvidence = await exportEvidence("qwz-withheld-evidence.json");
+    expect(withheldEvidence.source).toEqual(verifiedEvidence.source);
+    expect(withheldEvidence.verification).toMatchObject({ status: "withheld", selection: null,
+      invariants: null, omissions: ["band energy", "Berry curvature", "reciprocal projection", "topology invariants"] });
     await writeFile(blob, original);
   } finally {
     await app.close();

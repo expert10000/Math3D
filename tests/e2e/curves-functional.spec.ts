@@ -43,12 +43,19 @@ test.describe("Curves canonical workspace", () => {
       const curvatureCard = ctx.page.getByTestId("curve-result-card-preset:curvature");
       await expect(curvatureCard).toContainText("Math3D Curve Core");
       await expect(curvatureCard).toContainText("Uncertainty:");
+      await expect(curvatureCard).toHaveAttribute("data-evidence-status", "current");
+      await expect(curvatureCard.getByTestId("curve-result-qualification"))
+        .toContainText("Sampled Curve result · current");
+      await expect(curvatureCard.getByTestId("curve-result-qualification"))
+        .toContainText("no proven error bound");
       await curvatureCard.getByRole("button", { name: "Hide" }).click();
       await expect(ctx.page.getByTestId("curve-analysis-plot-series")).toContainText("Plots (1): Sampling error");
       await expect(ctx.page.getByTestId("curve-analysis-viewport-evidence")).not.toContainText("curvature comb");
       await curvatureCard.getByRole("button", { name: "Show" }).click();
       await curvatureCard.getByRole("button", { name: "Select" }).click();
       await expect(ctx.page.getByTestId("curve-inspector-active-result")).toContainText("Curvature");
+      await expect(ctx.page.getByTestId("curve-inspector-result-qualification"))
+        .toContainText("Sampled Curve result · current");
       await curvatureCard.getByRole("button", { name: "Frame" }).click();
       await expect(ctx.page.getByTestId("curve-analysis-frame-status")).toContainText("Camera fit includes");
       await curvatureCard.getByRole("button", { name: "Pin" }).click();

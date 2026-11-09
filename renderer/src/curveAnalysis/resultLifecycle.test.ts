@@ -45,7 +45,8 @@ describe("Curve scientific result lifecycle", () => {
     expect(cards).toHaveLength(2);
     expect(cards[0]).toMatchObject({ state: "ready", method: "numerical-derivatives", units: { position: "m" }, backend: "Math3D Curve Core", computeTimeMs: 0, layer: { visible: true } });
     expect(cards[0].statistics?.validCount).toBeGreaterThan(0);
-    expect(cards[0].uncertainty).toMatchObject({ kind: "exact", absolute: 0 });
+    expect(cards[0].uncertainty).toMatchObject({ kind: "unknown", absolute: null });
+    expect(cards[0].uncertainty?.note).toMatch(/sampling tolerance is not a proven/);
     expect(cards[0].dependencies).toHaveLength(1);
   });
 
@@ -113,7 +114,14 @@ describe("Curve scientific result lifecycle", () => {
     expect(manifest).toMatchObject({ schema: "math3d.curve-result/v1", identity: { curveId: "circle", curveRevision: 3 }, definition: { representation: "parametric" }, sampling: { tolerance: 1e-4 }, method: "numerical-derivatives", software: { product: "Math3D", backend: "Math3D Curve Core" } });
     expect(curveResultToJson(card, definition())).toBe(curveResultToJson(card, definition()));
     expect(curveResultToCsv(card, definition())).toContain("# Math3D-Curve-Manifest:");
+    expect(curveResultToCsv(card, definition())).not.toContain('"NaN"');
+    expect(curveResultToCsv(card, definition()).split("\n")[2]).toContain(',"","false"');
     expect(curveResultToSvg(card, definition())).toContain("<metadata>{&quot;definition&quot;");
+    const masked = { ...card, series: { ...card.series!, valid: card.series!.valid!.map((valid, index) =>
+      index === 3 ? false : valid) } };
+    const polylinePoints = (svg: string) => /<polyline[^>]+points="([^"]*)"/.exec(svg)![1]!.split(" ");
+    expect(polylinePoints(curveResultToSvg(masked, definition()))).toHaveLength(
+      polylinePoints(curveResultToSvg(card, definition())).length - 1);
   });
 
   it("aligns comparisons over the common domain independent of sampling", () => {

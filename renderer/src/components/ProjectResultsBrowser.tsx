@@ -6,9 +6,14 @@ import { VECTOR_FIELD3D_POINT_RESULT_TYPE, VECTOR_FIELD3D_REGION_RESULT_TYPE,
   VECTOR_FIELD3D_COMBINED_SUBRECTANGLE_RESULT_TYPE,
   VECTOR_FIELD3D_TRAJECTORY_RESULT_TYPE,
   VECTOR_FIELD3D_EQUILIBRIUM_RESULT_TYPE,
-  type Math3DProject } from "@math3d/core";
+  type Math3DProject, type ScientificSourceGeneration,
+  presentAnalysisResultClaim } from "@math3d/core";
 import type { ProjectDependencyInspection } from "../projects/projectDependencies";
-import { presentProjectFreshness } from "../projects/projectFreshnessPresentation";
+import { presentProjectResultCard } from "../projects/projectResultCard";
+import { createProjectResultEvidence } from "../projects/projectResultEvidence";
+import { resultNoteReferences, resultStudyReferences, resultWorkbookReferences } from
+  "../projects/projectResultReferences";
+import type { WorkbookStageId } from "@math3d/workbook";
 import type { SavedRegionSourceStatus } from "../vectorfield3d/checkSavedRegionResultSources";
 import { isScientificSubrectangle } from
   "../projects/scientificSubrectangleWorkbook";
@@ -16,6 +21,8 @@ import { isScientificTrajectory } from "../projects/scientificTrajectoryWorkbook
 import { isScientificEquilibrium } from "../projects/scientificEquilibriumWorkbook";
 import type { ProjectResourceReader } from "../projects/projectResources";
 import { verifySavedMeshResult } from "../projects/projectSavedMeshResultComparison";
+import { projectResultSourceLink } from "../projects/projectResultSourceLink";
+import { presentProjectResultVerification } from "../projects/projectResultVerification";
 
 const ProjectSavedMeshGenerationPreview = React.lazy(() => import("./ProjectSavedMeshGenerationPreview").then(module => ({ default: module.ProjectSavedMeshGenerationPreview })));
 
@@ -31,28 +38,15 @@ type Props = {
   regionResultStatuses?: Readonly<Record<string, SavedRegionSourceStatus>>;
   onCreateScientificReport?: (resultId: string) => void;
   onExportScientificReport?: (resultId: string) => void;
+  workbookBytes?: (id: string) => Uint8Array | null;
+  onOpenWorkbookBlock?: (id: string, stageId: WorkbookStageId, blockId: string) => void;
+  onOpenNote?: (id: string) => void;
+  onOpenStudy?: (id: string) => void;
 };
 
 const readable = (value: unknown) => typeof value === "string" ? value : JSON.stringify(value);
 const bytes = (value: number | null) => value === null ? "Size not recorded" : `${value.toLocaleString()} bytes`;
 
-const regionSourcePresentation = (status: SavedRegionSourceStatus | undefined) => status === "source-current"
-  ? { tone: "current", label: "Source verified" } : status === "missing"
-    ? { tone: "unavailable", label: "Missing source" } : status === "changed"
-      ? { tone: "unavailable", label: "Changed source" } : status === "error"
-        ? { tone: "unavailable", label: "Verification failed" }
-        : typeof status === "object" ?
-          { tone: [status.vector, ...(status.kind === "combined" ?
-              [status.scalar, status.complex] : []),
-              ...(status.divergence === undefined ? [] : [status.divergence]),
-              ...(status.curlMagnitude === undefined ? [] : [status.curlMagnitude])].every(value =>
-              value === "source-current") ? "current" : "unavailable",
-            label: [status.vector, ...(status.kind === "combined" ?
-              [status.scalar, status.complex] : []),
-              ...(status.divergence === undefined ? [] : [status.divergence]),
-              ...(status.curlMagnitude === undefined ? [] : [status.curlMagnitude])].every(value =>
-              value === "source-current") ? "All fields verified" : "Per-field status" } :
-          { tone: "unavailable", label: "Checking sources" };
 const isRegionResult = (operation: string) => operation === VECTOR_FIELD3D_REGION_RESULT_TYPE ||
   operation === VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE ||
   operation === VECTOR_FIELD3D_DERIVED_REGION_RESULT_TYPE ||
@@ -61,7 +55,8 @@ const isRegionResult = (operation: string) => operation === VECTOR_FIELD3D_REGIO
   operation === VECTOR_FIELD3D_TRAJECTORY_RESULT_TYPE ||
   operation === VECTOR_FIELD3D_EQUILIBRIUM_RESULT_TYPE;
 
-export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, titles, canOpen, onOpen, focusResult, readResource, regionResultStatuses = {}, onCreateScientificReport, onExportScientificReport }) => {
+export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, titles, canOpen, onOpen, focusResult, readResource, regionResultStatuses = {}, onCreateScientificReport, onExportScientificReport,
+  workbookBytes, onOpenWorkbookBlock, onOpenNote, onOpenStudy }) => {
   const [query, setQuery] = useState("");
   const [selection, setSelection] = useState<Selection | null>(null);
   const [meshPreviewOpen, setMeshPreviewOpen] = useState(false);
@@ -100,11 +95,8 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
   const active = selection && (selection.kind === "result" ? results.some(result => result.resultId === selection.id) : artifacts.some(artifact => artifact.handle.artifactId === selection.id))
     ? selection : results[0] ? { kind: "result" as const, id: results[0].resultId } : artifacts[0] ? { kind: "artifact" as const, id: artifacts[0].handle.artifactId } : null;
   const result = active?.kind === "result" ? results.find(item => item.resultId === active.id) : undefined;
+  const resultClaim = result && presentAnalysisResultClaim(result.status);
   const meshResult = result?.provenance.operation.type.startsWith("mesh.saved.") ? result : undefined;
-  const meshCurrent = meshResult && project.workspace.entries.find(item => item.module === "mesh" &&
-    item.expected.id === meshResult.provenance.source.documentId)?.expected;
-  const meshSourceIsHistorical = !!meshResult && (!meshCurrent || meshCurrent.revision !== meshResult.provenance.source.revision ||
-    meshCurrent.structuralHash !== meshResult.provenance.source.structuralHash);
   const meshVerification = useMemo(() => {
     if (!meshResult || !readResource) return null;
     try { return { checked: verifySavedMeshResult(project, meshResult.resultId, readResource), error: null }; }
@@ -112,12 +104,41 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
   }, [project, meshResult, readResource]);
   const artifact = active?.kind === "artifact" ? artifacts.find(item => item.handle.artifactId === active.id) : undefined;
   const resultStatus = result && inspection?.results.find(item => item.id === result.resultId);
+  const references = result ? [
+    ...resultNoteReferences(project, result), ...resultStudyReferences(project, result),
+    ...(workbookBytes ? resultWorkbookReferences(project, result, workbookBytes) : []),
+  ] : [];
+  const resultCard = result && presentProjectResultCard(result, resultStatus,
+    regionResultStatuses[result.resultId], isRegionResult(result.provenance.operation.type));
+  const resultVerification = result && presentProjectResultVerification({
+    kind: meshResult ? "mesh" : isRegionResult(result.provenance.operation.type) ? "field" : "other",
+    savedMeshChecked: !!meshVerification?.checked,
+    sourceCurrent: resultCard?.integrity.label === "Source verified",
+  });
   const artifactStatus = artifact && inspection?.artifacts.find(item => item.id === artifact.handle.artifactId);
   const linkedResults = artifact ? results.filter(item => item.artifacts.some(handle => handle.artifactId === artifact.handle.artifactId)) : [];
   const artifactRelations = artifact ? project.workspace.relations.filter(relation => relation.target.type === "artifact" && relation.target.artifactId === artifact.handle.artifactId) : [];
-  const sourceButton = (id: string) => {
-    const entry = project.workspace.entries.find(item => item.expected.id === id);
-    return <button type="button" disabled={!entry || !canOpen(id, entry.module)} onClick={() => entry && onOpen(id, entry.module)}>{titles.get(id) ?? id}</button>;
+  const sourceButton = (source: ScientificSourceGeneration) => {
+    const link = projectResultSourceLink(project, source);
+    const label = titles.get(source.documentId) ?? source.documentId;
+    return link.status === "current" && link.module
+      ? <button type="button" data-testid={`project-result-source-${source.documentId}`}
+          disabled={!canOpen(source.documentId, link.module)} title={link.reason}
+          onClick={() => onOpen(source.documentId, link.module!)}>{label}</button>
+      : <span data-testid={`project-result-source-${source.documentId}`} title={link.reason}>
+          {label} · {link.status === "historical" ? "historical source generation" : "missing source"}
+        </span>;
+  };
+  const exportEvidence = () => {
+    if (!result || !resultCard) return;
+    const evidence = createProjectResultEvidence(result, resultCard, resultStatus);
+    const url = URL.createObjectURL(new Blob([JSON.stringify(evidence, null, 2) + "\n"],
+      { type: "application/json" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `result-${result.resultId.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 80)}.evidence.json`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   return <div className="project-results-browser" data-testid="project-results-browser">
@@ -128,15 +149,15 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
       <nav className="project-results-list" aria-label="Saved results and artifacts">
         <h4>Results ({results.length})</h4>
         {filteredResults.map(item => {
+          const claim = presentAnalysisResultClaim(item.status);
           const status = inspection?.results.find(candidate => candidate.id === item.resultId);
-          const freshness = isRegionResult(item.provenance.operation.type)
-            ? regionSourcePresentation(regionResultStatuses[item.resultId])
-            : status && presentProjectFreshness(status.freshness);
+          const freshness = presentProjectResultCard(item, status,
+            regionResultStatuses[item.resultId], isRegionResult(item.provenance.operation.type)).integrity;
           return <button type="button" key={item.resultId} data-testid={`project-result-select-${item.resultId}`}
             aria-current={active?.kind === "result" && active.id === item.resultId ? "true" : undefined}
             onClick={() => select({ kind: "result", id: item.resultId })}>
             <strong>{item.provenance.operation.type}</strong>
-            <small>{titles.get(item.provenance.source.documentId) ?? item.provenance.source.documentId} · {item.status}</small>
+            <small>{titles.get(item.provenance.source.documentId) ?? item.provenance.source.documentId} · {claim.label}</small>
             {freshness && <span className="project-freshness-badge" data-tone={freshness.tone}>{freshness.label}</span>}
           </button>;
         })}
@@ -156,11 +177,25 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
       <section ref={detailRef} tabIndex={-1} className="project-results-detail" aria-label="Selected saved output" data-testid="project-result-detail">
         {result && <>
           <div className="project-results-detail-heading"><div><small>ANALYSIS RESULT</small><h4>{result.provenance.operation.type}</h4></div>
-            {isRegionResult(result.provenance.operation.type)
-              ? <span className="project-freshness-badge" data-tone={regionSourcePresentation(regionResultStatuses[result.resultId]).tone}>{regionSourcePresentation(regionResultStatuses[result.resultId]).label}</span>
-              : resultStatus && <span className="project-freshness-badge" data-tone={presentProjectFreshness(resultStatus.freshness).tone}>{presentProjectFreshness(resultStatus.freshness).label}</span>}
+            {resultCard && <span className="project-freshness-badge" data-tone={resultCard.integrity.tone}
+              title={resultCard.integrity.detail}>{resultCard.integrity.label}</span>}
           </div>
+          <p data-testid="project-result-claim">Mathematical claim: <strong>{resultClaim!.label}</strong>
+            {` · ${resultClaim!.meaning}`}
+            {resultStatus?.missingArtifactIds.length ? ` · ${resultStatus.missingArtifactIds.length} unavailable artifact(s)` : ""}</p>
+          <p data-testid="project-result-verification" data-scope={resultVerification!.scope}>
+            Independent check: <strong>{resultVerification!.label}</strong> · {resultVerification!.detail}</p>
           <p>Recorded status: <strong>{result.status}</strong>{resultStatus?.missingArtifactIds.length ? ` · ${resultStatus.missingArtifactIds.length} unavailable artifact(s)` : ""}</p>
+          {resultCard && <div data-testid="project-result-card-axes" className="project-results-links">
+            {(["execution", "integrity", "mathematics"] as const).map(axis =>
+              <p key={axis} data-testid={`project-result-axis-${axis}`}>
+                <strong>{axis === "mathematics" ? "Mathematics" : axis === "integrity" ? "Source integrity" : "Execution"}:</strong>{" "}
+                <span className="project-freshness-badge" data-tone={resultCard[axis].tone}>
+                  {resultCard[axis].label}</span>{" "}{resultCard[axis].detail}
+              </p>)}
+          </div>}
+          <button type="button" data-testid="project-result-export-evidence" onClick={exportEvidence}>
+            Export result evidence JSON</button>
           {meshResult && <div data-testid="project-saved-mesh-evidence" style={{ border: "1px solid #cbd5e1", borderRadius: 8, padding: 10 }}>
             <strong>Exact saved Mesh evidence</strong>
             {meshVerification?.checked ? <><p>Result {meshResult.resultId} · hash {meshVerification.checked.resultHash}<br />
@@ -188,15 +223,16 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
               onClick={() => onCreateScientificReport?.(result.resultId)}>
               Create verified equilibrium Workbook report</button>
           </div>}
-          <dl><div><dt>Source document</dt><dd>{meshSourceIsHistorical ?
-            <span>{titles.get(result.provenance.source.documentId) ?? result.provenance.source.documentId} · historical revision; use the exact generation view above when available</span> : sourceButton(result.provenance.source.documentId)}</dd></div>
+          <dl><div><dt>Source document</dt><dd>{sourceButton(result.provenance.source)}</dd></div>
             <div><dt>Source generation</dt><dd>Revision {result.provenance.source.revision} · generation {result.provenance.source.generation}</dd></div>
             <div><dt>Source hash</dt><dd><code>{result.provenance.source.structuralHash}</code></dd></div>
             <div><dt>Method</dt><dd>{result.provenance.operation.algorithm} · version {result.provenance.operation.algorithmVersion}</dd></div>
             <div><dt>Engine</dt><dd>{result.provenance.engine.name} {result.provenance.engine.version}</dd></div>
             <div><dt>Run time</dt><dd>{result.provenance.elapsedMs.toLocaleString()} ms</dd></div></dl>
           <h5>Summary</h5>
-          {(result.provenance.operation.type === VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE ||
+          {resultClaim!.outcome === "none" ?
+            <p data-testid="project-result-no-values">No completed result values are available. Inspect warnings and diagnostics for the recorded outcome.</p> :
+          (result.provenance.operation.type === VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE ||
             result.provenance.operation.type ===
               VECTOR_FIELD3D_COMBINED_SUBRECTANGLE_RESULT_TYPE) ?
             <div data-testid="project-combined-region-result">
@@ -274,6 +310,22 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
             Object.keys(result.summary).length ? <dl>{Object.entries(result.summary).map(([key, value]) => <div key={key}><dt>{key}</dt><dd><code>{readable(value)}</code></dd></div>)}</dl> : <p>No summary values recorded.</p>}
           {result.artifacts.length > 0 && <><h5>Artifacts</h5><div className="project-results-links">{result.artifacts.map(handle => <button type="button" key={handle.artifactId}
             onClick={() => select({ kind: "artifact", id: handle.artifactId })}>{handle.role} · {handle.kind}</button>)}</div></>}
+          <section data-testid="project-result-backlinks" aria-label="Result references in this Project">
+            <h5>Referenced in this Project ({references.length})</h5>
+            {references.length ? <ul>{references.map((reference, index) => <li key={`${reference.kind}:${reference.id}:${reference.blockId ?? index}`}
+              data-testid={`project-result-backlink-${reference.kind}-${index}`}>
+              <span>{reference.kind === "workbook" ? "Workbook block" : reference.kind === "study" ? "Study" : "Note"}: {reference.title}</span>{" "}
+              <span className="project-freshness-badge" data-tone={reference.status === "current" ? "current" : "stale"}
+                title={reference.reason}>{reference.status === "current" ? "Exact reference" : "Historical reference"}</span>{" "}
+              <button type="button" disabled={reference.kind === "note" ? !onOpenNote :
+                reference.kind === "study" ? !onOpenStudy : !onOpenWorkbookBlock}
+                onClick={() => { if (reference.kind === "note") onOpenNote?.(reference.id);
+                  else if (reference.kind === "study") onOpenStudy?.(reference.id);
+                  else if (reference.stageId && reference.blockId)
+                    onOpenWorkbookBlock?.(reference.id, reference.stageId, reference.blockId); }}>
+                Open {reference.kind === "workbook" ? "block" : reference.kind}</button>
+            </li>)}</ul> : <p>No exact Note, Study, or checked Workbook reference is recorded.</p>}
+          </section>
           {(result.warnings.length > 0 || result.diagnostics.length > 0) && <details><summary>Warnings and diagnostics ({result.warnings.length + result.diagnostics.length})</summary>
             <ul>{result.warnings.map((warning, index) => <li key={`warning-${index}`}>{warning}</li>)}
               {result.diagnostics.map((diagnostic, index) => <li key={`${diagnostic.code}-${index}`}>{diagnostic.severity} · {diagnostic.code}: {diagnostic.message}</li>)}</ul>
@@ -294,7 +346,7 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
             onClick={() => select({ kind: "result", id: item.resultId })}>{item.provenance.operation.type} · {titles.get(item.provenance.source.documentId) ?? item.provenance.source.documentId} · r{item.provenance.source.revision} g{item.provenance.source.generation}</button>)}</div> : <p>No result reference recorded.</p>}
           <h5>Recorded relation sources ({artifactRelations.length})</h5>
           {artifactRelations.length ? <ul>{artifactRelations.flatMap(relation => relation.sources.map(source => <li key={`${relation.relationId}:${source.documentId}`}>
-            {sourceButton(source.documentId)} · revision {source.revision} · generation {source.generation}
+            {sourceButton(source)} · revision {source.revision} · generation {source.generation}
           </li>))}</ul> : <p>No direct relation to a source document recorded.</p>}
         </>}
         {!result && !artifact && <p>No saved result or artifact is available to inspect.</p>}
