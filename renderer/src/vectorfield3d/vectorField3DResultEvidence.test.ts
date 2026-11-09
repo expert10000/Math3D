@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { analyzeVectorField3DLineIntegral, analyzeVectorField3DTheorem,
   createMixedWorkspaceDocument, createOrientedPolylineSelection, createOrientedRegionSelection,
   createVectorField3DLineIntegralResult, createVectorField3DRegionIntegralResult,
@@ -8,6 +10,7 @@ import { analyzeVectorField3DLineIntegral, analyzeVectorField3DTheorem,
   vectorField3DExpression, type Math3DProject, type VectorField3DDocument } from "@math3d/core";
 import { vectorField3DResultEvidence, vectorField3DResultEvidenceCsv,
   vectorField3DResultEvidenceJson } from "./vectorField3DResultEvidence";
+import { VectorField3DResultEvidenceCard } from "./VectorField3DResultEvidenceCard";
 
 const fixture = new URL("../../../tests/fixtures/derived-field/gf03-magnitude-slice-profile.math3d", import.meta.url);
 const source = (project: Math3DProject) => project.workspace.entries.find(item =>
@@ -40,6 +43,12 @@ describe("Field result evidence", () => {
     expect(json.source.structuralHash).toBe(document.identity.structuralHash);
     expect(json.checkScope).toMatch(/No independent mathematical check/);
     expect(vectorField3DResultEvidenceCsv(evidence)).toContain("value,2");
+    const card = renderToStaticMarkup(createElement(VectorField3DResultEvidenceCard,
+      { evidence, label: "Circulation", testId: "gf10-saved-result" }));
+    expect(card).toContain("2 m/s·m");
+    expect(card).toContain("Export evidence JSON");
+    expect(card).toContain("Export evidence CSV");
+    expect(card).toContain("No independent mathematical check");
     const revised = reviseVectorField3DDocument(document, { ...document.source,
       field: { kind: "expressions", components: [vectorField3DExpression("x", "m/s"),
         vectorField3DExpression("x", "m/s"), vectorField3DExpression("z", "m/s")] } });
@@ -47,6 +56,11 @@ describe("Field result evidence", () => {
     expect(historical).toMatchObject({ qualification: "withheld", reason: "source-changed", values: null });
     expect(() => vectorField3DResultEvidenceJson(historical)).toThrow(/withheld/);
     expect(() => vectorField3DResultEvidenceCsv(historical)).toThrow(/withheld/);
+    const staleCard = renderToStaticMarkup(createElement(VectorField3DResultEvidenceCard,
+      { evidence: historical, label: "Circulation", testId: "gf10-saved-result" }));
+    expect(staleCard).toContain("Value withheld: source-changed");
+    expect(staleCard).not.toContain("2 m/s·m");
+    expect(staleCard).not.toContain("Export evidence JSON");
   });
 
   it("distinguishes numerical theorem comparison from an independent proof", () => {

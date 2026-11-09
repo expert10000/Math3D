@@ -6,6 +6,8 @@ export type VectorField3DResultEvidence = Readonly<{
   resultId: string;
   source: AnalysisResultEnvelope["provenance"]["source"];
   operation: string;
+  selectionId: string;
+  orientation: string;
   method: string;
   claim: string;
   checkScope: string;
@@ -45,6 +47,8 @@ export function vectorField3DResultEvidence(project: Math3DProject, result: Anal
     "No independent mathematical check is recorded; quadrature or sampling error remains possible.";
   const fields = theorem ? theoremFields : operation === "vector3d.line-integral" ? lineFields : regionFields;
   return { resultId: result.resultId, source: result.provenance.source, operation,
+    selectionId: String(result.provenance.operation.parameters.selectionId ?? "unknown"),
+    orientation: String(result.provenance.operation.parameters.orientation ?? result.summary.orientation ?? "undeclared"),
     method: result.provenance.operation.algorithm, claim, checkScope,
     unit: typeof result.summary.unit === "string" ? result.summary.unit : "undeclared",
     qualification: current ? "current" : "withheld", reason: status.reason,
@@ -70,6 +74,7 @@ export function vectorField3DResultEvidenceCsv(evidence: VectorField3DResultEvid
     ["result_id", evidence.resultId], ["source_document", evidence.source.documentId],
     ["source_revision", evidence.source.revision], ["source_generation", evidence.source.generation],
     ["source_hash", evidence.source.structuralHash], ["operation", evidence.operation],
+    ["selection_id", evidence.selectionId], ["orientation", evidence.orientation],
     ["method", evidence.method], ["claim", evidence.claim], ["check_scope", evidence.checkScope],
     ["unit", evidence.unit], ["qualification", evidence.qualification],
     ...Object.entries(evidence.values).map(([key, value]) => [key, typeof value === "object" ?
