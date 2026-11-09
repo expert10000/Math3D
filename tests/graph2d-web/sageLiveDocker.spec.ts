@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { openGeometryServices } from "./sageGeometryServices";
 
 test("web Number Theory runs GCD and modular inverse through live Docker", async ({ page, request }) => {
   const healthResponse = await request.get("http://127.0.0.1:8767/health");
@@ -102,9 +103,7 @@ test.describe.serial("live Docker Sage operation journey", () => {
     await panel.getByRole("button", { name: "Run", exact: true }).click();
     await expect(panel).toContainText("does not exist", { timeout: 60_000 });
   
-    await page.getByRole("button", { name: "Geometry", exact: true }).first().click();
-    await page.getByTestId("geometry-professional-panel-services").click({ force: true });
-    const geometry = page.getByTestId("scientific-services-geometry");
+    const geometry = await openGeometryServices(page);
     await geometry.getByLabel("Services preset").selectOption("All");
     await geometry.getByLabel("Operation").selectOption("sage.groebner.compute");
     await geometry.getByRole("button", { name: "Run", exact: true }).click();

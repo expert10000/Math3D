@@ -12,6 +12,8 @@ export default defineConfig({
     browserName: "chromium",
     viewport: { width: 1440, height: 900 },
     actionTimeout: 30_000,
+    trace: "retain-on-failure",
+    screenshot: "only-on-failure",
   },
   webServer: [
     {
