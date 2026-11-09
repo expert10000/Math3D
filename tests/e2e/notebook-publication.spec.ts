@@ -48,6 +48,13 @@ test("Gallery evidence Workbook publishes a frozen report that opens in a fresh 
     await publication.getByLabel("Problem statement", { exact: true }).uncheck();
     const markdown = await download(ctx, () => publication.getByRole("button", { name: "Export selected Markdown", exact: true }).click(), "selected.md");
     expect(markdown.text).toContain("Linked-source manifest"); expect(markdown.text).not.toContain('"title": "Problem statement"');
+    const evidence = await download(ctx, () => publication.getByRole("button", { name: "Export evidence snapshot JSON", exact: true }).click(), "evidence.json");
+    const frozen = JSON.parse(evidence.text);
+    expect(frozen).toMatchObject({ format: "math3d.workbook-evidence-snapshot/v1",
+      schemaVersion: 1, projectId: initial.identity.id, contentHash: expect.stringMatching(/^sha256:/) });
+    expect(frozen.selectedBlockIds).not.toContain((await bookState(page)).stages[0].blocks[0].id);
+    expect(frozen.manifest.citations.length).toBeGreaterThan(0);
+    expect(frozen.omissions).toBeInstanceOf(Array);
     const report = await download(ctx, () => publication.getByRole("button", { name: "Export portable report", exact: true }).click(), "portable.html");
     const fresh = await browser.newContext();
     try {

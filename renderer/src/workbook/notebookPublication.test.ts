@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { createMixedWorkspaceDocument, replaceMath3DProjectWorkspace, sha256Checksum } from "@math3d/core";
+import { createMixedWorkspaceDocument, replaceMath3DProjectWorkspace, sha256Checksum, structuralHash } from "@math3d/core";
 import { createNotebookReference } from "@math3d/workbook";
 import { instantiateNotebookStarter } from "../projects/notebookStarters";
 import { readProjectWorkbook } from "../projects/projectWorkbookBinding";
 import { captureProjectResources } from "../projects/projectResources";
-import { createPortableNotebookPublication, inspectPortableNotebookPublication, notebookPublicationManifest, portableNotebookPublicationHtml } from "./notebookPublication";
+import { createNotebookPublicationEvidenceSnapshot, createPortableNotebookPublication,
+  inspectPortableNotebookPublication, notebookPublicationManifest,
+  portableNotebookPublicationHtml, verifyNotebookPublicationEvidenceSnapshot } from "./notebookPublication";
 
 const fixture = () => {
   const made = instantiateNotebookStarter("edge-path-evidence", "publication"), ref = made.project.workbooks![0]!;
@@ -44,5 +46,36 @@ describe("NOTE06 publication", () => {
     const manifest = notebookPublicationManifest([book], missing);
     expect(manifest.citations[0]!.status).toBe("missing");
     expect(manifest.blocks.find(block => block.claim)!.claim!.status).toBe("stale");
+    expect(manifest.citations[0]!.result).toBeNull();
+    expect(manifest.citations[0]!.artifacts).toEqual([]);
+  });
+  it("freezes deterministic JSON evidence and lists each withheld citation and claim", () => {
+    const { project, book } = fixture();
+    const first = createNotebookPublicationEvidenceSnapshot([book], project);
+    const second = createNotebookPublicationEvidenceSnapshot([book], project);
+    expect(first).toEqual(second);
+    expect(Object.isFrozen(first)).toBe(true);
+    expect(Object.isFrozen(first.manifest.citations[0])).toBe(true);
+    expect(verifyNotebookPublicationEvidenceSnapshot(first)).toBe(true);
+    const missing = replaceMath3DProjectWorkspace(project, createMixedWorkspaceDocument({
+      ...project.workspace, results: [],
+    }));
+    const withheld = createNotebookPublicationEvidenceSnapshot([book], missing);
+    expect(withheld.omissions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "citation", targetId: book.stages[1]!.blocks[0]!.notebookReference!.targetId }),
+      expect.objectContaining({ kind: "claim" }),
+    ]));
+    expect(withheld.manifest.citations[0].result).toBeNull();
+    expect(verifyNotebookPublicationEvidenceSnapshot(withheld)).toBe(true);
+    const tampered = JSON.parse(JSON.stringify(withheld));
+    tampered.omissions = [];
+    const { contentHash: _old, ...changed } = tampered;
+    tampered.contentHash = structuralHash(changed);
+    expect(() => verifyNotebookPublicationEvidenceSnapshot(tampered)).toThrow(/omissions/);
+    const exposed = JSON.parse(JSON.stringify(withheld));
+    exposed.manifest.citations[0].result = project.workspace.results[0];
+    const { contentHash: _previous, ...exposedContent } = exposed;
+    exposed.contentHash = structuralHash(exposedContent);
+    expect(() => verifyNotebookPublicationEvidenceSnapshot(exposed)).toThrow(/withheld/);
   });
 });

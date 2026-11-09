@@ -78,10 +78,74 @@ export const notebookPublicationManifest = (books: readonly Workbook[], project:
     qualification: "Publication records selected blocks, exact citations and freshness at export. Stale and unavailable evidence remains qualified. Numerical support checks only the declared scalar interval; it is not proof of arbitrary prose. A captured availability label alone does not establish portability. The Project package includes its saved Workbooks and current/replay source resources.", blocks,
     citations: [...citations.values()].map(reference => {
       const detail = inspectNotebookProvenance(project, reference, reader);
-      return { reference, status: detail.inspection?.status ?? "unresolved", reason: detail.inspection?.reason ?? "No named Project available.", currentSource: detail.inspection?.currentSource ?? null, result: detail.result ?? null, relations: detail.relations, artifacts: detail.artifacts };
+      const status = detail.inspection?.status ?? "unresolved";
+      return { reference, status, reason: detail.inspection?.reason ?? "No named Project available.",
+        currentSource: detail.inspection?.currentSource ?? null,
+        result: status === "current" ? detail.result ?? null : null,
+        relations: detail.relations, artifacts: status === "current" ? detail.artifacts : [] };
     }) };
 };
 export type NotebookPublicationManifest = ReturnType<typeof notebookPublicationManifest>;
+
+export type NotebookPublicationOmission = Readonly<{ kind: "citation" | "note" | "claim";
+  targetId: string; reason: string }>;
+const publicationOmissions = (manifest: NotebookPublicationManifest): readonly NotebookPublicationOmission[] => [
+  ...manifest.citations.filter(item => item.status !== "current").map(item => ({
+    kind: "citation" as const, targetId: item.reference.targetId,
+    reason: `${item.status}: ${item.reason} Result values and artifact claims withheld.`,
+  })),
+  ...manifest.blocks.flatMap(block => [
+    ...block.notes.filter(note => note.status !== "current").map(note => ({
+      kind: "note" as const, targetId: note.reference.noteId,
+      reason: `${note.status}: Note text withheld.`,
+    })),
+    ...(block.claim?.status === "stale" ? [{ kind: "claim" as const,
+      targetId: block.blockId, reason: `stale: ${block.claim.reason} Claim value withheld.` }] : []),
+  ]),
+].sort((a, b) => `${a.kind}:${a.targetId}:${a.reason}`.localeCompare(`${b.kind}:${b.targetId}:${b.reason}`));
+
+const freezeDeep = <T>(value: T): T => {
+  if (value && typeof value === "object") {
+    Object.values(value).forEach(freezeDeep);
+    Object.freeze(value);
+  }
+  return value;
+};
+
+/** A deterministic, standalone evidence record; source bytes remain in the ordinary Project package. */
+export function createNotebookPublicationEvidenceSnapshot(books: readonly Workbook[], project: Math3DProject | null,
+  reader?: NotebookArtifactReader, selected?: readonly string[], sourceReader?: ProjectResourceReader) {
+  const manifest = notebookPublicationManifest(books, project, reader, selected, sourceReader);
+  const content = { format: "math3d.workbook-evidence-snapshot/v1" as const, schemaVersion: 1 as const,
+    projectId: manifest.projectId, projectHash: manifest.projectHash,
+    workbookIds: books.map(book => book.id).sort(), selectedBlockIds: manifest.blocks.map(block => block.blockId).sort(),
+    manifest, omissions: publicationOmissions(manifest) };
+  const json = canonicalJsonStringify(content);
+  if (new TextEncoder().encode(json).byteLength > 16 * 1024 * 1024)
+    throw new TypeError("Workbook evidence snapshot exceeds 16 MiB.");
+  const frozen = JSON.parse(json);
+  return freezeDeep({ ...frozen, contentHash: structuralHash(frozen) });
+}
+
+export function verifyNotebookPublicationEvidenceSnapshot(candidate: ReturnType<typeof createNotebookPublicationEvidenceSnapshot>) {
+  if (!candidate || candidate.format !== "math3d.workbook-evidence-snapshot/v1" || candidate.schemaVersion !== 1)
+    throw new TypeError("Unsupported Workbook evidence snapshot.");
+  if (!candidate.manifest || !Array.isArray(candidate.manifest.citations) ||
+    !Array.isArray(candidate.manifest.blocks) || !Array.isArray(candidate.omissions) ||
+    candidate.projectId !== candidate.manifest.projectId ||
+    canonicalJsonStringify(candidate.selectedBlockIds) !== canonicalJsonStringify(candidate.manifest.blocks.map(item => item.blockId).sort()))
+    throw new TypeError("Workbook evidence snapshot structure differs from its manifest.");
+  const { contentHash, ...content } = candidate;
+  if (new TextEncoder().encode(canonicalJsonStringify(content)).byteLength > 16 * 1024 * 1024)
+    throw new TypeError("Workbook evidence snapshot exceeds 16 MiB.");
+  if (structuralHash(content) !== contentHash) throw new TypeError("Workbook evidence snapshot checksum mismatch.");
+  if (canonicalJsonStringify(candidate.omissions) !== canonicalJsonStringify(publicationOmissions(candidate.manifest)))
+    throw new TypeError("Workbook evidence omissions manifest mismatch.");
+  if (candidate.manifest.citations.some(item => item.status !== "current" &&
+    (item.result !== null || item.artifacts.length !== 0)))
+    throw new TypeError("Historical citation exposes withheld result values.");
+  return true;
+}
 export const notebookPublicationMarkdown = (manifest: NotebookPublicationManifest) => `## Linked-source manifest\n\n${manifest.qualification}\n\n${manifest.blocks.filter(block => block.algebraObject).map(block => {
   const item = block.algebraObject!;
   return `### Algebra object · ${block.title}\n\n${item.objectKind} · ${item.source.objectId} @r${item.source.revision} · definition ${item.source.contentHash} · output ${item.outputHash}.\n\nProject ${item.source.projectId} · ${item.inspection.status}: ${item.inspection.reason}`;

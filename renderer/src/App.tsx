@@ -51,7 +51,7 @@ import { checkSavedRegionResultSources, type SavedRegionSourceStatus } from
   "./vectorfield3d/checkSavedRegionResultSources";
 import { WorkbookPublication, type PublicationKind } from "./components/WorkbookPublication";
 import { loadProjectResources } from "./projects/projectResourceArchive";
-import { createPortableNotebookPublication, notebookPublicationManifest, notebookPublicationMarkdown, notebookPublicationManifestHtml, portableNotebookPublicationHtml } from "./workbook/notebookPublication";
+import { createNotebookPublicationEvidenceSnapshot, createPortableNotebookPublication, notebookPublicationManifest, notebookPublicationMarkdown, notebookPublicationManifestHtml, portableNotebookPublicationHtml } from "./workbook/notebookPublication";
 import { algebraReproManifestMarkdown, createAlgebraReproManifest } from "./workbook/algebraReproManifest";
 import { freezeWorkbookSnapshot, workbookSnapshotQualification } from "@math3d/workbook";
 import { rerunNotebookAnalysis } from "./workbook/notebookRerun";
@@ -77923,6 +77923,12 @@ case "mobius":
       const manifest = createAlgebraReproManifest(project, [book], selected, kind === "algebra-snapshot");
       downloadTextFile(canonicalJsonStringify(manifest), base + ".algebra.json", "application/json");
       downloadTextFile(algebraReproManifestMarkdown(manifest), base + ".algebra.md", "text/markdown");
+      return;
+    }
+    if (kind === "evidence-json") {
+      const snapshot = createNotebookPublicationEvidenceSnapshot([book], reportProject,
+        context?.readArtifact, selected, reportReader);
+      downloadTextFile(canonicalJsonStringify(snapshot), base + ".evidence.json", "application/json");
       return;
     }
     if (kind === "markdown") {
