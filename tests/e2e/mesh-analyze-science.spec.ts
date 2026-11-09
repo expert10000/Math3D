@@ -172,6 +172,9 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     expect(evidence).toMatchObject({ format: "math3d.mesh-active-result-evidence/v1",
       source: { revision: expect.any(String) }, result: { kind: "curvature", version: expect.any(Number) },
       qualification: { status: "current" }, summary: { unit: "mesh units^-2" } });
+    await page.getByTestId("mesh-analysis-open-history").click();
+    await expect(page.getByTestId("mesh-analysis-history-detail")).toHaveAttribute("data-qualification", "current");
+    await page.getByTestId("shared-inspector-tab-analysis").click();
     await expect(page.getByTestId("mesh-analysis-result-percentiles")).toContainText(/P05.*P50.*P95/i);
     await expect(page.getByTestId("mesh-analysis-result-provenance")).toContainText(/Backend.*Revision/i);
     await expect(page.getByTestId("mesh-analysis-result-warnings")).toBeVisible();

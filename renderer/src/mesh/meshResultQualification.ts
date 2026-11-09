@@ -1,6 +1,6 @@
 import { analysisParameterHash } from "../analysis/resultStore";
 import { isMeshAnalysisResultCurrent, type MeshAnalysisMeshIdentity,
-  type MeshAnalysisParameters, type MeshAnalysisResult,
+  type MeshAnalysisComputationRecord, type MeshAnalysisParameters, type MeshAnalysisResult,
   type MeshAnalysisResultKind, type MeshAnalysisResultStore } from "./analysisResultStore";
 
 export type MeshResultQualification = Readonly<{
@@ -51,4 +51,27 @@ export const qualifyMeshAnalysisResult = (input: {
   if (result.state !== "ready" || result.payload == null) return {
     status: "unavailable", reason: "No completed Mesh values are available.", canUseCurrentValues: false };
   return { status: "current", reason: "The exact Mesh generation, settings and dependencies are current.", canUseCurrentValues: true };
+};
+
+/** A history row is current only while its exact recorded result version remains current. */
+export const qualifyMeshComputationRecord = (input: {
+  store: MeshAnalysisResultStore;
+  mesh: MeshAnalysisMeshIdentity | null;
+  record: MeshAnalysisComputationRecord;
+}): MeshResultQualification => {
+  const { store, mesh, record } = input;
+  if (!mesh || record.identity.key !== mesh.key) return {
+    status: "historical", reason: "This run belongs to another Mesh generation.", canUseCurrentValues: false };
+  if (record.state === "queued" || record.state === "running") return {
+    status: "computing", reason: "This run has not completed.", canUseCurrentValues: false };
+  if (record.state === "error" || record.state === "cancelled") return {
+    status: "failed", reason: record.error ?? "This run did not complete.", canUseCurrentValues: false };
+  if (record.state === "stale") return {
+    status: "historical", reason: "This run was invalidated.", canUseCurrentValues: false };
+  const result = store.entries[record.resultKey] ?? null;
+  if (!result || result.resultVersion !== record.resultVersion ||
+      result.parameterHash !== record.parameterHash) return {
+    status: "historical", reason: "A newer run replaced this recorded result version.", canUseCurrentValues: false };
+  return qualifyMeshAnalysisResult({ store, mesh, result, kind: record.kind,
+    variant: record.variant, parameters: record.parameters });
 };

@@ -1029,7 +1029,7 @@ import {
   type MeshCurvatureAnalysisPayload,
   type MeshDiagnosticsAnalysisPayload,
 } from "./mesh/analysisResultStore";
-import { qualifyMeshAnalysisResult, selectFocusedMeshResult } from "./mesh/meshResultQualification";
+import { qualifyMeshAnalysisResult, qualifyMeshComputationRecord, selectFocusedMeshResult } from "./mesh/meshResultQualification";
 import { presentMeshActiveAnalysisResult } from "./mesh/meshResultPresentation";
 import { presentMeshVisualReadout } from "./mesh/meshVisualReadout";
 import { createMeshActiveResultEvidence } from "./mesh/meshActiveResultEvidence";
@@ -65363,6 +65363,10 @@ case "mobius":
       .filter((record) => record.identity.meshId === activeMeshAnalysisIdentity.meshId)
       .sort((left, right) => right.timestamp - left.timestamp);
   }, [activeMeshAnalysisIdentity, meshAnalysisResultStore.history]);
+  const meshAnalysisHistoryQualifications = useMemo(() => Object.fromEntries(
+    meshAnalysisComputationHistory.map((record) => [record.id,
+      qualifyMeshComputationRecord({ store: meshAnalysisResultStore, mesh: activeMeshAnalysisIdentity, record })])
+  ), [activeMeshAnalysisIdentity, meshAnalysisComputationHistory, meshAnalysisResultStore]);
 
   const handleInspectPick = useCallback((info: GeometryProceduralPickInfo & {
     index: number;
@@ -74974,6 +74978,12 @@ case "mobius":
   const meshActiveAnalysisPresentation = presentMeshActiveAnalysisResult({ summary: meshActiveAnalysisCandidate,
     qualification: focusedKernelQualification, kind: focusedKernelAnalysisKind, mesh: activeMeshAnalysisIdentity });
   const meshActiveAnalysisResult = meshActiveAnalysisPresentation.summary;
+  const meshActiveResultHistoryId = focusedKernelAnalysisRecord && activeMeshAnalysisIdentity
+    ? meshAnalysisComputationHistory.find((record) =>
+      record.resultKey === meshAnalysisResultKey(activeMeshAnalysisIdentity, focusedKernelAnalysisRecord.kind, focusedKernelAnalysisRecord.variant) &&
+      record.resultVersion === focusedKernelAnalysisRecord.resultVersion &&
+      record.parameterHash === focusedKernelAnalysisRecord.parameterHash)?.id ?? null
+    : null;
   const meshVisualReadout = presentMeshVisualReadout(analysisFocusedSection, meshActiveAnalysisPresentation.evidence);
   const meshVisualQualityStats = meshVisualReadout.canShowQuality ? meshAnalyzeDisplayedQualityStats : null;
   const meshVisualCurvatureStats = meshVisualReadout.canShowCurvature ? meshAnalyzeDisplayedCurvatureStats : null;
@@ -80166,6 +80176,8 @@ case "mobius":
                       meshActiveAnalysisEvidence={meshActiveAnalysisPresentation.evidence}
                       onExportMeshActiveResultEvidence={meshActiveResultEvidence ? handleExportMeshActiveResultEvidence : undefined}
                       meshAnalysisComputationHistory={meshAnalysisComputationHistory}
+                      meshAnalysisHistoryQualifications={meshAnalysisHistoryQualifications}
+                      meshActiveResultHistoryId={meshActiveResultHistoryId}
                       meshSelectedScientificFields={meshSelectedScientificFields}
                       meshWorkspaceSummary={meshWorkspaceInspectorSummary}
                       meshWorkspaceSelectedProvenanceEntry={meshWorkspaceSelectedProvenanceEntry}

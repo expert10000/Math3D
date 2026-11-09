@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createMeshAnalysisResultStore, invalidateMeshAnalysisResult, upsertMeshAnalysisResult,
   type MeshAnalysisMeshIdentity } from "./analysisResultStore";
-import { qualifyMeshAnalysisResult, selectFocusedMeshResult } from "./meshResultQualification";
+import { qualifyMeshAnalysisResult, qualifyMeshComputationRecord, selectFocusedMeshResult } from "./meshResultQualification";
 
 const mesh: MeshAnalysisMeshIdentity = { meshId: "m", revision: "v1", key: "m@v1",
   label: "Mesh", sourceLabel: "import:mesh", vertexCount: 4, faceCount: 2 };
@@ -58,5 +58,17 @@ describe("Mesh result qualification", () => {
     expect(selectFocusedMeshResult({ store, mesh, kind: "quality", variant: "threshold-10" })?.variant)
       .toBe("threshold-9");
     expect(selectFocusedMeshResult({ store, mesh: { ...mesh, key: "other@v1" }, kind: "quality" })).toBeNull();
+  });
+
+  it("opens a history row as current only for its exact live result version", () => {
+    let store = upsertMeshAnalysisResult(createMeshAnalysisResultStore(), { kind: "quality", mesh,
+      variant: "quality-v1", parameters: settings, payload: { faceCount: 2 }, now: 1 });
+    const first = store.history[0]!;
+    expect(qualifyMeshComputationRecord({ store, mesh, record: first }).status).toBe("current");
+    store = upsertMeshAnalysisResult(store, { kind: "quality", mesh,
+      variant: "quality-v1", parameters: settings, payload: { faceCount: 3 }, now: 2 });
+    expect(qualifyMeshComputationRecord({ store, mesh, record: first })).toMatchObject({ status: "historical", canUseCurrentValues: false });
+    expect(qualifyMeshComputationRecord({ store, mesh, record: store.history[0]! }).status).toBe("current");
+    expect(qualifyMeshComputationRecord({ store, mesh: { ...mesh, key: "m@v2" }, record: store.history[0]! }).status).toBe("historical");
   });
 });

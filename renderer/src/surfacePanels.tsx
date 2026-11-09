@@ -37,6 +37,7 @@ import { type MeshDifferentialGeometrySummary } from "./mesh/meshDifferentialGeo
 import { SURFACE_FEATURE_CLASSES, SURFACE_FEATURE_LABELS, type SurfaceFeatureClass, type SurfaceFeatureExtractionResult } from "./mesh/surfaceFeatureExtraction";
 import { type MeshActiveAnalysisResultSummary } from "./mesh/activeAnalysisResult";
 import type { MeshResultEvidencePresentation } from "./mesh/meshResultPresentation";
+import type { MeshResultQualification } from "./mesh/meshResultQualification";
 import { buildMeshBenchmarkVerificationRows, meshBenchmarkVerificationPasses, type MeshBenchmarkVerificationRow } from "./mesh/meshBenchmarkVerification";
 import { type MeshQualityReport, type MeshQualityReportPhase } from "./mesh/meshQualityReport";
 import type { DatasetKind, VolumeDataset } from "./scene/datasets";
@@ -9659,6 +9660,8 @@ export type SurfacesRightPanelProps = {
   meshActiveAnalysisEvidence: MeshResultEvidencePresentation;
   onExportMeshActiveResultEvidence?: () => void;
   meshAnalysisComputationHistory: MeshAnalysisComputationRecord[];
+  meshAnalysisHistoryQualifications: Record<string, MeshResultQualification>;
+  meshActiveResultHistoryId: string | null;
   meshSelectedScientificFields: MeshEntityScientificFields | null;
   meshWorkspaceSummary: MeshWorkspaceInspectorSummary;
   meshWorkspaceSelectedProvenanceEntry: MeshOperationHistoryEntry | null;
@@ -9944,6 +9947,8 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   meshActiveAnalysisEvidence,
   onExportMeshActiveResultEvidence,
   meshAnalysisComputationHistory,
+  meshAnalysisHistoryQualifications,
+  meshActiveResultHistoryId,
   meshSelectedScientificFields,
   meshWorkspaceSummary,
   meshWorkspaceSelectedProvenanceEntry,
@@ -12227,6 +12232,9 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                 </div>
                 <button type="button" data-testid="mesh-analysis-export-evidence" disabled={!onExportMeshActiveResultEvidence}
                   onClick={onExportMeshActiveResultEvidence} style={{ justifySelf: "start", marginBottom: 6 }}>Export JSON evidence</button>
+                <button type="button" data-testid="mesh-analysis-open-history" disabled={!meshActiveResultHistoryId}
+                  onClick={() => { setSelectedAnalysisComputationId(meshActiveResultHistoryId); setInspectorPanelTab("history"); }}
+                  style={{ justifySelf: "start", marginBottom: 6 }}>Inspect recorded run</button>
                 <div
                   data-testid="mesh-analysis-result-definition"
                   style={{ borderTop: "1px solid #e2e8f0", padding: "7px 0", display: "grid", gap: 4, fontSize: 10 }}
@@ -12890,19 +12898,21 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                 <div style={{ display: "grid", gap: 7, marginTop: 7 }}>
                   <div style={{ display: "grid", gap: 4 }}>
                     {meshAnalysisComputationHistory.slice(0, 16).map((record, index) => {
-                      const isStale = record.state === "stale";
+                      const qualification = meshAnalysisHistoryQualifications[record.id];
+                      const isHistorical = qualification?.status === "historical";
                       return (
                         <button
                           key={record.id}
                           type="button"
                           data-testid={`mesh-analysis-history-entry-${index}`}
                           data-state={record.state}
+                          data-qualification={qualification?.status ?? "unavailable"}
                           onClick={() => setSelectedAnalysisComputationId(record.id)}
-                          style={{ border: `1px solid ${isStale ? "#fcd34d" : "#bfdbfe"}`, borderRadius: 6, background: selectedAnalysisComputation?.id === record.id ? "#eff6ff" : "#fff", padding: "6px 7px", textAlign: "left", fontSize: 10 }}
+                          style={{ border: `1px solid ${isHistorical ? "#fcd34d" : "#bfdbfe"}`, borderRadius: 6, background: selectedAnalysisComputation?.id === record.id ? "#eff6ff" : "#fff", padding: "6px 7px", textAlign: "left", fontSize: 10 }}
                         >
                           <div style={{ display: "flex", justifyContent: "space-between", gap: 7 }}>
                             <strong>{record.kind}{record.variant === "default" ? "" : ` · ${record.variant}`}</strong>
-                            <span style={{ color: isStale ? "#92400e" : "#166534", fontWeight: 850 }}>{isStale ? "STALE" : record.state.toUpperCase()}</span>
+                            <span style={{ color: isHistorical ? "#92400e" : qualification?.status === "current" ? "#166534" : "#475569", fontWeight: 850 }}>{qualification?.status.toUpperCase() ?? "UNAVAILABLE"}</span>
                           </div>
                           <div style={{ color: "#64748b", marginTop: 2 }}>{record.backend} · {record.durationMs == null ? "duration n/a" : formatSummaryTime(record.durationMs)} · {new Date(record.timestamp).toLocaleString()}</div>
                         </button>
@@ -12910,8 +12920,10 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                     })}
                   </div>
                   {selectedAnalysisComputation && (
-                    <div data-testid="mesh-analysis-history-detail" style={{ border: `1px solid ${selectedAnalysisComputation.state === "stale" ? "#fcd34d" : "#cbd5e1"}`, borderRadius: 7, background: selectedAnalysisComputation.state === "stale" ? "#fffbeb" : "#f8fafc", padding: 7, display: "grid", gap: 4, fontSize: 10 }}>
-                      {selectedAnalysisComputation.state === "stale" && <strong style={{ color: "#92400e" }}>STALE SNAPSHOT — inspectable, but not used by the viewport</strong>}
+                    <div data-testid="mesh-analysis-history-detail" data-qualification={meshAnalysisHistoryQualifications[selectedAnalysisComputation.id]?.status ?? "unavailable"}
+                      style={{ border: `1px solid ${meshAnalysisHistoryQualifications[selectedAnalysisComputation.id]?.status === "historical" ? "#fcd34d" : "#cbd5e1"}`, borderRadius: 7, background: meshAnalysisHistoryQualifications[selectedAnalysisComputation.id]?.status === "historical" ? "#fffbeb" : "#f8fafc", padding: 7, display: "grid", gap: 4, fontSize: 10 }}>
+                      {meshAnalysisHistoryQualifications[selectedAnalysisComputation.id]?.status === "historical" && <strong style={{ color: "#92400e" }}>HISTORICAL SNAPSHOT — inspectable, but not used by the viewport</strong>}
+                      <div><strong>Qualification:</strong> {meshAnalysisHistoryQualifications[selectedAnalysisComputation.id]?.status ?? "unavailable"} · {meshAnalysisHistoryQualifications[selectedAnalysisComputation.id]?.reason ?? "No qualification is available."}</div>
                       <div><strong>Status:</strong> {selectedAnalysisComputation.state}</div>
                       <div><strong>Backend:</strong> {selectedAnalysisComputation.backend}</div>
                       <div><strong>Duration:</strong> {selectedAnalysisComputation.durationMs == null ? "n/a" : formatSummaryTime(selectedAnalysisComputation.durationMs)}</div>
@@ -12919,7 +12931,7 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                       <div><strong>Revision:</strong> {selectedAnalysisComputation.identity.revision}</div>
                       <div><strong>Parameters:</strong> {JSON.stringify(selectedAnalysisComputation.parameters)}</div>
                       <div><strong>Dependencies:</strong> {selectedAnalysisComputation.dependencies.length ? selectedAnalysisComputation.dependencies.map((dependency) => `${dependency.kind}:${dependency.state}`).join(", ") : "none"}</div>
-                      <div><strong>Result summary:</strong> {Object.keys(selectedAnalysisComputation.payloadSummary).length ? JSON.stringify(selectedAnalysisComputation.payloadSummary) : "no scalar summary"}</div>
+                      <div><strong>Recorded run summary:</strong> {Object.keys(selectedAnalysisComputation.payloadSummary).length ? JSON.stringify(selectedAnalysisComputation.payloadSummary) : "no scalar summary"}</div>
                       {selectedAnalysisComputation.error && <div style={{ color: "#b42318" }}><strong>Error:</strong> {selectedAnalysisComputation.error}</div>}
                     </div>
                   )}
