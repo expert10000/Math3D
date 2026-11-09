@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { quantumInspectorEvidence, type QuantumInspectorEvidenceInput } from "./quantumInspectorEvidence";
+import { quantumInspectorEvidence, quantumInspectorEvidenceJson,
+  type QuantumInspectorEvidenceInput } from "./quantumInspectorEvidence";
 
 const input: QuantumInspectorEvidenceInput = {
   status: "current", fingerprint: "a".repeat(64), resultSha256: "b".repeat(64),
+  schema: "quantum-scene/v2", limitations: ["Finite grid"],
   runId: "run-1", model: "qwz", engine: "theory-lab", engineVersion: "1",
   kind: "numerical-result", datasets: [{ id: "energies", count: 25, components: 2, unit: "eV" }],
   invariants: [{ id: "chern", label: "Chern number", value: 1, status: "producer-computed",
@@ -16,6 +18,11 @@ describe("Quantum Inspector evidence qualification", () => {
       source: { runId: "run-1", resultSha256: "b".repeat(64) } });
     expect(evidence.checkScope).toMatch(/not independently proved/);
     expect(evidence.invariants[0]).toMatchObject({ value: 1, status: "producer-computed" });
+    const report = JSON.parse(quantumInspectorEvidenceJson(evidence));
+    expect(report).toMatchObject({ format: "math3d.quantum-inspector-evidence.v1",
+      qualification: "current", producerInvariants: [{ value: 1, status: "producer-computed" }],
+      source: { fingerprint: "a".repeat(64) } });
+    expect(JSON.stringify(report)).not.toMatch(/directory|sampleValue|parameter/i);
   });
 
   it("withholds dataset and invariant numbers while checking or after a source change", () => {
@@ -24,6 +31,7 @@ describe("Quantum Inspector evidence qualification", () => {
       expect(evidence.datasets).toEqual([]);
       expect(evidence.invariants).toEqual([]);
       expect(JSON.stringify(evidence)).not.toContain("producer-computed");
+      expect(() => quantumInspectorEvidenceJson(evidence)).toThrow(/withheld/);
     }
     const malformed = quantumInspectorEvidence({ ...input, fingerprint: "../changed" });
     expect(malformed.status).toBe("withheld");

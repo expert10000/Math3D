@@ -15,9 +15,11 @@ test("QI-40 inspector keyboard, redacted support export, and changed-source refu
     cwd: resolve(__dirname, "..", ".."), env: { ...process.env, MATH3D_E2E_PROFILE_ROOT: join(root, "profile") } });
   try {
     const supportPath = join(root, "support.json");
-    await app.evaluate(({ session }, filePath) => {
-      session.defaultSession.on("will-download", (_event, item) => item.setSavePath(filePath));
-    }, supportPath);
+    const evidencePath = join(root, "inspector-evidence.json");
+    await app.evaluate(({ session }, paths) => {
+      session.defaultSession.on("will-download", (_event, item) => item.setSavePath(
+        item.getFilename().startsWith("quantum-inspector-") ? paths.evidencePath : paths.supportPath));
+    }, { supportPath, evidencePath });
     const page = await app.firstWindow();
     const dialog = page.getByTestId("quantum-scene-preview");
     await expect(dialog).toBeVisible();
@@ -37,6 +39,15 @@ test("QI-40 inspector keyboard, redacted support export, and changed-source refu
     await science.press("Home");
     await expect(view).toHaveAttribute("aria-selected", "true");
     await provenance.click();
+    await expect(dialog.getByTestId("quantum-inspector-summary")).toHaveAttribute("data-qualification", "current");
+    await dialog.getByRole("button", { name: "Download Inspector evidence JSON" }).click();
+    await expect.poll(async () => { try { return (await readFile(evidencePath)).length; } catch { return 0; } })
+      .toBeGreaterThan(0);
+    const evidence = JSON.parse(await readFile(evidencePath, "utf8"));
+    expect(evidence).toMatchObject({ format: "math3d.quantum-inspector-evidence.v1",
+      qualification: "current", source: { runId: "run-05ce1036d70c466eb4f900944a85c474" } });
+    expect(evidence.checkScope).toMatch(/not independently proved/);
+    expect(JSON.stringify(evidence)).not.toMatch(/directory|sampleValue|parameters/i);
     await dialog.getByRole("button", { name: "Download redacted support bundle" }).click();
     await expect.poll(async () => { try { return (await readFile(supportPath)).length; } catch { return 0; } }).toBeGreaterThan(0);
     const bundle = JSON.parse(await readFile(supportPath, "utf8"));
@@ -56,7 +67,9 @@ test("QI-40 inspector keyboard, redacted support export, and changed-source refu
     await expect(dialog.getByRole("tabpanel")).toContainText("Invariant values withheld");
     await dialog.getByRole("tab", { name: "Data" }).click();
     await expect(dialog.getByRole("tabpanel")).toContainText("Dataset values withheld");
+    await expect(dialog.getByTestId("quantum-detailed-source-withheld")).toBeVisible();
     await provenance.click();
+    await expect(dialog.getByRole("button", { name: "Download Inspector evidence JSON" })).toBeDisabled();
     await dialog.getByRole("button", { name: "Download redacted support bundle" }).click();
     await expect(dialog.getByRole("alert").filter({ hasText: "Support export refused" })).toBeVisible();
     await provenance.press("Escape");

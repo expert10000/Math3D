@@ -5,6 +5,7 @@ export type QuantumInspectorEvidenceInput = Readonly<{
   fingerprint: string;
   runId: string;
   resultSha256: string;
+  schema: string;
   model: string;
   engine: string;
   engineVersion: string;
@@ -12,6 +13,7 @@ export type QuantumInspectorEvidenceInput = Readonly<{
   datasets: readonly Readonly<{ id: string; count: number; components: number; unit: string }>[];
   invariants: readonly Readonly<{ id: string; label: string; value: number | null;
     status: string; method?: string }>[];
+  limitations: readonly string[];
 }>;
 
 export type QuantumInspectorEvidence = Readonly<{
@@ -21,8 +23,10 @@ export type QuantumInspectorEvidence = Readonly<{
   checkScope: string;
   source: Readonly<{ fingerprint: string; runId: string; resultSha256: string;
     model: string; engine: string; engineVersion: string }>;
+  schema: string;
   datasets: QuantumInspectorEvidenceInput["datasets"];
   invariants: QuantumInspectorEvidenceInput["invariants"];
+  limitations: readonly string[];
 }>;
 
 const digest = /^[a-f0-9]{64}$/;
@@ -45,8 +49,18 @@ export function quantumInspectorEvidence(input: QuantumInspectorEvidenceInput): 
     claim: input.kind === "geometry-fixture" ? "Producer-supplied geometry fixture" :
       "Producer-supplied numerical scene and invariants",
     checkScope: "Math3D checks the bundle, schema and dataset references. Producer invariant values and methods are reported, not independently proved by this Inspector.",
-    source,
+    source, schema: input.schema,
     datasets: status === "current" ? input.datasets : [],
     invariants: status === "current" ? input.invariants : [],
+    limitations: status === "current" ? input.limitations : [],
   };
+}
+
+/** Summary evidence only: dense sample arrays stay in the verified source bundle. */
+export function quantumInspectorEvidenceJson(evidence: QuantumInspectorEvidence): string {
+  if (evidence.status !== "current") throw new TypeError(`Quantum Inspector evidence withheld: ${evidence.reason}`);
+  return JSON.stringify({ format: "math3d.quantum-inspector-evidence.v1", qualification: evidence.status,
+    source: evidence.source, schema: evidence.schema, recordedClaim: evidence.claim,
+    checkScope: evidence.checkScope, datasets: evidence.datasets,
+    producerInvariants: evidence.invariants, limitations: evidence.limitations }, null, 2) + "\n";
 }

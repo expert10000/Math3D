@@ -1,5 +1,6 @@
 import React, { useRef, useState } from "react";
-import { quantumInspectorEvidence, type QuantumInspectorSourceStatus } from "./quantumInspectorEvidence";
+import { quantumInspectorEvidence, type QuantumInspectorEvidence,
+  type QuantumInspectorSourceStatus } from "./quantumInspectorEvidence";
 import "./quantumSceneInspector.css";
 
 export const QUANTUM_INSPECTOR_TABS = ["View", "Data", "Science", "Provenance"] as const;
@@ -22,18 +23,21 @@ export type QuantumInspectorSummaryData = {
     engine: string; engineVersion: string; kind?: "geometry-fixture" | "numerical-result" };
 };
 
-export function QuantumInspectorSummary({ data, sourceStatus, onInspectSource, onExportSupport, supportStatus }: {
+export function QuantumInspectorSummary({ data, sourceStatus, onInspectSource, onExportEvidence,
+  evidenceStatus, onExportSupport, supportStatus }: {
   data: QuantumInspectorSummaryData; sourceStatus: QuantumInspectorSourceStatus;
-  onInspectSource?: () => void | Promise<void>;
+  onInspectSource?: () => void | Promise<unknown>;
+  onExportEvidence?: (evidence: QuantumInspectorEvidence) => void | Promise<void>;
+  evidenceStatus?: string;
   onExportSupport: () => void | Promise<void>; supportStatus?: string }) {
   const [active, setActive] = useState<QuantumInspectorTab>("View");
   const [shown, setShown] = useState(16);
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   const evidence = quantumInspectorEvidence({ status: sourceStatus, fingerprint: data.provenance.fingerprint,
     runId: data.provenance.runId, resultSha256: data.provenance.resultSha256,
-    model: data.provenance.model, engine: data.provenance.engine,
+    schema: data.provenance.schema, model: data.provenance.model, engine: data.provenance.engine,
     engineVersion: data.provenance.engineVersion, kind: data.provenance.kind,
-    datasets: data.datasets, invariants: data.invariants });
+    datasets: data.datasets, invariants: data.invariants, limitations: data.limitations });
   const activate = (tab: QuantumInspectorTab) => {
     if (tab !== "View") void onInspectSource?.();
     setActive(tab);
@@ -74,6 +78,10 @@ export function QuantumInspectorSummary({ data, sourceStatus, onInspectSource, o
         <dt>Run ID</dt><dd><code>{data.provenance.runId}</code></dd>
         <dt>Result SHA-256</dt><dd><code>{data.provenance.resultSha256}</code></dd>
         <dt>Scene fingerprint</dt><dd><code>{data.provenance.fingerprint}</code></dd></dl>
+        {onExportEvidence && <button type="button" disabled={!current}
+          onClick={() => void onExportEvidence(evidence)}>Download Inspector evidence JSON</button>}
+        {evidenceStatus && <p role={evidenceStatus.startsWith("Evidence export refused") ? "alert" : "status"}>
+          {evidenceStatus}</p>}
         <button type="button" onClick={() => void onExportSupport()}>Download redacted support bundle</button>
         {supportStatus && <p role={supportStatus.startsWith("Support export refused") ? "alert" : "status"}>{supportStatus}</p>}</>}
     </div>
