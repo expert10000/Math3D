@@ -4,7 +4,8 @@ import { getMeshBackendCapabilities } from "../../services/meshBackend";
 import { getPythonWorkerDiagnostics, type PythonWorkerDiagnosticsSnapshot } from "../../services/pythonWorkerDiagnosticsClient";
 import { sageExecutionRegistry, type SageBackend } from "../../services/sageOperationExecution";
 import type { ScientificBackendCapabilitySnapshot } from "@math3d/kernel";
-import { discoverScientificBackends, getComputeJobs, subscribeComputeJobs, type ComputeJobRecord } from "./scientificJobTelemetry";
+import { discoverScientificBackends, getComputeJobs, presentComputeJob, subscribeComputeJobs,
+  type ComputeJobRecord } from "./scientificJobTelemetry";
 import { buildRuntimeCapabilityReport, type RuntimeProbeResult, type RuntimeState } from "./runtimeCapabilityReport";
 import ComputeEngineManagerPanel from "../computeEngines/ComputeEngineManagerPanel";
 import SageRuntimeInspector from "./SageRuntimeInspector";
@@ -129,7 +130,15 @@ export default function ComputeCenterPanel({ onClose, initialTab = "overview" }:
         <button type="button" style={{ ...button, marginTop: 9 }} onClick={() => setActiveTab("runtimes")}>Open route diagnostics</button>
       </section>
       <section style={card} aria-label="Broker jobs"><h3 style={{ margin: "0 0 4px", fontSize: 14 }}>Jobs</h3><div style={{ color: "#64748b", fontSize: 11, marginBottom: 10 }}>Scientific broker history in this app session: Curve, Volume, Mesh differential, and Sage jobs.</div>
-        {jobs.length === 0 ? <div data-testid="compute-center-empty-jobs" style={{ color: "#64748b", fontSize: 12 }}>No broker jobs have run in this session.</div> : <div style={{ display: "grid", gap: 6 }}>{jobs.map((job) => <div key={job.jobId} style={{ display: "grid", gridTemplateColumns: "minmax(120px, 1fr) auto auto", gap: 10, alignItems: "center", border: "1px solid #e2e8f0", borderRadius: 7, background: "white", padding: "8px 10px", fontSize: 12 }}><div><strong>{labelFor(job)}</strong><div title={job.jobId} style={{ color: "#64748b", fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{job.backendId ?? job.phase ?? job.jobId}</div></div><span style={{ textTransform: "capitalize", color: job.status === "failed" ? "#b42318" : job.status === "complete" ? "#16803e" : "#1d4ed8" }}>{job.status}</span><span>{job.progress === null ? "—" : `${Math.round(job.progress * 100)}%`}</span>{job.failure && <div style={{ gridColumn: "1 / -1", color: "#b42318", fontSize: 11 }}>{job.failure}</div>}</div>)}</div>}
+        {jobs.length === 0 ? <div data-testid="compute-center-empty-jobs" style={{ color: "#64748b", fontSize: 12 }}>No broker jobs have run in this session.</div> : <div style={{ display: "grid", gap: 6 }}>{jobs.map((job) => {
+          const presentation = presentComputeJob(job);
+          return <div key={job.jobId} data-testid={`compute-job-${job.jobId}`} style={{ display: "grid", gridTemplateColumns: "minmax(120px, 1fr) auto auto", gap: 10, alignItems: "center", border: "1px solid #e2e8f0", borderRadius: 7, background: "white", padding: "8px 10px", fontSize: 12 }}>
+            <div><strong>{labelFor(job)}</strong><div title={job.jobId} style={{ color: "#64748b", fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{job.backendId ?? job.jobId}{job.attemptCount ? ` · ${job.attemptCount} route attempt(s)` : ""}</div></div>
+            <span data-tone={presentation.tone} style={{ color: presentation.tone === "error" ? "#b42318" : presentation.tone === "current" ? "#16803e" : "#1d4ed8" }}>{presentation.label}</span>
+            <span>{job.progress === null ? "—" : `${Math.round(job.progress * 100)}%`}</span>
+            <div style={{ gridColumn: "1 / -1", color: presentation.tone === "error" ? "#b42318" : "#64748b", fontSize: 11 }}>{presentation.detail}</div>
+          </div>;
+        })}</div>}
       </section>
       <section style={card} aria-label="Resources"><h3 style={{ margin: "0 0 10px", fontSize: 14 }}>Resources</h3><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10, fontSize: 12 }}>
         <div><strong>Renderer CPU</strong><div data-testid="compute-center-cpu">{memory?.ok && memory.cpuPercent !== undefined ? `${memory.cpuPercent.toFixed(1)}%` : "Unavailable"}</div></div>
