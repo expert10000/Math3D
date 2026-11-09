@@ -1,16 +1,19 @@
 import type { CanonicalSurfaceDefinition, SurfaceAnalysisPayload } from "../surfaceAnalysis/contracts";
 import type { SurfaceAnalysisResult } from "../surfaceAnalysis/infrastructure";
+import type { SurfaceResultPresentation } from "../surfaceAnalysis/surfaceResultPresentation";
 
 export function SurfaceAnalysisContractCard({
   definition,
   result,
   historyCount,
+  qualification,
 }: {
   definition: CanonicalSurfaceDefinition;
   result: SurfaceAnalysisResult<SurfaceAnalysisPayload> | null;
   historyCount: number;
+  qualification: SurfaceResultPresentation;
 }) {
-  const state = result?.state ?? "queued";
+  const state = qualification.status === "current" ? "ready" : qualification.status;
   const method = result?.payload?.method ?? "source-defined";
   const stateColor = state === "ready" ? "#15803d" : state === "error" || state === "cancelled" ? "#b42318" : "#9a3412";
   return (

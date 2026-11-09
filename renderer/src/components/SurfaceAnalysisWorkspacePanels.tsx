@@ -11,7 +11,8 @@ import type {
   SurfaceDerivedMeshPayload,
 } from "../surfaceAnalysis/contracts";
 import type { DerivedSurfaceMeshRecord } from "../surfaceAnalysis/derivedSurfaceMesh";
-import type { SurfaceAnalysisResult } from "../surfaceAnalysis/infrastructure";
+import type { SurfaceAnalysisResult, SurfaceAnalysisResultStore } from "../surfaceAnalysis/infrastructure";
+import { presentSurfaceAnalysisResult } from "../surfaceAnalysis/surfaceResultPresentation";
 import type { SurfaceAnalysisExecutionState } from "../surfaceAnalysis/scheduler";
 import { SURFACE_ANALYSIS_PRESETS, type SurfaceAnalysisPresetLayer } from "../surfaceAnalysis/presets";
 import { SurfaceAnalysisContractCard } from "./SurfaceAnalysisContractCard";
@@ -356,6 +357,7 @@ export function SurfaceCurvatureDisplayControls({
 export function SurfaceAnalysisInspectorPanel({
   definition,
   result,
+  store,
   preferredTab,
   historyCount,
   savedResultCount,
@@ -368,6 +370,7 @@ export function SurfaceAnalysisInspectorPanel({
 }: {
   definition: CanonicalSurfaceDefinition;
   result: SurfaceAnalysisResult<SurfaceAnalysisPayload> | null;
+  store: SurfaceAnalysisResultStore;
   preferredTab?: "result" | "probe";
   historyCount: number;
   savedResultCount: number;
@@ -416,16 +419,23 @@ export function SurfaceAnalysisInspectorPanel({
   derivedMeshInspection?: { record: DerivedSurfaceMeshRecord; payload: SurfaceDerivedMeshPayload | null };
 }) {
   const payloadKind = result?.payload?.data.kind ?? "none";
+  const presentation = presentSurfaceAnalysisResult(definition, result, store);
   const warnings = result?.payload?.warnings ?? definition.warnings;
   const curvature = result?.payload?.data.kind === "curvature" ? result.payload.data : null;
   const showProbe = preferredTab === "probe" || result?.payload?.data.kind === "local-probe";
   return (
     <section data-testid="surface-analysis-inspector" style={{ display: "grid", gap: 8, marginBottom: 10 }}>
-      <SurfaceAnalysisContractCard definition={definition} result={result} historyCount={historyCount} />
+      <SurfaceAnalysisContractCard definition={definition} result={result} historyCount={historyCount} qualification={presentation} />
       <div
         style={{ border: "1px solid #e2e8f0", borderRadius: 8, background: "#fff", padding: 8, fontSize: 10.5 }}
       >
         <div style={{ display: "grid", gap: 4 }}>
+            <div data-testid="surface-result-qualification" data-status={presentation.status} style={{ color: presentation.status === "current" ? "#166534" : "#9a3412" }}>
+              <strong>{presentation.status}</strong> · {presentation.reason}
+            </div>
+            <div data-testid="surface-result-claim"><strong>Mathematical claim:</strong> {presentation.claim}</div>
+            <div data-testid="surface-result-verification"><strong>Independent check:</strong> {presentation.verification}</div>
+            {result?.payload && <div data-testid="surface-result-source"><strong>Recorded source:</strong> {result.identity.surfaceId}@{result.identity.surfaceRevision} · {result.payload.units.length} · {result.payload.method}</div>}
             <div><strong>State:</strong> {result?.state ?? "queued"}</div>
             <div><strong>Result:</strong> {result?.kind ?? "surface-definition"} · {payloadKind}</div>
             <div><strong>Method:</strong> {result?.payload?.method ?? "source-defined"}</div>

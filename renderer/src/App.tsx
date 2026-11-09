@@ -80046,6 +80046,7 @@ case "mobius":
                     />}
                     {(activeSavedSurfaceBinding || surfacesLeftTab === "analysis") && <SurfaceAnalysisInspectorPanel
                       definition={activeCanonicalSurfaceDefinition}
+                      store={surfaceAnalysisResultStore}
                       preferredTab={activeSurfaceComputation === "surface-probe" ? "probe" : "result"}
                       result={surfaceInspectDerivedMesh
                         ? activeDerivedSurfaceMeshResult ?? activeSurfaceAnalysisResult
