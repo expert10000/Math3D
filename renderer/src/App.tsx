@@ -50823,25 +50823,6 @@ case "mobius":
   const publishSurfaceLayerResult = useCallback((kind: "surface-curves" | "surface-features", data: SurfaceCurveLayersPayload | SurfaceFeatureLayersPayload) => {
     const definition = activeCanonicalSurfaceDefinition;
     const method: SurfaceAnalysisMethod = definition.representation === "mesh-backed" ? "mesh-approximation" : "surface-sampling";
-    const dependencyRequest = createSurfaceAnalysisRequest({
-      requestId: `surface-layer-dependency:${definition.identity.key}`,
-      kind: "differential-geometry",
-      definition,
-      domain: "surface",
-      method,
-      requestedOutputs: ["represented differential data", "validity masks", "method provenance"],
-    });
-    const dependencyPayload: SurfaceAnalysisPayload = {
-      version: 1,
-      surfaceId: definition.identity.surfaceId,
-      surfaceRevision: definition.identity.surfaceRevision,
-      representation: definition.representation,
-      method,
-      units: definition.units,
-      orientation: definition.orientation,
-      warnings: definition.warnings,
-      data: { kind: "summary", values: { source: "surface result-layer adapter", layerFamily: kind } },
-    };
     const request = createSurfaceAnalysisRequest({
       requestId: `${kind}:${definition.identity.key}:${Date.now()}`,
       kind, definition, domain: kind === "surface-curves" ? "curve" : "feature", method,
@@ -50849,13 +50830,7 @@ case "mobius":
       requestedOutputs: kind === "surface-curves" ? ["geodesics", "principal curvature lines", "asymptotic curves", "level curves"] : ["ridges", "valleys", "umbilics", "parabolic curves", "critical points", "representation singularities"],
     });
     const payload = createSurfaceLayersPayload({ definition, method, data });
-    setSurfaceAnalysisResultStore((store) => {
-      let next = store;
-      if (getSurfaceAnalysisResult(next, definition.identity, "differential-geometry")?.state !== "ready") {
-        next = publishSurfaceAnalysisResult({ store: next, registry: surfaceAnalysisRegistryRef.current, request: dependencyRequest, payload: dependencyPayload, backend: "Represented Surface adapter" });
-      }
-      return publishSurfaceAnalysisResult({ store: next, registry: surfaceAnalysisRegistryRef.current, request, payload, backend: "Surface result-layer adapter" });
-    });
+    setSurfaceAnalysisResultStore((store) => publishSurfaceAnalysisResult({ store, registry: surfaceAnalysisRegistryRef.current, request, payload, backend: "Surface result-layer adapter" }));
   }, [activeCanonicalSurfaceDefinition]);
 
   const polylineTuples = useCallback((lines: PolylineSet | null | undefined): Array<Array<readonly [number, number, number]>> =>

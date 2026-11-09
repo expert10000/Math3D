@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { isAnalysisResultCurrent } from "../analysis/resultStore";
+import { createSurfaceCurveLayer, createSurfaceFeatureLayer, createSurfaceLayersPayload } from "./surfaceResultLayers";
 import type { SurfaceAdapterInput, SurfaceAnalysisPayload } from "./contracts";
 import {
   adaptSurfaceDefinition,
@@ -136,6 +138,30 @@ describe("Surface Analysis canonical infrastructure", () => {
     expect(getSurfaceAnalysisResult(store, definition.identity, "surface-definition")).toMatchObject({ state: "cancelled", error: "Cancelled by user" });
     expect(store.history).toHaveLength(1);
     expect(store.history[0].state).toBe("cancelled");
+  });
+
+  it("records collected layers against the real definition without inventing differential evidence", () => {
+    const definition = adaptSurfaceDefinition(inputs[2]);
+    const registry = createSurfaceAnalysisRegistry();
+    let store = createSurfaceAnalysisResultStore();
+    const publish = (kind: "surface-definition" | "surface-curves" | "surface-features", payload?: SurfaceAnalysisPayload) => {
+      store = publishSurfaceAnalysisResult({ store, registry,
+        request: createSurfaceAnalysisRequest({ requestId: kind, kind, definition,
+          domain: kind === "surface-definition" ? "surface" : kind === "surface-curves" ? "curve" : "feature",
+          method: "surface-sampling" }), payload, now: store.history.length + 1 });
+    };
+    publish("surface-definition");
+    publish("surface-curves", createSurfaceLayersPayload({ definition, method: "surface-sampling",
+      data: { kind: "curve-layers", layers: [createSurfaceCurveLayer({ definition, layerKind: "geodesic" })] } }));
+    publish("surface-features", createSurfaceLayersPayload({ definition, method: "surface-sampling",
+      data: { kind: "feature-layers", layers: [createSurfaceFeatureLayer({ definition, layerKind: "ridge" })] } }));
+    for (const kind of ["surface-curves", "surface-features"] as const) {
+      const result = getSurfaceAnalysisResult(store, definition.identity, kind)!;
+      expect(result.dependencies).toMatchObject([{ kind: "surface-definition", state: "ready", resultVersion: 1 }]);
+      expect(isAnalysisResultCurrent(store, result)).toBe(true);
+    }
+    expect(store.history.map(record => record.kind)).toEqual(["surface-features", "surface-curves", "surface-definition"]);
+    expect(getSurfaceAnalysisResult(store, definition.identity, "differential-geometry")).toBeNull();
   });
 
   it("marks prior-revision Surface results stale when a new revision publishes", () => {
