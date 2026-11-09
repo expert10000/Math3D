@@ -421,7 +421,7 @@ export function SurfaceAnalysisInspectorPanel({
   const payloadKind = result?.payload?.data.kind ?? "none";
   const presentation = presentSurfaceAnalysisResult(definition, result, store);
   const warnings = result?.payload?.warnings ?? definition.warnings;
-  const curvature = result?.payload?.data.kind === "curvature" ? result.payload.data : null;
+  const curvature = presentation.canUseCurrentValues && result?.payload?.data.kind === "curvature" ? result.payload.data : null;
   const showProbe = preferredTab === "probe" || result?.payload?.data.kind === "local-probe";
   return (
     <section data-testid="surface-analysis-inspector" style={{ display: "grid", gap: 8, marginBottom: 10 }}>
@@ -442,6 +442,8 @@ export function SurfaceAnalysisInspectorPanel({
             <div><strong>Backend:</strong> {result?.backend ?? "pending"}</div>
             <div><strong>Saved:</strong> {savedResultCount ? `${savedResultCount} result reference${savedResultCount === 1 ? "" : "s"}` : "not saved"}</div>
             {result?.computeTimeMs != null && <div><strong>Compute time:</strong> {result.computeTimeMs.toFixed(1)} ms</div>}
+            {!presentation.canUseCurrentValues && result?.payload?.data.kind === "curvature" &&
+              <div data-testid="surface-curvature-withheld" role="status">Curvature values are withheld until this Surface result is current.</div>}
             {curvature && (
               <section data-testid="surface-curvature-result" style={{ display: "grid", gap: 6, marginTop: 5, paddingTop: 7, borderTop: "1px solid #e2e8f0" }}>
                 <div><strong>Valid domain:</strong> {curvature.validDomainCount.toLocaleString()} / {curvature.sampleCount.toLocaleString()}</div>
@@ -480,7 +482,9 @@ export function SurfaceAnalysisInspectorPanel({
             {derivedMeshInspection && <SurfaceDerivedMeshInspector {...derivedMeshInspection} />}
             {!!warnings.length && <div style={{ color: "#9a3412" }}>{warnings.join(" · ")}</div>}
         </div>
-        {showProbe && (probeActions ? (
+        {showProbe && !presentation.canUseCurrentValues && result?.payload?.data.kind === "local-probe" &&
+          <div data-testid="surface-probe-withheld" role="status">Probe values are withheld until this Surface result is current.</div>}
+        {showProbe && presentation.canUseCurrentValues && (probeActions ? (
           <SurfaceLocalProbeInspector {...probeActions} />
         ) : (
           probeRows.length ? (

@@ -422,6 +422,7 @@ import {
 import { qualifySurfaceLayerResult } from "./surfaceAnalysis/surfaceLayerQualification";
 import { createSurfaceLayerEvidence } from "./surfaceAnalysis/surfaceLayerEvidence";
 import { editSurfaceLayerDisplay } from "./surfaceAnalysis/surfaceLayerDisplay";
+import { presentSurfaceAnalysisResult } from "./surfaceAnalysis/surfaceResultPresentation";
 import { createSurfaceChartDiagnostics, createSurfaceChartPayload, type SurfaceChartSample } from "./surfaceAnalysis/surfaceChartDiagnostics";
 import { getSurfaceAnalysisPreset } from "./surfaceAnalysis/presets";
 import {
@@ -43448,6 +43449,8 @@ const App: React.FC = () => {
     () => getSurfaceAnalysisResult<SurfaceAnalysisPayload>(surfaceAnalysisResultStore, activeCanonicalSurfaceDefinition.identity, "surface-probe"),
     [activeCanonicalSurfaceDefinition.identity, surfaceAnalysisResultStore]
   );
+  const activeSurfaceCurvaturePresentation = presentSurfaceAnalysisResult(activeCanonicalSurfaceDefinition, activeSurfaceCurvatureResult, surfaceAnalysisResultStore);
+  const activeSurfaceProbePresentation = presentSurfaceAnalysisResult(activeCanonicalSurfaceDefinition, activeSurfaceProbeResult, surfaceAnalysisResultStore);
   const activeSurfaceCurvesResult = useMemo(
     () => getSurfaceAnalysisResult<SurfaceAnalysisPayload>(surfaceAnalysisResultStore, activeCanonicalSurfaceDefinition.identity, "surface-curves"),
     [activeCanonicalSurfaceDefinition.identity, surfaceAnalysisResultStore]
@@ -50545,7 +50548,7 @@ case "mobius":
     });
   }, [activeCanonicalSurfaceDefinition.identity.key, activeSurfaceCurvatureField]);
   const handleSelectSurfaceCurvatureRegion = useCallback((classification: SurfaceCurvatureClass) => {
-    if (!activeSurfaceCurvatureField) return;
+    if (!activeSurfaceCurvatureField || !activeSurfaceCurvaturePresentation.canUseCurrentValues) return;
     const indices = surfaceCurvatureRegionIndices(activeSurfaceCurvatureField, classification);
     if (!indices.length) return;
     setInspectIdx(indices[0]);
@@ -50561,9 +50564,9 @@ case "mobius":
     }
     setCameraResetToken((token) => token + 1);
     setSurfaceMeshTopologyStatus(`${classification} region selected: ${indices.length.toLocaleString()} samples; focused sample #${indices[0]}.`);
-  }, [activeSurfaceCurvatureField, surfaceSampleSet?.samples.length]);
+  }, [activeSurfaceCurvatureField, activeSurfaceCurvaturePresentation.canUseCurrentValues, surfaceSampleSet?.samples.length]);
   const handleSaveSurfaceCurvature = useCallback(() => {
-    if (!activeSurfaceCurvatureResult) return;
+    if (!activeSurfaceCurvatureResult || !activeSurfaceCurvaturePresentation.canUseCurrentValues) return;
     const identity = activeCanonicalSurfaceDefinition.identity;
     const id = `saved:${identity.key}:curvature-field`;
     setSurfaceAnalysisWorkspaceDocument((document) => ({
@@ -50578,9 +50581,9 @@ case "mobius":
         visible: surfaceCurvatureVisible,
       }],
     }));
-  }, [activeCanonicalSurfaceDefinition.identity, activeSurfaceCurvatureResult, surfaceCurvatureVisible]);
+  }, [activeCanonicalSurfaceDefinition.identity, activeSurfaceCurvatureResult, activeSurfaceCurvaturePresentation.canUseCurrentValues, surfaceCurvatureVisible]);
   const handleCompareSurfaceCurvature = useCallback(() => {
-    if (!activeSurfaceCurvatureField) return;
+    if (!activeSurfaceCurvatureField || !activeSurfaceCurvaturePresentation.canUseCurrentValues) return;
     const baseline = surfaceCurvatureCompareBaselineRef.current;
     if (!baseline) {
       surfaceCurvatureCompareBaselineRef.current = activeSurfaceCurvatureField;
@@ -50594,9 +50597,9 @@ case "mobius":
       return;
     }
     setSurfaceCurvatureCompareLabel(`${surfaceCurvatureScalar} Δmean ${(current.mean - previous.mean).toPrecision(4)} · ΔRMS ${(current.rms - previous.rms).toPrecision(4)} · ${baseline.sampleCount.toLocaleString()}→${activeSurfaceCurvatureField.sampleCount.toLocaleString()} samples`);
-  }, [activeSurfaceCurvatureField, surfaceCurvatureScalar]);
+  }, [activeSurfaceCurvatureField, activeSurfaceCurvaturePresentation.canUseCurrentValues, surfaceCurvatureScalar]);
   const handleExportSurfaceCurvature = useCallback(() => {
-    if (!activeSurfaceCurvatureField) return;
+    if (!activeSurfaceCurvatureField || !activeSurfaceCurvaturePresentation.canUseCurrentValues) return;
     const field = activeSurfaceCurvatureField;
     const serializable = {
       ...activeSurfaceCurvatureResult?.payload,
@@ -50614,7 +50617,7 @@ case "mobius":
     anchor.download = `surface-curvature-${activeCanonicalSurfaceDefinition.identity.surfaceId.replace(/[^a-z0-9_-]+/gi, "-")}-r${activeCanonicalSurfaceDefinition.identity.surfaceRevision}.json`;
     anchor.click();
     URL.revokeObjectURL(url);
-  }, [activeCanonicalSurfaceDefinition.identity, activeSurfaceCurvatureField, activeSurfaceCurvatureResult?.payload]);
+  }, [activeCanonicalSurfaceDefinition.identity, activeSurfaceCurvatureField, activeSurfaceCurvaturePresentation.canUseCurrentValues, activeSurfaceCurvatureResult?.payload]);
 
   const handleProbeCurrentSurfaceSample = useCallback(async () => {
     const source = surfaceCurvatureSource;
@@ -50722,16 +50725,16 @@ case "mobius":
     });
   }, [canonicalSurfaceProbe?.evidence.normalSection, canonicalSurfaceProbe?.evidence.principalAxes]);
   const handlePinSurfaceProbe = useCallback(() => {
-    if (!canonicalSurfaceProbe) return;
+    if (!canonicalSurfaceProbe || !activeSurfaceProbePresentation.canUseCurrentValues) return;
     setSurfacePinnedProbes((entries) => [canonicalSurfaceProbe, ...entries.filter((entry) => entry.probeId !== canonicalSurfaceProbe.probeId)].slice(0, 12));
     const identity = activeCanonicalSurfaceDefinition.identity;
     setSurfaceAnalysisWorkspaceDocument((document) => ({ ...document, savedResults: [...document.savedResults.filter((entry) => entry.id !== `saved:${identity.key}:${canonicalSurfaceProbe.probeId}`), {
       id: `saved:${identity.key}:${canonicalSurfaceProbe.probeId}`, resultKey: `${identity.key}:surface-probe:default`, kind: "surface-probe", variant: "default", identity,
       label: `${canonicalSurfaceProbe.probeId} · ${canonicalSurfaceProbe.classification}`, visible: surfaceProbeEvidenceVisible,
     }] }));
-  }, [activeCanonicalSurfaceDefinition.identity, canonicalSurfaceProbe, surfaceProbeEvidenceVisible]);
+  }, [activeCanonicalSurfaceDefinition.identity, activeSurfaceProbePresentation.canUseCurrentValues, canonicalSurfaceProbe, surfaceProbeEvidenceVisible]);
   const handleCompareSurfaceProbe = useCallback(() => {
-    if (!canonicalSurfaceProbe) return;
+    if (!canonicalSurfaceProbe || !activeSurfaceProbePresentation.canUseCurrentValues) return;
     const baseline = surfaceProbeCompareBaselineRef.current;
     if (!baseline) {
       surfaceProbeCompareBaselineRef.current = canonicalSurfaceProbe;
@@ -50740,19 +50743,19 @@ case "mobius":
     }
     const comparison = compareSurfaceLocalProbes(baseline, canonicalSurfaceProbe);
     setSurfaceProbeCompareLabel(`Distance ${comparison.distance.toPrecision(4)} · ΔK ${comparison.gaussianCurvatureDelta?.toPrecision(4) ?? "undefined"} · ΔH ${comparison.meanCurvatureDelta?.toPrecision(4) ?? "undefined"}${comparison.classificationChanged ? " · class changed" : ""}`);
-  }, [canonicalSurfaceProbe]);
+  }, [activeSurfaceProbePresentation.canUseCurrentValues, canonicalSurfaceProbe]);
   const surfaceProbeJson = useCallback((probe: SurfaceLocalProbePayload) => JSON.stringify({
     version: 1, surface: activeCanonicalSurfaceDefinition.identity, representation: activeCanonicalSurfaceDefinition.representation,
     method: surfaceProbeMethod, units: activeCanonicalSurfaceDefinition.units, orientation: activeCanonicalSurfaceDefinition.orientation, probe,
   }, null, 2), [activeCanonicalSurfaceDefinition, surfaceProbeMethod]);
   const handleCopySurfaceProbe = useCallback(() => {
-    if (canonicalSurfaceProbe) void navigator.clipboard?.writeText(surfaceProbeJson(canonicalSurfaceProbe));
-  }, [canonicalSurfaceProbe, surfaceProbeJson]);
+    if (canonicalSurfaceProbe && activeSurfaceProbePresentation.canUseCurrentValues) void navigator.clipboard?.writeText(surfaceProbeJson(canonicalSurfaceProbe));
+  }, [activeSurfaceProbePresentation.canUseCurrentValues, canonicalSurfaceProbe, surfaceProbeJson]);
   const handleExportSurfaceProbe = useCallback(() => {
-    if (!canonicalSurfaceProbe) return;
+    if (!canonicalSurfaceProbe || !activeSurfaceProbePresentation.canUseCurrentValues) return;
     const url = URL.createObjectURL(new Blob([surfaceProbeJson(canonicalSurfaceProbe)], { type: "application/json" }));
     const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${canonicalSurfaceProbe.probeId}.json`; anchor.click(); URL.revokeObjectURL(url);
-  }, [canonicalSurfaceProbe, surfaceProbeJson]);
+  }, [activeSurfaceProbePresentation.canUseCurrentValues, canonicalSurfaceProbe, surfaceProbeJson]);
   const handleReplaySurfaceProbe = useCallback((probe: SurfaceLocalProbePayload) => {
     const normal = probe.normal ?? [0, 1, 0];
     setProbeEnabled(true);
@@ -80051,13 +80054,15 @@ case "mobius":
                       result={surfaceInspectDerivedMesh
                         ? activeDerivedSurfaceMeshResult ?? activeSurfaceAnalysisResult
                         : activeSurfaceComputation === "surface-probe"
-                        ? activeSurfaceProbeResult ?? activeSurfaceAnalysisResult
+                        ? activeSurfaceProbeResult
                         : activeSurfaceComputation === "surface-curves"
-                          ? activeSurfaceCurvesResult ?? activeSurfaceAnalysisResult
+                          ? activeSurfaceCurvesResult
                           : activeSurfaceComputation === "surface-features"
-                            ? activeSurfaceFeaturesResult ?? activeSurfaceAnalysisResult
+                            ? activeSurfaceFeaturesResult
                             : activeSurfaceComputation === "chart-diagnostics"
-                              ? activeSurfaceChartResult ?? activeSurfaceAnalysisResult
+                              ? activeSurfaceChartResult
+                            : activeSurfaceComputation === "curvature-field"
+                              ? activeSurfaceCurvatureResult
                             : activeSurfaceAnalysisResult}
                       historyCount={surfaceAnalysisResultStore.history.length}
                       savedResultCount={surfaceAnalysisWorkspaceDocument.savedResults.length}
@@ -80067,7 +80072,7 @@ case "mobius":
                         ...(probeInfo.uv ? [{ label: "Domain (u,v)", value: `(${fmt(probeInfo.uv.u)}, ${fmt(probeInfo.uv.v)})` }] : []),
                         ...(probeInfo.xy ? [{ label: "Domain (x,y)", value: `(${fmt(probeInfo.xy.x)}, ${fmt(probeInfo.xy.y)})` }] : []),
                       ] : []}
-                      curvatureActions={activeSurfaceCurvatureField ? {
+                      curvatureActions={activeSurfaceCurvatureField && activeSurfaceCurvaturePresentation.canUseCurrentValues ? {
                         selectedField: surfaceCurvatureScalar,
                         visible: surfaceCurvatureVisible,
                         compareLabel: surfaceCurvatureCompareLabel,
@@ -80078,7 +80083,7 @@ case "mobius":
                         onToggleVisible: handleToggleSurfaceCurvatureVisible,
                         onRecompute: handleComputeSurfaceCurvature,
                       } : undefined}
-                      probeActions={canonicalSurfaceProbe ? {
+                      probeActions={canonicalSurfaceProbe && activeSurfaceProbePresentation.canUseCurrentValues ? {
                         probe: canonicalSurfaceProbe,
                         angleDeg: surfaceProbeAngleDeg,
                         evidenceVisible: surfaceProbeEvidenceVisible,
