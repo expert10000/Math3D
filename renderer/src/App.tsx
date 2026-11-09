@@ -418,10 +418,10 @@ import {
   createSurfaceFeatureLayer,
   createSurfaceLayersPayload,
   removeSurfaceResultLayer,
-  updateSurfaceResultLayer,
 } from "./surfaceAnalysis/surfaceResultLayers";
 import { qualifySurfaceLayerResult } from "./surfaceAnalysis/surfaceLayerQualification";
 import { createSurfaceLayerEvidence } from "./surfaceAnalysis/surfaceLayerEvidence";
+import { editSurfaceLayerDisplay } from "./surfaceAnalysis/surfaceLayerDisplay";
 import { createSurfaceChartDiagnostics, createSurfaceChartPayload, type SurfaceChartSample } from "./surfaceAnalysis/surfaceChartDiagnostics";
 import { getSurfaceAnalysisPreset } from "./surfaceAnalysis/presets";
 import {
@@ -50822,17 +50822,18 @@ case "mobius":
     setCameraResetToken((token) => token + 1);
   }, [surfaceSampleSet?.samples.length]);
 
-  const publishSurfaceLayerResult = useCallback((kind: "surface-curves" | "surface-features", data: SurfaceCurveLayersPayload | SurfaceFeatureLayersPayload) => {
+  const publishSurfaceLayerResult = useCallback((kind: "surface-curves" | "surface-features", data: SurfaceCurveLayersPayload | SurfaceFeatureLayersPayload, activity: "collect" | "edit" = "collect") => {
     const definition = activeCanonicalSurfaceDefinition;
     const method: SurfaceAnalysisMethod = definition.representation === "mesh-backed" ? "mesh-approximation" : "surface-sampling";
     const request = createSurfaceAnalysisRequest({
       requestId: `${kind}:${definition.identity.key}:${Date.now()}`,
       kind, definition, domain: kind === "surface-curves" ? "curve" : "feature", method,
-      parameters: { layerCount: data.layers.length, lifecycle: "persistent-v1" },
+      parameters: { layerCount: data.layers.length, lifecycle: "persistent-v1", activity },
       requestedOutputs: kind === "surface-curves" ? ["geodesics", "principal curvature lines", "asymptotic curves", "level curves"] : ["ridges", "valleys", "umbilics", "parabolic curves", "critical points", "representation singularities"],
     });
     const payload = createSurfaceLayersPayload({ definition, method, data });
-    setSurfaceAnalysisResultStore((store) => publishSurfaceAnalysisResult({ store, registry: surfaceAnalysisRegistryRef.current, request, payload, backend: "Surface result-layer adapter" }));
+    setSurfaceAnalysisResultStore((store) => publishSurfaceAnalysisResult({ store, registry: surfaceAnalysisRegistryRef.current, request, payload,
+      backend: activity === "collect" ? "Surface result-layer adapter" : "Surface layer collection editor" }));
   }, [activeCanonicalSurfaceDefinition]);
 
   const polylineTuples = useCallback((lines: PolylineSet | null | undefined): Array<Array<readonly [number, number, number]>> =>
@@ -50914,7 +50915,7 @@ case "mobius":
     if (!activeSurfaceLayerPayload) return;
     const layer = activeSurfaceLayerPayload.layers.find((entry) => entry.layerId === layerId);
     if (!layer) return;
-    if (!activeSurfaceLayerQualification.canUseCurrentActions && !["export", "recompute", "remove"].includes(action)) return;
+    if (!activeSurfaceLayerQualification.canUseCurrentActions && action !== "export" && action !== "recompute") return;
     const resultKind = activeSurfaceLayerPayload.kind === "curve-layers" ? "surface-curves" : "surface-features";
     if (action === "recompute") {
       if (resultKind === "surface-curves") handleCollectSurfaceCurveLayers(); else handleCollectSurfaceFeatureLayers();
@@ -50944,6 +50945,11 @@ case "mobius":
       anchor.click(); URL.revokeObjectURL(url);
       return;
     }
+    if (action === "remove") {
+      const layers = removeSurfaceResultLayer(activeSurfaceLayerPayload.layers, layerId);
+      publishSurfaceLayerResult(resultKind, { ...activeSurfaceLayerPayload, layers } as SurfaceCurveLayersPayload | SurfaceFeatureLayersPayload, "edit");
+      return;
+    }
     const firstPoint = "points" in layer ? layer.points[0] ?? layer.polylines[0]?.[0] : layer.polylines[0]?.[0];
     if ((action === "select" || action === "frame") && firstPoint && surfaceSampleSet?.samples.length) {
       let nearest = 0; let best = Infinity;
@@ -50955,13 +50961,6 @@ case "mobius":
       }
       setCameraResetToken((token) => token + 1);
     }
-    const nextLayers = action === "remove"
-      ? removeSurfaceResultLayer(activeSurfaceLayerPayload.layers, layerId)
-      : action === "toggle"
-        ? updateSurfaceResultLayer(activeSurfaceLayerPayload.layers, layerId, { visible: !layer.visible })
-        : action === "select"
-          ? updateSurfaceResultLayer(activeSurfaceLayerPayload.layers, layerId, { selected: true })
-          : activeSurfaceLayerPayload.layers;
     if (action === "toggle") {
       const visible = !layer.visible;
       if (layer.layerKind === "geodesic") { setGeodesicPathEnabled(visible); setGeodesicHeatEnabled(visible); }
@@ -50970,7 +50969,9 @@ case "mobius":
       if (layer.layerKind === "valley") setShowValleys(visible);
       if (["umbilic", "parabolic", "critical-point", "representation-singularity"].includes(layer.layerKind)) setSurfaceFeatureOverlayVisible(visible);
     }
-    publishSurfaceLayerResult(resultKind, { ...activeSurfaceLayerPayload, layers: nextLayers } as SurfaceCurveLayersPayload | SurfaceFeatureLayersPayload);
+    if (action === "toggle" || action === "select") {
+      setSurfaceAnalysisResultStore((store) => editSurfaceLayerDisplay(store, activeCanonicalSurfaceDefinition.identity, resultKind, layerId, action));
+    }
   }, [activeCanonicalSurfaceDefinition, activeSurfaceLayerPayload, activeSurfaceLayerQualification, activeSurfaceLayerResult, handleCollectSurfaceCurveLayers, handleCollectSurfaceFeatureLayers, publishSurfaceLayerResult, surfaceSampleSet?.samples]);
 
   const surfaceChartSamples = useMemo<SurfaceChartSample[]>(() => {

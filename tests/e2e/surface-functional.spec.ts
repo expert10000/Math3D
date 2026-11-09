@@ -204,6 +204,9 @@ test.describe("Surface functional flow", () => {
       await ctx.page.getByTestId("surface-collect-curve-layers").click();
       const layers = ctx.page.getByTestId("surface-result-layers");
       await expect(layers).toBeVisible();
+      await expect(ctx.page.getByTestId("surface-layer-qualification")).toHaveAttribute("data-status", "current");
+      await expect(ctx.page.getByTestId("surface-layer-claim")).toContainText("Curves were collected");
+      await expect(ctx.page.getByTestId("surface-layer-verification")).toContainText("not been independently verified");
       for (const kind of ["geodesic", "principal-k1", "principal-k2", "asymptotic", "level"]) {
         await expect(ctx.page.getByTestId(`surface-result-layer-${kind}`)).toBeVisible();
       }
@@ -220,6 +223,8 @@ test.describe("Surface functional flow", () => {
 
       await ctx.page.getByTestId("surface-computation-surface-features").click();
       await ctx.page.getByTestId("surface-collect-feature-layers").click();
+      await expect(ctx.page.getByTestId("surface-layer-qualification")).toHaveAttribute("data-status", "current");
+      await expect(ctx.page.getByTestId("surface-layer-claim")).toContainText("Features were collected");
       for (const kind of ["ridge", "valley", "umbilic", "parabolic", "critical-point", "representation-singularity"]) {
         await expect(ctx.page.getByTestId(`surface-result-layer-${kind}`)).toBeVisible();
       }
