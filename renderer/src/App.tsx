@@ -74944,17 +74944,12 @@ case "mobius":
     mesh: activeMeshAnalysisIdentity, result: focusedKernelHydratedResult, kind: focusedKernelAnalysisKind,
     variant: focusedExpectedVariant, parameters: focusedExpectedParameters });
   const focusedKernelResourceState = focusedKernelQualification.status === "historical" ? "stale" : focusedKernelQualification.status;
-  const focusedKernelEnvelope = focusedKernelAnalysisKind
-    ? [...meshAnalysisKernelBridge.results()].reverse().find((result) =>
-      result.provenance.operation.type === `mesh.analyze.${focusedKernelAnalysisKind}` &&
-      result.provenance.source.documentId === meshAnalysisKernelBridge.source()?.documentId &&
-      result.provenance.source.revision === meshAnalysisKernelBridge.source()?.revision
-    ) ?? null
-    : null;
+  const focusedKernelEnvelope = focusedKernelQualification.canUseCurrentValues
+    ? meshAnalysisKernelBridge.envelopeFor(focusedKernelAnalysisRecord) : null;
   const focusedWorkerOutcome = focusedKernelAnalysisKind === "curvature"
     ? [...meshDifferentialScientificJob.outcomes()].reverse().find((outcome) =>
-      outcome.ok && outcome.result.source.documentId === meshAnalysisKernelBridge.source()?.documentId &&
-      outcome.result.source.revision === meshAnalysisKernelBridge.source()?.revision
+      outcome.ok && !!focusedKernelEnvelope && focusedKernelEnvelope.artifacts.some((handle) =>
+        handle.artifactId === (outcome.result.output as { artifactId?: string }).artifactId)
     ) ?? null
     : null;
   const meshActiveAnalysisCandidate: MeshActiveAnalysisResultSummary = focusedKernelAnalysisKind
@@ -74962,8 +74957,8 @@ case "mobius":
       ...meshActiveAnalysisResultBase,
       metadata: [
         ...meshActiveAnalysisResultBase.metadata.map((entry) =>
-          entry.label === "Backend" && focusedWorkerOutcome?.ok
-            ? { ...entry, value: focusedWorkerOutcome.backend.backendId }
+          entry.label === "Backend" && focusedKernelQualification.canUseCurrentValues
+            ? { ...entry, value: focusedWorkerOutcome?.ok ? focusedWorkerOutcome.backend.backendId : focusedKernelAnalysisRecord?.backend ?? entry.value }
             : entry
         ),
         { label: "Kernel resource", value: focusedKernelResourceState },
@@ -74971,7 +74966,7 @@ case "mobius":
       provenance: [
         ...meshActiveAnalysisResultBase.provenance,
         { label: "Scientific authority", value: focusedKernelResourceState === "current" ? focusedKernelEnvelope?.status ?? "unavailable" : "unavailable" },
-        { label: "Execution backend", value: focusedWorkerOutcome?.ok ? focusedWorkerOutcome.backend.backendId : focusedKernelEnvelope?.provenance.engine.name ?? "unavailable" },
+        { label: "Execution backend", value: focusedWorkerOutcome?.ok ? focusedWorkerOutcome.backend.backendId : focusedKernelEnvelope?.provenance.engine.name ?? (focusedKernelQualification.canUseCurrentValues ? focusedKernelAnalysisRecord?.backend : null) ?? "unavailable" },
         ...(focusedWorkerOutcome?.ok ? [{ label: "Transport", value: focusedWorkerOutcome.backend.transport }] : []),
       ],
     }

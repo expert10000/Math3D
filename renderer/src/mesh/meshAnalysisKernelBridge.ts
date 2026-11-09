@@ -103,6 +103,23 @@ export class MeshAnalysisKernelBridge {
   result(resultId: string): AnalysisResultEnvelope | null { return this.#results.get(resultId) ?? null; }
   results(): readonly AnalysisResultEnvelope[] { return [...this.#results.values()]; }
 
+  /** Resolve only the authority envelope that published this exact stored result. */
+  envelopeFor(result: MeshAnalysisResult | null | undefined): AnalysisResultEnvelope | null {
+    if (!result || !isMarker(result.payload)) return null;
+    const source = this.source();
+    if (!source) return null;
+    const artifactId = result.payload[MARKER];
+    if (artifactId !== this.#artifactId(source, result.kind, result.variant, result.parameters)) return null;
+    const envelope = [...this.#results.values()].find((entry) =>
+      entry.artifacts.some((handle) => handle.artifactId === artifactId));
+    if (!envelope || !matchesScientificSourceGeneration(envelope.provenance.source, source) ||
+      envelope.provenance.operation.type !== `mesh.analyze.${result.kind}` ||
+      envelope.provenance.operation.algorithm !== result.variant ||
+      structuralHash(envelope.provenance.operation.parameters) !== structuralHash(result.parameters) ||
+      !this.#hasCurrentArtifact(artifactId, `${result.kind}-field`, source)) return null;
+    return envelope;
+  }
+
   #hasCurrentArtifact(artifactId: string, role: string, source: ScientificSourceGeneration): boolean {
     const current = this.source();
     return !!current && matchesScientificSourceGeneration(current, source) &&
