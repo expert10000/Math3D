@@ -1,4 +1,4 @@
-import { geometryObjectShape, structuralHash, viewerSourceFromDocument,
+import { geometryObjectShape, matchesScientificSourceGeneration, structuralHash, viewerSourceFromDocument,
   type Graph2DDocument, type KernelWorkspaceDocument, type MeshDocument,
   type MixedWorkspaceDocument, type ProjectNoteAnchor, type ProjectNoteAnchorResolver, type StableDocumentId } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
@@ -65,5 +65,23 @@ export const projectNoteSourceResolver = (projectId: StableDocumentId, workspace
       return object ? structuralHash(object) : null;
     },
     result: (id) => { const result = workspace.results.find((entry) => entry.resultId === id); return result ? { source: result.provenance.source, hash: structuralHash(result) } : null; },
+    studySelection: (studyId, memberId, selectionId) => {
+      const study = workspace.studies?.find(item => item.id === studyId);
+      if (!study || study.projectId !== projectId || !study.pinnedSelectionIds.includes(selectionId)) return null;
+      const member = study.members.find(item => item.memberId === memberId);
+      if (!member) return null;
+      const source = viewerSourceFromDocument({ identity: member.expected });
+      let status: "current" | "stale" | "missing" = "current";
+      for (const item of study.members) {
+        const entry = workspace.entries.find(candidate => candidate.expected.id === item.documentId);
+        if (!entry || item.resultId && !workspace.results.some(result =>
+          result.resultId === item.resultId && result.provenance.source.documentId === item.documentId)) {
+          status = "missing"; break;
+        }
+        if (!matchesScientificSourceGeneration(viewerSourceFromDocument({ identity: item.expected }),
+          viewerSourceFromDocument({ identity: entry.expected }))) status = "stale";
+      }
+      return { hash: structuralHash(study), source, status };
+    },
   };
 };

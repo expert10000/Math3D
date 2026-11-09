@@ -69,7 +69,7 @@ import { exportProjectFile, exportProjectCheckpointFile, inspectProjectCompatibi
 import { ProjectCompatibilityPanel } from "./ProjectCompatibilityPanel";
 import { captureProjectResources, captureProjectResourcesAsync, exportProjectPackage, parseProjectPackage, projectResourceInventory, MAX_PROJECT_PACKAGE_BYTES, type ProjectResourceReader, type VerifiedProjectResources } from "../projects/projectResources";
 import { canReuseProjectResourceArchive, commitProjectResources, loadProjectResources, stageProjectBackupResources } from "../projects/projectResourceArchive";
-import { canonicalJsonStringify, structuralHash, VECTOR_FIELD3D_REGION_RESULT_TYPE,
+import { canonicalJsonStringify, inspectProjectNoteAnchor, structuralHash, VECTOR_FIELD3D_REGION_RESULT_TYPE,
   VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE,
   type ProjectNoteAnchor, type StableDocumentId } from "@math3d/core";
 import type { CombinedRegionSourceStatus, SavedRegionSourceStatus } from
@@ -98,7 +98,8 @@ import { createProjectComparisonNote, inspectProjectComparisonNote } from "../pr
 import { declareLegacyGeometryCoordinateFrame, declareLegacyMeshCoordinateFrame,
   declareLegacySurfaceCoordinateFrame } from "../projects/projectLegacyCoordinateFrame";
 import { bindProjectNoteDrafts, createProjectNoteDraft, type NoteCaptureKind, type ProjectNoteDraft } from "../projects/projectNoteDrafts";
-import { createProjectNoteSelectionAnchor, type NoteSelectionDescriptor } from "../projects/projectNoteTargets";
+import { createProjectNoteSelectionAnchor, projectNoteSourceResolver, type NoteSelectionDescriptor } from "../projects/projectNoteTargets";
+import { createProjectStudySelectionNoteAnchor } from "../projects/projectStudyNoteAnchor";
 import { resolveProjectNoteValues } from "../projects/projectNoteValues";
 import { projectAnalysisAvailability, type ProjectAnalysisRoute } from "../projects/projectAnalysisAvailability";
 import { verifyProjectQuantumSceneDocuments } from "../projects/quantumSceneAdmission";
@@ -703,6 +704,18 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const openNoteTarget = (note: ProjectNote) => {
     const anchor = note.anchor;
     if (!anchor) return;
+    if (anchor.kind === "study-selection") {
+      const current = project?.identity.id === note.projectId ? project : notesProject;
+      const checked = current && inspectProjectNoteAnchor(note,
+        projectNoteSourceResolver(current.identity.id, current.workspace));
+      if (!checked || checked.status !== "current") {
+        setNotesMessage("The exact Study selection or its source generation is unavailable."); return;
+      }
+      setStudyFocus(previous => ({ id: anchor.studyId, token: (previous?.token ?? 0) + 1 }));
+      setQuick(false); setDetailView(true); setDetailPage("overview");
+      setNotesOpen(false); onOpenChange(true);
+      return;
+    }
     if (anchor.kind === "comparison") {
       const current = project?.identity.id === note.projectId ? project : notesProject;
       if (!current || inspectProjectComparisonNote(current, note, comparisonResource).status !== "current") {
@@ -2014,6 +2027,14 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                 "QWZ k selection pinned in Study.")}
               onUnpinQwz={id => stageStudy(source => unpinProjectQwzSample(source, id),
                 "QWZ k selection removed from Study.")}
+              onCapturePinnedNote={(studyId, memberId, selectionId) => {
+                try {
+                  const anchor = createProjectStudySelectionNoteAnchor(project, studyId, memberId, selectionId);
+                  captureAnchoredNote(anchor, "Pinned k observation", "Add your observation about this saved k selection.");
+                  openProjectNotes();
+                } catch (error) { setNotesMessage(`Study Note capture failed: ${(error as Error).message}`); }
+              }}
+              onOpenNote={id => openProjectNotes(id)}
               onOpenQuantumSource={openLinkedQuantumScene}
               onOpenDocument={(id, module) => viewBesideProject(id, module)} />
           </div>}

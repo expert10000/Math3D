@@ -123,7 +123,7 @@ export function createNotebookPublicationEvidenceSnapshot(books: readonly Workbo
   const json = canonicalJsonStringify(content);
   if (new TextEncoder().encode(json).byteLength > 16 * 1024 * 1024)
     throw new TypeError("Workbook evidence snapshot exceeds 16 MiB.");
-  const frozen = JSON.parse(json);
+  const frozen = JSON.parse(json) as typeof content;
   return freezeDeep({ ...frozen, contentHash: structuralHash(frozen) });
 }
 

@@ -975,6 +975,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 - `M3D20-07c feat(publication): immutable evidence snapshot and omissions manifest`.
 - `M3D20-07d test(workbook): source changed, missing sidecar, independent import/export`.
 
+**Workbook and Notes slice (2026-11-09):** Workbook reference blocks can cite the exact saved Study generation and inspect each Study member when reopened. The Study view lists only checksum-qualified Workbook citations and distinguishes current from historical links. Workbook publication has a deterministic JSON evidence snapshot with a content hash and omissions manifest; changed citations withhold result values and artifact claims. A pinned QWZ band selection can become a source-bound Project Note, with reverse navigation from the Study and explicit current, stale, or missing status. Focused tests cover source change, missing payloads, tampered payloads, package import, and exact Note anchor validation. This is a bounded research narrative path; the full flagship Study matrix and installed-runtime validation remain open.
+
 **Exit:** all flagship Studies can create a trustworthy research narrative; source changes are visibly qualified and export cannot invent evidence.
 
 ### M3D20-08 — Curated Gallery/Studies (P0)

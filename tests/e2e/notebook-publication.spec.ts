@@ -18,7 +18,7 @@ const download = async (ctx: LaunchedSurfaceApp, action: () => Promise<unknown>,
   return { file, text: readFileSync(file, "utf8") };
 };
 
-test("Gallery evidence Workbook publishes a frozen report that opens in a fresh browser and desktop profile", async ({ browser }) => {
+test("Gallery evidence Workbook publishes a frozen report and imports its package into a fresh desktop library", async ({ browser }) => {
   test.setTimeout(300_000); let ctx: LaunchedSurfaceApp | null = null;
   try {
     ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page); let page = ctx.page;
@@ -67,11 +67,12 @@ test("Gallery evidence Workbook publishes a frozen report that opens in a fresh 
       const bundle = JSON.parse(readFileSync(target, "utf8")); expect(bundle.format).toBe("math3d.project-package"); expect(bundle.project.identity.id).toBe(initial.identity.id);
       await closeSurfaceApp(ctx); ctx = await launchSurfaceApp(); page = ctx.page;
       await page.getByTestId("projects-toggle").click(); projects = page.getByTestId("project-explorer-panel");
-      await projects.getByTestId("project-import-file").setInputFiles(target); await projects.getByTestId("project-import-open").click();
-      await projects.getByTestId(`project-open-workbook-${bundle.project.workbooks[0].id}`).click();
-      await openWorkbook(page); await page.getByTestId("workbook-view-document").click();
-      await expect(page.getByTestId("workbook-evidence-claim")).toContainText("supported");
-      expect((await bookState(page)).stages[2].blocks[0].visualize.snapshotA.provenance.projectId).toBe(initial.identity.id);
+      await projects.getByTestId("project-import-file").setInputFiles(target);
+      await expect(projects.getByTestId("project-import-open")).toBeDisabled();
+      await expect(projects.getByTestId("project-import-save")).toBeEnabled();
+      await projects.getByTestId("project-import-save").click();
+      await expect(projects.getByTestId("project-message")).toContainText("verified saved preview");
+      await expect(projects.getByTestId(`project-open-saved-${bundle.project.identity.id}`)).toBeVisible();
     } finally { await fresh.close(); }
   } finally { await closeSurfaceApp(ctx); }
 });
@@ -87,6 +88,7 @@ test("NOTE05 reruns a saved Mesh analysis after editing, then explicitly relinks
     await projects.getByTestId(`project-open-workbook-${project.workbooks[0].id}`).click(); await openWorkbook(page); await page.getByTestId("workbook-view-document").click();
     const before = await bookState(page), previous = before.stages[1].blocks[0].notebookReference;
     await page.getByTestId("workbook-document-block-edge-path-evidence-result").getByRole("button", { name: "Open source document" }).click();
+    await page.getByRole("button", { name: "Saved studies", exact: true }).click();
     await page.getByTestId("project-mesh-scale").fill("2"); await page.getByTestId("project-mesh-apply").click();
     await openWorkbook(page); await page.getByTestId("workbook-view-document").click();
     const cell = page.getByTestId("workbook-document-block-edge-path-evidence-result");
