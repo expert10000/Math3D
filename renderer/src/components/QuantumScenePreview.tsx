@@ -793,7 +793,8 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
               datasets: scene.datasets, invariants: scene.topology?.invariants ?? [], limitations: scene.topology?.limitations ?? [],
               provenance: { schema: scene.schema, model: scene.provenance.model, runId: scene.provenance.runId,
                 resultSha256: scene.provenance.resultSha256, fingerprint: opened.reference.sceneFingerprint,
-                engine: scene.provenance.engine, engineVersion: scene.provenance.engineVersion } }} onExportSupport={exportSupport} supportStatus={supportStatus} />
+                engine: scene.provenance.engine, engineVersion: scene.provenance.engineVersion,
+                kind: scene.provenance.kind } }} sourceStatus="current" onExportSupport={exportSupport} supportStatus={supportStatus} />
             <h3>Detailed source inspection</h3>
             {scene.time?.tracks.some(track => track.id === "bloch") && <section data-testid="quantum-dynamics-inspector" style={{ border: "1px solid var(--border, #cbd5e1)", borderRadius: 8, padding: 10, marginBottom: 14 }}>
               <h3 style={{ marginTop: 0 }}>Recorded dynamics</h3>

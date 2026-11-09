@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { nextQuantumInspectorTab } from "./QuantumInspectorSummary";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { nextQuantumInspectorTab, QuantumInspectorSummary } from "./QuantumInspectorSummary";
 import { QuantumViewerTrace } from "./quantumViewerTrace";
 
 describe("QI-37/38 quantum inspector and support diagnostics", () => {
@@ -9,6 +11,24 @@ describe("QI-37/38 quantum inspector and support diagnostics", () => {
     expect(nextQuantumInspectorTab("Data", "End")).toBe("Provenance");
     expect(nextQuantumInspectorTab("Science", "Home")).toBe("View");
     expect(nextQuantumInspectorTab("Science", "Enter")).toBe("Science");
+  });
+  it("labels producer claims and withholds preview counts until source qualification", () => {
+    const data = { view: "geometry", mapped: 9, deferred: 3,
+      datasets: [{ id: "energies", count: 25, components: 2, unit: "eV" }],
+      invariants: [{ id: "chern", label: "Chern", value: 1, status: "producer-computed", method: "lattice" }],
+      limitations: ["Bounded grid"], provenance: { schema: "quantum-scene/v2", model: "qwz",
+        runId: "run-1", resultSha256: "b".repeat(64), fingerprint: "a".repeat(64),
+        engine: "theory-lab", engineVersion: "1", kind: "numerical-result" as const } };
+    const current = renderToStaticMarkup(createElement(QuantumInspectorSummary,
+      { data, sourceStatus: "current", onExportSupport: () => {} }));
+    expect(current).toContain('data-qualification="current"');
+    expect(current).toContain("9 rendered objects");
+    expect(current).toContain("not independently proved");
+    const checking = renderToStaticMarkup(createElement(QuantumInspectorSummary,
+      { data, sourceStatus: "checking", onExportSupport: () => {} }));
+    expect(checking).toContain('data-qualification="checking"');
+    expect(checking).toContain("object counts withheld");
+    expect(checking).not.toContain("9 rendered objects");
   });
   it("bounds trace events and exports only fixed event names, source IDs and measured numbers", () => {
     let now = 0;
