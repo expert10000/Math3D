@@ -156,6 +156,7 @@ test("Mesh Analyze shows curvature range, independent Probe, and returns to Geom
     await expect(activeResult).toContainText(/Gaussian curvature K/i);
     await expect(page.getByTestId("mesh-analysis-active-result-state")).toHaveText("Ready");
     await expect(page.getByTestId("mesh-analysis-result-qualification")).toHaveAttribute("data-status", "current");
+    await expect(page.getByTestId("mesh-analyze-measurement-qualification")).toHaveAttribute("data-status", "current");
     await expect(page.getByTestId("mesh-analysis-result-qualification")).toContainText("does not independently prove");
     await expect(page.getByTestId("mesh-analysis-result-statistics")).toBeVisible();
     await expect(page.getByTestId("mesh-analysis-result-definition")).toContainText(/Method\s*Angle defect/i);

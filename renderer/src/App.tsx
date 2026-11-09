@@ -1031,6 +1031,7 @@ import {
 } from "./mesh/analysisResultStore";
 import { qualifyMeshAnalysisResult, selectFocusedMeshResult } from "./mesh/meshResultQualification";
 import { presentMeshActiveAnalysisResult } from "./mesh/meshResultPresentation";
+import { presentMeshVisualReadout } from "./mesh/meshVisualReadout";
 import { createMeshActiveResultEvidence } from "./mesh/meshActiveResultEvidence";
 import { MeshAnalysisKernelBridge } from "./mesh/meshAnalysisKernelBridge";
 import { MeshDifferentialScientificJob } from "./mesh/meshDifferentialScientificJob";
@@ -66730,7 +66731,6 @@ case "mobius":
     surfaceViewerKind,
   ]);
   const overlayHeatmapValues = meshAnalyzeCurvatureHeatmapValues ?? baseOverlayHeatmapValues;
-  const overlayHeatmapEnabled = !!overlayHeatmapValues?.length;
   const surfaceCurvatureOverlayRange = useMemo(() => {
     if (!activeSurfaceCurvatureField || !surfaceCurvatureVisible || activeSurfaceComputation !== "curvature-field" || surfaceCurvatureRangeMode === "automatic") return null;
     const stats = activeSurfaceCurvatureField.statistics[surfaceCurvatureScalar];
@@ -74974,6 +74974,14 @@ case "mobius":
   const meshActiveAnalysisPresentation = presentMeshActiveAnalysisResult({ summary: meshActiveAnalysisCandidate,
     qualification: focusedKernelQualification, kind: focusedKernelAnalysisKind, mesh: activeMeshAnalysisIdentity });
   const meshActiveAnalysisResult = meshActiveAnalysisPresentation.summary;
+  const meshVisualReadout = presentMeshVisualReadout(analysisFocusedSection, meshActiveAnalysisPresentation.evidence);
+  const meshVisualQualityStats = meshVisualReadout.canShowQuality ? meshAnalyzeDisplayedQualityStats : null;
+  const meshVisualCurvatureStats = meshVisualReadout.canShowCurvature ? meshAnalyzeDisplayedCurvatureStats : null;
+  const qualifiedMeshOverlayMeshGroups = !meshVisualReadout.canShowQuality && meshAnalyzeQualityFieldOverlay
+    ? meshViewerOverlayMeshGroups?.filter((group) => group !== meshAnalyzeQualityFieldOverlay) ?? null
+    : meshViewerOverlayMeshGroups;
+  const qualifiedMeshOverlayHeatmapValues = surfaceViewerKind === "mesh" && !meshVisualReadout.canShowCurvature && meshAnalyzeCurvatureHeatmapValues
+    ? baseOverlayHeatmapValues : overlayHeatmapValues;
   const meshActiveResultEvidence = createMeshActiveResultEvidence({ mesh: activeMeshAnalysisIdentity,
     result: focusedKernelHydratedResult, summary: meshActiveAnalysisResult,
     presentation: meshActiveAnalysisPresentation.evidence });
@@ -79878,7 +79886,7 @@ case "mobius":
                             overlayPolylineGroups={meshWorkspaceOverlayPolylineGroupsWithDiagnostics}
                             overlayPointSets={meshViewerOverlayPointSetsWithDiagnostics}
                             overlayLabelSets={combinedOverlayLabelSetsWithDiagnostics}
-                            overlayMeshGroups={meshViewerOverlayMeshGroups}
+                            overlayMeshGroups={qualifiedMeshOverlayMeshGroups}
                             geodesicDiskEnabled={geodesicDiskEnabled}
                             geodesicDiskPickEnabled={geodesicDiskEnabled && geodesicDiskPickMode}
                             onGeodesicDiskPick={handleGeodesicDiskPick}
@@ -88858,8 +88866,8 @@ case "mobius":
                         }
                         geodesicHeatmapValues={geodesicHeatHeatmapValues}
                         geodesicHeatmapEnabled={geodesicHeatHeatmapActive}
-                        overlayHeatmapValues={overlayHeatmapValues}
-                        overlayHeatmapEnabled={overlayHeatmapEnabled}
+                        overlayHeatmapValues={qualifiedMeshOverlayHeatmapValues}
+                        overlayHeatmapEnabled={!!qualifiedMeshOverlayHeatmapValues?.length}
                         overlayHeatmapRange={surfaceCurvatureOverlayRange}
                         overlayPolylines={complexMapOverlayPolylines}
                         overlayPolylinesColor={0xffd400}
@@ -88877,7 +88885,7 @@ case "mobius":
                         overlayPolylineGroups={meshWorkspaceOverlayPolylineGroupsWithDiagnostics}
                         overlayPointSets={meshViewerOverlayPointSetsWithDiagnostics}
                         overlayLabelSets={combinedOverlayLabelSetsWithDiagnostics}
-                        overlayMeshGroups={meshViewerOverlayMeshGroups}
+                        overlayMeshGroups={qualifiedMeshOverlayMeshGroups}
                         geodesicDiskEnabled={geodesicDiskEnabled}
                         geodesicDiskPickEnabled={geodesicDiskEnabled && geodesicDiskPickMode}
                         onGeodesicDiskPick={handleGeodesicDiskPick}
@@ -88939,12 +88947,18 @@ case "mobius":
                                 Many overlays active; use Clean curvature for a clearer view.
                               </div>
                             )}
+                            {(analysisFocusedSection === "mesh-quality" || analysisFocusedSection === "differential-geometry" || analysisFocusedSection === "chart-analysis") && (
+                              <div data-testid="mesh-analyze-measurement-qualification" data-status={meshActiveAnalysisPresentation.evidence.status}
+                                title={meshVisualReadout.reason} style={{ color: meshVisualReadout.label === "Values withheld" ? "#92400e" : "#475569", fontSize: 10, fontWeight: 750 }}>
+                                {meshVisualReadout.label}{meshVisualReadout.label === "Values withheld" ? ` · ${meshVisualReadout.reason}` : ""}
+                              </div>
+                            )}
                             {analysisFocusedSection === "mesh-quality" && meshAnalyzeQualityDefinition ? (
                               <div data-testid="mesh-analyze-quality-legend" style={{ display: "grid", gap: 5 }}>
                                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
                                   <strong>{meshAnalyzeQualityDefinition.label}</strong>
                                   <span style={{ color: "#475569" }}>
-                                    {meshAnalyzeDisplayedQualityStats ? `${meshAnalyzeDisplayedQualityStats.count.toLocaleString()} faces` : "range pending"}
+                                    {meshVisualQualityStats ? `${meshVisualQualityStats.count.toLocaleString()} faces` : "range pending"}
                                   </span>
                                 </div>
                                 <div style={{ height: 10, borderRadius: 999, border: "1px solid rgba(15, 23, 42, 0.18)", background: meshAnalyzePaletteGradient }} />
@@ -88953,8 +88967,8 @@ case "mobius":
                                   {meshAnalyzeClampRange ? " (clamped)" : ""} · {meshAnalyzePaletteDirectionLabel}
                                 </div>
                                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, color: "#334155" }}>
-                                  <span>min {meshAnalyzeDisplayedQualityStats ? fmt(meshAnalyzeDisplayedQualityStats.min) : "n/a"}</span>
-                                  <span>max {meshAnalyzeDisplayedQualityStats ? fmt(meshAnalyzeDisplayedQualityStats.max) : "n/a"}</span>
+                                  <span>min {meshVisualQualityStats ? fmt(meshVisualQualityStats.min) : "n/a"}</span>
+                                  <span>max {meshVisualQualityStats ? fmt(meshVisualQualityStats.max) : "n/a"}</span>
                                 </div>
                               </div>
                             ) : (analysisFocusedSection === "differential-geometry" || analysisFocusedSection === "chart-analysis") &&
@@ -88963,8 +88977,8 @@ case "mobius":
                                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
                                   <strong>{meshAnalyzeCurvatureFieldLabel}</strong>
                                   <span style={{ color: "#475569" }}>
-                                    {meshAnalyzeDisplayedCurvatureStats
-                                      ? `${meshAnalyzeDisplayedCurvatureStats.count.toLocaleString()} samples`
+                                    {meshVisualCurvatureStats
+                                      ? `${meshVisualCurvatureStats.count.toLocaleString()} samples`
                                       : "range pending"}
                                   </span>
                                 </div>
@@ -89001,10 +89015,10 @@ case "mobius":
                                 )}
                                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, color: "#334155" }}>
                                   <span data-testid="mesh-analyze-curvature-min">
-                                    min {meshAnalyzeDisplayedCurvatureStats ? fmt(meshAnalyzeDisplayedCurvatureStats.min) : "n/a"}
+                                    min {meshVisualCurvatureStats ? fmt(meshVisualCurvatureStats.min) : "n/a"}
                                   </span>
                                   <span data-testid="mesh-analyze-curvature-max">
-                                    max {meshAnalyzeDisplayedCurvatureStats ? fmt(meshAnalyzeDisplayedCurvatureStats.max) : "n/a"}
+                                    max {meshVisualCurvatureStats ? fmt(meshVisualCurvatureStats.max) : "n/a"}
                                   </span>
                                 </div>
                               </div>
