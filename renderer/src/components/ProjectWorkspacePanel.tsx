@@ -47,6 +47,7 @@ import { ProjectRelationshipMap } from "./ProjectRelationshipMap";
 import { ProjectCursorInspector } from "./ProjectCursorInspector";
 import { ProjectStudiesPanel } from "./ProjectStudiesPanel";
 import { addQualifiedStudyGraphCurveLink } from "../projects/studyGraphCurveLink";
+import { prepareCuratedStudyProject } from "../projects/curatedStudyProject";
 const ProjectCompositionView = React.lazy(() => import("./ProjectCompositionView").then(module => ({ default: module.ProjectCompositionView })));
 const QuantumNativeOverlayView = React.lazy(() => import("./QuantumNativeOverlayView").then(module => ({ default: module.QuantumNativeOverlayView })));
 const ProjectSavedMeshResultComparisonView = React.lazy(() => import("./ProjectSavedMeshResultComparisonView").then(module => ({ default: module.ProjectSavedMeshResultComparisonView })));
@@ -565,6 +566,15 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     try { activeId = readActiveProjectId(); } catch { /* Open reports invalid saved bytes without replacing them. */ }
     return Object.fromEntries([...MATH3D_PROJECT_TEMPLATES, ...NOTEBOOK_STARTERS].flatMap(item => {
       const copy = findProjectStarterCopy(library, item.id, activeId);
+      return copy ? [[item.id, copy]] : [];
+    }));
+  }, [library, project]);
+  const guidedCopies = useMemo(() => {
+    let activeId: string | null = null;
+    try { activeId = readActiveProjectId(); } catch { /* Saved bytes are validated on open. */ }
+    const guidedLibrary = { ...library, entries: library.entries.filter(entry => entry.tags.includes("curated-study-v1")) };
+    return Object.fromEntries([...MATH3D_PROJECT_TEMPLATES, ...NOTEBOOK_STARTERS].flatMap(item => {
+      const copy = findProjectStarterCopy(guidedLibrary, item.id, activeId);
       return copy ? [[item.id, copy]] : [];
     }));
   }, [library, project]);
@@ -1505,11 +1515,13 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       setMessage("Review editor compatibility before opening this saved project.");
     } catch (error) { setMessage(`Saved project unavailable: ${(error as Error).message}`); }
   };
-  const previewTemplate = async (id: ProjectStarterId) => {
+  const previewTemplate = async (id: ProjectStarterId, curated = false) => {
     if (busy) return;
     const sequence = ++importSequence.current;
     try {
-      const copy = findProjectStarterCopy(parseProjectLibrary(localStorage.getItem(PROJECT_LIBRARY_KEY)), id, readActiveProjectId());
+      const available = parseProjectLibrary(localStorage.getItem(PROJECT_LIBRARY_KEY));
+      const copy = findProjectStarterCopy(curated ? { ...available, entries: available.entries.filter(entry => entry.tags.includes("curated-study-v1")) } :
+        available, id, readActiveProjectId());
       if (copy) {
         const next = loadLibraryProject(localStorage, copy.id), resources = await loadProjectResources(next);
         if (sequence !== importSequence.current) return;
@@ -1520,19 +1532,21 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       const token = crypto.randomUUID(), bundle = id === "catenoid-evidence" ? await takePreparedNotebookStarter(id) :
         NOTEBOOK_STARTERS.some(item => item.id === id) ? instantiateNotebookStarter(id as NotebookStarterId, token) : { project: instantiateMath3DProjectTemplate(id, token), resources: undefined };
       if (sequence !== importSequence.current) return;
-      const next = bundle.project;
+      const next = curated ? prepareCuratedStudyProject(bundle.project, id, token) : bundle.project;
       const inspection = "inspection" in bundle ? bundle.inspection as ProjectCompatibility : inspectProjectCompatibility(next, transferOptions(bundle.resources));
       setIncoming({ ...inspection, resources: bundle.resources, inputKind: "Independent starter project" });
       setMessage("Starter preview ready. Current work is unchanged until you choose to open it.");
     } catch (error) { if (sequence === importSequence.current) { setIncoming(null); setMessage(`Starter unavailable: ${(error as Error).message}`); } }
   };
-  const openTemplate = async (id: ProjectStarterId, newCopy = false) => {
+  const openTemplate = async (id: ProjectStarterId, newCopy = false, curated = false) => {
     if (busy || openingStarter.current) return;
     openingStarter.current = true;
     const sequence = ++importSequence.current;
     try {
       if (!newCopy) {
-        const activeId = readActiveProjectId(), copy = findProjectStarterCopy(parseProjectLibrary(localStorage.getItem(PROJECT_LIBRARY_KEY)), id, activeId);
+        const activeId = readActiveProjectId(), available = parseProjectLibrary(localStorage.getItem(PROJECT_LIBRARY_KEY));
+        const copy = findProjectStarterCopy(curated ? { ...available, entries: available.entries.filter(entry => entry.tags.includes("curated-study-v1")) } :
+          available, id, activeId);
         if (copy) {
           loadLibraryProject(localStorage, copy.id);
           if (hasOpenProject && copy.id === activeId && !preview && !managed && project?.identity.id === copy.id) {
@@ -1551,7 +1565,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       if (sequence !== importSequence.current) return;
       performance.clearMeasures("project-open:starter-construction");
       performance.measure("project-open:starter-construction", { start: starterStart, end: performance.now() });
-      const next = bundle.project;
+      const next = curated ? prepareCuratedStudyProject(bundle.project, id, token) : bundle.project;
       const inspectionStart = performance.now();
       const inspection = "inspection" in bundle ? bundle.inspection as ProjectCompatibility : inspectProjectCompatibility(next, transferOptions(bundle.resources));
       const candidate = { ...inspection, resources: bundle.resources, inputKind: "Independent starter project" };
@@ -1847,7 +1861,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
             {(query || moduleFilter !== "All modules") && <button type="button" onClick={() => { setQuery(""); setModuleFilter("All modules"); }}>Clear filters</button>}
           </div>
         </div>
-        {(collection === "All projects" || collection === "Starter projects") && <ProjectTemplatesPanel query={query} moduleFilter={moduleFilter} copies={starterCopies} onPreview={id => { void previewTemplate(id); }} onOpen={(id) => { void openTemplate(id); }} onNewCopy={id => { void openTemplate(id, true); }}
+        {(collection === "All projects" || collection === "Starter projects") && <ProjectTemplatesPanel query={query} moduleFilter={moduleFilter} copies={starterCopies} guidedCopies={guidedCopies} onPreview={id => { void previewTemplate(id); }} onOpen={(id) => { void openTemplate(id); }} onNewCopy={id => { void openTemplate(id, true); }}
+          onPreviewCurated={id => { void previewTemplate(id, true); }} onOpenCurated={id => { void openTemplate(id, false, true); }}
+          onNewCuratedCopy={id => { void openTemplate(id, true, true); }}
           onImportQuantumScene={onImportQuantumScene} quantumImportAvailable={!!window.quantumScenes?.open} busy={busy} />}
         {collection !== "Starter projects" && <>
         <h3>Your saved projects ({library.entries.length})</h3><p>Favorites first, then recent. Open a project or preview its documents and compatibility.</p>

@@ -3,6 +3,7 @@ import { MATH3D_PROJECT_TEMPLATES, type Math3DProjectTemplateId } from "@math3d/
 
 import { NOTEBOOK_STARTERS, type NotebookStarterId } from "../projects/notebookStarters";
 import { CURATED_STUDIES, type CuratedStudy } from "../projects/curatedStudyCatalog";
+import { curatedStudyHasLayout } from "../projects/curatedStudyProject";
 import type { ProjectLibraryEntry } from "../projects/projectLibrary";
 export type ProjectStarterId = Math3DProjectTemplateId | NotebookStarterId;
 const curatedStarterId = (item: CuratedStudy): ProjectStarterId | null =>
@@ -74,9 +75,11 @@ export const StarterArtwork: React.FC<{ id: ProjectStarterId }> = ({ id }) => <s
 </svg>;
 
 export const ProjectTemplatesPanel: React.FC<{ onPreview: (id: ProjectStarterId) => void; onOpen: (id: ProjectStarterId) => void; onNewCopy: (id: ProjectStarterId) => void;
+  onPreviewCurated: (id: ProjectStarterId) => void; onOpenCurated: (id: ProjectStarterId) => void; onNewCuratedCopy: (id: ProjectStarterId) => void;
   onImportQuantumScene?: () => void; quantumImportAvailable?: boolean;
-  copies: Partial<Record<ProjectStarterId, ProjectLibraryEntry>>; busy: boolean; query?: string; moduleFilter?: string }> = ({ onPreview, onOpen, onNewCopy,
-    onImportQuantumScene, quantumImportAvailable = false, copies, busy, query = "", moduleFilter = "All modules" }) => {
+  copies: Partial<Record<ProjectStarterId, ProjectLibraryEntry>>; guidedCopies: Partial<Record<ProjectStarterId, ProjectLibraryEntry>>;
+  busy: boolean; query?: string; moduleFilter?: string }> = ({ onPreview, onOpen, onNewCopy,
+    onPreviewCurated, onOpenCurated, onNewCuratedCopy, onImportQuantumScene, quantumImportAvailable = false, copies, guidedCopies, busy, query = "", moduleFilter = "All modules" }) => {
   const [id, setId] = useState<ProjectStarterId>("catenary-study");
   const [view, setView] = useState<"starters" | "studies">("starters");
   const matches = starters.filter(item => (moduleFilter === "All modules" || PROJECT_STARTER_MODULES[item.id].includes(moduleFilter)) &&
@@ -100,9 +103,9 @@ export const ProjectTemplatesPanel: React.FC<{ onPreview: (id: ProjectStarterId)
       {!guided.length && <p className="project-gallery-empty">No guided Studies match. Try another search or module.</p>}
       <div className="curated-study-grid">{guided.map(item => <CuratedStudyCard key={item.id} item={item}
         starterTitle={curatedStarterId(item) ? starters.find(starter => starter.id === curatedStarterId(item))?.title : undefined}
-        hasCopy={!!(curatedStarterId(item) && copies[curatedStarterId(item)!])} busy={busy}
+        hasCopy={!!(curatedStarterId(item) && guidedCopies[curatedStarterId(item)!])} busy={busy}
         quantumImportAvailable={quantumImportAvailable} onImportQuantumScene={onImportQuantumScene}
-        onOpen={onOpen} onPreview={onPreview} onNewCopy={onNewCopy} />)}</div>
+        onOpen={onOpenCurated} onPreview={onPreviewCurated} onNewCopy={onNewCuratedCopy} />)}</div>
     </>}
     {view === "starters" && <>
     <div className="project-starters-heading"><div><h3>Starter projects <span className="project-gallery-count">{matches.length}</span></h3><p>Open creates your first copy, then resumes it. New copy starts a separate project.</p></div>
@@ -139,7 +142,7 @@ const CuratedStudyCard: React.FC<{ item: CuratedStudy; starterTitle?: string; ha
         <div className="curated-study-quantum-art" aria-hidden="true">ψ</div>}</div>
       <div className="curated-study-content">
         <div className="curated-study-badges"><span>{item.field}</span><span>{item.platforms.join(" · ")}</span>
-          <span>{starter ? "Built-in Project" : "External verified scene"}</span></div>
+          <span>{starter ? curatedStudyHasLayout(starter) ? "Saved Study layout" : "Built-in Project" : "External verified scene"}</span></div>
         <h4>{title}</h4>
         <p className="curated-study-question">{item.question}</p>
         <dl><div><dt>Objects</dt><dd>{item.objects}</dd></div><div><dt>Do</dt><dd>{item.operations}</dd></div>
