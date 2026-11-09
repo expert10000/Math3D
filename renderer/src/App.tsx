@@ -1031,6 +1031,7 @@ import {
 } from "./mesh/analysisResultStore";
 import { qualifyMeshAnalysisResult } from "./mesh/meshResultQualification";
 import { presentMeshActiveAnalysisResult } from "./mesh/meshResultPresentation";
+import { createMeshActiveResultEvidence } from "./mesh/meshActiveResultEvidence";
 import { MeshAnalysisKernelBridge } from "./mesh/meshAnalysisKernelBridge";
 import { MeshDifferentialScientificJob } from "./mesh/meshDifferentialScientificJob";
 import {
@@ -74980,6 +74981,16 @@ case "mobius":
   const meshActiveAnalysisPresentation = presentMeshActiveAnalysisResult({ summary: meshActiveAnalysisCandidate,
     qualification: focusedKernelQualification, kind: focusedKernelAnalysisKind, mesh: activeMeshAnalysisIdentity });
   const meshActiveAnalysisResult = meshActiveAnalysisPresentation.summary;
+  const meshActiveResultEvidence = createMeshActiveResultEvidence({ mesh: activeMeshAnalysisIdentity,
+    result: focusedKernelHydratedResult, summary: meshActiveAnalysisResult,
+    presentation: meshActiveAnalysisPresentation.evidence });
+  const handleExportMeshActiveResultEvidence = () => {
+    if (!meshActiveResultEvidence) return;
+    const url = URL.createObjectURL(new Blob([JSON.stringify(meshActiveResultEvidence, null, 2)], { type: "application/json" }));
+    const anchor = document.createElement("a"); anchor.href = url;
+    anchor.download = `mesh-analysis-${meshActiveResultEvidence.result?.kind ?? "local"}-v${meshActiveResultEvidence.result?.version ?? 0}.json`;
+    anchor.click(); URL.revokeObjectURL(url);
+  };
   const meshAnalysisWorkflowValidationLabel = surfaceMeshAnalyzeDiagnostics
     ? surfaceMeshAnalyzeDiagnostics.state === "Healthy"
       ? "Validated"
@@ -80152,6 +80163,7 @@ case "mobius":
                       surfaceMeshLabel={surfaceMeshLabel}
                       meshActiveAnalysisResult={meshActiveAnalysisResult}
                       meshActiveAnalysisEvidence={meshActiveAnalysisPresentation.evidence}
+                      onExportMeshActiveResultEvidence={meshActiveResultEvidence ? handleExportMeshActiveResultEvidence : undefined}
                       meshAnalysisComputationHistory={meshAnalysisComputationHistory}
                       meshSelectedScientificFields={meshSelectedScientificFields}
                       meshWorkspaceSummary={meshWorkspaceInspectorSummary}

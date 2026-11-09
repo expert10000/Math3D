@@ -9657,6 +9657,7 @@ export type SurfacesRightPanelProps = {
   surfaceMeshLabel: string;
   meshActiveAnalysisResult: MeshActiveAnalysisResultSummary;
   meshActiveAnalysisEvidence: MeshResultEvidencePresentation;
+  onExportMeshActiveResultEvidence?: () => void;
   meshAnalysisComputationHistory: MeshAnalysisComputationRecord[];
   meshSelectedScientificFields: MeshEntityScientificFields | null;
   meshWorkspaceSummary: MeshWorkspaceInspectorSummary;
@@ -9941,6 +9942,7 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   surfaceMeshLabel,
   meshActiveAnalysisResult,
   meshActiveAnalysisEvidence,
+  onExportMeshActiveResultEvidence,
   meshAnalysisComputationHistory,
   meshSelectedScientificFields,
   meshWorkspaceSummary,
@@ -12223,6 +12225,8 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                   <div><strong>Independent check:</strong> {meshActiveAnalysisEvidence.independentCheck}</div>
                   <div><strong>Recorded source:</strong> {meshActiveAnalysisEvidence.source}</div>
                 </div>
+                <button type="button" data-testid="mesh-analysis-export-evidence" disabled={!onExportMeshActiveResultEvidence}
+                  onClick={onExportMeshActiveResultEvidence} style={{ justifySelf: "start", marginBottom: 6 }}>Export JSON evidence</button>
                 <div
                   data-testid="mesh-analysis-result-definition"
                   style={{ borderTop: "1px solid #e2e8f0", padding: "7px 0", display: "grid", gap: 4, fontSize: 10 }}
