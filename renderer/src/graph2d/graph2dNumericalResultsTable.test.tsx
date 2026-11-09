@@ -7,6 +7,7 @@ import { Graph2DCriticalResultsPanel } from "./Graph2DCriticalResultsPanel";
 import { Graph2DIntersectionResultsTable } from "./Graph2DIntersectionResultsTable";
 import { Graph2DIntervalResultsPanel } from "./Graph2DIntervalResultsPanel";
 import { Graph2DPhaseEquilibriaTable } from "./Graph2DPhaseEquilibriaTable";
+import { Graph2DRegressionPanel } from "./Graph2DRegressionPanel";
 import { Graph2DNumericalResultsTable } from "./Graph2DNumericalResultsTable";
 import { graph2DNumericalRows } from "./graph2dNumericalRows";
 import { Graph2DPlot } from "./Graph2DPlot";
@@ -106,6 +107,20 @@ describe("shared Graphs numerical result browser", () => {
     }
     expect(intersectionMarkup).not.toContain("Save selected");
     expect(intervalMarkup).not.toContain("Increasing</dt>");
+  });
+
+  it("withholds stale fit parameters and residuals while allowing the fit to be cleared", () => {
+    const document = scene();
+    const result = { model: "linear", objectId: "missing", source: { documentId: "old", revision: 1,
+      structuralHash: "sha256:old", generation: 1 }, publication: { resultId: "fit-old",
+      provenance: { operation: { algorithm: "ordinary-least-squares" } } }, n: 99 } as never;
+    const markup = renderToStaticMarkup(<Graph2DRegressionPanel document={document} model="linear"
+      onModel={() => {}} result={result} onResult={() => {}} />);
+    expect(markup).toContain("Historical numerical result");
+    expect(markup).toContain("fit-old");
+    expect(markup).toContain("Clear regression");
+    expect(markup).not.toContain("n=99");
+    expect(markup).not.toContain("Residuals (");
   });
 
   it("shows equilibrium summary and disables export for transient previews", () => {
