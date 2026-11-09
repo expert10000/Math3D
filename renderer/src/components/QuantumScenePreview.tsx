@@ -19,6 +19,7 @@ import { quantumSceneDocumentFromVerifiedOpen } from "../projects/quantumSceneAd
 import { quantumTopologyOverlayGroups, topologyOverlayObjectVisible } from "./quantumTopologyOverlay";
 import { quantumSceneValidation } from "./quantumSceneValidation";
 import { QuantumInspectorSummary } from "./QuantumInspectorSummary";
+import type { QuantumInspectorSourceStatus } from "./quantumInspectorEvidence";
 import { QuantumViewerTrace } from "./quantumViewerTrace";
 
 type Vector3 = { x: number; y: number; z: number };
@@ -609,6 +610,10 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
     model: scene.provenance.model }), [scene.provenance.runId, scene.provenance.resultSha256,
       scene.provenance.model, opened.reference.sceneFingerprint]);
   const [supportStatus, setSupportStatus] = useState("");
+  const [inspectorSourceStatus, setInspectorSourceStatus] = useState<QuantumInspectorSourceStatus>("current");
+  const inspectorVerification = useRef(0);
+  useEffect(() => { inspectorVerification.current++; setInspectorSourceStatus("current"); },
+    [opened.reference.sceneFingerprint]);
   useEffect(() => {
     const previous = window.document.activeElement instanceof HTMLElement ? window.document.activeElement : null;
     closeButtonRef.current?.focus();
@@ -638,11 +643,23 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
     [trace, pickedBandSample, pickedScalarSample, pickedTopologySample, pickedVectorSample]);
   useEffect(() => { if (timeError || topologyError || bandSelectionError || scalarError || reciprocalError || streamStatus.includes("unavailable")) trace.record("error"); },
     [trace, timeError, topologyError, bandSelectionError, scalarError, reciprocalError, streamStatus]);
+  const verifyInspectorSource = async (): Promise<boolean> => {
+    const token = ++inspectorVerification.current;
+    setInspectorSourceStatus("checking");
+    try {
+      const verified = Boolean(window.quantumScenes?.verifyActive &&
+        await window.quantumScenes.verifyActive(opened.reference.sceneFingerprint));
+      if (inspectorVerification.current === token) setInspectorSourceStatus(verified ? "current" : "withheld");
+      return verified;
+    } catch {
+      if (inspectorVerification.current === token) setInspectorSourceStatus("withheld");
+      return false;
+    }
+  };
   const exportSupport = async () => {
     setSupportStatus("Re-verifying the active source…");
     try {
-      if (!window.quantumScenes?.verifyActive || !await window.quantumScenes.verifyActive(opened.reference.sceneFingerprint))
-        throw new Error("Desktop source verifier unavailable");
+      if (!await verifyInspectorSource()) throw new Error("Desktop source verifier unavailable");
       const blob = new Blob([JSON.stringify(trace.supportBundle(), null, 2) + "\n"], { type: "application/json" });
       const url = URL.createObjectURL(blob), link = window.document.createElement("a");
       link.href = url; link.download = `quantum-support-${opened.reference.sceneFingerprint.slice(0, 12)}.json`;
@@ -794,7 +811,8 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
               provenance: { schema: scene.schema, model: scene.provenance.model, runId: scene.provenance.runId,
                 resultSha256: scene.provenance.resultSha256, fingerprint: opened.reference.sceneFingerprint,
                 engine: scene.provenance.engine, engineVersion: scene.provenance.engineVersion,
-                kind: scene.provenance.kind } }} sourceStatus="current" onExportSupport={exportSupport} supportStatus={supportStatus} />
+                kind: scene.provenance.kind } }} sourceStatus={inspectorSourceStatus}
+              onInspectSource={verifyInspectorSource} onExportSupport={exportSupport} supportStatus={supportStatus} />
             <h3>Detailed source inspection</h3>
             {scene.time?.tracks.some(track => track.id === "bloch") && <section data-testid="quantum-dynamics-inspector" style={{ border: "1px solid var(--border, #cbd5e1)", borderRadius: 8, padding: 10, marginBottom: 14 }}>
               <h3 style={{ marginTop: 0 }}>Recorded dynamics</h3>

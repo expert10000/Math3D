@@ -32,6 +32,8 @@ test("QI-40 inspector keyboard, redacted support export, and changed-source refu
     await expect(provenance).toHaveAttribute("aria-selected", "true");
     await provenance.press("ArrowLeft");
     await expect(science).toHaveAttribute("aria-selected", "true");
+    await expect(dialog.getByTestId("quantum-inspector-summary")).toHaveAttribute("data-qualification", "current");
+    await expect(dialog.getByRole("tabpanel")).toContainText("Producer science");
     await science.press("Home");
     await expect(view).toHaveAttribute("aria-selected", "true");
     await provenance.click();
@@ -49,6 +51,12 @@ test("QI-40 inspector keyboard, redacted support export, and changed-source refu
     const scenePath = join(sceneFolder, "scene.json");
     const original = await readFile(scenePath);
     await writeFile(scenePath, Buffer.concat([original, Buffer.from(" ")]));
+    await science.click();
+    await expect(dialog.getByTestId("quantum-inspector-summary")).toHaveAttribute("data-qualification", "withheld");
+    await expect(dialog.getByRole("tabpanel")).toContainText("Invariant values withheld");
+    await dialog.getByRole("tab", { name: "Data" }).click();
+    await expect(dialog.getByRole("tabpanel")).toContainText("Dataset values withheld");
+    await provenance.click();
     await dialog.getByRole("button", { name: "Download redacted support bundle" }).click();
     await expect(dialog.getByRole("alert").filter({ hasText: "Support export refused" })).toBeVisible();
     await provenance.press("Escape");
