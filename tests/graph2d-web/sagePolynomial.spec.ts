@@ -294,7 +294,7 @@ test("Surface and Geometry route polynomial factor and exact roots through Compu
   const jobs = page.getByTestId("compute-center").getByRole("region", { name: "Broker jobs" });
   await expect(jobs).toContainText("Exact polynomial factorization");
   await expect(jobs).toContainText("Exact polynomial roots");
-  await expect(jobs.getByText("complete", { exact: true })).toHaveCount(4);
+  await expect(jobs.getByText("Completed", { exact: true })).toHaveCount(4);
 });
 
 test("Surface Services runs exact calculus and Analysis exposes its result actions", async ({ page }) => {
@@ -418,7 +418,7 @@ test("Chrome Sage panel explicitly routes shared operations to Docker when selec
   await page.getByTestId("top-compute-center-button").click();
   const jobs = page.getByTestId("compute-center").getByRole("region", { name: "Broker jobs" });
   for (const item of symbolicCases) {
-    await expect(jobs.getByText(item.job).first().locator("../..")).toContainText("complete");
+    await expect(jobs.getByText(item.job).first().locator("../..")).toContainText("Completed");
     await expect(jobs.getByText(item.job).first().locator("../..")).toContainText("sage-docker");
   }
   await page.getByTestId("compute-center").getByRole("button", { name: "Close", exact: true }).click();

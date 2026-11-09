@@ -36,7 +36,7 @@ test("web Number Theory runs GCD and modular inverse through live Docker", async
   const jobs = compute.getByRole("region", { name: "Broker jobs" });
   for (const label of ["Greatest common divisor", "Modular inverse"]) {
     await expect(jobs.getByText(label, { exact: true }).last().locator("../.."))
-      .toContainText("complete");
+      .toContainText("Completed");
   }
 });
 
@@ -104,7 +104,9 @@ test.describe.serial("live Docker Sage operation journey", () => {
     await expect(panel).toContainText("does not exist", { timeout: 60_000 });
   
     const geometry = await openGeometryServices(page);
-    await geometry.getByLabel("Services preset").selectOption("All");
+    await expect(geometry.getByLabel("Services preset")).toHaveValue("All");
+    await geometry.getByLabel("SageMath backend").scrollIntoViewIfNeeded();
+    await geometry.getByLabel("SageMath backend").selectOption("docker");
     await geometry.getByLabel("Operation").selectOption("sage.groebner.compute");
     await geometry.getByRole("button", { name: "Run", exact: true }).click();
     await expect(geometry).toContainText("y^2 - 1/2", { timeout: 60_000 });
