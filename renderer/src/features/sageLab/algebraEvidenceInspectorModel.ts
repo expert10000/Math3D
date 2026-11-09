@@ -1,11 +1,13 @@
 import { ALGEBRA_OPERATION_REGISTRY, analyzeBiquadraticExtensionFromDefinition,
-  analyzeQuadraticNumberField, inspectProjectAlgebraFreshness, parseProjectAlgebraEvidence,
+  analyzeQuadraticNumberField,
   type Math3DProject, type ProjectAlgebraEvidence } from "@math3d/core";
+import { qualifyAlgebraEvidence, type AlgebraEvidenceQualification } from "./algebraEvidenceQualification";
 
 export type InspectorFact = Readonly<{ label: string; value: string | readonly string[] | readonly (readonly string[])[] }>;
 export type InspectorCheck = Readonly<{ label: string; status: "checked" | "reported" | "unavailable" | "failed";
   detail: string }>;
 export type AlgebraEvidenceInspectorModel = Readonly<{
+  qualification: AlgebraEvidenceQualification;
   title: string; result: readonly InspectorFact[]; structure: readonly InspectorFact[];
   checks: readonly InspectorCheck[]; mode: "CHECKED" | "COMPUTED" | "FAILED";
   execution: readonly InspectorFact[];
@@ -30,12 +32,21 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
   evidence: ProjectAlgebraEvidence): AlgebraEvidenceInspectorModel => {
   const operation = evidence.request.operation;
   const title = ALGEBRA_OPERATION_REGISTRY.find((item) => item.id === operation)?.label ?? operation;
+  const qualification = qualifyAlgebraEvidence(project, evidence);
+  if (!qualification.canUseResult) return {
+    qualification, title, result: [], mode: "FAILED", checks: [check("Saved evidence integrity", "failed",
+      qualification.reason)],
+    structure: [fact("Status", "Invalid evidence"), fact("Object ID", qualification.objectId),
+      fact("Pinned revision", String(qualification.revision)),
+      fact("Definition hash", qualification.definitionHash)],
+    execution: [fact("Operation", operation), fact("Result ID", qualification.resultId),
+      fact("Result hash", evidence.resultHash)],
+  };
   const entry = project.algebraObjects?.find((item) => item.id === evidence.request.target.objectId);
   const source = entry?.revisions[evidence.request.target.revision - 1];
-  const current = entry?.revisions[entry.revisions.length - 1];
-  const freshness = inspectProjectAlgebraFreshness(project).find((item) => item.objectId === entry?.id);
-  const sourceStatus = !source ? "Missing" : entry?.archived ? "Archived" : source.revision !== current?.revision
-    ? "Historical revision" : freshness?.status === "stale" ? "Stale parent definition" : "Current";
+  const sourceStatus = qualification.status === "historical" ? "Historical revision" :
+    qualification.status === "stale" ? "Stale parent definition" :
+      qualification.status === "archived" ? "Archived" : "Current";
   const structure: InspectorFact[] = [
     fact("Structure", source?.label ?? "Missing"), fact("Kind", source?.kind ?? "Missing"),
     fact("Status", sourceStatus), fact("Object ID", evidence.request.target.objectId),
@@ -108,13 +119,8 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
   const facts: InspectorFact[] = [];
   const checks: InspectorCheck[] = [];
   let mode: AlgebraEvidenceInspectorModel["mode"] = "COMPUTED";
-  try {
-    parseProjectAlgebraEvidence(evidence, project.identity.id, project.algebraObjects ?? []);
-    checks.push(check("Saved evidence integrity", "checked", "Output schema, result hash and pinned definition match the Project."));
-  } catch (error) {
-    checks.push(check("Saved evidence integrity", "failed", String((error as Error).message ?? error)));
-    mode = "FAILED";
-  }
+  checks.push(check("Saved evidence integrity", "checked",
+    "Output schema, result hash and pinned definition match the Project."));
   switch (operation) {
     case "sage.ellipticCurve.dossier": {
       facts.push(fact("Discriminant", text(result.discriminant)),
@@ -505,5 +511,6 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
       fact("Terms per polynomial cap", text(budget.maxTermsPerPolynomial)),
       fact("Result byte cap", text(budget.maxResultBytes)));
   }
-  return { title, result: facts, structure, checks, mode, execution };
+  return { qualification, title, result: facts, structure, checks,
+    mode: checks.some(item => item.status === "failed") ? "FAILED" : mode, execution };
 };

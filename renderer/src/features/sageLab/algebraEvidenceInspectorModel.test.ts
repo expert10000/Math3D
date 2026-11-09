@@ -40,6 +40,16 @@ describe("SAGE-B06 saved algebra evidence Inspector", () => {
     expect(qualifyAlgebraEvidence(saved, { ...evidence,
       resultHash: "sha256:" + "0".repeat(64) })).toMatchObject({
       status: "invalid", canUseResult: false, canDerive: false });
+    const invalid = algebraEvidenceInspectorModel(saved, { ...evidence,
+      resultHash: "sha256:" + "0".repeat(64) });
+    expect(invalid).toMatchObject({ mode: "FAILED", result: [] });
+    expect(invalid.checks).toContainEqual(expect.objectContaining({
+      label: "Saved evidence integrity", status: "failed" }));
+    expect(invalid.structure).toContainEqual({ label: "Status", value: "Invalid evidence" });
+    const historical = algebraEvidenceInspectorModel(revised, evidence);
+    expect(historical.qualification.status).toBe("historical");
+    expect(historical.structure).toContainEqual({ label: "Status", value: "Historical revision" });
+    expect(historical.result).toContainEqual({ label: "Greatest common divisor", value: "6" });
   });
   it("independently checks GCD and catches a mathematically wrong saved value", () => {
     const { project, record } = withObject(empty(), "Z", { kind: "integer-ring" });
