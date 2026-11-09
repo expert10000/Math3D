@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { analyzeVectorField3DLineIntegral, analyzeVectorField3DTheorem,
+import { analyzeVectorField3DLineIntegral, analyzeVectorField3DRegion, analyzeVectorField3DTheorem,
   createMixedWorkspaceDocument, createOrientedPolylineSelection, createOrientedRegionSelection,
   createVectorField3DLineIntegralResult, createVectorField3DRegionIntegralResult,
   parseMath3DProject, replaceMath3DProjectWorkspace, reviseVectorField3DDocument,
@@ -78,5 +78,35 @@ describe("Field result evidence", () => {
     expect(evidence.checkScope).toMatch(/not a symbolic theorem proof/);
     expect(evidence.values).toHaveProperty("absoluteResidual");
     expect(vectorField3DResultEvidenceCsv(evidence)).toContain("absoluteResidual");
+    const card = renderToStaticMarkup(createElement(VectorField3DResultEvidenceCard,
+      { evidence, label: "stokes", testId: "gf11-saved-result" }));
+    expect(card).toContain("midpoint-curl-flux-vs-simpson-circulation");
+    expect(card).toContain("boundaryValue");
+    expect(card).toContain("Export evidence JSON");
+    const reversed = createOrientedRegionSelection(document, { kind: "oriented-plane-region",
+      normalAxis: 2, coordinate: 0, bounds: [[0, 1], [0, 1]],
+      normalSign: -1, boundary: "right-hand" }, "field-evidence-region");
+    const changed = upsertProjectScientificSelection(project, reversed);
+    const historical = vectorField3DResultEvidence(changed, result, document);
+    expect(historical).toMatchObject({ qualification: "withheld", reason: "selection-changed", values: null });
+    const staleCard = renderToStaticMarkup(createElement(VectorField3DResultEvidenceCard,
+      { evidence: historical, label: "stokes", testId: "gf11-saved-result" }));
+    expect(staleCard).toContain("Value withheld: selection-changed");
+    expect(staleCard).not.toContain("boundaryValue");
+    expect(staleCard).not.toContain("Export evidence CSV");
+  });
+
+  it("withholds partial region measurements even with an unchanged source", () => {
+    let { project, document } = setup();
+    const selection = createOrientedRegionSelection(document, { kind: "oriented-box-region",
+      bounds: [[0, 1], [0, 1], [0, 1]], normal: "outward" }, "field-evidence-partial");
+    project = upsertProjectScientificSelection(project, selection);
+    const result = createVectorField3DRegionIntegralResult(document, selection,
+      analyzeVectorField3DRegion(document, selection, "volume-divergence", 8, 20));
+    project = upsertProjectRegionResult(project, result);
+    const evidence = vectorField3DResultEvidence(project, result, document);
+    expect(evidence.qualification).toBe("withheld");
+    expect(evidence.values).toBeNull();
+    expect(() => vectorField3DResultEvidenceJson(evidence)).toThrow(/withheld/);
   });
 });

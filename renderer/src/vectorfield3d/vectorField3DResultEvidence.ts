@@ -40,7 +40,8 @@ export function vectorField3DResultEvidence(project: Math3DProject, result: Anal
   const current = status.status === "current";
   const theorem = operation === "vector3d.theorem-check";
   const claim = theorem ? result.summary.state === "consistent" ? "Numerical theorem agreement" :
-    "Numerical theorem mismatch" : operation === "vector3d.line-integral" ?
+    result.summary.state === "mismatch" ? "Numerical theorem mismatch" :
+      "Inconclusive numerical theorem check" : operation === "vector3d.line-integral" ?
     "Bounded numerical path integral" : "Bounded numerical region integral";
   const checkScope = theorem ?
     "Two numerical estimates were compared at the recorded resolution. This is not a symbolic theorem proof." :
