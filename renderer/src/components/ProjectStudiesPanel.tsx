@@ -12,6 +12,7 @@ import { qualifyStudySurfaceMeshLink, studyHasQualifiedSurfaceMeshLink } from ".
 import { StudyGraphCurveControl } from "./StudyGraphCurveControl";
 import { StudyCurveSurfaceControl } from "./StudyCurveSurfaceControl";
 import { StudySurfaceMeshControl } from "./StudySurfaceMeshControl";
+import { CatenoidWaistEvidencePanel } from "./CatenoidWaistEvidencePanel";
 import { StudyQwzCursorControl } from "./StudyQwzCursorControl";
 
 const StudyPanePreview = lazy(() => import("./StudyPanePreview").then(module => ({ default: module.StudyPanePreview })));
@@ -167,6 +168,9 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
         pair={surfaceMeshPair} studyId={open.id} />}
       {qwzPair && <StudyQwzCursorControl project={project} pair={qwzPair} study={open}
         editable={editable} onPin={onPinQwz} onUnpin={onUnpinQwz} />}
+      {project.metadata.tags?.includes("catenoid-evidence") && open.members.some(member =>
+        project.workspace.entries.find(entry => entry.expected.id === member.documentId)?.module === "surface") &&
+        <CatenoidWaistEvidencePanel project={project} resources={resources} />}
       {qwzPair && editable && open.pinnedSelectionIds.filter(id => id.startsWith("qwz:band-0:")).map(id =>
         <button key={id} type="button" data-testid="project-study-note-on-pin"
           disabled={!onCapturePinnedNote}

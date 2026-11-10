@@ -46,7 +46,8 @@ describe("guided Gallery Project Study copies", () => {
     const study = reopened.workspace.studies![0]!;
     expect(study.members.map(member => reopened.workspace.entries.find(entry =>
       entry.expected.id === member.documentId)?.module)).toEqual(["surface", "mesh"]);
-    expect(study.members[0]!.resultId).toBeUndefined();
+    expect(study.members[0]!.resultId).toBe(reopened.workspace.results.find(result =>
+      result.provenance.operation.type === "surface.catenoid-waist-comparison")?.resultId);
     expect(study.members[1]!.resultId).toBe(reopened.workspace.results.find(result =>
       result.provenance.source.documentId === study.members[1]!.documentId)?.resultId);
     expect(reopened.workbooks).toEqual(bundle.project.workbooks);

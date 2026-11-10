@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { readFileSync } from "node:fs";
 import { closeSurfaceApp, launchSurfaceApp, openLastSavedProject, resetSurfaceAppState, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
 
 test("guided Study Gallery explains real Project and external-scene routes without changing starter navigation", async () => {
@@ -129,7 +130,20 @@ test("guided Catenoid Study opens its saved Mesh curvature result after a cold r
     expect(first.workbooks).toHaveLength(1);
     await panel.getByTestId("project-gallery-layout-toggle").click();
     await panel.getByTestId("project-studies-panel").locator('[data-testid^="project-study-open-"]').click();
+    const comparison = panel.getByTestId("project-catenoid-waist-evidence");
+    await expect(comparison).toContainText("analytic reference K=-1");
+    await expect(comparison).toContainText("discrete estimate K=");
+    await expect(panel.getByTestId("project-study-open-result-pane-1")).toBeEnabled();
     await expect(panel.getByTestId("project-study-open-result-pane-2")).toBeEnabled();
+    const evidencePath = test.info().outputPath("catenoid-waist-comparison.json");
+    await ctx.app.evaluate(({ session }, target) => session.defaultSession.once("will-download",
+      (_event, item) => item.setSavePath(target)), evidencePath);
+    await comparison.getByTestId("project-catenoid-waist-export").click();
+    await expect.poll(() => { try { return readFileSync(evidencePath).length; } catch { return 0; } })
+      .toBeGreaterThan(100);
+    const exported = JSON.parse(readFileSync(evidencePath, "utf8"));
+    expect(exported.result.summary.analyticWaistGaussian).toBe(-1);
+    expect(exported.result.provenance.operation.type).toBe("surface.catenoid-waist-comparison");
     await panel.getByTestId("project-save").click();
     const profile = ctx.profileDir;
     await ctx.app.close();
@@ -137,6 +151,8 @@ test("guided Catenoid Study opens its saved Mesh curvature result after a cold r
     await openLastSavedProject(page);
     await panel.getByTestId("project-gallery-layout-toggle").click();
     await panel.getByTestId("project-studies-panel").locator('[data-testid^="project-study-open-"]').click();
+    await expect(panel.getByTestId("project-catenoid-waist-evidence"))
+      .toContainText("discrete estimate K=");
     await panel.getByTestId("project-study-open-result-pane-2").click();
     await expect(panel.getByTestId("project-results-browser")).toBeVisible();
     await expect(panel.getByTestId(`project-result-select-${study.members[1].resultId}`))

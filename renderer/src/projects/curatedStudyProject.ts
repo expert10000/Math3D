@@ -36,6 +36,17 @@ export function prepareCuratedStudyProject(project: Math3DProject, id: CuratedSt
     next = upsertProjectStudy(next, { ...first, members: first.members.map(item => item.memberId === member.memberId ?
       { ...item, resultId: result.resultId } : item) });
   }
+  if (id === "catenoid-evidence") {
+    const first = next.workspace.studies![0]!;
+    const surface = first.members.find(item => next.workspace.entries.find(entry =>
+      entry.expected.id === item.documentId)?.module === "surface");
+    const result = next.workspace.results.find(item =>
+      item.provenance.operation.type === "surface.catenoid-waist-comparison" &&
+      item.provenance.source.documentId === surface?.documentId);
+    if (!surface || !result) throw new TypeError("Guided Catenoid Study lacks its pinned analytic/discrete comparison.");
+    next = upsertProjectStudy(next, { ...first, members: first.members.map(item => item.memberId === surface.memberId ?
+      { ...item, resultId: result.resultId } : item) });
+  }
   return updateMath3DProjectMetadata(next, { ...next.metadata,
     tags: [...new Set([...(next.metadata.tags ?? []), "curated-study-v1"])],
   });

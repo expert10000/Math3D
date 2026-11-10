@@ -35,6 +35,8 @@ The gate scripts and source tests are **preparation**, not evidence that a 2.0 i
 
 **Study cursor qualification (2026-11-11):** A saved two-pane Surface/Mesh Study can now link a transient physical coordinate marker when both pinned documents replay and declare the same frame and units. Graph/Curve promotion, Curve/Surface chart, and four-pane QWZ links remain separately qualified; the Study view states why an incompatible or changed pair is disabled. The Surface/Mesh marker does not infer a Mesh vertex, analytic curvature, or correspondence between unrelated elements. The focused desktop journey saves and cold-reopens this link. Complete coordinate propagation into every native module Inspector remains an open broader acceptance item.
 
+**Bounded Catenoid publication (2026-11-11):** The guided cosh-revolution Project now saves a sampled waist Curve, exact analytic waist reference, one local discrete Mesh curvature estimate with its error, a pinned comparison result, and a Workbook reference. Desktop acceptance exports the comparison after a cold reopen, withholds it when the Surface generation changes, and blocks opening when saved Mesh source bytes are missing. The comparison is explicitly a local sampled estimate, not a convergence proof or a general ridge detector. Native Surface ridge selection and installed-candidate evidence remain open.
+
 ---
 
 ## 0. Executive decision
