@@ -14,6 +14,7 @@ import { createScientificSolverAuditExport } from "./scientificSolverAuditExport
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ProjectResultsBrowser } from "../components/ProjectResultsBrowser";
+import { inspectProjectDependencies } from "./projectDependencies";
 
 const field = () => createVectorField3DDocument({
   axes: (["x", "y", "z"] as const).map(role => ({ role, label: role,
@@ -108,7 +109,7 @@ describe("SCI-19 trajectory solver Workbook result", () => {
     expect(JSON.stringify(withheld)).not.toContain('"figures"');
     const renderBrowser = (status: "changed" | "source-current") =>
       renderToStaticMarkup(React.createElement(ProjectResultsBrowser, {
-        project: bound, inspection: null, titles: new Map(),
+        project: bound, inspection: inspectProjectDependencies(bound), titles: new Map(),
         canOpen: () => false, onOpen: () => {},
         regionResultStatuses: { [result.resultId]: status },
         onCreateScientificReport: () => {} }));
