@@ -21,7 +21,7 @@ export const WorkbookSageEvidenceView: React.FC<{
     link.download = `workbook-sage-${publication.resultId.replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 70)}.${format}`;
     link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
-  return <section data-testid="workbook-sage-evidence" style={{ border: "1px solid #b9d6ea", borderRadius: 7, padding: 9, fontSize: 11, display: "grid", gap: 5 }}>
+  return <><section data-testid="workbook-sage-evidence" style={{ border: "1px solid #b9d6ea", borderRadius: 7, padding: 9, fontSize: 11, display: "grid", gap: 5 }}>
     <strong>{evidence.source.id.startsWith("sage-input:") ? "Freeform input saved with this result" : freshness === "current" ? "Source current" : freshness === "stale" ? "Source changed — rerun required" : "Source unavailable — verify before reuse"}</strong>
     <span>Source: {evidence.source.module} / {evidence.source.id} / revision {evidence.source.revision}</span>
     <span>Backend: {evidence.engine.backend === "local" ? "Local WSL" : evidence.engine.backend === "docker" ? "Docker" : "Private gateway"} · SageMath {evidence.engine.version}</span>
@@ -32,6 +32,5 @@ export const WorkbookSageEvidenceView: React.FC<{
     <details><summary>Exact request, response, and diagnostics</summary>
       <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", maxHeight: 320, overflow: "auto" }}>{workbookSageEvidenceJson(evidence, freshness)}</pre>
     </details>
-    <ResultPublicationActions publication={publication} onExport={exportEvidence} />
-  </section>;
+  </section><ResultPublicationActions publication={publication} onExport={exportEvidence} /></>;
 };

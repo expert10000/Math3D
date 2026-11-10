@@ -3,7 +3,8 @@ import { createMath3DProject, createMixedWorkspaceDocument, parseMath3DProject, 
 import { MeshDocumentAdapter } from "../mesh/meshDocumentAdapter";
 import { analyzeSavedMesh } from "./savedMeshAnalysis";
 import { captureProjectResources, projectResourceInventory } from "./projectResources";
-import { compareSavedMeshResults, savedMeshResultComparisonHtml, verifySavedMeshResult } from "./projectSavedMeshResultComparison";
+import { compareSavedMeshResults, savedMeshResultComparisonCsv,
+  savedMeshResultComparisonHtml, verifySavedMeshResult } from "./projectSavedMeshResultComparison";
 
 const mesh = (height: number, unit?: string) => ({ label: "Two triangles", source: { kind: "import" as const, format: "obj" as const, filename: "two.obj",
   ...(unit ? { math3dCoordinateFrame: { format: "math3d.coordinate-frame/v1", frame: "local", unit, axes: ["x", "y", "z"], handedness: "right" } } : {}) },
@@ -35,6 +36,11 @@ describe("PC13 stored Mesh analysis comparison", () => {
     expect(quality.metrics.find(item => item.path === "metrics.aspectRatio.avg")?.difference).not.toBeNull();
     expect(quality.metrics.find(item => item.path === "metrics.triangleArea.avg")?.difference).toBeNull();
     expect(quality.metrics.find(item => item.path === "metrics.triangleArea.avg")?.reason).toMatch(/Units/);
+    expect(quality.publication).toMatchObject({ module: "comparison",
+      assessment: { status: "recorded", sourceStatus: "both saved Mesh generations and result envelopes verified" },
+      summary: { a: { resultId: oldQuality.resultId }, b: { resultId: newQuality.resultId } } });
+    expect(quality.publication.assessment.independentCheck).toMatch(/not a new Mesh analysis/);
+    expect(savedMeshResultComparisonCsv(quality)).toContain('"metric.metrics.aspectRatio.avg"');
     const curvature = compare(oldCurvature.resultId, newCurvature.resultId);
     expect(curvature.compatible).toBe(true);
     expect(curvature.metrics.every(item => !item.path.startsWith("gaussian.") || item.path === "gaussian.count" || item.difference === null)).toBe(true);
@@ -57,6 +63,7 @@ describe("PC13 stored Mesh analysis comparison", () => {
     const versionEvidence = compareSavedMeshResults(versionProject, oldQuality.resultId, newQuality.resultId, item => resources.bytes(item));
     expect(versionEvidence.compatible).toBe(false);
     expect(versionEvidence.metrics.every(item => item.difference === null)).toBe(true);
+    expect(versionEvidence.publication.summary?.compatible).toBe(false);
   });
   it("refuses missing, altered, or unretained source generations and result tampering", () => {
     const { project, resources, oldQuality, newQuality } = fixture();

@@ -2,7 +2,9 @@ import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Math3DProject, ProjectSavedMeshComparison } from "@math3d/core";
 import type { ProjectResourceReader } from "../projects/projectResources";
-import { comparableSavedMeshResults, compareSavedMeshResults, savedMeshResultComparisonHtml } from "../projects/projectSavedMeshResultComparison";
+import { comparableSavedMeshResults, compareSavedMeshResults, savedMeshResultComparisonCsv,
+  savedMeshResultComparisonHtml } from "../projects/projectSavedMeshResultComparison";
+import { resultPublicationJson } from "../results/resultPublication";
 import { downloadStudyBlob } from "../projects/studyComparisonExport";
 import { compareSavedMeshTrendPoints, type SavedMeshTrendComparison } from "../projects/projectSavedMeshTrendPoint";
 import { inspectSavedMeshPinnedComparison } from "../projects/projectSavedMeshPinnedComparison";
@@ -35,13 +37,19 @@ export function ProjectSavedMeshResultComparisonView({ project, readResource, on
     if (!result) return `Missing saved result · ${id}`;
     return `${result.provenance.operation.type.replace("mesh.saved.", "")} · ${result.provenance.source.documentId} r${result.provenance.source.revision} · ${id.slice(-12)}`;
   };
-  const exportEvidence = () => {
+  const exportEvidence = (format: "html" | "json" | "csv" | "receipt" = "html") => {
     try {
       const checked = savedReference ? inspectSavedMeshPinnedComparison(project, savedReference, readResource) : trendSelection ? compareSavedMeshTrendPoints(project, trendSelection, readResource) :
         compareSavedMeshResults(project, aId, bId, readResource);
-      const observations = savedReference ? checkedProjectSavedMeshComparisonObservations(project, savedReference, readResource) : [];
-      downloadStudyBlob(new Blob([savedMeshResultComparisonHtml(checked, observations)], { type: "text/html" }), "math3d-saved-mesh-results-comparison.html");
-      setMessage("Verified stored-result report downloaded.");
+      const observations = format === "html" && savedReference ? checkedProjectSavedMeshComparisonObservations(project, savedReference, readResource) : [];
+      const content = format === "html" ? savedMeshResultComparisonHtml(checked, observations) :
+        format === "json" ? JSON.stringify(checked, null, 2) + "\n" :
+          format === "csv" ? savedMeshResultComparisonCsv(checked) :
+            resultPublicationJson(checked.publication);
+      downloadStudyBlob(new Blob([content], { type: format === "html" ? "text/html" :
+        format === "csv" ? "text/csv;charset=utf-8" : "application/json;charset=utf-8" }),
+        `math3d-saved-mesh-results-${format === "receipt" ? "publication" : "comparison"}.${format === "receipt" ? "json" : format}`);
+      setMessage("Verified stored-result evidence downloaded.");
     } catch (failure) { setMessage(`Export refused: ${(failure as Error).message}`); }
   };
   return createPortal(<div className="project-gallery-preview-backdrop" data-testid="project-mesh-result-comparison" style={{ zIndex: trendSelection ? 10001 : 10000 }}>
@@ -69,7 +77,10 @@ export function ProjectSavedMeshResultComparisonView({ project, readResource, on
         </div>
         <h3>Stored scalar metrics</h3><div style={{ overflowX: "auto" }}><table style={{ width: "100%" }}><thead><tr><th>Metric</th><th>A</th><th>B</th><th>Unit</th><th>B − A</th></tr></thead><tbody>{evidence.metrics.map(metric => <tr key={metric.path}><th>{metric.path}</th><td>{metric.a}</td><td>{metric.b}</td><td>{metric.unit ?? "unqualified"}</td><td>{metric.difference ?? metric.reason}</td></tr>)}</tbody></table></div>
         <p>{evidence.qualification}</p>
-        <button type="button" data-testid="project-mesh-result-export" onClick={exportEvidence}>Export checked HTML report</button>
+        <button type="button" data-testid="project-mesh-result-export" onClick={() => exportEvidence("html")}>Export checked HTML report</button>
+        <button type="button" data-testid="project-mesh-result-export-json" onClick={() => exportEvidence("json")}>Export evidence JSON</button>
+        <button type="button" data-testid="project-mesh-result-export-csv" onClick={() => exportEvidence("csv")}>Export evidence CSV</button>
+        <button type="button" data-testid="project-mesh-result-export-receipt" onClick={() => exportEvidence("receipt")}>Export common receipt JSON</button>
         {savedReference && <SavedMeshComparisonObservations project={project} pair={savedReference} readResource={readResource} onSave={onSaveObservation} />}
         {trendSelection && onSavePinned && !savedReference && <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
           <label>Comparison name <input data-testid="project-mesh-pinned-title" value={pinnedTitle} maxLength={160} onChange={event => setPinnedTitle(event.target.value)} /></label>

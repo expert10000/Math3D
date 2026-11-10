@@ -3,6 +3,7 @@ import { normalizeAnalysisResultEnvelope, readProjectCoordinateFrame, retainedMe
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { MeshResourceStore } from "../mesh/meshResourceStore";
 import { projectResourceInventory, type ProjectResourceReader } from "./projectResources";
+import { createResultPublication, resultEvidenceRowsCsv } from "../results/resultPublication";
 
 export const comparableSavedMeshResults = (project: Math3DProject) => project.workspace.results.filter(result =>
   result.provenance.operation.type === "mesh.saved.quality" || result.provenance.operation.type === "mesh.saved.curvature");
@@ -74,12 +75,45 @@ export function compareSavedMeshResults(project: Math3DProject, aId: string, bId
       difference: comparable ? valueB - item.value : null,
       reason: comparable ? null : !compatible ? reason : "Units are missing or differ for this metric." };
   });
+  const publication = createResultPublication({ module: "comparison",
+    resultId: `${a.result.resultId}|${b.result.resultId}`,
+    source: { id: `${a.source.identity.id}|${b.source.identity.id}`,
+      revision: null, generation: null, hash: null },
+    sourceStatus: "both saved Mesh generations and result envelopes verified",
+    status: "recorded", reason: compatible ?
+      "Both stored Mesh results are compatible for qualified scalar differences." :
+      reason ?? "Stored values remain source-local.",
+    recordedClaim: "Stored Mesh scalar summaries and unit-qualified B minus A differences.",
+    independentCheck: "Exact result envelopes and Mesh source bytes are verified; scalar differences are arithmetic on saved summaries, not a new Mesh analysis.",
+    summary: { compatible, metrics, a: { resultId: a.result.resultId, resultHash: a.resultHash,
+      sourceId: a.source.identity.id, sourceRevision: a.source.identity.revision,
+      sourceHash: a.source.identity.structuralHash, generation: a.generation },
+    b: { resultId: b.result.resultId, resultHash: b.resultHash,
+      sourceId: b.source.identity.id, sourceRevision: b.source.identity.revision,
+      sourceHash: b.source.identity.structuralHash, generation: b.generation } } });
   return { schemaVersion: 1 as const, projectId: project.identity.id, operation: ao.type, compatible, reason,
     a: { resultId: a.result.resultId, resultHash: a.resultHash, result: a.result, sourceId: a.source.identity.id,
       sourceRevision: a.source.identity.revision, sourceHash: a.source.identity.structuralHash, generation: a.generation, lengthUnit: a.lengthUnit },
     b: { resultId: b.result.resultId, resultHash: b.resultHash, result: b.result, sourceId: b.source.identity.id,
       sourceRevision: b.source.identity.revision, sourceHash: b.source.identity.structuralHash, generation: b.generation, lengthUnit: b.lengthUnit },
-    metrics, qualification: "Differences use stored scalar summaries only. Mesh vertices are not aligned or recomputed. Missing or incompatible units suppress differences." };
+    metrics, qualification: "Differences use stored scalar summaries only. Mesh vertices are not aligned or recomputed. Missing or incompatible units suppress differences.",
+    publication };
+}
+
+export function savedMeshResultComparisonCsv(evidence: ReturnType<typeof compareSavedMeshResults>): string {
+  return resultEvidenceRowsCsv([
+    ["projectId", evidence.projectId], ["publicationStatus", evidence.publication.assessment.status],
+    ["sourceStatus", evidence.publication.assessment.sourceStatus],
+    ["aResultId", evidence.a.resultId], ["aResultHash", evidence.a.resultHash],
+    ["aSourceId", evidence.a.sourceId], ["aSourceRevision", evidence.a.sourceRevision],
+    ["aSourceHash", evidence.a.sourceHash], ["bResultId", evidence.b.resultId],
+    ["bResultHash", evidence.b.resultHash], ["bSourceId", evidence.b.sourceId],
+    ["bSourceRevision", evidence.b.sourceRevision], ["bSourceHash", evidence.b.sourceHash],
+    ["compatible", evidence.compatible], ["reason", evidence.reason],
+    ["recordedClaim", evidence.publication.assessment.recordedClaim],
+    ["independentCheck", evidence.publication.assessment.independentCheck],
+    ...evidence.metrics.map(metric => [`metric.${metric.path}`, metric] as const),
+  ]);
 }
 
 export function savedMeshResultComparisonHtml(evidence: ReturnType<typeof compareSavedMeshResults>, observations: readonly {
