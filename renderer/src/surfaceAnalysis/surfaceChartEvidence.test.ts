@@ -3,7 +3,8 @@ import type { SurfaceAnalysisPayload, SurfaceChartPayload } from "./contracts";
 import { adaptSurfaceDefinition, createSurfaceAnalysisRegistry, createSurfaceAnalysisRequest,
   createSurfaceAnalysisResultStore, getSurfaceAnalysisResult, invalidateSurfaceAnalysisResult,
   publishSurfaceAnalysisResult } from "./infrastructure";
-import { createSurfaceChartEvidence, editSurfaceChartOverlay, serializeSurfaceChartEvidence } from "./surfaceChartEvidence";
+import { createSurfaceChartEvidence, editSurfaceChartOverlay, serializeSurfaceChartEvidence,
+  surfaceChartEvidenceCsv } from "./surfaceChartEvidence";
 import { presentSurfaceAnalysisResult } from "./surfaceResultPresentation";
 
 const definition = adaptSurfaceDefinition({ id: "torus", revision: 2, label: "Torus", representation: "parametric",
@@ -52,9 +53,20 @@ describe("Surface chart evidence", () => {
     const json = JSON.parse(serializeSurfaceChartEvidence(evidence));
     expect(json.chart.parameterCoordinates).toEqual([0, 0, 1, 1]);
     expect(json.chart.metricDeterminant).toEqual([1, 2]);
+    expect(json.publication).toMatchObject({ schema: "math3d.result-publication/v1",
+      module: "surface", source: { revision: 2, hash: definition.fingerprint },
+      assessment: { status: "recorded", sourceStatus: "current" } });
+    const csv = surfaceChartEvidenceCsv(evidence);
+    expect(csv).toContain('"sampleCount","2"');
+    expect(csv).not.toContain("parameterCoordinates");
     store = invalidateSurfaceAnalysisResult(store, definition.identity, "surface-definition", "default", 3);
     const historical = getSurfaceAnalysisResult<SurfaceAnalysisPayload>(store, definition.identity, "chart-diagnostics")!;
-    expect(createSurfaceChartEvidence({ definition, result: historical,
-      qualification: presentSurfaceAnalysisResult(definition, historical, store) }).source.fingerprint).toBeNull();
+    const withheld = createSurfaceChartEvidence({ definition, result: historical,
+      qualification: presentSurfaceAnalysisResult(definition, historical, store) });
+    expect(withheld.source.fingerprint).toBeNull();
+    expect(withheld.chart).toBeNull();
+    expect(withheld.publication.summary).toBeNull();
+    expect(serializeSurfaceChartEvidence(withheld)).not.toContain("parameterCoordinates");
+    expect(surfaceChartEvidenceCsv(withheld)).not.toContain('"sampleCount","2"');
   });
 });

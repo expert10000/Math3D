@@ -17,6 +17,8 @@ import type { SurfaceAnalysisExecutionState } from "../surfaceAnalysis/scheduler
 import { SURFACE_ANALYSIS_PRESETS, type SurfaceAnalysisPresetLayer } from "../surfaceAnalysis/presets";
 import { SurfaceAnalysisContractCard } from "./SurfaceAnalysisContractCard";
 import type { SurfaceLayerQualification } from "../surfaceAnalysis/surfaceLayerQualification";
+import type { ResultPublication } from "../results/resultPublication";
+import { ResultPublicationActions } from "../results/ResultPublicationActions";
 
 export type SurfaceComputationId =
   | "differential-geometry"
@@ -413,7 +415,8 @@ export function SurfaceAnalysisInspectorPanel({
     onSelectRegion: (region: "degenerate" | "nearDegenerate" | "orientationFlip") => void;
     onToggleOverlay: (kind: "boundary" | "seam" | "orientation-flip" | "degenerate") => void;
     onSave: () => void;
-    onExport: () => void;
+    onExport: (format: "json" | "csv") => void;
+    publication?: ResultPublication<unknown>;
     onRecompute: () => void;
   };
   derivedMeshInspection?: { record: DerivedSurfaceMeshRecord; payload: SurfaceDerivedMeshPayload | null };
@@ -537,7 +540,7 @@ function SurfaceDerivedMeshInspector({ record, payload }: NonNullable<Parameters
   </section>;
 }
 
-function SurfaceChartDiagnosticsInspector({ chart, focusedIndex, onSelectIndex, onSelectRegion, onToggleOverlay, onSave, onExport, onRecompute }: NonNullable<Parameters<typeof SurfaceAnalysisInspectorPanel>[0]["chartActions"]>) {
+function SurfaceChartDiagnosticsInspector({ chart, focusedIndex, onSelectIndex, onSelectRegion, onToggleOverlay, onSave, onExport, onRecompute, publication }: NonNullable<Parameters<typeof SurfaceAnalysisInspectorPanel>[0]["chartActions"]>) {
   const width = 220; const height = 130;
   const uSpan = Math.max(1e-12, chart.domain.u.max - chart.domain.u.min);
   const vSpan = Math.max(1e-12, chart.domain.v.max - chart.domain.v.min);
@@ -572,7 +575,11 @@ function SurfaceChartDiagnosticsInspector({ chart, focusedIndex, onSelectIndex, 
       <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
         {chart.overlays.map((overlay) => <button key={overlay.kind} type="button" aria-pressed={overlay.visible} onClick={() => onToggleOverlay(overlay.kind)}>{overlay.visible ? "Hide" : "Show"} {overlay.label}</button>)}
       </div>
-      <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}><button type="button" onClick={onSave}>Save</button><button type="button" onClick={onExport}>Export JSON</button><button type="button" onClick={onRecompute}>Recompute</button></div>
+      {publication && <ResultPublicationActions publication={publication} onExport={onExport}
+        jsonLabel="Export JSON" csvLabel="Export CSV" />}
+      <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}><button type="button" onClick={onSave}>Save</button>
+        {!publication && <button type="button" onClick={() => onExport("json")}>Export JSON</button>}
+        <button type="button" onClick={onRecompute}>Recompute</button></div>
     </section>
   );
 }

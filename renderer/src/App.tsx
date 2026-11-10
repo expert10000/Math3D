@@ -423,7 +423,8 @@ import { qualifySurfaceLayerResult } from "./surfaceAnalysis/surfaceLayerQualifi
 import { createSurfaceLayerEvidence } from "./surfaceAnalysis/surfaceLayerEvidence";
 import { editSurfaceLayerDisplay } from "./surfaceAnalysis/surfaceLayerDisplay";
 import { presentSurfaceAnalysisResult } from "./surfaceAnalysis/surfaceResultPresentation";
-import { createSurfaceChartEvidence, editSurfaceChartOverlay, serializeSurfaceChartEvidence } from "./surfaceAnalysis/surfaceChartEvidence";
+import { createSurfaceChartEvidence, editSurfaceChartOverlay, serializeSurfaceChartEvidence,
+  surfaceChartEvidenceCsv } from "./surfaceAnalysis/surfaceChartEvidence";
 import { createSurfaceChartDiagnostics, createSurfaceChartPayload, type SurfaceChartSample } from "./surfaceAnalysis/surfaceChartDiagnostics";
 import { getSurfaceAnalysisPreset } from "./surfaceAnalysis/presets";
 import {
@@ -51090,6 +51091,9 @@ case "mobius":
   const activeSurfaceChart = activeSurfaceChartPresentation.canUseCurrentValues && activeSurfaceChartResult?.payload?.data.kind === "chart"
     ? activeSurfaceChartResult.payload.data
     : null;
+  const activeSurfaceChartEvidence = activeSurfaceChart && activeSurfaceChartResult
+    ? createSurfaceChartEvidence({ definition: activeCanonicalSurfaceDefinition,
+      result: activeSurfaceChartResult, qualification: activeSurfaceChartPresentation }) : null;
   const selectSurfaceChartIndices = useCallback((indices: ArrayLike<number>) => {
     if (!surfaceSampleSet?.samples.length || !indices.length) return;
     const selected = new Uint8Array(surfaceSampleSet.samples.length);
@@ -51117,16 +51121,16 @@ case "mobius":
     const id = `saved:${identity.key}:chart-diagnostics`;
     setSurfaceAnalysisWorkspaceDocument((document) => ({ ...document, savedResults: [...document.savedResults.filter((entry) => entry.id !== id), { id, resultKey: `${identity.key}:chart-diagnostics:default`, kind: "chart-diagnostics", variant: "default", identity, label: `Chart diagnostics · ${identity.label}`, visible: true }] }));
   }, [activeCanonicalSurfaceDefinition.identity, activeSurfaceChartPresentation.canUseCurrentValues, activeSurfaceChartResult]);
-  const handleExportSurfaceChart = useCallback(() => {
-    if (!activeSurfaceChartResult || !activeSurfaceChartPresentation.canUseCurrentValues) return;
-    const evidence = createSurfaceChartEvidence({ definition: activeCanonicalSurfaceDefinition,
-      result: activeSurfaceChartResult, qualification: activeSurfaceChartPresentation });
-    const json = serializeSurfaceChartEvidence(evidence);
-    const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+  const handleExportSurfaceChart = useCallback((format: "json" | "csv") => {
+    if (!activeSurfaceChartEvidence || !activeSurfaceChartResult || !activeSurfaceChartPresentation.canUseCurrentValues) return;
+    const content = format === "json" ? serializeSurfaceChartEvidence(activeSurfaceChartEvidence)
+      : surfaceChartEvidenceCsv(activeSurfaceChartEvidence);
+    const url = URL.createObjectURL(new Blob([content],
+      { type: format === "json" ? "application/json" : "text/csv;charset=utf-8" }));
     const anchor = document.createElement("a"); anchor.href = url;
-    anchor.download = `surface-chart-r${activeSurfaceChartResult.identity.surfaceRevision}-v${activeSurfaceChartResult.resultVersion}.json`;
+    anchor.download = `surface-chart-r${activeSurfaceChartResult.identity.surfaceRevision}-v${activeSurfaceChartResult.resultVersion}.${format}`;
     anchor.click(); URL.revokeObjectURL(url);
-  }, [activeCanonicalSurfaceDefinition, activeSurfaceChartPresentation, activeSurfaceChartResult]);
+  }, [activeSurfaceChartEvidence, activeSurfaceChartPresentation.canUseCurrentValues, activeSurfaceChartResult]);
 
   const surfaceDerivedMeshCandidate = useMemo(() => {
     const chunk = surfaceViewerKind === "mesh" && surfaceMeshData
@@ -80200,6 +80204,7 @@ case "mobius":
                         onToggleOverlay: handleToggleSurfaceChartOverlay,
                         onSave: handleSaveSurfaceChart,
                         onExport: handleExportSurfaceChart,
+                        publication: activeSurfaceChartEvidence?.publication,
                         onRecompute: publishSurfaceChart,
                       } : undefined}
                       derivedMeshInspection={surfaceInspectDerivedMesh && activeSurfaceDerivedMeshRecord ? {
