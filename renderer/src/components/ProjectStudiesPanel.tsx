@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { inspectProjectNoteAnchor, inspectProjectStudyMembers, qualifyProjectQwzPair, qualifyProjectQwzQuadStudy,
-  type KernelWorkspaceModule, type Math3DProject, type ProjectQuantumSceneReference } from "@math3d/core";
+  type KernelWorkspaceModule, type Math3DProject, type ProjectQuantumSceneReference,
+  type StudyRecordV1 } from "@math3d/core";
 import type { VerifiedProjectResources } from "../projects/projectResources";
 import type { WorkbookStageId } from "@math3d/workbook";
 import { projectStudyWorkbookReferences } from "../projects/projectStudyReferences";
@@ -17,6 +18,7 @@ type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoi
   focusStudy?: Readonly<{ id: string; token: number }> | null;
   onCreate: (title: string, ids: readonly string[]) => void; onRename: (id: string, title: string) => void;
   onFork: (id: string, title: string) => void; onLink: (id: string) => void;
+  onConfigure: (id: string, description: string, mode: StudyRecordV1["layout"]["mode"], paneIds: readonly string[]) => void;
   onCreateQwz: (quantumStudyId: string) => void;
   onPinQwz: (studyId: string, sampleIndex: number) => void;
   onUnpinQwz: (studyId: string) => void;
@@ -28,7 +30,7 @@ type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoi
   onOpenDocument: (id: string, module: KernelWorkspaceModule) => void }>;
 
 /** A Study is a saved layout of references; opening a pane delegates to its owning document. */
-export function ProjectStudiesPanel({ project, documents, editable, resources, focusStudy, onCreate, onRename, onFork,
+export function ProjectStudiesPanel({ project, documents, editable, resources, focusStudy, onCreate, onRename, onFork, onConfigure,
   onLink, onCreateQwz, onPinQwz, onUnpinQwz, workbookBytes, onOpenWorkbookBlock,
   onCapturePinnedNote, onOpenNote,
   onOpenQuantumSource, onOpenDocument }: Props) {
@@ -36,13 +38,18 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
   const [title, setTitle] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [layoutMode, setLayoutMode] = useState<StudyRecordV1["layout"]["mode"]>("single");
+  const [paneOrder, setPaneOrder] = useState<string[]>([]);
   const [visiblePaneId, setVisiblePaneId] = useState<string | null>(null);
   const viewRef = useRef<HTMLDivElement>(null);
   const studies = project.workspace.studies ?? [];
   useEffect(() => {
     const study = studies.find(item => item.id === focusStudy?.id);
     if (!study) return;
-    setOpenId(study.id); setEditTitle(study.title); setVisiblePaneId(null);
+    setOpenId(study.id); setEditTitle(study.title); setDescription(study.description ?? "");
+    setLayoutMode(study.layout.mode); setPaneOrder(study.layout.panes.map(pane => pane.paneId));
+    setVisiblePaneId(null);
     window.requestAnimationFrame(() => viewRef.current?.scrollIntoView({ block: "nearest" }));
   }, [focusStudy?.token, project.identity.id]);
   const open = studies.find(study => study.id === openId) ?? null;
@@ -79,7 +86,9 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
         Create four-view QWZ Study from {item.title}</button>)}
     <ul>{studies.map(study => <li key={study.id}>
       <button type="button" data-testid={`project-study-open-${study.id}`} onClick={() => {
-        setOpenId(study.id); setEditTitle(study.title); setVisiblePaneId(null);
+        setOpenId(study.id); setEditTitle(study.title); setDescription(study.description ?? "");
+        setLayoutMode(study.layout.mode); setPaneOrder(study.layout.panes.map(pane => pane.paneId));
+        setVisiblePaneId(null);
       }}>{study.title}</button> · {study.layout.mode} · {study.members.length} members
     </li>)}</ul>
     {open && <div ref={viewRef} data-testid="project-study-view" data-study-id={open.id}>
@@ -89,6 +98,26 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
         <button type="button" data-testid="project-study-rename" disabled={!editTitle.trim()}
           onClick={() => onRename(open.id, editTitle.trim())}>Rename</button>
         <button type="button" data-testid="project-study-fork" onClick={() => onFork(open.id, `${open.title} copy`)}>Fork</button></div>}
+      {editable && <fieldset data-testid="project-study-configuration"><legend>Study layout and question</legend>
+        <label>Question <textarea aria-label="Study question" maxLength={2000} value={description}
+          onChange={event => setDescription(event.target.value)} /></label>
+        <label>Layout <select aria-label="Study layout" value={layoutMode}
+          onChange={event => setLayoutMode(event.target.value as StudyRecordV1["layout"]["mode"])}>
+          {open.layout.panes.length === 1 && <option value="single">Single</option>}
+          {open.layout.panes.length === 2 && <option value="split-2">Split</option>}
+          {open.layout.panes.length === 4 && <option value="quad">Quad</option>}
+          <option value="tabs">Tabs</option>
+        </select></label>
+        <ol>{paneOrder.map((id, index) => <li key={id}>{id}{index > 0 && <button type="button"
+          aria-label={`Move ${id} earlier`} onClick={() => setPaneOrder(current => {
+            const next = [...current]; [next[index - 1], next[index]] = [next[index]!, next[index - 1]!]; return next;
+          })}>↑</button>}{index < paneOrder.length - 1 && <button type="button"
+          aria-label={`Move ${id} later`} onClick={() => setPaneOrder(current => {
+            const next = [...current]; [next[index], next[index + 1]] = [next[index + 1]!, next[index]!]; return next;
+          })}>↓</button>}</li>)}</ol>
+        <button type="button" data-testid="project-study-save-configuration" onClick={() =>
+          onConfigure(open.id, description, layoutMode, paneOrder)}>Save Study layout</button>
+      </fieldset>}
       {graphCurvePair && !graphCurveLinked && editable && <button type="button" data-testid="project-study-link-graph-curve"
         onClick={() => onLink(open.id)}>Link promoted Graph and Curve</button>}
       {graphCurvePair && graphCurveLinked && <StudyGraphCurveControl project={project} pair={graphCurvePair} studyId={open.id} />}
@@ -135,9 +164,9 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
           return <div key={pane.paneId} data-testid={`project-study-pane-${pane.paneId}`} style={{ border: "1px solid #cbd5e1", padding: 8, minWidth: 0, overflow: "hidden" }}>
             <strong>{choice?.title ?? member.documentId}</strong><p>{member.role} · {statusLabel[status]} · saved r{member.expected.revision}</p>
             {quantumDocument ? <button type="button" data-testid={`project-study-open-source-${pane.paneId}`}
-              disabled={!quantumReference || !onOpenQuantumSource}
+              disabled={status === "changed" || !quantumReference || !onOpenQuantumSource}
               onClick={() => { if (quantumReference) void onOpenQuantumSource?.(quantumReference); }}>
-              Verify and view source scene</button> : <button type="button" disabled={!workspaceEntry}
+              Verify and view source scene</button> : <button type="button" disabled={!workspaceEntry || status === "changed"}
               onClick={() => { if (workspaceEntry) onOpenDocument(member.documentId, workspaceEntry.module); }}>Open source document</button>}
             <button type="button" data-testid={`project-study-preview-toggle-${pane.paneId}`}
               onClick={() => setVisiblePaneId(current => current === pane.paneId ? null : pane.paneId)}>

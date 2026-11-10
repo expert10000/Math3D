@@ -61,6 +61,21 @@ export function renameProjectStudy(project: Math3DProject, id: string, title: st
   return upsertProjectStudy(source, { ...study, title });
 }
 
+/** Change presentation without replacing any member, source pin, or pane identity. */
+export function configureProjectStudy(project: Math3DProject, id: string, input: Readonly<{
+  description: string; mode: StudyRecordV1["layout"]["mode"]; paneIds: readonly string[];
+}>): Math3DProject {
+  const source = current(project), study = source.workspace.studies?.find(item => item.id === id);
+  if (!study) throw new TypeError("Study is unavailable.");
+  const original = study.layout.panes;
+  if (input.paneIds.length !== original.length || new Set(input.paneIds).size !== original.length ||
+      input.paneIds.some(paneId => !original.some(pane => pane.paneId === paneId)))
+    throw new TypeError("Study layout must retain every saved pane exactly once.");
+  const panes = input.paneIds.map(paneId => original.find(pane => pane.paneId === paneId)!);
+  return upsertProjectStudy(source, { ...study, description: input.description,
+    layout: { mode: input.mode, panes } });
+}
+
 export function forkProjectStudy(project: Math3DProject, id: string, stableKey: CanonicalJsonValue,
   title: string): Math3DProject {
   const source = current(project), study = source.workspace.studies?.find(item => item.id === id);

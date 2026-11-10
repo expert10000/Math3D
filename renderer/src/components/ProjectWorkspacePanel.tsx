@@ -12,7 +12,7 @@ import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, 
   relinkMath3DProjectScientificScene, upsertMath3DProjectScientificScene, type ProjectScientificSceneReference,
   upsertMath3DProjectComposition, upsertMath3DProjectSavedMeshComparison, inspectProjectCompositionAvailability,
   migrateProjectScientificSelections,
-  createProjectStudyFromDocuments, renameProjectStudy, forkProjectStudy,
+  createProjectStudyFromDocuments, renameProjectStudy, forkProjectStudy, configureProjectStudy,
   createProjectQwzQuadStudy, pinProjectQwzSample, unpinProjectQwzSample, qualifyProjectQwzPair,
   type ProjectComposition, type ProjectSavedMeshComparison,
   type ProjectNote,
@@ -2040,6 +2040,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               onRename={(id, studyTitle) => stageStudy(source => renameProjectStudy(source, id, studyTitle), "Study renamed.")}
               onFork={(id, studyTitle) => stageStudy(source => forkProjectStudy(source, id,
                 crypto.randomUUID(), studyTitle), "Study forked.")}
+              onConfigure={(id, description, mode, paneIds) => stageStudy(source =>
+                configureProjectStudy(source, id, { description, mode, paneIds }), "Study layout staged. Save Project to keep it.")}
               onLink={id => stageStudy(source => addQualifiedStudyGraphCurveLink(source, id), "Graph–Curve parameter link added.")}
               onCreateQwz={id => { void stageQwzQuadStudy(id); }}
               onPinQwz={(id, sampleIndex) => stageStudy(source => pinProjectQwzSample(source, id, sampleIndex),

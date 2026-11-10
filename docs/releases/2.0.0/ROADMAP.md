@@ -938,6 +938,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **QWZ evidence export (2026-11-08):** The pin can be replaced or removed while unrelated Study selections remain intact. A QWZ Study can export a deterministic JSON evidence snapshot after independently reopening both scene bundles and verifying the exact band sample, curvature target and reciprocal projection. The snapshot records source fingerprints, run/result identity, producer invariants, values and projection offset without copying scene arrays. If a pin is absent or source bytes change, it exports an explicit omissions manifest with quantitative fields withheld. The desktop test covers verified and tampered exports after cold restart; broader Workbook publication and additional Study mappings remain open.
 
+**Editable Study presentation (2026-11-10):** A Project-owned Study can now save its question, compatible layout mode, and pane order while retaining every participant, pinned generation, link, and pane ID. Reopening the Project restores that configuration. A changed member remains visible as a placeholder and its source-navigation action is disabled until the saved generation is available; preview replay still verifies exact bytes on demand. This extends the existing bounded Study record and does not imply that every module has a linked viewer or that the three flagship journeys have passed acceptance.
+
 **Exit:** QWZ quad Study saves, cold-reopens and round-trips without copying source ownership or triggering unauthorized recomputation.
 
 ### M3D20-05 — Result Cards and Inspector convergence (P0)
