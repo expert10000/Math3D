@@ -37,6 +37,8 @@ import { type MeshDifferentialGeometrySummary } from "./mesh/meshDifferentialGeo
 import { SURFACE_FEATURE_CLASSES, SURFACE_FEATURE_LABELS, type SurfaceFeatureClass, type SurfaceFeatureExtractionResult } from "./mesh/surfaceFeatureExtraction";
 import { type MeshActiveAnalysisResultSummary } from "./mesh/activeAnalysisResult";
 import type { MeshResultEvidencePresentation } from "./mesh/meshResultPresentation";
+import type { MeshActiveResultEvidence } from "./mesh/meshActiveResultEvidence";
+import { ResultPublicationActions } from "./results/ResultPublicationActions";
 import type { MeshResultQualification } from "./mesh/meshResultQualification";
 import { buildMeshBenchmarkVerificationRows, meshBenchmarkVerificationPasses, type MeshBenchmarkVerificationRow } from "./mesh/meshBenchmarkVerification";
 import { type MeshQualityReport, type MeshQualityReportPhase } from "./mesh/meshQualityReport";
@@ -9658,6 +9660,7 @@ export type SurfacesRightPanelProps = {
   surfaceMeshLabel: string;
   meshActiveAnalysisResult: MeshActiveAnalysisResultSummary;
   meshActiveAnalysisEvidence: MeshResultEvidencePresentation;
+  meshActiveResultPublication?: MeshActiveResultEvidence["publication"];
   onExportMeshActiveResultEvidence?: () => void;
   onExportMeshActiveResultSummaryCsv?: () => void;
   meshAnalysisComputationHistory: MeshAnalysisComputationRecord[];
@@ -9946,6 +9949,7 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   surfaceMeshLabel,
   meshActiveAnalysisResult,
   meshActiveAnalysisEvidence,
+  meshActiveResultPublication,
   onExportMeshActiveResultEvidence,
   onExportMeshActiveResultSummaryCsv,
   meshAnalysisComputationHistory,
@@ -12232,10 +12236,16 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                   <div><strong>Independent check:</strong> {meshActiveAnalysisEvidence.independentCheck}</div>
                   <div><strong>Recorded source:</strong> {meshActiveAnalysisEvidence.source}</div>
                 </div>
-                <button type="button" data-testid="mesh-analysis-export-evidence" disabled={!onExportMeshActiveResultEvidence}
-                  onClick={onExportMeshActiveResultEvidence} style={{ justifySelf: "start", marginBottom: 6 }}>Export JSON evidence</button>
-                <button type="button" data-testid="mesh-analysis-export-summary-csv" disabled={!onExportMeshActiveResultSummaryCsv}
-                  onClick={onExportMeshActiveResultSummaryCsv} style={{ justifySelf: "start", marginBottom: 6 }}>Export summary CSV</button>
+                {meshActiveResultPublication && onExportMeshActiveResultEvidence && onExportMeshActiveResultSummaryCsv ?
+                  <ResultPublicationActions publication={meshActiveResultPublication}
+                    onExport={format => format === "json" ? onExportMeshActiveResultEvidence() : onExportMeshActiveResultSummaryCsv()}
+                    jsonTestId="mesh-analysis-export-evidence" csvTestId="mesh-analysis-export-summary-csv"
+                    jsonLabel="Export JSON evidence" csvLabel="Export summary CSV" /> : <>
+                    <button type="button" data-testid="mesh-analysis-export-evidence" disabled={!onExportMeshActiveResultEvidence}
+                      onClick={onExportMeshActiveResultEvidence} style={{ justifySelf: "start", marginBottom: 6 }}>Export JSON evidence</button>
+                    <button type="button" data-testid="mesh-analysis-export-summary-csv" disabled={!onExportMeshActiveResultSummaryCsv}
+                      onClick={onExportMeshActiveResultSummaryCsv} style={{ justifySelf: "start", marginBottom: 6 }}>Export summary CSV</button>
+                  </>}
                 <button type="button" data-testid="mesh-analysis-open-history" disabled={!meshActiveResultHistoryId}
                   onClick={() => { setSelectedAnalysisComputationId(meshActiveResultHistoryId); setInspectorPanelTab("history"); }}
                   style={{ justifySelf: "start", marginBottom: 6 }}>Inspect recorded run</button>

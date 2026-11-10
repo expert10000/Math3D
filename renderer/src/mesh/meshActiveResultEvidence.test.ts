@@ -30,6 +30,10 @@ describe("Mesh active result evidence", () => {
       qualification: { status: "current" },
       summary: { unit: "mesh units^2", statistics: [{ label: "Mean", value: "0.5000" }] } });
     expect(evidence?.qualification.independentCheck).toMatch(/does not independently prove/);
+    expect(evidence?.publication).toMatchObject({ schema: "math3d.result-publication/v1",
+      module: "mesh", source: { id: "sample@v4:f2", hash: null },
+      assessment: { status: "recorded", sourceStatus: "current" },
+      summary: { statistics: [{ label: "Mean", value: "0.5000" }] } });
     expect(JSON.parse(JSON.stringify(evidence)).result.parameterHash).toBe('{"threshold":8}');
     const csv = meshActiveResultSummaryCsv(evidence!);
     expect(csv).toContain("qualification,Status,current,");
@@ -49,6 +53,7 @@ describe("Mesh active result evidence", () => {
     expect(evidence?.qualification.status).toBe("historical");
     expect(evidence?.summary.statistics).toEqual([]);
     expect(evidence?.result?.variant).toBe("threshold-8");
+    expect(evidence?.publication.summary).toBeNull();
     const csv = meshActiveResultSummaryCsv(evidence!);
     expect(csv).toContain("qualification,Status,historical,");
     expect(csv).not.toContain("statistics,Mean");
@@ -76,6 +81,7 @@ describe("Mesh active result evidence", () => {
       qualification: { status: "unavailable", reason: "No record", canUseCurrentValues: false } });
     const evidence = createMeshActiveResultEvidence({ mesh: { ...mesh, label: '=RUN("x"), unsafe' },
       result: null, summary: presented.summary, presentation: presented.evidence });
+    expect(evidence?.publication.assessment).toMatchObject({ status: "recorded", sourceStatus: "session-local" });
     expect(meshActiveResultSummaryCsv(evidence!)).toContain('source,Label,"\'=RUN(""x""), unsafe",');
   });
 });

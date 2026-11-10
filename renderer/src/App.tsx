@@ -80223,6 +80223,7 @@ case "mobius":
                       surfaceMeshLabel={surfaceMeshLabel}
                       meshActiveAnalysisResult={meshActiveAnalysisResult}
                       meshActiveAnalysisEvidence={meshActiveAnalysisPresentation.evidence}
+                      meshActiveResultPublication={meshActiveResultEvidence?.publication}
                       onExportMeshActiveResultEvidence={meshActiveResultEvidence ? handleExportMeshActiveResultEvidence : undefined}
                       onExportMeshActiveResultSummaryCsv={meshActiveResultEvidence ? handleExportMeshActiveResultSummaryCsv : undefined}
                       meshAnalysisComputationHistory={meshAnalysisComputationHistory}

@@ -1,6 +1,7 @@
 import type { MeshActiveAnalysisResultSummary } from "./activeAnalysisResult";
 import type { MeshAnalysisMeshIdentity, MeshAnalysisResult } from "./analysisResultStore";
 import type { MeshResultEvidencePresentation } from "./meshResultPresentation";
+import { createResultPublication } from "../results/resultPublication";
 
 /** A portable snapshot of the Inspector summary, without claiming independent certification. */
 export const createMeshActiveResultEvidence = (input: {
@@ -17,6 +18,18 @@ export const createMeshActiveResultEvidence = (input: {
   if (presentation.status !== "current" && presentation.status !== "session-local" &&
       (summary.statistics.length || summary.percentiles.length || summary.extrema?.length || summary.histogram?.length || summary.display || summary.probe))
     throw new TypeError("Noncurrent Mesh evidence cannot contain numerical values.");
+  const boundedSummary = { category: summary.category, quantity: summary.quantity, state: summary.state,
+    method: summary.method, domain: summary.domain, unit: summary.field?.unit ?? null,
+    statistics: summary.statistics, percentiles: summary.percentiles,
+    extrema: summary.extrema ?? [], histogram: summary.histogram ?? [],
+    warnings: summary.warnings, provenance: summary.provenance };
+  const publication = createResultPublication({ module: "mesh",
+    resultId: result ? `${mesh.key}:${result.kind}:${result.variant}:v${result.resultVersion}` : `${mesh.key}:session-local`,
+    source: { id: mesh.key, revision: null, generation: null, hash: null },
+    sourceStatus: presentation.status,
+    status: presentation.status === "current" || presentation.status === "session-local" ? "recorded" : "withheld",
+    reason: presentation.reason, recordedClaim: presentation.claim,
+    independentCheck: presentation.independentCheck, summary: boundedSummary });
   return {
     format: "math3d.mesh-active-result-evidence/v1" as const,
     source: { meshId: mesh.meshId, revision: mesh.revision, sourceLabel: mesh.sourceLabel,
@@ -27,11 +40,8 @@ export const createMeshActiveResultEvidence = (input: {
       updatedAt: result.updatedAt } : null,
     qualification: { status: presentation.status, reason: presentation.reason,
       mathematicalClaim: presentation.claim, independentCheck: presentation.independentCheck },
-    summary: { category: summary.category, quantity: summary.quantity, state: summary.state,
-      method: summary.method, domain: summary.domain, unit: summary.field?.unit ?? null,
-      statistics: summary.statistics, percentiles: summary.percentiles,
-      extrema: summary.extrema ?? [], histogram: summary.histogram ?? [],
-      warnings: summary.warnings, provenance: summary.provenance },
+    summary: boundedSummary,
+    publication,
   };
 };
 
@@ -63,6 +73,7 @@ export const meshActiveResultSummaryCsv = (evidence: MeshActiveResultEvidence): 
   add("qualification", "Reason", evidence.qualification.reason);
   add("qualification", "Mathematical claim", evidence.qualification.mathematicalClaim);
   add("qualification", "Independent check", evidence.qualification.independentCheck);
+  add("qualification", "Publication status", evidence.publication.assessment.status);
   add("summary", "Quantity", evidence.summary.quantity);
   add("summary", "State", evidence.summary.state);
   add("summary", "Method", evidence.summary.method);
