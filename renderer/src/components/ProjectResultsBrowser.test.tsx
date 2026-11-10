@@ -17,7 +17,11 @@ const result = createAnalysisResultEnvelope({ resultId: "result-browser-evidence
 const render = (generation = source, status: AnalysisResultStatus = "numerical") => {
   const project = { ...base, workspace: { ...base.workspace, results: [
     { ...result, status, provenance: { ...result.provenance, source: generation } }] } };
-  return renderToStaticMarkup(<ProjectResultsBrowser project={project} inspection={null}
+  const inspection = { results: [{ id: result.resultId,
+    sourceFreshness: generation.generation === source.generation ? "current" : "stale",
+    freshness: generation.generation === source.generation ? "current" : "stale",
+    missingArtifactIds: [] }], artifacts: [] } as unknown as ProjectDependencyInspection;
+  return renderToStaticMarkup(<ProjectResultsBrowser project={project} inspection={inspection}
     titles={new Map([[source.documentId, "Saved Graph"]])} canOpen={() => true}
     onOpen={() => {}} />);
 };
@@ -31,12 +35,15 @@ describe("Project saved result presentation", () => {
     expect(html).toContain("Source document");
     expect(html).toContain("Saved Graph</button>");
     expect(html).toContain("<code>m</code>");
+    expect(html).toContain('data-summary="recorded"');
   });
 
   it("shows a historical source without a misleading current-document button", () => {
     const html = render({ ...source, generation: source.generation + 1 });
     expect(html).toContain("historical source generation");
     expect(html).not.toContain("Saved Graph</button>");
+    expect(html).not.toContain("<code>m</code>");
+    expect(html).toContain('data-summary="withheld"');
   });
 
   it("withholds summary values for an operation without a completed result", () => {

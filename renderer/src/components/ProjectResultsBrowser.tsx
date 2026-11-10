@@ -122,6 +122,7 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
     savedMeshChecked: Boolean(meshVerification?.checked),
     canCreateReport: Boolean(onCreateScientificReport),
     canExportReport: Boolean(onExportScientificReport),
+    regionStatus: regionResultStatuses[result.resultId],
   }) : null;
   const artifactStatus = artifact && inspection?.artifacts.find(item => item.id === artifact.handle.artifactId);
   const linkedResults = artifact ? results.filter(item => item.artifacts.some(handle => handle.artifactId === artifact.handle.artifactId)) : [];
@@ -250,7 +251,8 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
                 VECTOR_FIELD3D_COMBINED_SUBRECTANGLE_RESULT_TYPE &&
                 <p>Selected subrectangle bounds: <code>{readable(
                   result.provenance.operation.parameters.bounds)}</code>; {
-                  String(result.summary.sampleCount)} lattice positions.</p>}
+                  resultActions?.summary === "recorded" ? `${String(result.summary.sampleCount)} lattice positions.` :
+                    "lattice count withheld."}</p>}
               {(["vector", "scalar", "complexMagnitude", "complexPhase",
                 ...(["17x17-v3", "17x17-v4"].includes(
                   result.provenance.operation.algorithmVersion) ||
@@ -277,7 +279,8 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
                         result.summary.curlMagnitudeUnit : result.summary.complexUnit;
                 return <p key={key} data-testid={`project-combined-${key}`}>
                   {key === "curlMagnitude" ? "curl magnitude" : key} ({String(unit)}): {
-                    source === "source-current" ?
+                    source === "source-current" && resultStatus?.sourceFreshness === "current" &&
+                      resultStatus.freshness === "current" ?
                     <code>{readable(result.summary[key])}</code> :
                     <>values withheld ({source})</>}
                 </p>;
@@ -290,7 +293,8 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
               {result.provenance.operation.type === VECTOR_FIELD3D_DERIVED_SUBRECTANGLE_RESULT_TYPE &&
                 <p>Selected subrectangle bounds: <code>{readable(
                   result.provenance.operation.parameters.bounds)}</code>; {
-                  String(result.summary.sampleCount)} lattice positions.</p>}
+                  resultActions?.summary === "recorded" ? `${String(result.summary.sampleCount)} lattice positions.` :
+                    "lattice count withheld."}</p>}
               {(["vector", "divergence", "curlMagnitude"] as const).map(key => {
                 const state = regionResultStatuses[result.resultId];
                 const source = typeof state === "object" && state.kind === "vector-derived" ?
@@ -300,7 +304,8 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
                     result.summary.curlMagnitudeUnit;
                 return <p key={key} data-testid={`project-vector-derived-${key}`}>
                   {key === "curlMagnitude" ? "curl magnitude" : key} ({String(unit)}): {
-                    source === "source-current" ? <code>{readable(result.summary[key])}</code> :
+                    source === "source-current" && resultStatus?.sourceFreshness === "current" &&
+                      resultStatus.freshness === "current" ? <code>{readable(result.summary[key])}</code> :
                       <>values withheld ({typeof source === "string" ? source : "checking"})</>}
                 </p>;
               })}
@@ -308,7 +313,8 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
           (result.provenance.operation.type === VECTOR_FIELD3D_REGION_RESULT_TYPE ||
             result.provenance.operation.type === VECTOR_FIELD3D_TRAJECTORY_RESULT_TYPE ||
             result.provenance.operation.type === VECTOR_FIELD3D_EQUILIBRIUM_RESULT_TYPE) &&
-            regionResultStatuses[result.resultId] !== "source-current" ?
+            (regionResultStatuses[result.resultId] !== "source-current" ||
+              resultActions?.summary !== "recorded") ?
             <p data-testid="project-region-result-gated">Saved analysis values are withheld.
               {regionResultStatuses[result.resultId] === "missing" ? " A source is missing." :
                 regionResultStatuses[result.resultId] === "changed" ? " A source has changed." :
@@ -316,6 +322,8 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
           result.provenance.operation.type === VECTOR_FIELD3D_POINT_RESULT_TYPE ?
             <p data-testid="project-point-result-gated">Saved point values require fresh verification.
               Open the source in Field Explorer and choose “Reverify saved Inspector result” to view them.</p> :
+          resultActions?.summary !== "recorded" ?
+            <p data-testid="project-result-values-withheld">Saved result values are withheld. {resultActions?.reason}</p> :
             Object.keys(result.summary).length ? <dl>{Object.entries(result.summary).map(([key, value]) => <div key={key}><dt>{key}</dt><dd><code>{readable(value)}</code></dd></div>)}</dl> : <p>No summary values recorded.</p>}
           {result.artifacts.length > 0 && <><h5>Artifacts</h5><div className="project-results-links">{result.artifacts.map(handle => <button type="button" key={handle.artifactId}
             onClick={() => select({ kind: "artifact", id: handle.artifactId })}>{handle.role} · {handle.kind}</button>)}</div></>}

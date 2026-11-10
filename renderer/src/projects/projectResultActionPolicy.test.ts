@@ -48,4 +48,16 @@ describe("Project result action policy", () => {
       expect(policy.openCurrentSource).toBe(false);
     }
   });
+
+  it("allows only individually reverified components of a mixed Field result", () => {
+    const regionStatus = { kind: "vector-derived" as const, vector: "source-current" as const,
+      divergence: "changed" as const, curlMagnitude: "checking" as const };
+    const card = presentProjectResultCard(result, dependency, regionStatus, true);
+    const policy = projectResultActionPolicy({ card, regionStatus,
+      verification: presentProjectResultVerification({ kind: "field", sourceCurrent: false }),
+      sourceLink: link, canCreateReport: true, canExportReport: true });
+    expect(policy).toMatchObject({ summary: "partial", createVerifiedReport: false,
+      exportVerifiedReport: false });
+    expect(policy.reason).toContain("aggregate evidence export omits summary values");
+  });
 });
