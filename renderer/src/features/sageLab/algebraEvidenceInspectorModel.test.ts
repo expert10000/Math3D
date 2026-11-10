@@ -9,7 +9,8 @@ import { addMath3DProjectAlgebraEvidence, buildAlgebraOperationRequest, createAl
   type AlgebraObjectDefinition, type Math3DProject } from "@math3d/core";
 import { algebraEvidenceInspectorModel } from "./algebraEvidenceInspectorModel";
 import { qualifyAlgebraEvidence } from "./algebraEvidenceQualification";
-import { algebraEvidenceInspectorExportJson } from "./algebraEvidenceInspectorExport";
+import { algebraEvidenceInspectorExportCsv, algebraEvidenceInspectorExportJson,
+  algebraEvidencePublication } from "./algebraEvidenceInspectorExport";
 import SageAlgebraEvidenceInspector from "./SageAlgebraEvidenceInspector";
 
 const empty = () => createMath3DProject(createMixedWorkspaceDocument({ entries: [], activeDocumentIds: [],
@@ -40,6 +41,11 @@ describe("SAGE-B06 saved algebra evidence Inspector", () => {
       verification: { mode: "CHECKED" }, result: { value: "6" },
       source: { definitionHash: record.contentHash } });
     expect(report.checkScope).toMatch(/not a mathematical proof/);
+    expect(report.publication).toMatchObject({ schema: "math3d.result-publication/v1",
+      module: "cas", source: { revision: 1, hash: record.contentHash },
+      assessment: { status: "recorded", sourceStatus: "current" },
+      summary: { result: { value: "6" } } });
+    expect(algebraEvidenceInspectorExportCsv(saved, evidence)).toContain('"result","{""value"":""6""}"');
     const currentMarkup = renderToStaticMarkup(createElement(SageAlgebraEvidenceInspector,
       { model: algebraEvidenceInspectorModel(saved, evidence), section: "result", onExport: () => {} }));
     expect(currentMarkup).toContain("Export evidence JSON");
@@ -49,6 +55,8 @@ describe("SAGE-B06 saved algebra evidence Inspector", () => {
       status: "historical", canUseResult: true, canDerive: false });
     expect(JSON.parse(algebraEvidenceInspectorExportJson(revised, evidence)).qualification)
       .toMatchObject({ status: "historical", canDerive: false });
+    expect(algebraEvidencePublication(revised, evidence).assessment).toMatchObject({
+      status: "recorded", sourceStatus: "historical" });
     expect(qualifyAlgebraEvidence(saved, { ...evidence,
       resultHash: "sha256:" + "0".repeat(64) })).toMatchObject({
       status: "invalid", canUseResult: false, canDerive: false });
@@ -65,6 +73,10 @@ describe("SAGE-B06 saved algebra evidence Inspector", () => {
     expect(invalidMarkup).not.toContain("Greatest common divisor</dt>");
     expect(invalidMarkup).not.toContain("Export evidence JSON");
     expect(() => algebraEvidenceInspectorExportJson(saved, { ...evidence,
+      resultHash: "sha256:" + "0".repeat(64) })).toThrow(/withheld/);
+    expect(algebraEvidencePublication(saved, { ...evidence,
+      resultHash: "sha256:" + "0".repeat(64) }).summary).toBeNull();
+    expect(() => algebraEvidenceInspectorExportCsv(saved, { ...evidence,
       resultHash: "sha256:" + "0".repeat(64) })).toThrow(/withheld/);
     const historical = algebraEvidenceInspectorModel(revised, evidence);
     expect(historical.qualification.status).toBe("historical");

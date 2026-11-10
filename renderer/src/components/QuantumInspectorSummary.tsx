@@ -1,6 +1,7 @@
 import React, { useRef, useState } from "react";
 import { quantumInspectorEvidence, type QuantumInspectorEvidence,
-  type QuantumInspectorSourceStatus } from "./quantumInspectorEvidence";
+  quantumInspectorPublication, type QuantumInspectorSourceStatus } from "./quantumInspectorEvidence";
+import { ResultPublicationActions } from "../results/ResultPublicationActions";
 import "./quantumSceneInspector.css";
 
 export const QUANTUM_INSPECTOR_TABS = ["View", "Data", "Science", "Provenance"] as const;
@@ -27,7 +28,7 @@ export function QuantumInspectorSummary({ data, sourceStatus, onInspectSource, o
   evidenceStatus, onExportSupport, supportStatus }: {
   data: QuantumInspectorSummaryData; sourceStatus: QuantumInspectorSourceStatus;
   onInspectSource?: () => void | Promise<unknown>;
-  onExportEvidence?: (evidence: QuantumInspectorEvidence) => void | Promise<void>;
+  onExportEvidence?: (evidence: QuantumInspectorEvidence, format: "json" | "csv" | "receipt") => void | Promise<void>;
   evidenceStatus?: string;
   onExportSupport: () => void | Promise<void>; supportStatus?: string }) {
   const [active, setActive] = useState<QuantumInspectorTab>("View");
@@ -78,8 +79,11 @@ export function QuantumInspectorSummary({ data, sourceStatus, onInspectSource, o
         <dt>Run ID</dt><dd><code>{data.provenance.runId}</code></dd>
         <dt>Result SHA-256</dt><dd><code>{data.provenance.resultSha256}</code></dd>
         <dt>Scene fingerprint</dt><dd><code>{data.provenance.fingerprint}</code></dd></dl>
-        {onExportEvidence && <button type="button" disabled={!current}
-          onClick={() => void onExportEvidence(evidence)}>Download Inspector evidence JSON</button>}
+        {onExportEvidence && <ResultPublicationActions publication={quantumInspectorPublication(evidence)}
+          exportDisabled={!current} jsonLabel="Download Inspector evidence JSON"
+          csvLabel="Download Inspector evidence CSV"
+          onExport={format => void onExportEvidence(evidence, format)}
+          onExportReceipt={() => void onExportEvidence(evidence, "receipt")} />}
         {evidenceStatus && <p role={evidenceStatus.startsWith("Evidence export refused") ? "alert" : "status"}>
           {evidenceStatus}</p>}
         <button type="button" onClick={() => void onExportSupport()}>Download redacted support bundle</button>

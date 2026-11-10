@@ -1,3 +1,5 @@
+import { createResultPublication, resultEvidenceRowsCsv } from "../results/resultPublication";
+
 export type QuantumInspectorSourceStatus = "opened" | "checking" | "current" | "withheld";
 
 export type QuantumInspectorEvidenceInput = Readonly<{
@@ -56,11 +58,36 @@ export function quantumInspectorEvidence(input: QuantumInspectorEvidenceInput): 
   };
 }
 
+export function quantumInspectorPublication(evidence: QuantumInspectorEvidence) {
+  return createResultPublication({ module: "quantum", resultId: evidence.source.runId,
+    source: { id: evidence.source.runId, revision: null, generation: null,
+      hash: evidence.source.fingerprint },
+    sourceStatus: evidence.status, status: evidence.status === "current" ? "recorded" : "withheld",
+    reason: evidence.reason, recordedClaim: evidence.claim, independentCheck: evidence.checkScope,
+    summary: { schema: evidence.schema, resultSha256: evidence.source.resultSha256,
+      datasets: evidence.datasets, producerInvariants: evidence.invariants,
+      limitations: evidence.limitations } });
+}
+
 /** Summary evidence only: dense sample arrays stay in the verified source bundle. */
 export function quantumInspectorEvidenceJson(evidence: QuantumInspectorEvidence): string {
   if (evidence.status !== "current") throw new TypeError(`Quantum Inspector evidence withheld: ${evidence.reason}`);
   return JSON.stringify({ format: "math3d.quantum-inspector-evidence.v1", qualification: evidence.status,
     source: evidence.source, schema: evidence.schema, recordedClaim: evidence.claim,
     checkScope: evidence.checkScope, datasets: evidence.datasets,
-    producerInvariants: evidence.invariants, limitations: evidence.limitations }, null, 2) + "\n";
+    producerInvariants: evidence.invariants, limitations: evidence.limitations,
+    publication: quantumInspectorPublication(evidence) }, null, 2) + "\n";
+}
+
+export function quantumInspectorEvidenceCsv(evidence: QuantumInspectorEvidence): string {
+  if (evidence.status !== "current") throw new TypeError(`Quantum Inspector evidence withheld: ${evidence.reason}`);
+  const publication = quantumInspectorPublication(evidence);
+  return resultEvidenceRowsCsv([
+    ["runId", evidence.source.runId], ["sceneFingerprint", evidence.source.fingerprint],
+    ["resultSha256", evidence.source.resultSha256], ["sourceStatus", evidence.status],
+    ["schema", evidence.schema], ["recordedClaim", publication.assessment.recordedClaim],
+    ["independentCheck", publication.assessment.independentCheck],
+    ["datasets", evidence.datasets], ["producerInvariants", evidence.invariants],
+    ["limitations", evidence.limitations],
+  ]);
 }

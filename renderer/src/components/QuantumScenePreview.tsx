@@ -19,8 +19,10 @@ import { quantumSceneDocumentFromVerifiedOpen } from "../projects/quantumSceneAd
 import { quantumTopologyOverlayGroups, topologyOverlayObjectVisible } from "./quantumTopologyOverlay";
 import { quantumSceneValidation } from "./quantumSceneValidation";
 import { QuantumInspectorSummary } from "./QuantumInspectorSummary";
-import { quantumInspectorEvidenceJson, type QuantumInspectorEvidence,
+import { quantumInspectorEvidenceCsv, quantumInspectorEvidenceJson, quantumInspectorPublication,
+  type QuantumInspectorEvidence,
   type QuantumInspectorSourceStatus } from "./quantumInspectorEvidence";
+import { resultPublicationJson } from "../results/resultPublication";
 import { QuantumViewerTrace } from "./quantumViewerTrace";
 
 type Vector3 = { x: number; y: number; z: number };
@@ -672,13 +674,18 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
       setSupportStatus("Redacted support bundle downloaded from the re-verified scene.");
     } catch (error) { trace.record("error"); setSupportStatus(`Support export refused: ${String((error as Error).message ?? error)}`); }
   };
-  const exportInspectorEvidence = async (evidence: QuantumInspectorEvidence) => {
+  const exportInspectorEvidence = async (evidence: QuantumInspectorEvidence,
+    format: "json" | "csv" | "receipt") => {
     setEvidenceStatus("Re-verifying the active source…");
     try {
       if (!await verifyInspectorSource()) throw new Error("Desktop source verifier unavailable");
-      const blob = new Blob([quantumInspectorEvidenceJson(evidence)], { type: "application/json;charset=utf-8" });
+      const content = format === "json" ? quantumInspectorEvidenceJson(evidence) :
+        format === "csv" ? quantumInspectorEvidenceCsv(evidence) :
+          resultPublicationJson(quantumInspectorPublication(evidence));
+      const blob = new Blob([content],
+        { type: format === "csv" ? "text/csv;charset=utf-8" : "application/json;charset=utf-8" });
       const url = URL.createObjectURL(blob), link = window.document.createElement("a");
-      link.href = url; link.download = `quantum-inspector-${opened.reference.sceneFingerprint.slice(0, 12)}.json`;
+      link.href = url; link.download = `quantum-inspector-${opened.reference.sceneFingerprint.slice(0, 12)}${format === "receipt" ? ".publication" : ""}.${format === "csv" ? "csv" : "json"}`;
       window.document.body.appendChild(link); link.click(); link.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
       setEvidenceStatus("Inspector evidence downloaded from the re-verified scene.");
