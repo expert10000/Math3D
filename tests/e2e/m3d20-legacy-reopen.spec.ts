@@ -1,4 +1,4 @@
-import { mixedLegacyResourceFixture } from "./helpers/meshProjectResources";
+import { mixedLegacyResourceFixture, readMixedProjectSelections } from "./helpers/meshProjectResources";
 import { expect, test } from "@playwright/test";
 import { resolve } from "node:path";
 import { readFileSync } from "node:fs";
@@ -88,7 +88,7 @@ test("M3D20 AC03 metadata-only artifact remains unavailable after cold Project r
 test("M3D20 mixed legacy Project package transfers real sidecars and recovers after rejected resources", async () => {
   test.setTimeout(300_000);
   const fixture = mixedLegacyResourceFixture();
-  const expectedSelections = core.readScientificSelectionsFromProject(fixture.project);
+  const expectedSelections = readMixedProjectSelections(fixture.project);
   const originalPackage = JSON.parse(fixture.raw);
   expect(originalPackage.resources.length).toBeGreaterThan(0);
   const signatures = (p: any) => p.resources.map((r: any) => ({ id: r.id, checksum: r.checksum, byteLength: r.byteLength })).sort((a: any,b: any) => a.id.localeCompare(b.id));
@@ -108,7 +108,7 @@ test("M3D20 mixed legacy Project package transfers real sidecars and recovers af
       const project = core.parseMath3DProject(await ctx!.page.evaluate(() => localStorage.getItem("math3d.project.v1")!));
       expect(project.identity).toEqual(expectedProject.identity);
       expect(project.workspace.entries.map((entry: any) => entry.expected)).toEqual(fixture.project.workspace.entries.map((entry: any) => entry.expected));
-      expect(core.readScientificSelectionsFromProject(project)).toEqual(expectedSelections);
+      expect(readMixedProjectSelections(project)).toEqual(expectedSelections);
     };
     const fullDetails = async () => {
       panel = await gallery(ctx!);
@@ -136,7 +136,7 @@ test("M3D20 mixed legacy Project package transfers real sidecars and recovers af
     const transferredProject = core.parseMath3DProject(JSON.stringify(JSON.parse(outbound).project));
     expect(transferredProject.identity.id).toBe(fixture.project.identity.id);
     expect(transferredProject.workspace.entries.map(e => e.expected)).toEqual(fixture.project.workspace.entries.map(e => e.expected));
-    expect(core.readScientificSelectionsFromProject(transferredProject)).toEqual(expectedSelections);
+    expect(readMixedProjectSelections(transferredProject)).toEqual(expectedSelections);
     expect(signatures(JSON.parse(outbound))).toEqual(signatures(originalPackage));
     // Close/delete the source profile: the destination cannot reuse its caches.
     await closeSurfaceApp(ctx); ctx = null;

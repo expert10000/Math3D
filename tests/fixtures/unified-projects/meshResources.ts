@@ -65,3 +65,8 @@ export const mixedLegacyResourceFixture = () => {
   });
   return { project, raw: exportProjectPackage(project, resources) };
 };
+
+import { verifyMixedWorkspaceReplay } from "../../../renderer/src/kernel/mixedWorkspaceReplay";
+import { readScientificSelectionsFromProject, type Math3DProject } from "../../../packages/core/src/index";
+export const readMixedProjectSelections = (project: Math3DProject) =>
+  readScientificSelectionsFromProject(project, verifyMixedWorkspaceReplay(project.workspace));

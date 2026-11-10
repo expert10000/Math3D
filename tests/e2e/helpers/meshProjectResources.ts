@@ -13,3 +13,5 @@ export const scalarVolumeResourceFixture: () => { project: any; docs: any[]; res
 export const inspectScalarVolumePackage: (raw: string) => { document: any; values: number[]; bytes: number[] }[] = compiled.exports.inspectScalarVolumePackage;
 
 export const mixedLegacyResourceFixture: () => { project: any; raw: string } = compiled.exports.mixedLegacyResourceFixture;
+
+export const readMixedProjectSelections: (project: any) => any = compiled.exports.readMixedProjectSelections;
