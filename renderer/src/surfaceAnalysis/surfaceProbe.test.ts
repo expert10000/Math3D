@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { getGeometryExactSurfacePreset } from "../geometry/exactSurfaceAnalysis";
 import { analyzeExactSurfaceDifferentialPoint } from "./differentialGeometry";
-import { compareSurfaceLocalProbes, createSurfaceLocalProbe, createSurfaceLocalProbeFromDifferential, evaluateEulerNormalCurvature } from "./surfaceProbe";
+import { adaptSurfaceDefinition, createSurfaceAnalysisRegistry, createSurfaceAnalysisRequest,
+  createSurfaceAnalysisResultStore, getSurfaceAnalysisResult, invalidateSurfaceAnalysisResult,
+  publishSurfaceAnalysisResult } from "./infrastructure";
+import { presentSurfaceAnalysisResult } from "./surfaceResultPresentation";
+import { compareSurfaceLocalProbes, createSurfaceLocalProbe, createSurfaceLocalProbeFromDifferential,
+  createSurfaceProbePayload, evaluateEulerNormalCurvature } from "./surfaceProbe";
+import { createSurfaceProbeEvidence, surfaceProbeEvidenceCsv,
+  surfaceProbeEvidenceJson } from "./surfaceProbeEvidence";
 
 describe("Surface canonical local probe", () => {
   it("publishes complete exact forms, curvature, classification and Euler normal curvature", () => {
@@ -48,5 +55,39 @@ describe("Surface canonical local probe", () => {
     const left = createSurfaceLocalProbe({ probeId: "a", domainCoordinate: { kind: "world" }, position: [0, 0, 0], principalCurvatures: [2, 1] });
     const right = createSurfaceLocalProbe({ probeId: "b", domainCoordinate: { kind: "world" }, position: [3, 4, 0], principalCurvatures: [3, -1] });
     expect(compareSurfaceLocalProbes(left, right)).toMatchObject({ distance: 5, gaussianCurvatureDelta: -5, meanCurvatureDelta: -0.5, classificationChanged: true });
+  });
+
+  it("exports the recorded probe angle and withholds historical local values", () => {
+    const definition = adaptSurfaceDefinition({ id: "probe-source", revision: 3, label: "Probe source",
+      representation: "parametric", expressions: { x: "u", y: "v", z: "0" },
+      domain: { kind: "parameter", u: { min: 0, max: 1 }, v: { min: 0, max: 1 } },
+      units: { length: "m" } });
+    const probe = createSurfaceLocalProbe({ probeId: "p3", domainCoordinate: { kind: "uv", u: 0.5, v: 0.25 },
+      position: [0.5, 0.25, 0], normal: [0, 0, 1],
+      principalCurvatures: [3, 1], principalDirections: [[1, 0, 0], [0, 1, 0]] }, 60);
+    const payload = createSurfaceProbePayload({ definition, method: "surface-sampling", probe });
+    const registry = createSurfaceAnalysisRegistry();
+    let store = publishSurfaceAnalysisResult({ store: createSurfaceAnalysisResultStore(), registry,
+      request: createSurfaceAnalysisRequest({ requestId: "source", kind: "surface-definition",
+        definition, domain: "surface", method: "surface-sampling" }), now: 1 });
+    store = publishSurfaceAnalysisResult({ store, registry,
+      request: createSurfaceAnalysisRequest({ requestId: "probe", kind: "surface-probe",
+        definition, domain: "point", method: "surface-sampling" }), payload, now: 2 });
+    const result = getSurfaceAnalysisResult(store, definition.identity, "surface-probe")!;
+    const evidence = createSurfaceProbeEvidence({ definition, result,
+      qualification: presentSurfaceAnalysisResult(definition, result, store) });
+    expect(evidence.publication).toMatchObject({ module: "surface",
+      assessment: { status: "recorded", sourceStatus: "current" },
+      summary: { probeId: "p3", normalCurvature: { angleDeg: 60 } } });
+    expect(JSON.parse(surfaceProbeEvidenceJson(evidence)).probe.normalCurvature.angleDeg).toBe(60);
+    expect(surfaceProbeEvidenceCsv(evidence)).toContain('"probeId","p3"');
+    store = invalidateSurfaceAnalysisResult(store, definition.identity, "surface-definition", "default", 3);
+    const historical = getSurfaceAnalysisResult(store, definition.identity, "surface-probe")!;
+    const withheld = createSurfaceProbeEvidence({ definition, result: historical,
+      qualification: presentSurfaceAnalysisResult(definition, historical, store) });
+    expect(withheld.probe).toBeNull();
+    expect(withheld.publication.summary).toBeNull();
+    expect(surfaceProbeEvidenceJson(withheld)).not.toContain("0.25");
+    expect(surfaceProbeEvidenceCsv(withheld)).not.toContain('"probeId","p3"');
   });
 });

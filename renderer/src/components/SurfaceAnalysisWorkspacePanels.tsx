@@ -400,7 +400,8 @@ export function SurfaceAnalysisInspectorPanel({
     onPin: () => void;
     onCompare: () => void;
     onCopy: () => void;
-    onExport: () => void;
+    onExport: (format: "json" | "csv") => void;
+    publication?: ResultPublication<unknown>;
     onReplay: (probe: SurfaceLocalProbePayload) => void;
   };
   layerActions?: {
@@ -641,6 +642,7 @@ function SurfaceLocalProbeInspector({
   onCompare,
   onCopy,
   onExport,
+  publication,
   onReplay,
 }: NonNullable<Parameters<typeof SurfaceAnalysisInspectorPanel>[0]["probeActions"]>) {
   const I = probe.firstFundamentalForm;
@@ -669,8 +671,10 @@ function SurfaceLocalProbeInspector({
       <div style={{ color: "#475467" }}>Evidence: tangent plane {probe.evidence.tangentPlane ? "ready" : "undefined"}; normal {probe.evidence.normal ? "ready" : "undefined"}; principal axes {probe.evidence.principalAxes ? "ready" : "undefined"}; normal section {probe.evidence.normalSection ? "ready" : "undefined"}; osculating circle {probe.evidence.osculatingCircle ? "ready" : "undefined"}.</div>
       {!!missing.length && <details><summary>Undefined quantities ({missing.length})</summary>{missing.map(([key, reason]) => <div key={key}><strong>{key}:</strong> {reason}</div>)}</details>}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-        <button type="button" onClick={onPin}>Pin probe</button><button type="button" onClick={onCompare}>Compare</button><button type="button" onClick={onCopy}>Copy</button><button type="button" onClick={onExport}>Export JSON</button>
+        <button type="button" onClick={onPin}>Pin probe</button><button type="button" onClick={onCompare}>Compare</button><button type="button" onClick={onCopy}>Copy</button>
       </div>
+      {publication && <ResultPublicationActions publication={publication} onExport={onExport}
+        jsonLabel="Export JSON" csvLabel="Export CSV" />}
       <div style={{ color: "#64748b" }}>{compareLabel}</div>
       {!!pinned.length && <details open><summary>Pinned probes ({pinned.length})</summary>{pinned.map((entry) => <button key={entry.probeId} type="button" onClick={() => onReplay(entry)}>Replay {entry.probeId}</button>)}</details>}
     </div>

@@ -424,6 +424,8 @@ import { createSurfaceLayerEvidence, surfaceLayerEvidenceCsv,
   surfaceLayerPublication } from "./surfaceAnalysis/surfaceLayerEvidence";
 import { createSurfaceCurvatureEvidence, surfaceCurvatureEvidenceCsv,
   surfaceCurvatureEvidenceJson } from "./surfaceAnalysis/surfaceCurvatureEvidence";
+import { createSurfaceProbeEvidence, surfaceProbeEvidenceCsv,
+  surfaceProbeEvidenceJson } from "./surfaceAnalysis/surfaceProbeEvidence";
 import { editSurfaceLayerDisplay } from "./surfaceAnalysis/surfaceLayerDisplay";
 import { presentSurfaceAnalysisResult } from "./surfaceAnalysis/surfaceResultPresentation";
 import { createSurfaceChartEvidence, editSurfaceChartOverlay, serializeSurfaceChartEvidence,
@@ -50791,14 +50793,25 @@ case "mobius":
     version: 1, surface: activeCanonicalSurfaceDefinition.identity, representation: activeCanonicalSurfaceDefinition.representation,
     method: surfaceProbeMethod, units: activeCanonicalSurfaceDefinition.units, orientation: activeCanonicalSurfaceDefinition.orientation, probe,
   }, null, 2), [activeCanonicalSurfaceDefinition, surfaceProbeMethod]);
+  const activeSurfaceProbeEvidence = activeSurfaceProbeResult?.payload?.data.kind === "local-probe" &&
+    activeSurfaceProbePresentation.status !== "unavailable"
+    ? createSurfaceProbeEvidence({ definition: activeCanonicalSurfaceDefinition,
+      result: activeSurfaceProbeResult, qualification: activeSurfaceProbePresentation }) : null;
   const handleCopySurfaceProbe = useCallback(() => {
     if (canonicalSurfaceProbe && activeSurfaceProbePresentation.canUseCurrentValues) void navigator.clipboard?.writeText(surfaceProbeJson(canonicalSurfaceProbe));
   }, [activeSurfaceProbePresentation.canUseCurrentValues, canonicalSurfaceProbe, surfaceProbeJson]);
-  const handleExportSurfaceProbe = useCallback(() => {
-    if (!canonicalSurfaceProbe || !activeSurfaceProbePresentation.canUseCurrentValues) return;
-    const url = URL.createObjectURL(new Blob([surfaceProbeJson(canonicalSurfaceProbe)], { type: "application/json" }));
-    const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${canonicalSurfaceProbe.probeId}.json`; anchor.click(); URL.revokeObjectURL(url);
-  }, [activeSurfaceProbePresentation.canUseCurrentValues, canonicalSurfaceProbe, surfaceProbeJson]);
+  const handleExportSurfaceProbe = useCallback((format: "json" | "csv") => {
+    if (!activeSurfaceProbeEvidence || !canonicalSurfaceProbe ||
+        activeSurfaceProbeEvidence.probe !== canonicalSurfaceProbe ||
+        !activeSurfaceProbePresentation.canUseCurrentValues) return;
+    const content = format === "json" ? surfaceProbeEvidenceJson(activeSurfaceProbeEvidence)
+      : surfaceProbeEvidenceCsv(activeSurfaceProbeEvidence);
+    const url = URL.createObjectURL(new Blob([content],
+      { type: format === "json" ? "application/json" : "text/csv;charset=utf-8" }));
+    const anchor = document.createElement("a"); anchor.href = url;
+    anchor.download = `${canonicalSurfaceProbe.probeId}.${format}`;
+    anchor.click(); URL.revokeObjectURL(url);
+  }, [activeSurfaceProbeEvidence, activeSurfaceProbePresentation.canUseCurrentValues, canonicalSurfaceProbe]);
   const handleReplaySurfaceProbe = useCallback((probe: SurfaceLocalProbePayload) => {
     const normal = probe.normal ?? [0, 1, 0];
     setProbeEnabled(true);
@@ -80179,7 +80192,8 @@ case "mobius":
                         onToggleVisible: handleToggleSurfaceCurvatureVisible,
                         onRecompute: handleComputeSurfaceCurvature,
                       } : undefined}
-                      probeActions={canonicalSurfaceProbe && activeSurfaceProbePresentation.canUseCurrentValues ? {
+                      probeActions={canonicalSurfaceProbe && activeSurfaceProbeEvidence?.probe === canonicalSurfaceProbe &&
+                        activeSurfaceProbePresentation.canUseCurrentValues ? {
                         probe: canonicalSurfaceProbe,
                         angleDeg: surfaceProbeAngleDeg,
                         evidenceVisible: surfaceProbeEvidenceVisible,
@@ -80191,6 +80205,7 @@ case "mobius":
                         onCompare: handleCompareSurfaceProbe,
                         onCopy: handleCopySurfaceProbe,
                         onExport: handleExportSurfaceProbe,
+                        publication: activeSurfaceProbeEvidence.publication,
                         onReplay: handleReplaySurfaceProbe,
                       } : undefined}
                       layerActions={activeSurfaceLayerPayload ? {
