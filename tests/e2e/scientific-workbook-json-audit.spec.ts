@@ -38,7 +38,17 @@ test("SCI-19 JSON audit rechecks a reopened combined Workbook and withholds chan
   await cp(resolve("examples/scientific-scenes/vortex-volume.sscene"), scene,
     { recursive: true });
   const app = await launchSurfaceApp();
+  let diagnosticTraceStarted = false;
+  let diagnosticProfiler: import("playwright").CDPSession | null = null;
   try {
+    if (process.env.M3D20_AUDIT_TRACE === "1") {
+      await app.app.context().tracing.start({ screenshots: true, snapshots: true, sources: true });
+      diagnosticTraceStarted = true;
+      diagnosticProfiler = await app.app.context().newCDPSession(app.page);
+      await diagnosticProfiler.send("Profiler.enable");
+      await diagnosticProfiler.send("Profiler.start");
+      app.page.on("pageerror", error => console.error("M3D20_AUDIT_PAGEERROR", error.message));
+    }
     const page = app.page;
     await resetSurfaceAppState(page);
     await page.getByTestId("workspace-nav-graphs").click();
@@ -105,9 +115,13 @@ test("SCI-19 JSON audit rechecks a reopened combined Workbook and withholds chan
     await expect(outputs).toBeVisible();
     const selectResult = outputs.getByTestId(`project-result-select-${result.resultId}`);
     await expect(selectResult).toBeEnabled();
-    await selectResult.evaluate(element => {
-      setTimeout(() => (element as HTMLButtonElement).click(), 0);
-    });
+    if (diagnosticTraceStarted) {
+      await page.screenshot({ path: test.info().outputPath("before-result-click.png"), timeout: 10_000 })
+        .catch(error => console.warn("M3D20_AUDIT_SCREENSHOT", String(error)));
+      console.log("M3D20_AUDIT_RESULT_CLICK_START", new Date().toISOString(), result.resultId);
+    }
+    await selectResult.click({ timeout: 30_000 });
+    if (diagnosticTraceStarted) console.log("M3D20_AUDIT_RESULT_CLICK_END", new Date().toISOString());
     await expect(selectResult).toHaveAttribute("aria-current", "true", { timeout: 120_000 });
     await outputs.getByTestId("project-create-subrectangle-workbook")
       .evaluate(element => { setTimeout(() => (element as HTMLButtonElement).click(), 0); });
@@ -177,6 +191,17 @@ test("SCI-19 JSON audit rechecks a reopened combined Workbook and withholds chan
       expect(byKey(key).profiles).toBeTruthy();
     }
   } finally {
+    if (diagnosticProfiler) {
+      try {
+        const { profile } = await diagnosticProfiler.send("Profiler.stop");
+        await writeFile(test.info().outputPath("renderer-cpu-profile.json"),
+          JSON.stringify(profile));
+        await diagnosticProfiler.detach();
+      } catch (error) { console.warn("M3D20_AUDIT_CPU_PROFILE", String(error)); }
+    }
+    if (diagnosticTraceStarted) await app.app.context().tracing.stop({
+      path: test.info().outputPath("electron-context-trace.zip"),
+    }).catch(error => console.warn("M3D20_AUDIT_TRACE_STOP", String(error)));
     await closeSurfaceApp(app);
     if (!root.startsWith(resolve(tmpdir()) + sep) ||
         !root.includes("m3d-scientific-json-audit-"))

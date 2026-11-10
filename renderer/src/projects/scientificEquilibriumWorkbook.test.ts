@@ -22,6 +22,7 @@ import { createScientificSolverAuditExport } from "./scientificSolverAuditExport
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ProjectResultsBrowser } from "../components/ProjectResultsBrowser";
+import { inspectProjectDependencies } from "./projectDependencies";
 
 const authored = () => createVectorField3DDocument({
   axes: (["x", "y", "z"] as const).map(role => ({ role, label: role,
@@ -187,7 +188,7 @@ describe("SCI-19 equilibrium Workbook result", () => {
     expect(JSON.stringify(audit)).not.toContain('"sampled"');
     const show = (status: "changed" | "source-current") =>
       renderToStaticMarkup(React.createElement(ProjectResultsBrowser, {
-        project, inspection: null, titles: new Map(), canOpen: () => false,
+        project, inspection: inspectProjectDependencies(project), titles: new Map(), canOpen: () => false,
         onOpen: () => {}, regionResultStatuses: { [result.resultId]: status },
         onCreateScientificReport: () => {} }));
     expect(show("changed")).toContain("Saved analysis values are withheld");

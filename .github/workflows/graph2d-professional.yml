@@ -36,9 +36,130 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  software-acceptance:
+  desktop-worker-scope:
     runs-on: windows-2022
-    timeout-minutes: 35
+    timeout-minutes: 25
+    env:
+      electron_config_cache: ${{ github.workspace }}\.cache\electron
+      PLAYWRIGHT_JSON_OUTPUT_NAME: scope-evidence/prj11.json
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+          cache: npm
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - uses: actions/cache@v6
+        with:
+          path: ${{ env.electron_config_cache }}
+          key: ${{ runner.os }}-electron-cache-${{ hashFiles('package-lock.json') }}
+      - name: Install locked JavaScript dependencies
+        run: npm ci && npm --prefix renderer ci
+      - name: Install and verify frozen Python dependencies
+        shell: bash
+        run: |
+          python -m pip install -c python/worker/requirements.freeze.txt -r python/worker/build-requirements.freeze.txt numpy scipy sympy vtk
+          mkdir -p scope-evidence
+          python -c "import sys,json,pathlib;sys.path.insert(0,'python/worker');from version_pins import verify_installed;print(json.dumps(verify_installed(pathlib.Path('python/worker')),indent=2))" > scope-evidence/python-pins.json
+          git rev-parse HEAD > scope-evidence/source.txt
+      - name: Typecheck and build the desktop candidate
+        run: npm run typecheck:noemit && npm run build:core
+      - name: Scoped PRJ11 Geometry restore and reopen
+        run: npx playwright test tests/e2e/unified-projects.spec.ts --grep "PRJ11 restores Geometry" --workers=1 --retries=0 --reporter=list,json
+      - name: Scoped frozen worker build and smoke
+        run: npm run test:worker:smoke
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: m3d20-desktop-worker-scopes
+          path: |
+            scope-evidence/**
+            test-results/**
+            build/python-worker-dist/worker/worker-sbom.json
+
+  browser-scope:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      PLAYWRIGHT_JSON_OUTPUT_NAME: scope-evidence/browser.json
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.19.0'
+          cache: npm
+      - run: npm ci && npm --prefix renderer ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build:web
+      - name: Record tested source
+        run: mkdir -p scope-evidence && git rev-parse HEAD > scope-evidence/source.txt
+      - name: Scoped Graph and Sage browser regressions in both locales
+        run: npx playwright test --config playwright.graph2d.config.ts phase-portrait.spec.ts slope-field.spec.ts professional.spec.ts sagePolynomial.spec.ts sageInspectorCards.spec.ts --grep "GRA-11|Gallery opens a nonlinear|G2D39|Sage|sage" --retries=0 --reporter=list,json
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: m3d20-browser-scope
+          path: |
+            scope-evidence/**
+            test-results/**
+
+  sage-live-scope:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      PLAYWRIGHT_JSON_OUTPUT_NAME: scope-evidence/sage-live.json
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.19.0'
+          cache: npm
+      - run: npm ci && npm --prefix renderer ci
+      - run: npx playwright install --with-deps chromium
+      - name: Start the actual Sage Docker service and wait for health
+        run: |
+          docker compose -f services/sage-worker/docker-compose.yml up -d --build
+          mkdir -p scope-evidence
+          git rev-parse HEAD > scope-evidence/source.txt
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:8767/health > scope-evidence/sage-health.json; then exit 0; fi
+            sleep 2
+          done
+          docker compose -f services/sage-worker/docker-compose.yml logs
+          exit 1
+      - name: Scoped real Docker computation and cancellation
+        run: npx playwright test --config playwright.sage-live-docker.config.ts --retries=0 --reporter=list,json
+      - name: Preserve service logs
+        if: always()
+        run: mkdir -p scope-evidence && docker compose -f services/sage-worker/docker-compose.yml logs > scope-evidence/sage-docker.log
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: m3d20-sage-live-scope
+          path: |
+            scope-evidence/**
+            test-results/**
+      - name: Stop the service
+        if: always()
+        run: docker compose -f services/sage-worker/docker-compose.yml down
+
+  software-acceptance:
+    needs: [desktop-worker-scope, browser-scope, sage-live-scope]
+    runs-on: windows-2022
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7

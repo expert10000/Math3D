@@ -36,7 +36,7 @@ test("web Number Theory runs GCD and modular inverse through live Docker", async
   const jobs = compute.getByRole("region", { name: "Broker jobs" });
   for (const label of ["Greatest common divisor", "Modular inverse"]) {
     await expect(jobs.getByText(label, { exact: true }).last().locator("../.."))
-      .toContainText("complete");
+      .toContainText("Completed");
   }
 });
 
@@ -60,21 +60,26 @@ test("browser Sage Docker cancel reaches the live service", async ({ page }) => 
   expect(outcome.error).toContain("cancelled");
 });
 
-test("live Docker Sage operations report results and failures in Compute jobs", async ({ page, request }) => {
-  test.setTimeout(180_000);
-  const health = await request.get("http://127.0.0.1:8767/health");
-  expect(health.ok(), "Start the SageMath Docker service before this opt-in test.").toBe(true);
-  expect((await health.json()).available).toBe(true);
-
-  await page.goto("/");
-  await page.getByRole("button", { name: "Palette", exact: true }).click();
-  await page.getByPlaceholder("Type a command (examples: export, screenshot, run stage)...")
-    .fill("Open backend services panel");
-  await page.getByRole("button", { name: "Open backend services panel", exact: true }).click();
-  const panel = page.getByTestId("scientific-services-surface");
-  await panel.getByLabel("Services preset").selectOption("All");
-  await panel.getByLabel("SageMath backend").selectOption("docker");
-
+// One live session retains all Compute records; the final audit runs two operations.
+test.describe.serial("live Docker Sage operation journey", () => {
+  let page: import("@playwright/test").Page;
+  let panel: import("@playwright/test").Locator;
+  test.beforeAll(async ({ browser }) => {
+    page = await browser.newPage({ baseURL: "http://127.0.0.1:5183",
+      viewport: { width: 1440, height: 900 } });
+    const health = await page.request.get("http://127.0.0.1:8767/health");
+    expect(health.ok()).toBe(true);
+    expect((await health.json()).available).toBe(true);
+    await page.goto("/");
+    await page.getByRole("button", { name: "Palette", exact: true }).click();
+    await page.getByPlaceholder("Type a command (examples: export, screenshot, run stage)...")
+      .fill("Open backend services panel");
+    await page.getByRole("button", { name: "Open backend services panel", exact: true }).click();
+    panel = page.getByTestId("scientific-services-surface");
+    await panel.getByLabel("Services preset").selectOption("All");
+    await panel.getByLabel("SageMath backend").selectOption("docker");
+  });
+  test.afterAll(async () => { await page?.close(); });
   const cases = [
     { operation: "sage.symbolic.simplify", expected: "1", job: "Symbolic simplification" },
     { operation: "sage.matrix.charpoly", expected: "lambda^2 - 5*lambda - 2", job: "Characteristic polynomial" },
@@ -84,36 +89,44 @@ test("live Docker Sage operations report results and failures in Compute jobs", 
     { operation: "sage.numberTheory.modInverse", expected: "4", job: "Modular inverse" },
   ] as const;
   for (const item of cases) {
-    await panel.getByLabel("Operation").selectOption(item.operation);
+    test(item.job + " completes with its exact result", async () => {
+      await panel.getByLabel("Operation").selectOption(item.operation);
+      await panel.getByRole("button", { name: "Run", exact: true }).click();
+      await expect(panel.getByRole("status").filter({ hasText: /^Completed/ })).toBeVisible({ timeout: 60_000 });
+      await expect(panel).toContainText(item.expected);
+    });
+  }
+  test("rejects a noninvertible input, computes in Geometry and audits all broker records", async () => {
+    test.setTimeout(180_000);
+    await panel.getByLabel("Operation").selectOption("sage.numberTheory.modInverse");
+    await panel.getByLabel("Integer", { exact: true }).fill("2");
+    await panel.getByLabel("Modulus (greater than 1)").fill("4");
     await panel.getByRole("button", { name: "Run", exact: true }).click();
-    await expect(panel.getByRole("status", { name: /Completed/ })).toBeVisible();
-    await expect(panel).toContainText(item.expected);
-  }
-
-  await panel.getByLabel("Operation").selectOption("sage.numberTheory.modInverse");
-  await panel.getByLabel("Integer", { exact: true }).fill("2");
-  await panel.getByLabel("Modulus (greater than 1)").fill("4");
-  await panel.getByRole("button", { name: "Run", exact: true }).click();
-  await expect(panel).toContainText("does not exist");
-
-  const geometry = await openGeometryServices(page);
-  await geometry.getByLabel("Services preset").selectOption("All");
-  await geometry.getByLabel("Operation").selectOption("sage.groebner.compute");
-  await geometry.getByRole("button", { name: "Run", exact: true }).click();
-  await expect(geometry).toContainText("y^2 - 1/2");
-
-  await page.getByTestId("top-compute-center-button").click();
-  const jobs = page.getByTestId("compute-center").getByRole("region", { name: "Broker jobs" });
-  for (const item of cases) {
-    const recorded = jobs.getByText(item.job, { exact: true }).locator("../..").filter({ hasText: /completed/i });
-    await expect(recorded).toHaveCount(1);
-    await expect(recorded).toContainText("sage-docker");
-  }
-  const inverseJobs = jobs.getByText("Modular inverse", { exact: true });
-  await expect(inverseJobs).toHaveCount(2);
-  const inverseRecords = inverseJobs.locator("../..");
-  await expect(inverseRecords.filter({ hasText: /completed/i })).toHaveCount(1);
-  const failedInverse = inverseRecords.filter({ hasText: /failed/i });
-  await expect(failedInverse).toHaveCount(1);
-  await expect(failedInverse).toContainText("does not exist");
+    await expect(panel).toContainText("does not exist", { timeout: 60_000 });
+  
+    const geometry = await openGeometryServices(page);
+    await expect(geometry.getByLabel("Services preset")).toHaveValue("All");
+    await geometry.getByLabel("Operation").selectOption("sage.groebner.compute");
+    await expect(geometry.getByLabel("SageMath backend")).toHaveValue("docker");
+    await geometry.getByRole("button", { name: "Run", exact: true }).click();
+    await expect(geometry).toContainText("y^2 - 1/2", { timeout: 60_000 });
+  
+    await page.getByTestId("top-compute-center-button").click();
+    const jobs = page.getByTestId("compute-center").getByRole("region", { name: "Broker jobs" });
+    for (const item of cases) {
+      const recorded = jobs.getByText(item.job, { exact: true }).locator("../..").filter({ hasText: /completed/i });
+      const expectedCount = item.operation === "sage.groebner.compute" ? 2 : 1;
+      await expect(recorded).toHaveCount(expectedCount);
+      for (let index = 0; index < expectedCount; index++) {
+        await expect(recorded.nth(index)).toContainText("sage-docker");
+      }
+    }
+    const inverseJobs = jobs.getByText("Modular inverse", { exact: true });
+    await expect(inverseJobs).toHaveCount(2);
+    const inverseRecords = inverseJobs.locator("../..");
+    await expect(inverseRecords.filter({ hasText: /completed/i })).toHaveCount(1);
+    const failedInverse = inverseRecords.filter({ hasText: /failed/i });
+    await expect(failedInverse).toHaveCount(1);
+    await expect(failedInverse).toContainText("does not exist");
+  });
 });

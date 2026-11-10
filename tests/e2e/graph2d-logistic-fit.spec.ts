@@ -25,7 +25,7 @@ test("GRA-15 desktop fits a logistic point series and omits unsupported bands", 
     await panel.getByLabel("Initial logistic rate").fill("1");
     await panel.getByLabel("Initial logistic midpoint").fill("1.5");
     await panel.getByRole("button", { name: "Fit dataset", exact: true }).click();
-    await expect(panel.getByRole("status")).toHaveText("Current regression");
+    await expect(panel.getByRole("status")).toHaveText("Current numerical result · logistic-growth fit to checksum-verified rows");
     await expect(panel).toContainText("bounded-levenberg-marquardt: converged");
     await expect(panel).toContainText("No uncertainty bands are claimed");
     await expect(page.getByTestId("graph2d-regression-overlay")).toHaveCount(1);

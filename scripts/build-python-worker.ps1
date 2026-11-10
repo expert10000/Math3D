@@ -24,3 +24,4 @@ if ($SmokeTest) {
 }
 
 Write-Host "worker build complete: $exe"
+
