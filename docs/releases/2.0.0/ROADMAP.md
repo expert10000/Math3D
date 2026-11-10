@@ -918,6 +918,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **Saved Curve cursor round trip (2026-11-08):** Native restored Curve editing and both saved Project Curve viewers can now receive an exact parameter from the shared cursor and share one from their current document. The saved viewer checks document generation, parameter frame and domain before adopting a return; the Graph still checks its recorded promotion relation before drawing the linked point. A desktop journey covers Graph probe → promoted Curve → a new Curve parameter → Graph plot, while preserving the Graph's local probe. This closes the saved Graph/Curve promotion path only; the broader Scientific Cursor milestone remains open.
 
+**Study chart link (2026-11-10):** A two-pane Project Study can persist a Curve↔Surface chart mapping only when its saved `surface.chart-curve` relation and both replayed generations qualify. A Curve parameter publishes on the shared cursor and projects to a bounded Surface `(u,v)`; returning a chart point requires an exactly verified inverse. Off-trace points and changed or missing relations are refused. The Graph↔Curve, Surface/Mesh coordinate comparison, and QWZ reciprocal links retain their existing qualification paths; a universal cross-domain coordinate map is still outside this slice.
+
 **Exit:** no feedback loops, qualified coordinate mapping and exact return; local selection works even if linked target is unavailable.
 
 ### M3D20-04 — StudyDocument (P0; bounded flagship)

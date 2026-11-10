@@ -7,7 +7,9 @@ import type { WorkbookStageId } from "@math3d/workbook";
 import { projectStudyWorkbookReferences } from "../projects/projectStudyReferences";
 import { projectNoteSourceResolver } from "../projects/projectNoteTargets";
 import { qualifyStudyGraphCurveLink, studyHasQualifiedGraphCurveLink } from "../projects/studyGraphCurveLink";
+import { qualifyStudyCurveSurfaceLink, studyHasQualifiedCurveSurfaceLink } from "../projects/studyCurveSurfaceLink";
 import { StudyGraphCurveControl } from "./StudyGraphCurveControl";
+import { StudyCurveSurfaceControl } from "./StudyCurveSurfaceControl";
 import { StudyQwzCursorControl } from "./StudyQwzCursorControl";
 
 const StudyPanePreview = lazy(() => import("./StudyPanePreview").then(module => ({ default: module.StudyPanePreview })));
@@ -18,6 +20,7 @@ type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoi
   focusStudy?: Readonly<{ id: string; token: number }> | null;
   onCreate: (title: string, ids: readonly string[]) => void; onRename: (id: string, title: string) => void;
   onFork: (id: string, title: string) => void; onLink: (id: string) => void;
+  onLinkCurveSurface: (id: string) => void;
   onConfigure: (id: string, description: string, mode: StudyRecordV1["layout"]["mode"], paneIds: readonly string[]) => void;
   onCreateQwz: (quantumStudyId: string) => void;
   onPinQwz: (studyId: string, sampleIndex: number) => void;
@@ -31,7 +34,7 @@ type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoi
 
 /** A Study is a saved layout of references; opening a pane delegates to its owning document. */
 export function ProjectStudiesPanel({ project, documents, editable, resources, focusStudy, onCreate, onRename, onFork, onConfigure,
-  onLink, onCreateQwz, onPinQwz, onUnpinQwz, workbookBytes, onOpenWorkbookBlock,
+  onLink, onLinkCurveSurface, onCreateQwz, onPinQwz, onUnpinQwz, workbookBytes, onOpenWorkbookBlock,
   onCapturePinnedNote, onOpenNote,
   onOpenQuantumSource, onOpenDocument }: Props) {
   const [selected, setSelected] = useState<string[]>([]);
@@ -60,6 +63,8 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
   const noteResolver = pinnedNotes.length ? projectNoteSourceResolver(project.identity.id, project.workspace) : null;
   const graphCurvePair = open ? qualifyStudyGraphCurveLink(project, open) : null;
   const graphCurveLinked = !!open && !!graphCurvePair && studyHasQualifiedGraphCurveLink(open, graphCurvePair);
+  const curveSurfacePair = open ? qualifyStudyCurveSurfaceLink(project, open) : null;
+  const curveSurfaceLinked = !!open && !!curveSurfacePair && studyHasQualifiedCurveSurfaceLink(open, curveSurfacePair);
   const qwzPair = open ? qualifyProjectQwzQuadStudy(project, open) : null;
   const choiceById = new Map(documents.map(document => [document.id, document]));
   const statusByMember = new Map(open ? inspectProjectStudyMembers(project, open).map(item => [item.memberId, item.status]) : []);
@@ -121,6 +126,11 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
       {graphCurvePair && !graphCurveLinked && editable && <button type="button" data-testid="project-study-link-graph-curve"
         onClick={() => onLink(open.id)}>Link promoted Graph and Curve</button>}
       {graphCurvePair && graphCurveLinked && <StudyGraphCurveControl project={project} pair={graphCurvePair} studyId={open.id} />}
+      {curveSurfacePair && !curveSurfaceLinked && editable && <button type="button"
+        data-testid="project-study-link-curve-surface" onClick={() => onLinkCurveSurface(open.id)}>
+        Link Curve parameter and Surface chart</button>}
+      {curveSurfacePair && curveSurfaceLinked && <StudyCurveSurfaceControl project={project}
+        pair={curveSurfacePair} studyId={open.id} />}
       {qwzPair && <StudyQwzCursorControl project={project} pair={qwzPair} study={open}
         editable={editable} onPin={onPinQwz} onUnpin={onUnpinQwz} />}
       {qwzPair && editable && open.pinnedSelectionIds.filter(id => id.startsWith("qwz:band-0:")).map(id =>

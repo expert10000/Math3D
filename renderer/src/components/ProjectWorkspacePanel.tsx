@@ -47,6 +47,7 @@ import { ProjectRelationshipMap } from "./ProjectRelationshipMap";
 import { ProjectCursorInspector } from "./ProjectCursorInspector";
 import { ProjectStudiesPanel } from "./ProjectStudiesPanel";
 import { addQualifiedStudyGraphCurveLink } from "../projects/studyGraphCurveLink";
+import { addQualifiedStudyCurveSurfaceLink } from "../projects/studyCurveSurfaceLink";
 import { prepareCuratedStudyProject } from "../projects/curatedStudyProject";
 const ProjectCompositionView = React.lazy(() => import("./ProjectCompositionView").then(module => ({ default: module.ProjectCompositionView })));
 const QuantumNativeOverlayView = React.lazy(() => import("./QuantumNativeOverlayView").then(module => ({ default: module.QuantumNativeOverlayView })));
@@ -2043,6 +2044,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               onConfigure={(id, description, mode, paneIds) => stageStudy(source =>
                 configureProjectStudy(source, id, { description, mode, paneIds }), "Study layout staged. Save Project to keep it.")}
               onLink={id => stageStudy(source => addQualifiedStudyGraphCurveLink(source, id), "Graph–Curve parameter link added.")}
+              onLinkCurveSurface={id => stageStudy(source => addQualifiedStudyCurveSurfaceLink(source, id),
+                "Curve–Surface chart link added.")}
               onCreateQwz={id => { void stageQwzQuadStudy(id); }}
               onPinQwz={(id, sampleIndex) => stageStudy(source => pinProjectQwzSample(source, id, sampleIndex),
                 "QWZ k selection pinned in Study.")}
