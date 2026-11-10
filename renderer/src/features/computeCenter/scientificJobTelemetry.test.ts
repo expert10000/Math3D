@@ -63,6 +63,25 @@ describe("Compute Center job lifecycle", () => {
       status: "failed", failureCode: "stale-source",
     });
   });
+  it("ignores out-of-order, wrong-operation and changed-source progress events", async () => {
+    const id = "job-sequenced-events";
+    let settle!: (outcome: ScientificBrokerOutcome) => void;
+    const pending = observeBrokerJob(id, "curve.analyze", new Promise<ScientificBrokerOutcome>(resolve => { settle = resolve; }));
+    const source = { documentId: "source", revision: 1, generation: 1, structuralHash: "hash" };
+    const event = (sequence: number, message: string, changes: Record<string, unknown> = {}) => ({
+      jobId: id, operationType: "curve.analyze", type: "scientific-job.progressed",
+      sequence, schemaVersion: 1, source, progress: { completed: sequence, total: 10, message }, ...changes,
+    } as Parameters<typeof recordScientificJobEvent>[0]);
+    recordScientificJobEvent(event(2, "accepted"));
+    recordScientificJobEvent(event(1, "old"));
+    recordScientificJobEvent(event(3, "wrong operation", { operationType: "volume.contour" }));
+    recordScientificJobEvent(event(4, "wrong source", { source: { ...source, revision: 2 } }));
+    expect(getComputeJobs().find(item => item.jobId === id)).toMatchObject({
+      phase: "accepted", progress: 0.2, source, lastEventSequence: 2,
+    });
+    settle(failure(id, "cancelled"));
+    await pending;
+  });
   it("retains actual fallback attempts, source generation, and only a saved Result link", async () => {
     const id = "job-fallback-trace";
     const source = { documentId: "curve-source", revision: 3, generation: 2, structuralHash: "source-hash" };

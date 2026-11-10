@@ -15,6 +15,7 @@ export type ComputeJobRecord = Readonly<{
   attempts?: readonly ScientificBrokerAttempt[];
   source?: ScientificSourceGeneration;
   resultId?: string;
+  lastEventSequence?: number;
   updatedAt: number;
 }>;
 
@@ -93,6 +94,12 @@ export function recordScientificJobEvent(event: ScientificJobEvent): void {
   if (brokerSettled.has(event.jobId)) return;
   const existing = jobs.find((item) => item.jobId === event.jobId);
   if (!existing) return;
+  if (event.operationType !== existing.operationType ||
+      event.sequence <= (existing.lastEventSequence ?? -1)) return;
+  if (existing.source && (existing.source.documentId !== event.source.documentId ||
+      existing.source.revision !== event.source.revision ||
+      existing.source.generation !== event.source.generation ||
+      existing.source.structuralHash !== event.source.structuralHash)) return;
   const progress = event.progress?.total
     ? Math.max(0, Math.min(1, event.progress.completed / event.progress.total))
     : existing.progress;
@@ -107,6 +114,7 @@ export function recordScientificJobEvent(event: ScientificJobEvent): void {
     failure: event.failureCode ?? existing.failure,
     failureCode: event.failureCode ?? existing.failureCode,
     source: event.source,
+    lastEventSequence: event.sequence,
     updatedAt: Date.now(),
   });
 }
@@ -135,6 +143,7 @@ export function observeBrokerJob<T extends ScientificBrokerOutcome>(
       attemptCount: outcome.attempts.length,
       attempts: [...outcome.attempts],
       source: outcome.ok ? outcome.result.source : existing?.source ?? outcome.scientificFailure?.source,
+      lastEventSequence: existing?.lastEventSequence,
       updatedAt: Date.now(),
     });
     return outcome;
@@ -144,6 +153,7 @@ export function observeBrokerJob<T extends ScientificBrokerOutcome>(
     publish({ jobId, operationType, status: "failed", progress: existing?.progress ?? null,
       backendId: existing?.backendId, failure: error instanceof Error ? error.message : String(error),
       source: existing?.source,
+      lastEventSequence: existing?.lastEventSequence,
       updatedAt: Date.now() });
     throw error;
   });
