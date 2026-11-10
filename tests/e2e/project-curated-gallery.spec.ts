@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { closeSurfaceApp, launchSurfaceApp, openLastSavedProject, resetSurfaceAppState, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 test("guided Study Gallery explains real Project and external-scene routes without changing starter navigation", async () => {
   let ctx: LaunchedSurfaceApp | null = null;
@@ -12,6 +14,14 @@ test("guided Study Gallery explains real Project and external-scene routes witho
     await panel.getByTestId("project-gallery-guided").click();
     await expect(panel.locator(".curated-study-card")).toHaveCount(15);
     const catenary = panel.getByTestId("curated-study-card-catenary-study");
+    await catenary.scrollIntoViewIfNeeded();
+    if (process.env.MATH3D_GALLERY_CAPTURE_DIR) {
+      const directory = process.env.MATH3D_GALLERY_CAPTURE_DIR;
+      mkdirSync(directory, { recursive: true });
+      await catenary.screenshot({ path: join(directory, "desktop-guided-gallery.png") });
+      writeFileSync(join(directory, "desktop-build-identity.json"),
+        readFileSync("dist/build-identity.json"));
+    }
     await expect(catenary).toContainText("How does a catenary generate a catenoid?");
     await expect(catenary).toContainText("Graph profile, Curve snapshot, revolution Surface");
     await catenary.locator("summary").click();

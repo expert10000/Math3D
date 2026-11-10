@@ -1,4 +1,8 @@
 import { expect, test } from "@playwright/test";
+import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 test("browser Gallery previews a desktop Study with exact research status", async ({ page }) => {
   await page.goto("/");
@@ -20,6 +24,16 @@ test("browser Gallery previews a desktop Study with exact research status", asyn
   await expect(evidence).toContainText("current");
   await expect(page.getByTestId("project-import-open")).toBeDisabled();
   await expect(page.getByTestId("project-import-limit")).toContainText("desktop");
+  if (process.env.MATH3D_GALLERY_CAPTURE_DIR) {
+    const directory = process.env.MATH3D_GALLERY_CAPTURE_DIR;
+    mkdirSync(directory, { recursive: true });
+    await page.screenshot({ path: join(directory, "browser-research-preview.png") });
+    writeFileSync(join(directory, "browser-build-identity.json"), JSON.stringify({
+      commit: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
+      indexSha256: createHash("sha256").update(readFileSync("apps/web/dist/index.html")).digest("hex"),
+      host: "local Chromium preview server", source: "working tree at capture time",
+    }, null, 2) + "\n");
+  }
   await page.getByTestId("project-import-save").click();
   await expect(panel.getByTestId("project-message")).toContainText("Imported into the library");
 });

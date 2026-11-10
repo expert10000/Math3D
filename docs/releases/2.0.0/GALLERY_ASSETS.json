@@ -1,0 +1,97 @@
+{
+  "format": "math3d.gallery-asset-baseline/v1",
+  "sourceCommit": "81a031d650f18717d5da88ead9219eb7ea82a73d",
+  "host": "Windows source checkout, Vitest renderer model",
+  "metric": "UTF-8 Project JSON plus verified raw resource bytes; package is serialized JSON with encoded sidecars",
+  "cards": [
+    {
+      "id": "catenary-study",
+      "projectBytes": 13962,
+      "resourceBytes": 3888,
+      "totalBytes": 17850,
+      "packageBytes": 19539,
+      "requiredResources": 0
+    },
+    {
+      "id": "catenoid-evidence",
+      "projectBytes": 20807,
+      "resourceBytes": 233266,
+      "totalBytes": 254073,
+      "packageBytes": 332851,
+      "requiredResources": 1
+    },
+    {
+      "id": "derivative-study",
+      "projectBytes": 9584,
+      "resourceBytes": 3882,
+      "totalBytes": 13466,
+      "packageBytes": 15153,
+      "requiredResources": 0
+    },
+    {
+      "id": "edge-path-evidence",
+      "projectBytes": 25016,
+      "resourceBytes": 233294,
+      "totalBytes": 258310,
+      "packageBytes": 337096,
+      "requiredResources": 1
+    },
+    {
+      "id": "geometry-note-pins",
+      "projectBytes": 6554,
+      "resourceBytes": 2803,
+      "totalBytes": 9357,
+      "packageBytes": 10687,
+      "requiredResources": 0
+    },
+    {
+      "id": "graph-derivative-notebook",
+      "projectBytes": 10632,
+      "resourceBytes": 8591,
+      "totalBytes": 19223,
+      "packageBytes": 22796,
+      "requiredResources": 0
+    },
+    {
+      "id": "mesh-comparison-study",
+      "projectBytes": 17449,
+      "resourceBytes": 5743,
+      "totalBytes": 23192,
+      "packageBytes": 26405,
+      "requiredResources": 3
+    },
+    {
+      "id": "mesh-curvature-study",
+      "projectBytes": 18248,
+      "resourceBytes": 13371,
+      "totalBytes": 31619,
+      "packageBytes": 37387,
+      "requiredResources": 3
+    },
+    {
+      "id": "ripple-wave-study",
+      "projectBytes": 16550,
+      "resourceBytes": 231734,
+      "totalBytes": 248284,
+      "packageBytes": 326550,
+      "requiredResources": 1
+    },
+    {
+      "id": "scene-topology-study",
+      "projectBytes": 7587,
+      "resourceBytes": 2790,
+      "totalBytes": 10377,
+      "packageBytes": 11700,
+      "requiredResources": 0
+    },
+    {
+      "id": "surface-geometry-probe",
+      "projectBytes": 7755,
+      "resourceBytes": 2827,
+      "totalBytes": 10582,
+      "packageBytes": 11920,
+      "requiredResources": 0
+    }
+  ],
+  "externalScenes": "not measured; producer-created .qscene bundles are not included"
+}
