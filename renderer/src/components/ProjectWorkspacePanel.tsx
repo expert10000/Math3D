@@ -48,6 +48,8 @@ import { ProjectCursorInspector } from "./ProjectCursorInspector";
 import { ProjectStudiesPanel } from "./ProjectStudiesPanel";
 import { addQualifiedStudyGraphCurveLink } from "../projects/studyGraphCurveLink";
 import { prepareCuratedStudyBundle } from "../projects/curatedStudyProject";
+import { measureCuratedStudyAssets } from "../projects/curatedStudyQualification";
+import { probeRendererPlatformCapabilities } from "../kernel/rendererPlatformCapabilities";
 const ProjectCompositionView = React.lazy(() => import("./ProjectCompositionView").then(module => ({ default: module.ProjectCompositionView })));
 const QuantumNativeOverlayView = React.lazy(() => import("./QuantumNativeOverlayView").then(module => ({ default: module.QuantumNativeOverlayView })));
 const ProjectSavedMeshResultComparisonView = React.lazy(() => import("./ProjectSavedMeshResultComparisonView").then(module => ({ default: module.ProjectSavedMeshResultComparisonView })));
@@ -460,6 +462,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [inspectionOpen, setInspectionOpen] = useState(false), [inspectedId, setInspectedId] = useState<string | null>(null);
   const [incoming, setIncoming] = useState<ReturnType<typeof previewProjectImport> | null>(null);
   const [incomingNarrative, setIncomingNarrative] = useState<ReturnType<typeof createPortableResearchNarrative> | null>(null);
+  const [galleryAssetBytes, setGalleryAssetBytes] = useState<Record<string, number>>({});
+  const galleryHost = useMemo(() => probeRendererPlatformCapabilities(), []);
   const importSequence = useRef(0);
   useEffect(() => {
     if (!highlightedSavedId) return;
@@ -1562,6 +1566,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       if (copy) {
         const next = loadLibraryProject(localStorage, copy.id), resources = await loadProjectResources(next);
         if (sequence !== importSequence.current) return;
+        if (curated) setGalleryAssetBytes(current => ({ ...current,
+          [id]: measureCuratedStudyAssets(next, resources).totalBytes }));
         setIncoming({ ...inspectProjectCompatibility(next, transferOptions(resources)), resources, inputKind: "Saved starter copy" });
         setMessage(`Previewing your saved copy “${next.metadata.title}”. Opening or saving this preview keeps the same project.`);
         return;
@@ -1571,6 +1577,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       if (sequence !== importSequence.current) return;
       const prepared = curated ? prepareCuratedStudyBundle(bundle, id, token) : bundle;
       const next = prepared.project;
+      if (curated) setGalleryAssetBytes(current => ({ ...current,
+        [id]: measureCuratedStudyAssets(next, prepared.resources).totalBytes }));
       const inspection = !curated && "inspection" in bundle ? bundle.inspection as ProjectCompatibility : inspectProjectCompatibility(next, transferOptions(prepared.resources));
       setIncoming({ ...inspection, resources: prepared.resources, inputKind: "Independent starter project" });
       setMessage("Starter preview ready. Current work is unchanged until you choose to open it.");
@@ -1605,6 +1613,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       performance.measure("project-open:starter-construction", { start: starterStart, end: performance.now() });
       const prepared = curated ? prepareCuratedStudyBundle(bundle, id, token) : bundle;
       const next = prepared.project;
+      if (curated) setGalleryAssetBytes(current => ({ ...current,
+        [id]: measureCuratedStudyAssets(next, prepared.resources).totalBytes }));
       const inspectionStart = performance.now();
       const inspection = !curated && "inspection" in bundle ? bundle.inspection as ProjectCompatibility : inspectProjectCompatibility(next, transferOptions(prepared.resources));
       const candidate = { ...inspection, resources: prepared.resources, inputKind: "Independent starter project" };
@@ -1900,7 +1910,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
             {(query || moduleFilter !== "All modules") && <button type="button" onClick={() => { setQuery(""); setModuleFilter("All modules"); }}>Clear filters</button>}
           </div>
         </div>
-        {(collection === "All projects" || collection === "Starter projects") && <ProjectTemplatesPanel query={query} moduleFilter={moduleFilter} copies={starterCopies} guidedCopies={guidedCopies} onPreview={id => { void previewTemplate(id); }} onOpen={(id) => { void openTemplate(id); }} onNewCopy={id => { void openTemplate(id, true); }}
+        {(collection === "All projects" || collection === "Starter projects") && <ProjectTemplatesPanel query={query} moduleFilter={moduleFilter} copies={starterCopies} guidedCopies={guidedCopies} host={galleryHost} assetBytes={galleryAssetBytes} onPreview={id => { void previewTemplate(id); }} onOpen={(id) => { void openTemplate(id); }} onNewCopy={id => { void openTemplate(id, true); }}
           onPreviewCurated={id => { void previewTemplate(id, true); }} onOpenCurated={id => { void openTemplate(id, false, true); }}
           onNewCuratedCopy={id => { void openTemplate(id, true, true); }}
           onImportQuantumScene={onImportQuantumScene} quantumImportAvailable={!!window.quantumScenes?.open}
