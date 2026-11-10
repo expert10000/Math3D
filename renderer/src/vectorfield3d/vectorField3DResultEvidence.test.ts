@@ -50,6 +50,7 @@ describe("Field result evidence", () => {
       { evidence, label: "Circulation", testId: "gf10-saved-result" }));
     expect(card).toContain("2 m/s·m");
     expect(card).toContain("Export evidence JSON");
+    expect(card).toContain('data-publication-status="recorded"');
     expect(card).toContain("Export evidence CSV");
     expect(card).toContain("No independent mathematical check");
     const revised = reviseVectorField3DDocument(document, { ...document.source,
@@ -71,7 +72,8 @@ describe("Field result evidence", () => {
     expect(staleCard).toContain("Value withheld: source-changed");
     expect(staleCard).not.toContain("2 m/s·m");
     expect(staleCard).toContain("Export evidence JSON");
-    expect(staleCard).toContain("omits numerical values");
+    expect(staleCard).toContain('data-publication-status="withheld"');
+    expect(staleCard).toContain("Omitted: summary values");
   });
 
   it("distinguishes numerical theorem comparison from an independent proof", () => {

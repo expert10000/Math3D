@@ -41,6 +41,11 @@ export function createResultPublication<T>(input: ResultPublicationInput<T>) {
 
 export type ResultPublication<T> = ReturnType<typeof createResultPublication<T>>;
 
+/** Stable standalone receipt for consumers that do not parse module-specific reports. */
+export function resultPublicationJson(publication: ResultPublication<unknown>): string {
+  return JSON.stringify(publication, null, 2) + "\n";
+}
+
 /** Shared two-column evidence CSV: stable row order, CRLF and spreadsheet-safe cells. */
 export function resultEvidenceRowsCsv(rows: ReadonlyArray<readonly [string, unknown]>): string {
   const cell = (value: unknown): string => {

@@ -1,6 +1,7 @@
 import type { ScientificSourceGeneration } from "@math3d/core";
 import { createGraph2DResultEvidence, graph2DResultEvidenceCsv,
   graph2DResultEvidenceJson } from "./graph2dResultEvidenceModel";
+import { ResultPublicationActions } from "../results/ResultPublicationActions";
 
 type Props = Readonly<{
   current: boolean;
@@ -51,11 +52,8 @@ export function Graph2DResultEvidence({ current, resultId, source, claim, method
         Object.entries(evidence.summary).map(([key, value]) =>
           <span key={key}>{key}: {String(value)}; </span>)}</dd></div>
     </dl></details>
-    <div className="graph2d-result-evidence-actions">
-      <button type="button" data-testid="graph2d-result-export-evidence-json"
-        onClick={() => exportEvidence("json")}>Export evidence JSON</button>
-      <button type="button" data-testid="graph2d-result-export-evidence-csv"
-        onClick={() => exportEvidence("csv")}>Export evidence CSV</button>
-    </div>
+    <ResultPublicationActions publication={evidence.publication} onExport={exportEvidence}
+      jsonTestId="graph2d-result-export-evidence-json"
+      csvTestId="graph2d-result-export-evidence-csv" />
   </div>;
 }

@@ -51,7 +51,7 @@ test("GF-11–13 save region checks and a trajectory Curve across Project reopen
     await expect(region.getByTestId("gf11-saved-result")).toContainText("source-changed");
     await expect(region.getByTestId("gf11-saved-result").getByRole("button", { name: "Export evidence CSV" }))
       .toBeVisible();
-    await expect(region.getByTestId("gf11-saved-result")).toContainText("omits numerical values");
+    await expect(region.getByTestId("gf11-saved-result")).toContainText("Omitted: summary values");
     await page.getByTestId("projects-toggle").click();
     await projects.getByTestId("project-save").click();
     await expect(projects.getByTestId("project-message")).toContainText("Saved");

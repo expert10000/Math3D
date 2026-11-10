@@ -23,6 +23,8 @@ test("GRA-16 desktop shows a checked known-tone spectrum with frequency units", 
     await panel.getByLabel("Fourier window").selectOption("rectangular");
     await panel.getByRole("button", { name: "Analyze spectrum", exact: true }).click();
     await expect(panel.getByTestId("graph2d-result-evidence")).toHaveAttribute("data-qualification", "current");
+    await expect(panel.getByTestId("result-publication-actions")).toHaveAttribute(
+      "data-publication-status", "recorded");
     await panel.getByLabel("Fourier analysis row budget").selectOption("10000");
     await expect(panel.getByRole("status")).toHaveCount(0);
     await panel.getByRole("button", { name: "Analyze spectrum", exact: true }).click();

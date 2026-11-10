@@ -24,6 +24,7 @@ describe("Geometry analysis Inspector authority", () => {
   it("shows completed values with a bounded claim and check scope", () => {
     const html = show(2);
     expect(html).toContain('data-qualification="current"');
+    expect(html).toContain('data-publication-status="recorded"');
     expect(html).toContain("secretStatistic");
     expect(html).toContain("None recorded for this result");
   });
@@ -34,6 +35,7 @@ describe("Geometry analysis Inspector authority", () => {
       expect(html).not.toContain("secretStatistic");
       expect(html).toMatch(/disabled=""[^>]*>Save</);
       expect(html).toContain("Values withheld");
+      expect(html).toContain('data-publication-status="withheld"');
       expect(html).toMatch(/disabled=""[^>]*>Open source</);
       expect(html).toMatch(/disabled=""[^>]*>Open derivative</);
     }

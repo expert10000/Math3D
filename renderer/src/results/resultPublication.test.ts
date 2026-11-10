@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createResultPublication, resultEvidenceRowsCsv } from "./resultPublication";
+import { createResultPublication, resultEvidenceRowsCsv,
+  resultPublicationJson } from "./resultPublication";
 
 const input = {
   module: "project" as const, resultId: "result-1",
@@ -17,6 +18,7 @@ describe("cross-module result publication", () => {
       assessment: { status: "recorded", sourceStatus: "Source verified",
         recordedClaim: "Producer numerical result", omissions: [] }, summary: { value: 42 } });
     expect(receipt.assessment.independentCheck).toContain("no independent mathematics");
+    expect(JSON.parse(resultPublicationJson(receipt))).toEqual(receipt);
   });
 
   it("cannot publish values through a withheld or preview receipt", () => {
