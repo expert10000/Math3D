@@ -47,7 +47,7 @@ import { ProjectRelationshipMap } from "./ProjectRelationshipMap";
 import { ProjectCursorInspector } from "./ProjectCursorInspector";
 import { ProjectStudiesPanel } from "./ProjectStudiesPanel";
 import { addQualifiedStudyGraphCurveLink } from "../projects/studyGraphCurveLink";
-import { prepareCuratedStudyProject } from "../projects/curatedStudyProject";
+import { prepareCuratedStudyBundle } from "../projects/curatedStudyProject";
 const ProjectCompositionView = React.lazy(() => import("./ProjectCompositionView").then(module => ({ default: module.ProjectCompositionView })));
 const QuantumNativeOverlayView = React.lazy(() => import("./QuantumNativeOverlayView").then(module => ({ default: module.QuantumNativeOverlayView })));
 const ProjectSavedMeshResultComparisonView = React.lazy(() => import("./ProjectSavedMeshResultComparisonView").then(module => ({ default: module.ProjectSavedMeshResultComparisonView })));
@@ -1550,9 +1550,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       const token = crypto.randomUUID(), bundle = id === "catenoid-evidence" ? await takePreparedNotebookStarter(id) :
         NOTEBOOK_STARTERS.some(item => item.id === id) ? instantiateNotebookStarter(id as NotebookStarterId, token) : { project: instantiateMath3DProjectTemplate(id, token), resources: undefined };
       if (sequence !== importSequence.current) return;
-      const next = curated ? prepareCuratedStudyProject(bundle.project, id, token) : bundle.project;
-      const inspection = "inspection" in bundle ? bundle.inspection as ProjectCompatibility : inspectProjectCompatibility(next, transferOptions(bundle.resources));
-      setIncoming({ ...inspection, resources: bundle.resources, inputKind: "Independent starter project" });
+      const prepared = curated ? prepareCuratedStudyBundle(bundle, id, token) : bundle;
+      const next = prepared.project;
+      const inspection = !curated && "inspection" in bundle ? bundle.inspection as ProjectCompatibility : inspectProjectCompatibility(next, transferOptions(prepared.resources));
+      setIncoming({ ...inspection, resources: prepared.resources, inputKind: "Independent starter project" });
       setMessage("Starter preview ready. Current work is unchanged until you choose to open it.");
     } catch (error) { if (sequence === importSequence.current) { setIncoming(null); setMessage(`Starter unavailable: ${(error as Error).message}`); } }
   };
@@ -1583,10 +1584,11 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       if (sequence !== importSequence.current) return;
       performance.clearMeasures("project-open:starter-construction");
       performance.measure("project-open:starter-construction", { start: starterStart, end: performance.now() });
-      const next = curated ? prepareCuratedStudyProject(bundle.project, id, token) : bundle.project;
+      const prepared = curated ? prepareCuratedStudyBundle(bundle, id, token) : bundle;
+      const next = prepared.project;
       const inspectionStart = performance.now();
-      const inspection = "inspection" in bundle ? bundle.inspection as ProjectCompatibility : inspectProjectCompatibility(next, transferOptions(bundle.resources));
-      const candidate = { ...inspection, resources: bundle.resources, inputKind: "Independent starter project" };
+      const inspection = !curated && "inspection" in bundle ? bundle.inspection as ProjectCompatibility : inspectProjectCompatibility(next, transferOptions(prepared.resources));
+      const candidate = { ...inspection, resources: prepared.resources, inputKind: "Independent starter project" };
       performance.clearMeasures("project-open:starter-inspection");
       performance.measure("project-open:starter-inspection", { start: inspectionStart, end: performance.now() });
       await importPreview(true, candidate, false, true);
