@@ -14,10 +14,11 @@ const record: GeometryAnalysisInspectorRecord = {
 
 const show = (currentSourceRevision: number | null, lifecycle = record.lifecycle) =>
   renderToStaticMarkup(<GeometryAnalysisInspectorPanel result={{ ...record, lifecycle }} savedResults={[]}
-    compareResult={null} compareSourceRevision={null} currentSourceRevision={currentSourceRevision} onSelectSaved={() => {}}
+    compareResult={null} compareSourceRevision={null} currentSourceRevision={currentSourceRevision}
+    canPublishSelectedResult={true} canRecomputeSelectedResult={true} onSelectSaved={() => {}}
     onSave={() => {}} onRename={() => {}} onCompare={() => {}} onDuplicateSettings={() => {}}
     onRecompute={() => {}} onOpenSource={() => {}} onOpenDerivative={() => {}}
-    onPromoteOverlay={() => {}} onExport={() => {}} />);
+    onPromoteOverlay={() => {}} onExportEvidence={() => {}} />);
 
 describe("Geometry analysis Inspector authority", () => {
   it("shows completed values with a bounded claim and check scope", () => {
@@ -31,6 +32,7 @@ describe("Geometry analysis Inspector authority", () => {
     for (const sourceRevision of [3, null]) {
       const html = show(sourceRevision);
       expect(html).not.toContain("secretStatistic");
+      expect(html).toMatch(/disabled=""[^>]*>Save</);
       expect(html).toContain("Values withheld");
       expect(html).toMatch(/disabled=""[^>]*>Open source</);
       expect(html).toMatch(/disabled=""[^>]*>Open derivative</);
@@ -49,9 +51,10 @@ describe("Geometry analysis Inspector authority", () => {
     const compare = (other: GeometryAnalysisInspectorRecord, compareSourceRevision: number | null) =>
       renderToStaticMarkup(<GeometryAnalysisInspectorPanel result={record} savedResults={[]}
         compareResult={other} compareSourceRevision={compareSourceRevision} currentSourceRevision={2}
+        canPublishSelectedResult={true} canRecomputeSelectedResult={true}
         onSelectSaved={() => {}} onSave={() => {}} onRename={() => {}} onCompare={() => {}}
         onDuplicateSettings={() => {}} onRecompute={() => {}} onOpenSource={() => {}}
-        onOpenDerivative={() => {}} onPromoteOverlay={() => {}} onExport={() => {}} />);
+        onOpenDerivative={() => {}} onPromoteOverlay={() => {}} onExportEvidence={() => {}} />);
     const current = compare({ ...record, id: "analysis-2", statistics: { otherStatistic: 7 } }, 2);
     expect(current).toContain('data-qualification="comparable"');
     expect(current).toContain("otherStatistic");

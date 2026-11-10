@@ -12,6 +12,8 @@ type GeometryAnalysisInspectorPanelProps = {
   compareResult: GeometryAnalysisInspectorRecord | null;
   compareSourceRevision: number | null;
   currentSourceRevision: number | null;
+  canPublishSelectedResult: boolean;
+  canRecomputeSelectedResult: boolean;
   onSelectSaved: (id: string) => void;
   onSave: () => void;
   onRename: () => void;
@@ -21,7 +23,7 @@ type GeometryAnalysisInspectorPanelProps = {
   onOpenSource: () => void;
   onOpenDerivative: () => void;
   onPromoteOverlay: () => void;
-  onExport: () => void;
+  onExportEvidence: (format: "json" | "csv") => void;
 };
 
 const card: React.CSSProperties = {
@@ -59,7 +61,8 @@ export function GeometryAnalysisInspectorPanel(props: GeometryAnalysisInspectorP
   }
   const lifecycle = lifecycleColors[result.lifecycle];
   const qualification = qualifyGeometryAnalysisRecord(result, props.currentSourceRevision);
-  const viewportCurrent = canGeometryResultDriveViewport(result, props.currentSourceRevision);
+  const viewportCurrent = canGeometryResultDriveViewport(result, props.currentSourceRevision) &&
+    props.canPublishSelectedResult;
   const comparison = props.compareResult ? compareQualifiedGeometryAnalysisRecords(result,
     props.compareResult, props.currentSourceRevision, props.compareSourceRevision) : null;
   return (
@@ -107,19 +110,23 @@ export function GeometryAnalysisInspectorPanel(props: GeometryAnalysisInspectorP
       </div>
       {!viewportCurrent && (
         <div data-testid="geometry-analysis-inspector-stale-guard" style={{ border: "1px solid #fdba74", borderRadius: 6, background: "#fff7ed", color: "#9a3412", padding: 6 }}>
-          Preserved for inspection. This result cannot drive the current viewport because its lifecycle or source revision is not current.
+          Preserved for inspection. This result cannot drive the current viewport because its lifecycle, source revision or selected quick-result identity is not current.
         </div>
       )}
       <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-        <button type="button" onClick={props.onSave}>Save</button>
-        <button type="button" onClick={props.onRename}>Rename</button>
+        <button type="button" onClick={props.onSave} disabled={!qualification.valuesAvailable}>Save</button>
+        <button type="button" onClick={props.onRename} disabled={result.savedAt === null}>Rename</button>
         <button type="button" onClick={props.onCompare}>Compare</button>
         <button type="button" onClick={props.onDuplicateSettings}>Duplicate settings</button>
-        <button type="button" onClick={props.onRecompute}>Recompute</button>
+        <button type="button" onClick={props.onRecompute}
+          disabled={!props.canRecomputeSelectedResult}>Recompute</button>
         <button type="button" onClick={props.onOpenSource} disabled={qualification.status !== "current"}>Open source</button>
         <button type="button" onClick={props.onOpenDerivative} disabled={!viewportCurrent}>Open derivative</button>
         <button type="button" onClick={props.onPromoteOverlay} disabled={!viewportCurrent}>Promote overlay</button>
-        <button type="button" onClick={props.onExport}>Export</button>
+        <button type="button" data-testid="geometry-analysis-export-json"
+          onClick={() => props.onExportEvidence("json")}>Export evidence JSON</button>
+        <button type="button" data-testid="geometry-analysis-export-csv"
+          onClick={() => props.onExportEvidence("csv")}>Export evidence CSV</button>
       </div>
       {props.savedResults.length > 0 && (
         <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 7, display: "grid", gap: 5 }}>

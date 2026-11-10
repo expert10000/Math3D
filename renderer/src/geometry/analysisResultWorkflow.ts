@@ -75,6 +75,17 @@ export const canGeometryResultDriveViewport = (
   (record.lifecycle === "complete" || record.lifecycle === "saved") &&
   currentSourceRevision !== null && record.sourceRevision === currentSourceRevision;
 
+/** A saved Inspector selection cannot publish a different quick result with a similar name. */
+export const canGeometryInspectorPublishSelected = (
+  record: Pick<GeometryAnalysisInspectorRecord,
+    "lifecycle" | "resultKey" | "resultVersion" | "sourceObjectId" | "sourceRevision">,
+  currentSourceRevision: number | null,
+  quick: Pick<GeometryAnalysisInspectorRecord,
+    "resultKey" | "resultVersion" | "sourceObjectId" | "sourceRevision"> | null
+): boolean => canGeometryResultDriveViewport(record, currentSourceRevision) && quick !== null &&
+  record.resultKey === quick.resultKey && record.resultVersion === quick.resultVersion &&
+  record.sourceObjectId === quick.sourceObjectId && record.sourceRevision === quick.sourceRevision;
+
 export type GeometryResultQualification = Readonly<{
   status: "current" | "historical" | "unavailable" | "incomplete";
   reason: string;
@@ -102,12 +113,11 @@ export const qualifyGeometryAnalysisRecord = (
 export const saveGeometryAnalysisRecord = (
   record: GeometryAnalysisInspectorRecord,
   now = Date.now()
-): GeometryAnalysisInspectorRecord => ({
-  ...record,
-  lifecycle: "saved",
-  savedAt: now,
-  updatedAt: now,
-});
+): GeometryAnalysisInspectorRecord => {
+  if (record.lifecycle !== "complete" && record.lifecycle !== "saved")
+    throw new TypeError(`Cannot save ${record.lifecycle} Geometry analysis as a completed result.`);
+  return { ...record, lifecycle: "saved", savedAt: now, updatedAt: now };
+};
 
 export const renameGeometryAnalysisRecord = (
   record: GeometryAnalysisInspectorRecord,

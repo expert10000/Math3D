@@ -529,6 +529,8 @@ import { GeometrySamplingWorkerClient } from "./geometry/geometrySamplingWorkerC
 import type { GeometrySampledFieldProgress, GeometrySampledFieldRequest } from "./geometry/sampledFieldAnalysis";
 import type { GeometryAnalyticDiscreteComparisonResult, GeometryDiscreteTargetKind } from "./geometry/analyticDiscreteComparison";
 import {
+  canGeometryResultDriveViewport,
+  canGeometryInspectorPublishSelected,
   duplicateGeometryAnalysisSettings,
   geometryInspectorLifecycleState,
   markGeometryAnalysisRecordStale,
@@ -538,6 +540,8 @@ import {
   serializeGeometryAnalysisRecords,
   type GeometryAnalysisInspectorRecord,
 } from "./geometry/analysisResultWorkflow";
+import { createGeometryAnalysisEvidence, geometryAnalysisEvidenceCsv,
+  geometryAnalysisEvidenceJson } from "./geometry/geometryAnalysisEvidence";
 import { evaluateGeometryMeshReadiness } from "./geometry/meshReadiness";
 import {
   GEOMETRY_TO_MESH_PROMOTION_MODES,
@@ -13802,6 +13806,12 @@ const App: React.FC = () => {
         geometryDatasetMeshObjects.some(object => object.id === geometryActiveAnalysisInspectorRecord.sourceObjectId))
       ? geometryObjectRevisionById[geometryActiveAnalysisInspectorRecord.sourceObjectId] ?? 0 : null
     : null;
+  const geometryCanPublishInspectorResult = geometryActiveAnalysisInspectorRecord !== null &&
+    canGeometryInspectorPublishSelected(geometryActiveAnalysisInspectorRecord,
+      geometryAnalysisInspectorSourceRevision, geometrySelectedQuickAnalysisResult);
+  const geometryCanRecomputeInspectorResult = geometryActiveAnalysisInspectorRecord !== null &&
+    geometryAnalysisInspectorSourceRevision !== null &&
+    geometrySelectedObjectId === geometryActiveAnalysisInspectorRecord.sourceObjectId;
   useEffect(() => {
     try {
       window.localStorage.setItem(
@@ -45632,24 +45642,32 @@ const App: React.FC = () => {
   }, [geometrySelectedQuickAnalysisResult, geometryVariantSets]);
   const handleSaveGeometryAnalysisInspectorResult = useCallback(() => {
     const active = geometryActiveAnalysisInspectorRecord;
-    if (!active) {
-      setGeometryCreateActionStatus("No analysis result selected.");
+    if (!active || !canGeometryResultDriveViewport(active, geometryAnalysisInspectorSourceRevision)) {
+      setGeometryCreateActionStatus("Only a completed result on the current source can be saved.");
       return;
     }
     const saved = saveGeometryAnalysisRecord({ ...active, id: active.savedAt == null ? makeId() : active.id });
     setGeometrySavedAnalysisResults((previous) => [saved, ...previous.filter((entry) => entry.id !== saved.id)].slice(0, 40));
     setGeometrySelectedSavedAnalysisResultId(saved.id);
     setGeometryCreateActionStatus(`Saved analysis result: ${saved.name}.`);
-  }, [geometryActiveAnalysisInspectorRecord]);
-  const handleRenameGeometryAnalysisInspectorResult = useCallback(() => {
+  }, [geometryActiveAnalysisInspectorRecord, geometryAnalysisInspectorSourceRevision]);
+  const handleExportGeometryAnalysisEvidence = useCallback((format: "json" | "csv") => {
     const active = geometryActiveAnalysisInspectorRecord;
     if (!active) return;
+    const evidence = createGeometryAnalysisEvidence(active, geometryAnalysisInspectorSourceRevision);
+    const base = sanitizeFileBase(`${active.sourceObjectName}_${active.kind}_${active.id}`,
+      "geometry_analysis_evidence");
+    downloadTextFile(format === "json" ? geometryAnalysisEvidenceJson(evidence) :
+      geometryAnalysisEvidenceCsv(evidence), `${base}.evidence.${format}`,
+      format === "json" ? "application/json" : "text/csv;charset=utf-8");
+    setGeometryCreateActionStatus(`Exported ${evidence.assessment.status} evidence for ${active.name}.`);
+  }, [geometryActiveAnalysisInspectorRecord, geometryAnalysisInspectorSourceRevision]);
+  const handleRenameGeometryAnalysisInspectorResult = useCallback(() => {
+    const active = geometryActiveAnalysisInspectorRecord;
+    if (!active || active.savedAt === null) return;
     const name = window.prompt("Analysis result name", active.name);
     if (name == null) return;
-    const renamed = renameGeometryAnalysisRecord(
-      active.savedAt == null ? saveGeometryAnalysisRecord({ ...active, id: makeId() }) : active,
-      name
-    );
+    const renamed = renameGeometryAnalysisRecord(active, name);
     setGeometrySavedAnalysisResults((previous) => [renamed, ...previous.filter((entry) => entry.id !== renamed.id)].slice(0, 40));
     setGeometrySelectedSavedAnalysisResultId(renamed.id);
     setGeometryCreateActionStatus(`Renamed analysis result to ${renamed.name}.`);
@@ -45687,6 +45705,10 @@ const App: React.FC = () => {
     setGeometryCreateActionStatus(`Duplicated settings for ${active.name}.`);
   }, [geometryActiveAnalysisInspectorRecord]);
   const handleRecomputeGeometryAnalysisInspectorResult = useCallback(() => {
+    if (!geometryCanRecomputeInspectorResult) {
+      setGeometryCreateActionStatus("Select the recorded source object before recomputing this analysis.");
+      return;
+    }
     const kind = geometryActiveAnalysisInspectorRecord?.kind;
     setGeometrySelectedSavedAnalysisResultId(null);
     if (kind === "basic-metrics") handleRunGeometryQuickBasicMetrics();
@@ -45702,6 +45724,7 @@ const App: React.FC = () => {
     else if (kind === "section-analysis") handleRunGeometryQuickSectionAnalysis();
     else handleRunGeometryQuickDifferential(false);
   }, [
+    geometryCanRecomputeInspectorResult,
     geometryActiveAnalysisInspectorRecord?.kind,
     handleRunGeometryAnalyticDiscreteComparison,
     handleRunGeometryCanonicalMeasurements,
@@ -45726,13 +45749,18 @@ const App: React.FC = () => {
     setGeometryCreateActionStatus(`Opened source: ${active.sourceObjectName} r${active.sourceRevision}.`);
   }, [geometryActiveAnalysisInspectorRecord]);
   const handlePromoteGeometryAnalysisInspectorOverlay = useCallback(() => {
+    if (!geometryCanPublishInspectorResult) {
+      setGeometryCreateActionStatus("Selected analysis cannot publish the current quick result.");
+      return;
+    }
     if (geometryActiveAnalysisInspectorRecord?.kind === "feature-analysis") {
       handlePromoteGeometryCharacteristicLayer();
       return;
     }
     handleOpenSelectedGeometryQuickAnalysisResult();
     setGeometryCreateActionStatus("Promoted the current result overlay to its derivative analysis workspace.");
-  }, [geometryActiveAnalysisInspectorRecord?.kind, handleOpenSelectedGeometryQuickAnalysisResult, handlePromoteGeometryCharacteristicLayer]);
+  }, [geometryActiveAnalysisInspectorRecord?.kind, geometryCanPublishInspectorResult,
+    handleOpenSelectedGeometryQuickAnalysisResult, handlePromoteGeometryCharacteristicLayer]);
   const enterSurfacePreviewFocus = useCallback(() => {
     if (surfacePreviewFocusMode) return;
     surfacePreviewFocusPrevRightPanelRef.current = showRightPanel;
@@ -107574,6 +107602,8 @@ case "mobius":
                             geometryDatasetMeshObjects.some(object => object.id === geometryCompareAnalysisResult.sourceObjectId))
                           ? geometryObjectRevisionById[geometryCompareAnalysisResult.sourceObjectId] ?? 0 : null}
                         currentSourceRevision={geometryAnalysisInspectorSourceRevision}
+                        canPublishSelectedResult={geometryCanPublishInspectorResult}
+                        canRecomputeSelectedResult={geometryCanRecomputeInspectorResult}
                         onSelectSaved={(id) => {
                           setGeometrySelectedSavedAnalysisResultId(id);
                           setGeometryCompareAnalysisResultId(null);
@@ -107584,9 +107614,11 @@ case "mobius":
                         onDuplicateSettings={handleDuplicateGeometryAnalysisSettings}
                         onRecompute={handleRecomputeGeometryAnalysisInspectorResult}
                         onOpenSource={handleOpenGeometryAnalysisInspectorSource}
-                        onOpenDerivative={handleOpenSelectedGeometryQuickAnalysisResult}
+                        onOpenDerivative={() => {
+                          if (geometryCanPublishInspectorResult) handleOpenSelectedGeometryQuickAnalysisResult();
+                        }}
                         onPromoteOverlay={handlePromoteGeometryAnalysisInspectorOverlay}
-                        onExport={handleSaveSelectedGeometryQuickAnalysisResult}
+                        onExportEvidence={handleExportGeometryAnalysisEvidence}
                       />
                       </div>
                     ) : geometryRightPanelTab === "diagnostics" ? (
