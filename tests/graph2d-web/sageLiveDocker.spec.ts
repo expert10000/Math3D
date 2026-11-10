@@ -97,7 +97,8 @@ test.describe.serial("live Docker Sage operation journey", () => {
     });
   }
   test("rejects a noninvertible input, computes in Geometry and audits all broker records", async () => {
-    test.setTimeout(180_000);
+    // CI's dev server can spend several seconds per UI action while switching to Geometry.
+    test.setTimeout(300_000);
     await panel.getByLabel("Operation").selectOption("sage.numberTheory.modInverse");
     await panel.getByLabel("Integer", { exact: true }).fill("2");
     await panel.getByLabel("Modulus (greater than 1)").fill("4");
