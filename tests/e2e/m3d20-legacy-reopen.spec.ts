@@ -37,8 +37,14 @@ async function importAndRestart(raw: string) {
 }
 test("M3D20 AC02 AC07 legacy nullable selections survive library import and cold reopen", async () => {
   test.setTimeout(180_000);
-  const raw = readFileSync("tests/fixtures/scientific-selection/gf01-legacy-project.math3d", "utf8");
-  const original = core.parseMath3DProject(raw);
+  const mixed = core.parseMath3DProject(readFileSync("tests/fixtures/scientific-selection/gf01-legacy-project.math3d", "utf8"));
+  // The mixed fixture's Graph point tables have no source sidecars. Keep its
+  // unmodified legacy field checkpoint for this executable editor journey.
+  const field = mixed.workspace.entries.find((entry: any) => entry.module === "vector3d");
+  const original = core.createMath3DProject(core.createMixedWorkspaceDocument({
+    ...mixed.workspace, entries: [field], activeDocumentIds: [field.expected.id],
+  }), { stableKey: "acceptance-legacy-field-reopen" });
+  const raw = core.serializeMath3DProject(original);
   const expected = core.readScientificSelectionsFromProject(original);
   const journey = await importAndRestart(raw);
   try {
@@ -69,6 +75,8 @@ test("M3D20 AC03 metadata-only artifact remains unavailable after cold Project r
     expect(journey.after.workspace.artifacts).toEqual([descriptor]);
     expect(journey.after.workspace.results[0].artifacts).toEqual([handle]);
     expect(journey.after.identity).toEqual(journey.before.identity);
+    await journey.panel.getByTestId("project-gallery-layout-toggle").click();
+    await journey.panel.getByTestId("project-detail-tab-documents").click();
     await journey.panel.getByTestId("project-inspect-" + graph.identity.id).click();
     const missing = journey.panel.getByTestId("project-artifact-" + handle.artifactId);
     await expect(missing).toContainText("missing or unverified");
