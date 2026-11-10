@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { inspectProjectNoteAnchor, inspectProjectStudyMembers, qualifyProjectQwzPair, qualifyProjectQwzQuadStudy, structuralHash,
+import { createStudyPaneResearchReference, inspectResearchReference, inspectProjectNoteAnchor,
+  inspectProjectStudyMembers, qualifyProjectQwzPair, qualifyProjectQwzQuadStudy, structuralHash,
   type KernelWorkspaceModule, type Math3DProject, type ProjectQuantumSceneReference } from "@math3d/core";
 import type { VerifiedProjectResources } from "../projects/projectResources";
 import type { WorkbookStageId } from "@math3d/workbook";
@@ -158,6 +159,10 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
           const member = open.members.find(item => item.memberId === pane.memberId)!;
           const choice = choiceById.get(member.documentId);
           const status = statusByMember.get(member.memberId) ?? "missing-document";
+          const paneEvidence = inspectResearchReference(project,
+            createStudyPaneResearchReference(project, open, pane.paneId),
+            resources ? item => resources.bytes(item) : undefined);
+          const sourceCurrent = status === "current-reference" && paneEvidence.status === "current";
           const workspaceEntry = project.workspace.entries.find(entry => entry.expected.id === member.documentId);
           const quantumDocument = qwzPair && [qwzPair.curvature, qwzPair.bands]
             .find(document => document.identity.id === member.documentId);
@@ -165,12 +170,13 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
             reference.sceneFingerprint === quantumDocument.source.sceneFingerprint &&
             reference.directory === quantumDocument.location.directory);
           return <div key={pane.paneId} data-testid={`project-study-pane-${pane.paneId}`} style={{ border: "1px solid #cbd5e1", padding: 8, minWidth: 0, overflow: "hidden" }}>
-            <strong>{choice?.title ?? member.documentId}</strong><p>{member.role} · {statusLabel[status]} · saved r{member.expected.revision}</p>
+            <strong>{choice?.title ?? member.documentId}</strong><p>{member.role} · {statusLabel[status]}
+              {paneEvidence.resourceStatus === "missing" ? " · source bytes unavailable" : ""} · saved r{member.expected.revision}</p>
             {quantumDocument ? <button type="button" data-testid={`project-study-open-source-${pane.paneId}`}
-              disabled={!quantumReference || !onOpenQuantumSource}
-              onClick={() => { if (quantumReference) void onOpenQuantumSource?.(quantumReference); }}>
-              Verify and view source scene</button> : <button type="button" disabled={!workspaceEntry || status !== "current-reference"}
-              onClick={() => { if (workspaceEntry && status === "current-reference") onOpenDocument(member.documentId, workspaceEntry.module); }}>Open source document</button>}
+              disabled={!quantumReference || !onOpenQuantumSource || !sourceCurrent}
+              onClick={() => { if (quantumReference && sourceCurrent) void onOpenQuantumSource?.(quantumReference); }}>
+              Verify and view source scene</button> : <button type="button" disabled={!workspaceEntry || !sourceCurrent}
+              onClick={() => { if (workspaceEntry && sourceCurrent) onOpenDocument(member.documentId, workspaceEntry.module); }}>Open source document</button>}
             <button type="button" data-testid={`project-study-preview-toggle-${pane.paneId}`}
               onClick={() => setVisiblePaneId(current => current === pane.paneId ? null : pane.paneId)}>
               {visiblePaneId === pane.paneId ? "Hide preview" : "Show preview"}</button>

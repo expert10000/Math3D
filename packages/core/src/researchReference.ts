@@ -7,6 +7,7 @@ import { projectResourceInventory, verifyProjectResourceBytes,
   type ProjectResourceKind, type ProjectResourceReader } from "./projectResources";
 import { viewerSourceFromDocument } from "./viewerProvenance";
 import type { Math3DProject } from "./math3dProject";
+import type { StudyRecordV1 } from "./studyRecord";
 
 export const RESEARCH_REFERENCE_FORMAT = "math3d.research-reference/v1" as const;
 export type ResearchResourcePin = Readonly<{ kind: ProjectResourceKind; id: string;
@@ -61,6 +62,21 @@ export function researchResourcePins(project: Math3DProject, sourceId: StableDoc
   return projectResourceInventory(project).filter(item => item.required && item.owners.includes(sourceId))
     .map(item => ({ kind: item.kind, id: item.id, descriptorHash: structuralHash(item.reference), checksum: item.checksum }))
     .sort((a, b) => `${a.kind}:${a.id}`.localeCompare(`${b.kind}:${b.id}`));
+}
+
+/** Project a saved Study pane into the same source reference used by citations and Notes. */
+export function createStudyPaneResearchReference(project: Math3DProject, study: StudyRecordV1,
+  paneId: string): ResearchReference {
+  if (study.projectId !== project.identity.id) throw new TypeError("Study belongs to another Project.");
+  const pane = study.layout.panes.find(item => item.paneId === paneId);
+  const member = study.members.find(item => item.memberId === pane?.memberId);
+  if (!member) throw new TypeError("Study pane has no saved source member.");
+  const source = viewerSourceFromDocument({ identity: member.expected });
+  const entry = project.workspace.entries.find(item => item.expected.id === member.documentId);
+  return createResearchReference({ projectId: project.identity.id, kind: "document",
+    targetId: member.documentId, source, targetHash: member.expected.structuralHash,
+    resources: entry && matchesScientificSourceGeneration(source,
+      viewerSourceFromDocument({ identity: entry.expected })) ? researchResourcePins(project, member.documentId) : [] });
 }
 
 /** Source and target identity are separate from the availability of required sidecar bytes. */

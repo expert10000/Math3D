@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createResearchReference, inspectResearchReference, normalizeResearchReference,
-  researchResourcePins, viewerSourceFromDocument,
+  researchResourcePins, viewerSourceFromDocument, createProjectStudyFromDocuments,
+  createStudyPaneResearchReference, renameProjectStudy,
   createStableDocumentId } from "@math3d/core";
 import { instantiateNotebookStarter } from "../projects/notebookStarters";
 
@@ -36,5 +37,19 @@ describe("shared research reference", () => {
     const missingRef = createResearchReference({ ...ref, targetId: absentId,
       source: { ...ref.source, documentId: absentId } });
     expect(inspectResearchReference(project, missingRef).status).toBe("missing");
+  });
+
+  it("projects a saved Study pane through the same resource-qualified reference", () => {
+    const { project: base, resources } = fixture();
+    const mesh = base.workspace.entries.find(item => item.module === "mesh")!;
+    const project = createProjectStudyFromDocuments(base, "pane-reference", "Mesh evidence", [mesh.expected.id]);
+    const study = project.workspace.studies![0]!;
+    const pane = createStudyPaneResearchReference(project, study, study.layout.panes[0]!.paneId);
+    expect(pane.source.revision).toBe(mesh.expected.revision);
+    expect(pane.resources.length).toBeGreaterThan(0);
+    expect(inspectResearchReference(project, pane, item => resources.bytes(item)).status).toBe("current");
+    expect(inspectResearchReference(project, pane, () => null).resourceStatus).toBe("missing");
+    const renamed = renameProjectStudy(project, study.id, "Revised narrative");
+    expect(inspectResearchReference(renamed, pane).status).toBe("current");
   });
 });
