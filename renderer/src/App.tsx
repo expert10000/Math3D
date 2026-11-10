@@ -787,6 +787,7 @@ import { VolumeExtractionKernelBridge, locateVolumeExtractionVertex, promoteVolu
 import { VolumeIsosurfaceScientificJob } from "./volume/volumeScientificJob";
 import { publishVolumeAnalysisEvidence } from "./volume/analysisPublication";
 import { publishVolumeComparisonEvidence } from "./volume/comparisonPublication";
+import { qualifyVolumeDerivedResult } from "./volume/derivedQualification";
 import { CurveConstructionRealizer, locateCurveConstructionVertex, type CurveConstructionGeometry } from "./curveAnalysis/curveConstructionGeometry";
 import { curveConstructionSourceStatus, type CurveConstructionRecord } from "./curveAnalysis/curveConstructionKernel";
 import { CurveResultLifecyclePanel } from "./components/CurveResultLifecyclePanel";
@@ -35421,6 +35422,10 @@ const App: React.FC = () => {
   const [volumeDerivedResults, setVolumeDerivedResults] = useState<VolumeDerivedResult[]>([]);
   const [volumeExtractionRecords, setVolumeExtractionRecords] = useState<VolumeExtractionRecord[]>([]);
   const volumeDerivedGeometryRef = useRef(new Map<string, VolumeIsosurfaceGeometry>());
+  const volumeDerivedQualifications = useMemo(() => Object.fromEntries(volumeDerivedResults.map((result) => [
+    result.id,
+    qualifyVolumeDerivedResult(result, canonicalVolumeObject, { isoValue: volumeIsoValue }, volumeDerivedGeometryRef.current.has(result.id)),
+  ])), [canonicalVolumeObject, volumeDerivedResults, volumeIsoValue]);
   const volumeKernelAdapterRef = useRef(activeVolumeKernelAdapter);
   volumeKernelAdapterRef.current = activeVolumeKernelAdapter;
   const volumeExtractionBridgeRef = useRef<VolumeExtractionKernelBridge | null>(null);
@@ -51539,7 +51544,7 @@ case "mobius":
   const handleBakeVolumeDerivedResult = useCallback((id: string) => {
     const result = volumeDerivedResults.find((entry) => entry.id === id);
     const geometry = volumeDerivedGeometryRef.current.get(id);
-    if (!result?.isosurface || !geometry) return;
+    if (!result?.isosurface || !geometry || !qualifyVolumeDerivedResult(result, canonicalVolumeObject, { isoValue: volumeIsoValue }, true).canBake) return;
     const now = Date.now();
     const snapshotId = `${id}:snapshot:${now}`;
     volumeDerivedGeometryRef.current.set(snapshotId, {
@@ -51558,7 +51563,7 @@ case "mobius":
       createdAt: now,
       updatedAt: now,
     }, ...previous].slice(0, 24));
-  }, [volumeDerivedResults, volumeExtractionRecords]);
+  }, [canonicalVolumeObject, volumeDerivedResults, volumeExtractionRecords, volumeIsoValue]);
 
   const handleDetachVolumeDerivedResult = useCallback((id: string) => {
     setVolumeDerivedResults((previous) => previous.map((result) => result.id === id ? detachVolumeDerivedResult(result) : result));
@@ -51567,7 +51572,7 @@ case "mobius":
   const openVolumeDerivedResult = useCallback((id: string, destination: "mesh" | "geometry" | "analysis") => {
     const result = volumeDerivedResults.find((entry) => entry.id === id);
     const geometry = volumeDerivedGeometryRef.current.get(id);
-    if (!result?.isosurface || !geometry) return;
+    if (!result?.isosurface || !geometry || !qualifyVolumeDerivedResult(result, canonicalVolumeObject, { isoValue: volumeIsoValue }, true).canTransfer) return;
     const role = result.state === "snapshot" ? "snapshot" : result.state === "detached" ? "detached" : "live";
     const mesh = createVolumeIsosurfaceMesh({
       resultId: result.id,
@@ -51654,7 +51659,7 @@ case "mobius":
       setSurfaceMeshInspectPick({ point, normal, meshKey: "workspace:active", vertexIndex: nearest });
       setSurfaceMeshTopologyPickMode("vertex");
     }
-  }, [handleGeometryFit, setMeshDataset, surfacesPanelState, volumeCameraState, volumeCrosshair, volumeDerivedResults, volumeFocusedPane, volumeLayout]);
+  }, [canonicalVolumeObject, handleGeometryFit, setMeshDataset, surfacesPanelState, volumeCameraState, volumeCrosshair, volumeDerivedResults, volumeFocusedPane, volumeIsoValue, volumeLayout]);
 
   const handleReturnToVolumeSource = useCallback(() => {
     if (!volumeMeshAnalysisHandoff) return;
@@ -90750,6 +90755,7 @@ case "mobius":
                         definitionError={volumeCustomCompiled.error}
                         computeDiagnostics={volumeComputeDiagnostics}
                         derivedResults={volumeDerivedResults}
+                        derivedQualifications={volumeDerivedQualifications}
                         extractionEvidence={volumeExtractionRecords.map((record) => ({
                           derivedResultId: record.derivedResultId,
                           status: volumeExtractionStatus(record, activeVolumeKernelAdapter.sourceGeneration(),

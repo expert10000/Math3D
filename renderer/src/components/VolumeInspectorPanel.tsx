@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import type { VolumeDocument } from "@math3d/core";
 import { SharedInspectorShell, type SharedInspectorCategory } from "./SharedInspectorShell";
+import type { VolumeDerivedQualification } from "../volume/derivedQualification";
 
 import type { VolumeDataset } from "../scene/datasets";
 import type { VolumeSliceHover, VolumeSliceReport } from "../scene/volume/sliceVolume";
@@ -82,6 +83,7 @@ export type VolumeInspectorPanelProps = {
   definitionError: string | null;
   computeDiagnostics: VolumeComputeDiagnostics;
   derivedResults: readonly VolumeDerivedResult[];
+  derivedQualifications: Readonly<Record<string, VolumeDerivedQualification>>;
   extractionEvidence?: readonly { derivedResultId: string; status: "current" | "stale" | "snapshot" | "unavailable"; relationId: string; artifactId: string }[];
   derivedBusy: boolean;
   analysisSummary: VolumeAnalysisSummary | null;
@@ -267,6 +269,7 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
   definitionError,
   computeDiagnostics,
   derivedResults,
+  derivedQualifications,
   extractionEvidence,
   derivedBusy,
   analysisSummary,
@@ -596,22 +599,24 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
             <button type="button" data-testid="volume-derived-apply" onClick={onApplyDerivedResult} disabled={derivedBusy}>Apply full result</button>
             {derivedBusy && <button type="button" data-testid="volume-derived-cancel" onClick={onCancelDerivedResult}>Cancel</button>}
           </div>
-          {derivedResults.length ? derivedResults.map((result) => (
+          {derivedResults.length ? derivedResults.map((result) => {
+            const qualification = derivedQualifications[result.id];
+            return (
             <div
               key={result.id}
-              data-testid={`volume-derived-result-${result.state}`}
+              data-testid={`volume-derived-result-${qualification?.status ?? "unavailable"}`}
               style={{ border: "1px solid #d7e2ee", borderRadius: 8, background: "#fff", padding: 8, display: "grid", gap: 5 }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11 }}>
                 <strong>{result.label}</strong>
-                <span style={{ color: result.state === "stale" ? "#b45309" : result.state === "detached" ? "#475569" : "#166534" }}>
-                  {result.state}
+                <span style={{ color: !qualification?.showMetrics ? "#b45309" : qualification.status === "detached" ? "#475569" : "#166534" }}>
+                  {qualification?.status ?? "unavailable"}
                 </span>
               </div>
               <DetailRow label="Source revision" value={result.sourceVolumeRevision} />
               <DetailRow label="Grid revision" value={result.sourceSampledGridRevision} />
               {extractionEvidence?.filter((entry) => entry.derivedResultId === result.id).map((entry) => <div key={entry.relationId} data-testid="volume-derived-kernel-lineage" style={{ fontSize: 10, color: entry.status === "stale" ? "#b45309" : "#475569" }}>Kernel lineage: {entry.status} · {entry.relationId} · artifact {entry.artifactId}</div>)}
-              {result.isosurface && (
+              {result.isosurface && qualification?.showMetrics && (
                 <>
                   <DetailRow label="Algorithm" value={`${result.isosurface.algorithm} · ${result.isosurface.backend}`} />
                   <DetailRow label="Iso value" value={formatNumber(result.isosurface.isoValue)} />
@@ -626,18 +631,19 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
                   {result.isosurface.warnings.map((warning) => <div key={warning} style={{ color: "#92400e", fontSize: 10 }}>{warning}</div>)}
                 </>
               )}
+              {!qualification?.showMetrics && <div style={{ color: "#92400e", fontSize: 10 }}>Metrics withheld: {qualification?.reason ?? "Derived evidence unavailable."}</div>}
               {result.staleReason && <div style={{ color: "#92400e", fontSize: 10 }}>{result.staleReason}</div>}
               <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 5 }}>
                 <button type="button" onClick={() => onRegenerateDerivedResult(result.id)}>Regenerate</button>
-                <button type="button" onClick={() => onBakeDerivedResult(result.id)} disabled={result.state === "snapshot"}>Bake snapshot</button>
+                <button type="button" onClick={() => onBakeDerivedResult(result.id)} disabled={!qualification?.canBake}>Bake snapshot</button>
                 <button type="button" onClick={() => onDetachDerivedResult(result.id)} disabled={result.state === "detached"}>Detach</button>
-                <button type="button" data-testid="volume-derived-send-mesh" onClick={() => onSendDerivedResultToMesh(result.id)}>Send to Mesh</button>
-                <button type="button" data-testid="volume-derived-send-geometry" onClick={() => onSendDerivedResultToGeometry(result.id)}>Send to Geometry</button>
-                <button type="button" data-testid="volume-derived-open-analysis" onClick={() => onOpenDerivedResultInMeshAnalysis(result.id)}>Open in Mesh Analysis</button>
+                <button type="button" data-testid="volume-derived-send-mesh" onClick={() => onSendDerivedResultToMesh(result.id)} disabled={!qualification?.canTransfer}>Send to Mesh</button>
+                <button type="button" data-testid="volume-derived-send-geometry" onClick={() => onSendDerivedResultToGeometry(result.id)} disabled={!qualification?.canTransfer}>Send to Geometry</button>
+                <button type="button" data-testid="volume-derived-open-analysis" onClick={() => onOpenDerivedResultInMeshAnalysis(result.id)} disabled={!qualification?.canTransfer}>Open in Mesh Analysis</button>
                 <button type="button" onClick={() => onDeleteDerivedResult(result.id)}>Delete</button>
               </div>
             </div>
-          )) : (
+          ); }) : (
             <div style={{ fontSize: 11, color: "#64748b" }}>No derived isosurface result is active.</div>
           )}
         </div>
