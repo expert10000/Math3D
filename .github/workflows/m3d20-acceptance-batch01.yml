@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - .github/workflows/m3d20-acceptance-batch01.yml
+      - tests/unit/crossModuleAdapterRegistry.test.ts
   workflow_dispatch:
     inputs:
       source_sha:
@@ -25,7 +26,7 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 30
     env:
-      TEST_SOURCE_SHA: ${{ inputs.source_sha || 'c171d299d2e54aa04fbef54722e37267931f61c1' }}
+      TEST_SOURCE_SHA: ${{ inputs.source_sha || github.event.pull_request.head.sha || github.sha }}
     steps:
       - name: Validate the requested source SHA
         shell: pwsh
