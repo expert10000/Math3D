@@ -9,7 +9,7 @@ import { computeVectorField3DBasinMap, computeVectorField3DPoincareSection,
   parseMath3DProject,
   replaceMath3DProjectWorkspace, reviseVectorField3DDocument,
   serializeMath3DProject, upsertProjectVectorField3DTopologyStudy,
-  projectVectorField3DTopologyStatus, vectorField3DExpression,
+  projectVectorField3DTopologyStatus, isVectorField3DTopologyPublicationCurrent, vectorField3DExpression,
   type VectorField3DDocument } from "@math3d/core";
 
 const base = () => {
@@ -64,6 +64,7 @@ describe("GF-41 bounded basin map", () => {
     expect(result.provenance.operation.parameters.recipe).toEqual(recipe);
     expect(projectVectorField3DTopologyStatus(reopened, result).status)
       .toBe("current");
+    expect(isVectorField3DTopologyPublicationCurrent(result, document)).toBe(true);
     const changed = reviseVectorField3DDocument(document, { ...document.source,
       display: { ...document.source.display, magnitudeScale: 2 } });
     const stale = replaceMath3DProjectWorkspace(reopened,
@@ -71,6 +72,9 @@ describe("GF-41 bounded basin map", () => {
         reopened.workspace.entries.map(item => item.expected.id === document.identity.id ?
           { ...item, checkpoint: changed, expected: changed.identity } : item) }));
     expect(projectVectorField3DTopologyStatus(stale, result))
+      .toMatchObject({ status: "withheld", reason: "source-changed" });
+    expect(isVectorField3DTopologyPublicationCurrent(result, changed)).toBe(false);
+    expect(projectVectorField3DTopologyStatus(reopened, result, changed))
       .toMatchObject({ status: "withheld", reason: "source-changed" });
   });
 });
@@ -105,6 +109,7 @@ describe("GF-42 oriented Poincaré section", () => {
       .toBeLessThan(.05);
     const saved = upsertProjectVectorField3DTopologyStudy(current,
       study.publication);
+    expect(isVectorField3DTopologyPublicationCurrent(study.publication, document)).toBe(true);
     const rows = poincareGraphRows(study);
     const origin = createPoincareGraphOrigin(saved, study);
     const tables = new Graph2DPointTableStore();
@@ -139,6 +144,9 @@ describe("GF-42 oriented Poincaré section", () => {
       .toContain(authored.source.objects.find(item => item.kind === "point-series")!.id);
     const changed = reviseVectorField3DDocument(document, { ...document.source,
       display: { ...document.source.display, magnitudeScale: 2 } });
+    expect(isVectorField3DTopologyPublicationCurrent(study.publication, changed)).toBe(false);
+    expect(projectVectorField3DTopologyStatus(reopened, study.publication, changed))
+      .toMatchObject({ status: "withheld", reason: "source-changed" });
     const stale = replaceMath3DProjectWorkspace(reopened,
       createMixedWorkspaceDocument({ ...reopened.workspace,
         entries: reopened.workspace.entries.map(item => item.expected.id ===

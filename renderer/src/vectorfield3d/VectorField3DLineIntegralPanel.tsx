@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { analyzeVectorField3DLineIntegral, createOrientedPolylineSelection,
   createVectorField3DLineIntegralResult, normalizeScientificSelection,
-  projectLineIntegralStatus, type AnalysisResultEnvelope, type Math3DProject,
+  type AnalysisResultEnvelope, type Math3DProject,
   type ScientificSelection, type VectorField3DDocument,
   type VectorField3DLineIntegralMode } from "@math3d/core";
+import { VectorField3DResultEvidenceCard } from "./VectorField3DResultEvidenceCard";
+import { vectorField3DResultEvidence } from "./vectorField3DResultEvidence";
 
 const initialVertices = (document: VectorField3DDocument) => {
   const [x, y, z] = document.source.axes;
@@ -94,16 +96,9 @@ export function VectorField3DLineIntegralPanel({ document, project, onSaveSelect
       <option value="line-integral">Line integral</option><option value="circulation">Circulation</option>
     </select></label>
     <button type="button" disabled={!selected || !onSaveResult} onClick={compute}>Compute and save result</button>
-    {results.map(result => { const status = projectLineIntegralStatus(project!, result, document);
-      return <div key={result.resultId} data-testid="gf10-saved-result">
-        <strong>{result.provenance.operation.parameters.mode === "circulation" ? "Circulation" : "Line integral"}</strong>
-        <p role="status">{status.status === "current" ?
-          `${status.value} ${result.summary.unit}; ${result.summary.method}; error estimate ${result.summary.errorEstimate}; coverage ${result.summary.coverage}` :
-          `Value withheld: ${status.reason}; coverage ${result.summary.coverage}`}</p>
-        <small>Orientation {String(result.provenance.operation.parameters.orientation)} · selection {
-          String(result.provenance.operation.parameters.selectionId)}</small>
-      </div>;
-    })}
+    {results.map(result => <VectorField3DResultEvidenceCard key={result.resultId}
+      testId="gf10-saved-result" evidence={vectorField3DResultEvidence(project!, result, document)}
+      label={result.provenance.operation.parameters.mode === "circulation" ? "Circulation" : "Line integral"} />)}
     {message && <p role="status">{message}</p>}
     {error && <p role="alert">{error}</p>}
   </section>;

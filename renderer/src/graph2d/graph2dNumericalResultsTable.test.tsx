@@ -7,6 +7,7 @@ import { Graph2DCriticalResultsPanel } from "./Graph2DCriticalResultsPanel";
 import { Graph2DIntersectionResultsTable } from "./Graph2DIntersectionResultsTable";
 import { Graph2DIntervalResultsPanel } from "./Graph2DIntervalResultsPanel";
 import { Graph2DPhaseEquilibriaTable } from "./Graph2DPhaseEquilibriaTable";
+import { Graph2DRegressionPanel } from "./Graph2DRegressionPanel";
 import { Graph2DNumericalResultsTable } from "./Graph2DNumericalResultsTable";
 import { graph2DNumericalRows } from "./graph2dNumericalRows";
 import { Graph2DPlot } from "./Graph2DPlot";
@@ -71,6 +72,57 @@ describe("shared Graphs numerical result browser", () => {
     expect(plot).toContain('data-focused-interval-id="');
   });
 
+  it("withholds a critical scan when its recorded source is no longer current", () => {
+    const document = scene();
+    const critical = analyzeGraph2DCriticalPoints({ document, objectId: "function_1",
+      interval: { min: -2, max: 2 } });
+    const changed = { ...document, identity: { ...document.identity, revision: document.identity.revision + 1 } };
+    const markup = renderToStaticMarkup(<Graph2DCriticalResultsPanel analysis={critical}
+      document={changed} analysisBudget={12000} onAnalysisBudgetChange={() => {}} />);
+    expect(markup).toContain("Historical numerical result");
+    expect(markup).toContain(critical.publication.resultId);
+    expect(markup).not.toContain("Export results");
+    expect(markup).not.toContain("Zeros</dt>");
+    expect(markup).not.toContain("Numerical analysis results");
+  });
+
+  it("withholds historical intersection and interval summaries and actions", () => {
+    const document = scene();
+    const intersections = analyzeGraph2DIntersections({ document, firstObjectId: "function_1",
+      secondObjectId: "function_2", interval: { min: -2, max: 2 } });
+    const critical = analyzeGraph2DCriticalPoints({ document, objectId: "function_1",
+      interval: { min: -2, max: 2 } });
+    const intervals = analyzeGraph2DIntervals({ document, objectId: "function_1",
+      interval: { min: -2, max: 2 }, criticalPoints: critical });
+    const changed = { ...document, identity: { ...document.identity, structuralHash: "sha256:changed" } };
+    const intersectionMarkup = renderToStaticMarkup(<Graph2DIntersectionResultsTable analysis={intersections}
+      document={changed} canSave onSave={() => {}} onSaveBatch={() => {}} />);
+    const intervalMarkup = renderToStaticMarkup(<Graph2DIntervalResultsPanel analysis={intervals}
+      document={changed} focusedId={null} onFocus={() => {}} />);
+    for (const markup of [intersectionMarkup, intervalMarkup]) {
+      expect(markup).toContain("Historical numerical result");
+      expect(markup).toContain("Independent check");
+      expect(markup).not.toContain("Export results");
+      expect(markup).not.toContain('class="graph2d-numerical-results"');
+    }
+    expect(intersectionMarkup).not.toContain("Save selected");
+    expect(intervalMarkup).not.toContain("Increasing</dt>");
+  });
+
+  it("withholds stale fit parameters and residuals while allowing the fit to be cleared", () => {
+    const document = scene();
+    const result = { model: "linear", objectId: "missing", source: { documentId: "old", revision: 1,
+      structuralHash: "sha256:old", generation: 1 }, publication: { resultId: "fit-old",
+      provenance: { operation: { algorithm: "ordinary-least-squares" } } }, n: 99 } as never;
+    const markup = renderToStaticMarkup(<Graph2DRegressionPanel document={document} model="linear"
+      onModel={() => {}} result={result} onResult={() => {}} />);
+    expect(markup).toContain("Historical numerical result");
+    expect(markup).toContain("fit-old");
+    expect(markup).toContain("Clear regression");
+    expect(markup).not.toContain("n=99");
+    expect(markup).not.toContain("Residuals (");
+  });
+
   it("shows equilibrium summary and disables export for transient previews", () => {
     const document = scene();
     const artifact = { equilibria: [{ x: 0, y: 0, residual: 1e-9,
@@ -80,10 +132,13 @@ describe("shared Graphs numerical result browser", () => {
     const markup = renderToStaticMarkup(<Graph2DPhaseEquilibriaTable artifact={artifact}
       document={document} objectId="function_1" />);
     expect(markup).toContain("Approximate equilibria");
+    expect(markup).toContain("viewport sampled equilibrium candidates");
+    expect(markup).toContain("Independent check");
     expect(markup).toContain("Export results");
     const preview = renderToStaticMarkup(<Graph2DPhaseEquilibriaTable artifact={artifact}
       document={document} objectId="function_1" readOnlyPreview />);
     expect(preview).toContain("Transient equilibria preview");
+    expect(preview).toContain("transient viewport equilibrium preview");
     expect(preview).not.toContain("Export results");
   });
 });

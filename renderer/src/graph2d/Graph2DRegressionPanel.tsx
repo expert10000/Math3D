@@ -7,6 +7,7 @@ import { downloadGraph2DResultsCsv } from "./downloadGraph2DResultsCsv";
 import { Graph2DNumericalResultsTable, type Graph2DResultColumn,
   type Graph2DResultFilter } from "./Graph2DNumericalResultsTable";
 import { Graph2DAnalysisRowBudgetControl, type Graph2DAnalysisRowBudget } from "./Graph2DAnalysisBudgetControl";
+import { Graph2DResultEvidence } from "./Graph2DResultEvidence";
 
 type Residual = Graph2DRegression["residuals"][number];
 const columns: readonly Graph2DResultColumn<Residual>[] = [
@@ -138,7 +139,11 @@ export function Graph2DRegressionPanel({ document, model, onModel, result, onRes
     <button disabled={object?.kind !== "point-series" || pending} onClick={fit}>Fit dataset</button>
     {pending && <><button onClick={() => cancel()}>Cancel fit</button><p aria-live="polite">Fitting checked point series…</p></>}
     {error && <p role="alert">{error}</p>}
-    {result && <><p role="status">{current ? "Current regression" : "Stale regression — source/model changed; fit again"}</p>
+    {result && <><Graph2DResultEvidence current={!!current} resultId={result.publication.resultId}
+      source={result.source} claim={`${result.model} fit to checksum-verified rows`}
+      method={result.publication.provenance.operation.algorithm} units="Source dataset x and y world units"
+      limitation="Model assumptions and global optimality are not independently verified." />
+      {current && <>
       <p>n={result.n} · excluded={result.excluded} · {result.model === "spline" ? "descriptive RMSE" : `df=${result.degreesOfFreedom} · residual SD`}={result.residualSD.toPrecision(6)} · R²={result.rSquared?.toPrecision(6) ?? "undefined"}</p>
       {result.model === "spline" ? <><p>Cubic B-spline · {result.spline.controlPoints} control points · λ={result.spline.lambda}.</p>
         <p>Brown: fitted curve. No confidence or prediction intervals are provided for this regularized model.</p></> : <>
@@ -187,7 +192,9 @@ export function Graph2DRegressionPanel({ document, model, onModel, result, onRes
         <small>Residual rows can be highlighted and exported. They are not construction candidates.</small>
         </>}
       </details>
-      <button onClick={() => onResult(null)}>Clear regression</button><p>Export includes a fit summary, 129 fitted samples{result.model === "spline" || result.model === "exponential-decay" || result.model === "logistic-growth" ? "" : " with pointwise intervals"} and the first 2,048 residuals; larger residual tables are explicitly truncated. Results are transient and must be fitted again after reopening.</p>
+      </>}
+      <button onClick={() => onResult(null)}>Clear regression</button>
+      {current && <p>Export includes a fit summary, 129 fitted samples{result.model === "spline" || result.model === "exponential-decay" || result.model === "logistic-growth" ? "" : " with pointwise intervals"} and the first 2,048 residuals; larger residual tables are explicitly truncated. Results are transient and must be fitted again after reopening.</p>}
     </>}
   </section>;
 }

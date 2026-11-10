@@ -8,6 +8,8 @@ import { addMath3DProjectAlgebraEvidence, buildAlgebraOperationRequest, createAl
   createProjectAlgebraObjectId, upsertMath3DProjectAlgebraObject,
   type AlgebraObjectDefinition, type Math3DProject } from "@math3d/core";
 import { algebraEvidenceInspectorModel } from "./algebraEvidenceInspectorModel";
+import { qualifyAlgebraEvidence } from "./algebraEvidenceQualification";
+import { algebraEvidenceInspectorExportJson } from "./algebraEvidenceInspectorExport";
 import SageAlgebraEvidenceInspector from "./SageAlgebraEvidenceInspector";
 
 const empty = () => createMath3DProject(createMixedWorkspaceDocument({ entries: [], activeDocumentIds: [],
@@ -22,6 +24,58 @@ const provenance = (jobId: string) => ({ engine: "sagemath" as const, version: "
   jobId, elapsedMs: 17, warnings: [] });
 
 describe("SAGE-B06 saved algebra evidence Inspector", () => {
+  it("qualifies integrity and pinned revision separately from current lineage", () => {
+    const { project, record } = withObject(empty(), "Z", { kind: "integer-ring" });
+    const request = buildAlgebraOperationRequest(project, { objectId: record.id, revision: 1 },
+      "sage.numberTheory.gcd", "docker", { values: ["84", "30"] });
+    const evidence = createProjectAlgebraEvidence(project.identity.id, project.algebraObjects!, request,
+      { value: "6" }, provenance("b06-qualification"));
+    const saved = addMath3DProjectAlgebraEvidence(project, evidence);
+    expect(qualifyAlgebraEvidence(saved, evidence)).toMatchObject({
+      status: "current", canUseResult: true, canDerive: true,
+      revision: 1, definitionHash: record.contentHash });
+    const report = JSON.parse(algebraEvidenceInspectorExportJson(saved, evidence));
+    expect(report).toMatchObject({ format: "math3d.cas-algebra-evidence-inspector.v1",
+      qualification: { status: "current", canDerive: true },
+      verification: { mode: "CHECKED" }, result: { value: "6" },
+      source: { definitionHash: record.contentHash } });
+    expect(report.checkScope).toMatch(/not a mathematical proof/);
+    const currentMarkup = renderToStaticMarkup(createElement(SageAlgebraEvidenceInspector,
+      { model: algebraEvidenceInspectorModel(saved, evidence), section: "result", onExport: () => {} }));
+    expect(currentMarkup).toContain("Export evidence JSON");
+    const revised = upsertMath3DProjectAlgebraObject(saved, createAlgebraObjectRecord({ id: record.id,
+      revision: 2, label: "Integers", definition: { kind: "integer-ring" } }));
+    expect(qualifyAlgebraEvidence(revised, evidence)).toMatchObject({
+      status: "historical", canUseResult: true, canDerive: false });
+    expect(JSON.parse(algebraEvidenceInspectorExportJson(revised, evidence)).qualification)
+      .toMatchObject({ status: "historical", canDerive: false });
+    expect(qualifyAlgebraEvidence(saved, { ...evidence,
+      resultHash: "sha256:" + "0".repeat(64) })).toMatchObject({
+      status: "invalid", canUseResult: false, canDerive: false });
+    const invalid = algebraEvidenceInspectorModel(saved, { ...evidence,
+      resultHash: "sha256:" + "0".repeat(64) });
+    expect(invalid).toMatchObject({ mode: "FAILED", result: [] });
+    expect(invalid.checks).toContainEqual(expect.objectContaining({
+      label: "Saved evidence integrity", status: "failed" }));
+    expect(invalid.structure).toContainEqual({ label: "Status", value: "Invalid evidence" });
+    const invalidMarkup = renderToStaticMarkup(createElement(SageAlgebraEvidenceInspector,
+      { model: invalid, section: "result" }));
+    expect(invalidMarkup).toContain('data-qualification="invalid"');
+    expect(invalidMarkup).toContain("Result values withheld");
+    expect(invalidMarkup).not.toContain("Greatest common divisor</dt>");
+    expect(invalidMarkup).not.toContain("Export evidence JSON");
+    expect(() => algebraEvidenceInspectorExportJson(saved, { ...evidence,
+      resultHash: "sha256:" + "0".repeat(64) })).toThrow(/withheld/);
+    const historical = algebraEvidenceInspectorModel(revised, evidence);
+    expect(historical.qualification.status).toBe("historical");
+    expect(historical.structure).toContainEqual({ label: "Status", value: "Historical revision" });
+    expect(historical.result).toContainEqual({ label: "Greatest common divisor", value: "6" });
+    const historicalMarkup = renderToStaticMarkup(createElement(SageAlgebraEvidenceInspector,
+      { model: historical, section: "result" }));
+    expect(historicalMarkup).toContain('data-qualification="historical"');
+    expect(historicalMarkup).toContain("Source: historical");
+    expect(historicalMarkup).toContain("Greatest common divisor");
+  });
   it("independently checks GCD and catches a mathematically wrong saved value", () => {
     const { project, record } = withObject(empty(), "Z", { kind: "integer-ring" });
     const request = buildAlgebraOperationRequest(project, { objectId: record.id, revision: 1 },

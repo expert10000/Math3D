@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { analyzeVectorField3DRegion, analyzeVectorField3DTheorem,
   createOrientedRegionSelection, createVectorField3DRegionIntegralResult,
-  normalizeScientificSelection, projectRegionResultStatus,
+  normalizeScientificSelection,
   type AnalysisResultEnvelope, type Math3DProject, type RegionGeometry,
   type RegionMeasure, type ScientificSelection, type VectorField3DDocument } from "@math3d/core";
+import { VectorField3DResultEvidenceCard } from "./VectorField3DResultEvidenceCard";
+import { vectorField3DResultEvidence } from "./vectorField3DResultEvidence";
 
 export function VectorField3DRegionIntegralPanel({ document, project, onSaveSelection,
   onSaveResult }: { document: VectorField3DDocument; project?: Math3DProject | null;
@@ -120,24 +122,9 @@ export function VectorField3DRegionIntegralPanel({ document, project, onSaveSele
       <option value="stokes">Stokes theorem check</option>
     </select></label>
     <button type="button" disabled={!selected || !onSaveResult} onClick={compute}>Compute and save</button>
-    {results.map(result => { const status = projectRegionResultStatus(project!, result, document);
-      const theorem = result.provenance.operation.type === "vector3d.theorem-check";
-      return <div key={result.resultId} data-testid="gf11-saved-result">
-        <strong>{String(result.provenance.operation.parameters.measure)}</strong>
-        <p role="status">{status.status !== "current" ?
-          `Value withheld: ${status.reason}; coverage ${result.summary.coverage ?? "inconclusive"}` :
-          theorem ? `${result.summary.state}: boundary ${result.summary.boundaryValue}, interior ${
-            result.summary.interiorValue} ${result.summary.unit}; absolute residual ${
-            result.summary.absoluteResidual}, relative residual ${result.summary.relativeResidual}; ${
-            result.summary.method}; resolution ${result.summary.resolution}` :
-          `${status.value} ${result.summary.unit}; ${result.summary.method}; resolution ${result.summary.resolution}; coverage ${result.summary.coverage}`}</p>
-        {theorem && result.summary.state === "inconclusive" && status.reason !== "source-changed" &&
-          <p>Inconclusive: {String(result.summary.reason)}; boundary {String(result.summary.boundaryValue)},
-            interior {String(result.summary.interiorValue)}, residual {String(result.summary.absoluteResidual)}.</p>}
-        <small>Orientation {String(result.summary.orientation)} · selection {
-          String(result.provenance.operation.parameters.selectionId)}</small>
-      </div>;
-    })}
+    {results.map(result => <VectorField3DResultEvidenceCard key={result.resultId}
+      testId="gf11-saved-result" evidence={vectorField3DResultEvidence(project!, result, document)}
+      label={String(result.provenance.operation.parameters.measure)} />)}
     {message && <p role="status">{message}</p>}{error && <p role="alert">{error}</p>}
   </section>;
 }

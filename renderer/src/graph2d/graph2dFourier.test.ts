@@ -4,6 +4,7 @@ import { analyzeGraph2DFourier, analyzeGraph2DMultiChannelFourier, applyGraph2DA
   Graph2DPointTableStore, graph2DPointDomain, isGraph2DFourierCurrent,
   isGraph2DMultiChannelFourierCurrent, type Graph2DPointRow,
   type Graph2DScientificDatasetOrigin } from "@math3d/core";
+import { isGraph2DFourierSelectionCurrent } from "./graph2dFourierQualification";
 
 const dataset = (values: readonly (number | null)[], xs = values.map((_, i) => i / 128)) => {
   const rows: Graph2DPointRow[] = values.map((y, i) => ({ id: `row_${i + 1}`, x: xs[i]!, y }));
@@ -113,6 +114,12 @@ describe("GRA-16 aligned multi-channel Fourier", () => {
     expect(result.channels[0]!.spectrum.table.checksum).not.toBe(result.channels[1]!.spectrum.table.checksum);
     expect(result.channels.map(channel => channel.origin?.component)).toEqual(["east", "north"]);
     expect(isGraph2DMultiChannelFourierCurrent(result, input.document)).toBe(true);
+    const ids = input.channels.map(channel => channel.objectId);
+    expect(isGraph2DFourierSelectionCurrent(result, input.document, ids, options)).toBe(true);
+    expect(isGraph2DFourierSelectionCurrent(result, input.document, [...ids].reverse(), options)).toBe(false);
+    expect(isGraph2DFourierSelectionCurrent(result, input.document, ids,
+      { ...options, window: "hann" })).toBe(false);
+    expect(isGraph2DFourierSelectionCurrent({ ...result, channels: [] }, input.document, [], options)).toBe(false);
     const csv = graph2DMultiChannelFourierCsv(result);
     expect(csv).toContain("frequency,channel_1_amplitude,channel_1_phaseRadians,channel_2_amplitude,channel_2_phaseRadians");
     expect(csv).toContain(result.channels[0]!.spectrum.table.checksum);
@@ -126,6 +133,7 @@ describe("GRA-16 aligned multi-channel Fourier", () => {
         style: { color: "#2563eb", lineWidth: 2, lineStyle: "solid", visible: true } } });
     const revisedDocument = createGraph2DDocument({ ...revisedSource, stableKey: "fourier-channels" });
     expect(isGraph2DMultiChannelFourierCurrent(result, revisedDocument)).toBe(false);
+    expect(isGraph2DFourierSelectionCurrent(result, revisedDocument, ids, options)).toBe(false);
   });
 
   it("rejects a missing row, shifted grid, changed sidecar and unverified source", () => {

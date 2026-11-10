@@ -19,6 +19,8 @@ import { quantumSceneDocumentFromVerifiedOpen } from "../projects/quantumSceneAd
 import { quantumTopologyOverlayGroups, topologyOverlayObjectVisible } from "./quantumTopologyOverlay";
 import { quantumSceneValidation } from "./quantumSceneValidation";
 import { QuantumInspectorSummary } from "./QuantumInspectorSummary";
+import { quantumInspectorEvidenceJson, type QuantumInspectorEvidence,
+  type QuantumInspectorSourceStatus } from "./quantumInspectorEvidence";
 import { QuantumViewerTrace } from "./quantumViewerTrace";
 
 type Vector3 = { x: number; y: number; z: number };
@@ -609,6 +611,12 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
     model: scene.provenance.model }), [scene.provenance.runId, scene.provenance.resultSha256,
       scene.provenance.model, opened.reference.sceneFingerprint]);
   const [supportStatus, setSupportStatus] = useState("");
+  const [evidenceStatus, setEvidenceStatus] = useState("");
+  const [inspectorSourceStatus, setInspectorSourceStatus] = useState<QuantumInspectorSourceStatus>("current");
+  const inspectorVerification = useRef(0);
+  useEffect(() => { inspectorVerification.current++; setInspectorSourceStatus("current");
+    setEvidenceStatus(""); setSupportStatus(""); },
+    [opened.reference.sceneFingerprint]);
   useEffect(() => {
     const previous = window.document.activeElement instanceof HTMLElement ? window.document.activeElement : null;
     closeButtonRef.current?.focus();
@@ -638,11 +646,24 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
     [trace, pickedBandSample, pickedScalarSample, pickedTopologySample, pickedVectorSample]);
   useEffect(() => { if (timeError || topologyError || bandSelectionError || scalarError || reciprocalError || streamStatus.includes("unavailable")) trace.record("error"); },
     [trace, timeError, topologyError, bandSelectionError, scalarError, reciprocalError, streamStatus]);
+  const verifyInspectorSource = async (): Promise<boolean> => {
+    const token = ++inspectorVerification.current;
+    setInspectorSourceStatus("checking");
+    try {
+      const verified = Boolean(window.quantumScenes?.verifyActive &&
+        await window.quantumScenes.verifyActive(opened.reference.sceneFingerprint));
+      const active = inspectorVerification.current === token;
+      if (active) setInspectorSourceStatus(verified ? "current" : "withheld");
+      return active && verified;
+    } catch {
+      if (inspectorVerification.current === token) setInspectorSourceStatus("withheld");
+      return false;
+    }
+  };
   const exportSupport = async () => {
     setSupportStatus("Re-verifying the active source…");
     try {
-      if (!window.quantumScenes?.verifyActive || !await window.quantumScenes.verifyActive(opened.reference.sceneFingerprint))
-        throw new Error("Desktop source verifier unavailable");
+      if (!await verifyInspectorSource()) throw new Error("Desktop source verifier unavailable");
       const blob = new Blob([JSON.stringify(trace.supportBundle(), null, 2) + "\n"], { type: "application/json" });
       const url = URL.createObjectURL(blob), link = window.document.createElement("a");
       link.href = url; link.download = `quantum-support-${opened.reference.sceneFingerprint.slice(0, 12)}.json`;
@@ -650,6 +671,18 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
       setSupportStatus("Redacted support bundle downloaded from the re-verified scene.");
     } catch (error) { trace.record("error"); setSupportStatus(`Support export refused: ${String((error as Error).message ?? error)}`); }
+  };
+  const exportInspectorEvidence = async (evidence: QuantumInspectorEvidence) => {
+    setEvidenceStatus("Re-verifying the active source…");
+    try {
+      if (!await verifyInspectorSource()) throw new Error("Desktop source verifier unavailable");
+      const blob = new Blob([quantumInspectorEvidenceJson(evidence)], { type: "application/json;charset=utf-8" });
+      const url = URL.createObjectURL(blob), link = window.document.createElement("a");
+      link.href = url; link.download = `quantum-inspector-${opened.reference.sceneFingerprint.slice(0, 12)}.json`;
+      window.document.body.appendChild(link); link.click(); link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setEvidenceStatus("Inspector evidence downloaded from the re-verified scene.");
+    } catch (error) { trace.record("error"); setEvidenceStatus(`Evidence export refused: ${String((error as Error).message ?? error)}`); }
   };
   return createPortal(
     <div role="dialog" aria-modal="true" aria-label="Verified quantum scene" data-testid="quantum-scene-preview"
@@ -793,7 +826,12 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
               datasets: scene.datasets, invariants: scene.topology?.invariants ?? [], limitations: scene.topology?.limitations ?? [],
               provenance: { schema: scene.schema, model: scene.provenance.model, runId: scene.provenance.runId,
                 resultSha256: scene.provenance.resultSha256, fingerprint: opened.reference.sceneFingerprint,
-                engine: scene.provenance.engine, engineVersion: scene.provenance.engineVersion } }} onExportSupport={exportSupport} supportStatus={supportStatus} />
+                engine: scene.provenance.engine, engineVersion: scene.provenance.engineVersion,
+                kind: scene.provenance.kind } }} sourceStatus={inspectorSourceStatus}
+              onInspectSource={verifyInspectorSource} onExportEvidence={exportInspectorEvidence}
+              evidenceStatus={evidenceStatus} onExportSupport={exportSupport} supportStatus={supportStatus} />
+            {inspectorSourceStatus !== "current" ?
+              <p role="status" data-testid="quantum-detailed-source-withheld">Detailed source values withheld while the bundle is unverified or changed.</p> : <>
             <h3>Detailed source inspection</h3>
             {scene.time?.tracks.some(track => track.id === "bloch") && <section data-testid="quantum-dynamics-inspector" style={{ border: "1px solid var(--border, #cbd5e1)", borderRadius: 8, padding: 10, marginBottom: 14 }}>
               <h3 style={{ marginTop: 0 }}>Recorded dynamics</h3>
@@ -1319,6 +1357,7 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
             <p>{opened.remembered ? "Reopen it later from File → Reopen recent quantum scene; the bundle will be verified again." :
               "The recent-scene shortcut could not be saved. Open the bundle again to view it later."}</p>
             <p>This is a read-only preview. Closing it does not save a Math3D project.</p>
+            </>}
           </aside>
         </div>
       </div>

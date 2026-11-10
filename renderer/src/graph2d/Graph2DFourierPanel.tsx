@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { graph2DFourierCsv, graph2DMultiChannelFourierCsv, graph2DSpectralDiagnosticsCsv,
-  isGraph2DMultiChannelFourierCurrent, type Graph2DDocument,
+  type Graph2DDocument,
   type Graph2DFourierOptions, type Graph2DFourierResult, type Graph2DMultiChannelFourierResult,
   type Graph2DPointSeriesObject } from "@math3d/core";
 import { pointTableStore } from "./pointTableStore";
@@ -8,6 +8,8 @@ import { downloadGraph2DResultJson } from "./downloadGraph2DResultJson";
 import { Graph2DNumericalResultsTable, type Graph2DResultColumn,
   type Graph2DResultFilter } from "./Graph2DNumericalResultsTable";
 import { Graph2DAnalysisRowBudgetControl, type Graph2DAnalysisRowBudget } from "./Graph2DAnalysisBudgetControl";
+import { Graph2DResultEvidence } from "./Graph2DResultEvidence";
+import { isGraph2DFourierSelectionCurrent } from "./graph2dFourierQualification";
 
 type Bin = Graph2DFourierResult["bins"][number];
 const columns: readonly Graph2DResultColumn<Bin>[] = [
@@ -88,10 +90,8 @@ export function Graph2DFourierPanel({ document }: { document: Graph2DDocument })
         rows: pointTableStore.resolve(item.table) })), options, maxRows: rowBudget });
     } catch (caught) { cancel(false); setError((caught as Error).message); }
   };
-  const current = result && isGraph2DMultiChannelFourierCurrent(result, document) &&
-    result.channels.length === chosen.length && result.channels.every((channel, index) => channel.objectId === chosen[index]?.id) &&
-    result.options.window === window &&
-    result.options.normalization === normalization && result.options.detrend === detrend && result.options.xUnit === xUnit;
+  const current = result && isGraph2DFourierSelectionCurrent(result, document,
+    chosen.map(item => item.id), options);
   const active = result?.channels.find(channel => channel.objectId === activeChannelId) ?? result?.channels[0];
   const spectrum = active?.spectrum;
   const strongest = spectrum?.bins.slice(1).sort((a, b) => b.amplitude - a.amplitude).slice(0, 12) ?? [];
@@ -132,7 +132,11 @@ export function Graph2DFourierPanel({ document }: { document: Graph2DDocument })
     <button type="button" disabled={pending} onClick={analyze}>Analyze spectrum</button>
     {pending && <><button type="button" onClick={() => cancel()}>Cancel spectrum</button><p aria-live="polite">Analyzing checked samples…</p></>}
     {error && <p role="alert">{error}</p>}
-    {result && spectrum && active && <><p role="status">{current ? "Current spectrum" : "Stale spectrum — source or options changed"}</p>
+    {result && <><Graph2DResultEvidence current={!!current} resultId={result.resultId}
+      source={result.source} claim="windowed discrete Fourier spectrum"
+      method={result.publication.provenance.operation.algorithm} units={result.frequencyUnit}
+      limitation="The periodogram is not a confidence interval; zero padding adds no independent resolution." />
+      {current && spectrum && active && <>
       <p>{result.n} samples · Δx={result.sampleInterval.toPrecision(6)} {result.options.xUnit} · Nyquist {result.nyquist.toPrecision(6)} {result.frequencyUnit} · {result.fftLength}-point FFT · {result.channels.length} {result.channels.length === 1 ? "channel" : "channels"}.</p>
       {result.channels.map((channel, index) => <div key={channel.objectId}>
         <h4>{channel.label} · {channel.yUnit} · peak displayed {Math.max(...channel.spectrum.bins.map(bin => bin.amplitude)).toPrecision(5)} {channel.yUnit}</h4>
@@ -209,6 +213,7 @@ export function Graph2DFourierPanel({ document }: { document: Graph2DDocument })
         {result.channels.map(channel => <li key={channel.objectId}>{channel.label}: {channel.spectrum.table.checksum} · x {channel.xUnit} · y {channel.yUnit}{channel.origin ? ` · ${channel.origin.sceneId}/${channel.origin.datasetId}/${channel.origin.component ?? "scalar"}` : ""}</li>)}
         {result.publication.warnings.map(warning => <li key={warning}>{warning}</li>)}
       </ul></details>
+      </>}
     </>}
   </section>;
 }

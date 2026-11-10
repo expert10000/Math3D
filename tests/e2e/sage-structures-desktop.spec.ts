@@ -216,6 +216,9 @@ test("SAGE-A07 previews a bounded Sage constructor and rejects mismatched eviden
     await cas.getByRole("button", { name: "Run and save evidence" }).click();
     await expect(cas.getByTestId("cas-object-run-status")).toContainText("Saved Construct exact structure evidence");
     await expect(cas.getByTestId("cas-evidence-result")).toContainText("Rational Field");
+    await expect(cas.getByTestId("cas-evidence-result")).toHaveAttribute("data-qualification", "current");
+    await expect(cas.getByTestId("cas-evidence-result").getByRole("button", { name: "Export evidence JSON" }))
+      .toBeVisible();
     await cas.getByRole("button", { name: "Structure", exact: true }).click();
     await expect(cas.getByTestId("cas-evidence-structure")).toContainText("Pinned revision");
     await cas.getByRole("button", { name: "Verification", exact: true }).click();
@@ -294,6 +297,9 @@ test("SAGE-B06 independently reopens saved evidence in the structured Inspector"
     await ctx.page.getByTestId("workspace-nav-cas").click();
     const cas = ctx.page.getByTestId("cas-algebra-workspace");
     await expect(cas.getByTestId("cas-evidence-result")).toContainText("Rational Field");
+    await expect(cas.getByTestId("cas-evidence-result")).toHaveAttribute("data-qualification", "current");
+    await expect(cas.getByTestId("cas-evidence-result").getByRole("button", { name: "Export evidence JSON" }))
+      .toBeVisible();
     await cas.getByRole("button", { name: "Verification", exact: true }).click();
     await expect(cas.getByTestId("cas-evidence-verification-mode")).toHaveText("COMPUTED");
     await cas.getByRole("button", { name: "Execution", exact: true }).click();

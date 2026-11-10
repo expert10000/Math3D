@@ -39,9 +39,14 @@ test("GF-10 saves an oriented circulation and withholds the old sign after rever
     await integral.getByRole("button", { name: "Save oriented polyline" }).click();
     await integral.getByRole("button", { name: "Compute and save result" }).click();
     await expect(integral.getByTestId("gf10-saved-result")).toContainText("32 m/s·m");
+    await expect(integral.getByTestId("gf10-saved-result").getByRole("button", { name: "Export evidence JSON" }))
+      .toBeVisible();
     await integral.getByLabel("Orientation").selectOption("reverse");
     await integral.getByRole("button", { name: "Update oriented polyline" }).click();
     await expect(integral.getByTestId("gf10-saved-result")).toContainText("Value withheld: selection-changed");
+    const historical = integral.getByTestId("gf10-saved-result").filter({ hasText: "selection-changed" });
+    await expect(historical).not.toContainText("32 m/s·m");
+    await expect(historical.getByRole("button", { name: "Export evidence JSON" })).toHaveCount(0);
     await integral.getByRole("button", { name: "Compute and save result" }).click();
     await expect(integral.getByTestId("gf10-saved-result").filter({ hasText: "-32 m/s·m" })).toBeVisible();
     await page.getByTestId("projects-toggle").click();

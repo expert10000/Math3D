@@ -4,6 +4,7 @@ import { downloadGraph2DResultJson } from "./downloadGraph2DResultJson";
 import { downloadGraph2DResultsCsv } from "./downloadGraph2DResultsCsv";
 import { Graph2DNumericalResultsTable, type Graph2DResultColumn,
   type Graph2DResultFilter } from "./Graph2DNumericalResultsTable";
+import { Graph2DResultEvidence } from "./Graph2DResultEvidence";
 
 const filters: readonly Graph2DResultFilter<Graph2DIntervalPartition>[] = [
   { id: "all", label: "All", include: () => true },
@@ -32,9 +33,17 @@ export function Graph2DIntervalResultsPanel({ analysis, document, onFocus, focus
     analysis.partitions.map(item => [item.intervalId, item.min, item.max, item.monotonicity,
       item.concavity, item.leftBoundary, item.rightBoundary, item.confidence, analysis.status,
       analysis.source.documentId, analysis.source.revision]));
+  const evidence = <Graph2DResultEvidence current={current} resultId={analysis.resultId}
+    source={analysis.source} claim="sampled monotonicity and concavity partitions"
+    method={analysis.publication.provenance.operation.algorithm} units="Graph x world units"
+    limitation="Signs are sampled; narrow changes and discontinuities may be missed." />;
+  if (!current) return <section className="graph2d-intervals" data-testid="graph2d-intervals"
+    data-result-id={analysis.resultId} aria-label="Monotonicity and concavity intervals">
+    <h3>Monotonicity and concavity</h3>{evidence}</section>;
   return <section className="graph2d-intervals" data-testid="graph2d-intervals"
     data-result-id={analysis.resultId} aria-label="Monotonicity and concavity intervals">
     <h3>Monotonicity and concavity</h3>
+    {evidence}
     <p role="status"><strong>{!current ? "Stale interval analysis" : analysis.status === "complete" ? "Approximate partitions" :
       analysis.status === "incomplete" ? "Incomplete partition scan" : "Partitions unavailable"}</strong>
       {" "}· {analysis.partitions.length} intervals · {analysis.invalidSamples} undefined samples</p>

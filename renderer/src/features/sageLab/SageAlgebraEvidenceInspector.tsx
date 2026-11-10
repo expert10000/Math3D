@@ -15,17 +15,33 @@ const Facts = ({ items }: { items: readonly InspectorFact[] }) => <dl className=
   </div>)}
 </dl>;
 
-export default function SageAlgebraEvidenceInspector({ model, section }: {
-  model: AlgebraEvidenceInspectorModel; section: Section }) {
-  return <div data-testid={`cas-evidence-${section}`} className="sage-evidence-inspector">
+export default function SageAlgebraEvidenceInspector({ model, section, onExport }: {
+  model: AlgebraEvidenceInspectorModel; section: Section; onExport?: () => void }) {
+  return <div data-testid={`cas-evidence-${section}`} className="sage-evidence-inspector"
+    data-qualification={model.qualification.status}>
     <div style={{ fontSize: 11, color: "#64748b" }}>Saved object-linked Sage evidence</div>
     <h3 style={{ margin: "4px 0 10px", fontSize: 15 }}>{model.title}</h3>
+    <p role="status" data-testid={`cas-evidence-${section}-qualification`}>
+      <strong>Source: {model.qualification.status}</strong> · {model.qualification.reason}
+    </p>
+    {section === "result" && <>
+      <p><strong>Recorded claim:</strong> Sage output for the pinned operation and object revision.</p>
+      <p><strong>Independent check:</strong> {model.mode === "CHECKED" ?
+        "Operation-specific exact checks are listed under Verification; this is not a blanket proof." :
+        model.mode === "COMPUTED" ?
+          "Saved output integrity is checked; mathematical verification is limited to the checks listed under Verification." :
+          "A saved evidence check failed; result values are withheld when integrity fails."}</p>
+      {model.qualification.canUseResult && onExport && <button type="button" onClick={onExport}>
+        Export evidence JSON</button>}
+    </>}
     {section === "verification" ? <>
       <div data-testid="cas-evidence-verification-mode" className={`sage-evidence-mode sage-evidence-mode-${model.mode.toLowerCase()}`}>
         {model.mode}</div>
       <ul className="sage-evidence-checks">{model.checks.map((item) => <li key={item.label}>
         <strong>{item.label}</strong> <span>{item.status}</span><div>{item.detail}</div>
       </li>)}</ul>
-    </> : <Facts items={model[section]} />}
+    </> : section === "result" && !model.qualification.canUseResult ?
+      <p role="alert">Result values withheld: {model.qualification.reason}</p> :
+      <Facts items={model[section]} />}
   </div>;
 }
