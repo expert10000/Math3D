@@ -31,6 +31,8 @@ The gate scripts and source tests are **preparation**, not evidence that a 2.0 i
 
 **Flagship source gate (2026-11-10):** `node scripts/release20-flagship-journeys.mjs --plan` lists the bounded Surface, QWZ and algebra desktop journeys; `--run <evidence-json>` requires a clean tracked checkout and built core, then writes a commit-pinned receipt with test-file and output hashes. The guided Catenoid evidence copy now saves a Surface/Mesh Study whose Mesh member cites the recorded curvature result and can navigate to Results after cold restart. This gate does not certify the full roadmap journeys: analytic/discrete Surface curvature comparison, QWZ profile-to-Graph publication, Sage-backed locus/singularity computation and all negative-state permutations remain open. It is source evidence, not installed-candidate acceptance.
 
+**Native CGAL source integration (2026-11-10):** The Windows public-source inventory now selects the native reference build's CGAL 6.2.1, Boost 1.92.0, GMP 6.3.0, MPFR 4.2.2 and pinned vcpkg recipes. The release workflow verifies every archive hash and the exact Git source archive before asset staging; the SBOM records the sources and fails on an unowned optional native binary. Installer inclusion remains opt-in and requires that source receipt plus the pinned local build. This is a source-distribution gate implementation, not evidence of a built, signed or installed 2.0 candidate.
+
 ---
 
 ## 0. Executive decision

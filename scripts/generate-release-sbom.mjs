@@ -8,8 +8,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const require = createRequire(import.meta.url);
+const { selectPublicSources, verifyNativeCgalSourceBundle } = require("./native-cgal-source-contract.cjs");
 const args = process.argv.slice(2);
 const value = (flag, fallback) => {
   const at = args.indexOf(flag);
@@ -54,6 +57,7 @@ const digest = (filename) => {
 const normal = (value) => String(value).replaceAll("\\", "/");
 const readJson = (filename) => JSON.parse(fs.readFileSync(filename, "utf8"));
 const sourceManifest = readJson(path.join(root, "compliance/public-source-manifest.json"));
+const publicSources = selectPublicSources(sourceManifest, target);
 const appRef = own("application:math3d", {
   type: "application", name: "Math3D", version,
   licenses: [license("GPL-3.0-or-later")],
@@ -208,16 +212,17 @@ for (const pkg of pythonInventory.packages) {
   }
 }
 
-for (const entry of sourceManifest.sources.filter((source) => source.targets.includes(target))) {
+for (const entry of publicSources) {
   const ref = `source:${entry.filename}`;
   own(ref, {
     type: "file", name: entry.filename, version: entry.version,
     hashes: [{ alg: "SHA-256", content: entry.sha256 }],
     licenses: [license(entry.license)],
     externalReferences: [{ type: "distribution", url: entry.url }],
-    properties: [property("correspondingSource", target)],
+    properties: [property("correspondingSource", target),
+      ...(entry.targets.includes("native-cgal") ? [property("nativeCgalReference", true)] : [])],
   });
-  dependencies.get(workerRef).add(ref);
+  dependencies.get(entry.targets.includes("native-cgal") && !entry.targets.includes(target) ? appRef : workerRef).add(ref);
 }
 const nativeRefs = new Map();
 for (const name of ["GMP", "MPFR"]) {
@@ -231,6 +236,35 @@ for (const name of ["GMP", "MPFR"]) {
     properties: [property("sourceArchive", source.filename)],
   }, [`source:${source.filename}`]);
   dependencies.get(workerRef).add(ref);
+}
+
+let nativeWorkerRef = null;
+const nativeDirectory = path.join(appDir, "resources/native-cgal");
+if (fs.existsSync(nativeDirectory)) {
+  const receiptPath = process.env.MATH3D_NATIVE_CGAL_SOURCE_MANIFEST;
+  if (!receiptPath) errors.push("Packaged native CGAL worker has no corresponding-source receipt.");
+  else try {
+    const git = spawnSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" });
+    if (git.status !== 0) throw new Error("Cannot identify native CGAL source commit.");
+    verifyNativeCgalSourceBundle(path.dirname(path.resolve(receiptPath)), readJson(receiptPath), sourceManifest,
+      fs.readFileSync(path.join(root, "native/cgal-worker/dependency-manifest.json")), git.stdout.trim());
+  } catch (error) { errors.push(`Native CGAL source receipt failed: ${error.message}`); }
+  nativeWorkerRef = own("application:math3d-native-cgal-worker", {
+    type: "application", name: "Math3D native CGAL worker", version,
+    licenses: [license("GPL-3.0-or-later")],
+    properties: [property("sourceManifest", "SOURCE_MANIFEST-windows.json")],
+  });
+  dependencies.get(appRef).add(nativeWorkerRef);
+  for (const name of ["CGAL", "Boost"]) {
+    const source = publicSources.find(entry => entry.name === name && entry.targets.includes("native-cgal"));
+    if (!source) { errors.push(`Native CGAL ${name} corresponding source is missing.`); continue; }
+    const ref = `native:${name.toLowerCase()}:${source.version}`;
+    nativeRefs.set(name, ref);
+    own(ref, { type: "library", name, version: source.version, licenses: [license(source.license)],
+      properties: [property("sourceArchive", source.filename)] }, [`source:${source.filename}`]);
+    dependencies.get(nativeWorkerRef).add(ref);
+  }
+  for (const name of ["GMP", "MPFR"]) if (nativeRefs.has(name)) dependencies.get(nativeWorkerRef).add(nativeRefs.get(name));
 }
 
 if (!fs.existsSync(appDir)) errors.push(`Unpacked release directory missing: ${appDir}`);
@@ -261,6 +295,13 @@ const executable = (name, absolute) => /\.(exe|dll|so(?:\.\d+)*|dylib|node|pyd|w
   /(^|\/)python-worker\/worker$/.test(name) ||
   (target === "linux" && (fs.statSync(absolute).mode & 0o111) !== 0);
 const classify = (name) => {
+  if (name.startsWith("resources/native-cgal/")) {
+    const leaf = path.posix.basename(name).toLowerCase();
+    if (leaf === "math3d-cgal-worker.exe") return nativeWorkerRef;
+    if (/^(?:lib|msys-)?gmp(?:-|\.|$)/.test(leaf)) return nativeRefs.get("GMP") ?? null;
+    if (/^(?:lib|msys-)?mpfr(?:-|\.|$)/.test(leaf)) return nativeRefs.get("MPFR") ?? null;
+    return null;
+  }
   if (name.startsWith("resources/python-worker/")) {
     const inside = name.slice("resources/python-worker/".length).toLowerCase();
     const leaf = path.posix.basename(inside);
@@ -334,7 +375,7 @@ const bom = {
 fs.mkdirSync(outDir, { recursive: true });
 const base = `Math3D-${version}-${target}`;
 fs.writeFileSync(path.join(outDir, `${base}.cdx.json`), `${JSON.stringify(bom, null, 2)}\n`);
-const counts = { files: files.length, npm: [...npmRefs].length, python: pythonRefs.size, sources: sourceManifest.sources.filter((source) => source.targets.includes(target)).length };
+const counts = { files: files.length, npm: [...npmRefs].length, python: pythonRefs.size, sources: publicSources.length };
 const licenseCounts = new Map();
 for (const component of components) {
   if (component.type === "file" || !component.licenses) continue;

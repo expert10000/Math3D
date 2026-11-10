@@ -13,6 +13,11 @@ $files = @(
   (Join-Path $UnpackedRoot 'Math3D.exe'),
   (Join-Path $UnpackedRoot 'resources/python-worker/worker.exe')
 )
+$native = Join-Path $UnpackedRoot 'resources/native-cgal/math3d-cgal-worker.exe'
+if (Test-Path -LiteralPath $native -PathType Leaf) { $files += $native }
+elseif (Test-Path -LiteralPath (Join-Path $UnpackedRoot 'resources/native-cgal')) {
+  throw 'Native CGAL resource exists without its signed worker executable.'
+}
 $evidence = [ordered]@{ schema = 'math3d/release20-signatures/v1'; version = '2.0.0'; thumbprint = $thumbprint; files = @() }
 foreach ($file in $files) {
   if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw "Signed executable missing: $file" }

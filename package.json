@@ -74,6 +74,7 @@
     "test:cgal-native-worker": "npm run build:main && node scripts/test-cgal-native-worker.mjs",
     "test:cgal-native-release": "npm run build:main && node scripts/test-cgal-native-release.mjs",
     "verify:cgal-native-distribution": "node scripts/cgal-native-distribution-gate.cjs --local",
+    "verify:cgal-native-source": "node scripts/verify-native-cgal-source-bundle.mjs release-source",
     "test:cgal-native-distribution": "node scripts/test-cgal-distribution-gate.mjs",
     "verify:license-compliance": "node scripts/verify-public-license-compliance.mjs",
     "release:source": "node scripts/prepare-public-source-bundle.mjs",

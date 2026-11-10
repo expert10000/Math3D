@@ -219,6 +219,15 @@ jobs:
         run: |
           & scripts/prepare-qi40-nsis313.ps1 -OutputRoot (Join-Path $env:RUNNER_TEMP 'qi40-nsis313')
 
+      - name: Build optional native CGAL worker and verify corresponding source
+        if: steps.meta.outputs.version == '2.0.0' && vars.MATH3D_BUNDLE_NATIVE_CGAL == '1'
+        shell: pwsh
+        run: |
+          npm run build:cgal-native-worker
+          npm run release:source -- --target windows --out release-source --version "${{ steps.meta.outputs.version }}"
+          npm run verify:cgal-native-source
+          npm run test:cgal-native-release
+
       - name: Build Windows installer
         env:
           MATH3D_REQUIRE_PYGALMESH: "1"
@@ -226,12 +235,16 @@ jobs:
           CSC_LINK: ${{ steps.meta.outputs.version == '2.0.0' && secrets.MATH3D_WINDOWS_CSC_LINK || '' }}
           CSC_KEY_PASSWORD: ${{ steps.meta.outputs.version == '2.0.0' && secrets.MATH3D_WINDOWS_CSC_KEY_PASSWORD || '' }}
           MATH3D_WINDOWS_TIMESTAMP_URL: ${{ steps.meta.outputs.version == '2.0.0' && vars.MATH3D_WINDOWS_TIMESTAMP_URL || '' }}
+          MATH3D_BUNDLE_NATIVE_CGAL: ${{ steps.meta.outputs.version == '2.0.0' && vars.MATH3D_BUNDLE_NATIVE_CGAL || '' }}
+          MATH3D_NATIVE_CGAL_SOURCE_MANIFEST: ${{ github.workspace }}/release-source/SOURCE_MANIFEST-windows.json
         run: npm run dist:ci
 
       - name: Verify packaged worker protocol
         run: node scripts/smoke-python-worker.mjs --exe release/win-unpacked/resources/python-worker/worker.exe
 
       - name: Generate Windows release SBOM
+        env:
+          MATH3D_NATIVE_CGAL_SOURCE_MANIFEST: ${{ github.workspace }}/release-source/SOURCE_MANIFEST-windows.json
         run: node scripts/generate-release-sbom.mjs --target windows --app-dir release/win-unpacked --out release-sbom --version "${{ steps.meta.outputs.version }}"
 
       - name: Preserve verified Windows build before source downloads
@@ -252,6 +265,9 @@ jobs:
         shell: pwsh
         run: |
           npm run release:source -- --target windows --out release-source --version "${{ steps.meta.outputs.version }}"
+
+      - name: Verify native CGAL corresponding source
+        run: node scripts/verify-native-cgal-source-bundle.mjs release-source
 
       - name: Prepare release assets
         id: assets

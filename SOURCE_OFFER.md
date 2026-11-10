@@ -9,7 +9,8 @@ binary. The release assets include:
 - `Math3D-<version>-source.zip`: the exact tagged Math3D source, build scripts,
   packaging configuration, interface definitions, and license material;
 - upstream source archives for CGAL, CGAL Python/SWIG bindings, pygalmesh,
-  GMP, and MPFR that correspond to the packaged platform;
+  GMP, MPFR, Boost 1.92.0 and the pinned vcpkg build recipes used by the
+  Windows native CGAL reference build;
 - `SOURCE_MANIFEST-<platform>.json`, recording source URLs, versions, target
   platforms, SHA-256 hashes, the Math3D commit, and the frozen Python package
   inventory;
@@ -21,6 +22,7 @@ The source bundle is generated from the release tag with:
 npm ci
 npm run verify:license-compliance
 npm run release:source -- --target windows --out release-source
+npm run verify:cgal-native-source
 # or: --target linux
 ```
 
@@ -36,6 +38,10 @@ Python worker dependencies are pinned in
 `python/worker/requirements.freeze.txt`. Native reference versions and source
 hashes are stored in `compliance/public-source-manifest.json` and
 `native/cgal-worker/dependency-manifest.json`.
+The Windows source manifest includes the native CGAL reference sources even
+when the optional native executable is absent from the installer. A native
+binary can be bundled only after its exact source receipt, dependency build,
+and SBOM ownership checks pass. The default installer retains the Python worker.
 
 Release sources are offered at no additional charge and remain available for
 at least as long as the corresponding binaries are offered. If a release page

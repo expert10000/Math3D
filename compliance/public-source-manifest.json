@@ -64,6 +64,17 @@
       "sha256": "4a0713351882989dda8b6bbfa942d5013b994f297fbebe1096ce664a92aff1a0"
     },
     {
+      "name": "Boost",
+      "version": "1.92.0",
+      "license": "BSL-1.0",
+      "targets": [
+        "native-cgal"
+      ],
+      "filename": "boost_1_92_0.tar.gz",
+      "url": "https://archives.boost.io/release/1.92.0/source/boost_1_92_0.tar.gz",
+      "sha256": "c4a3b310ddd2472416e091067166b0713be97c63f38c212c484ada022fd296ce"
+    },
+    {
       "name": "GMP",
       "version": "6.3.0",
       "license": "LGPL-3.0-or-later OR GPL-2.0-or-later",
@@ -125,7 +136,8 @@
       "version": "52fd90f2b7798d9fe6fef18fc1787db44574d704",
       "license": "MIT",
       "targets": [
-        "windows"
+        "windows",
+        "native-cgal"
       ],
       "filename": "vcpkg-52fd90f2.tar.gz",
       "url": "https://github.com/microsoft/vcpkg/archive/52fd90f2b7798d9fe6fef18fc1787db44574d704.tar.gz",

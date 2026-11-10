@@ -20,4 +20,12 @@ $target = Join-Path $repoRoot $BuildDirectory
 if ($LASTEXITCODE -ne 0) { throw "Native CGAL configure failed." }
 & $cmake --build $target --config Release --parallel 2
 if ($LASTEXITCODE -ne 0) { throw "Native CGAL build failed." }
+$manifest = Get-Content -LiteralPath (Join-Path $repoRoot "native/cgal-worker/dependency-manifest.json") -Raw | ConvertFrom-Json
+if ($Triplet -ne $manifest.windowsReferenceBuild.triplet) { throw "Native CGAL release triplet differs from the pinned manifest." }
+$releaseDir = Join-Path $target "Release"
+foreach ($dll in $manifest.windowsReferenceBuild.runtimeDlls) {
+  $source = Join-Path $repoRoot ".deps/vcpkg/installed/$Triplet/bin/$dll"
+  if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Pinned native CGAL runtime dependency missing: $dll" }
+  Copy-Item -LiteralPath $source -Destination (Join-Path $releaseDir $dll) -Force
+}
 Write-Host "Native CGAL worker built. Run npm run test:cgal-native-worker to verify it."
