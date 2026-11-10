@@ -14,7 +14,7 @@ export const publishSdfEvidence = (
   const gridMatches = !!metadata?.outputGridFingerprint &&
     metadata.outputGridFingerprint === fingerprintSdfGrid(dataset.grid);
   const signEvidence = qualifySdfSignEvidence(metadata?.sign ?? null,
-    metadata?.sourceMeshFingerprint ?? null, currentMeshFingerprint);
+    metadata?.sourceMeshFingerprint ?? null, currentMeshFingerprint, metadata?.sourceEvidence ?? "live");
   const current = !!metadata && gridMatches && signEvidence.status === "current" && volume.state === "current";
   const status = current ? preview ? "preview" : "recorded" : "withheld";
   const reason = !metadata ? "No SDF evidence is available." : !gridMatches ?

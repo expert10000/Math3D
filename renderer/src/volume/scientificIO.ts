@@ -1,6 +1,7 @@
 import type { Image2D, SurfaceMesh } from "../scene/renderPrimitives";
 import type { VolumeGrid } from "../scene/datasets";
-import type { VolumeObject, VolumeScalarType } from "./contracts";
+import type { VolumeObject, VolumeScalarType, VolumeSdfMetadata } from "./contracts";
+import { decodeSdfScientificSidecar, encodeSdfScientificSidecar } from "./sdfScientificSidecar";
 import type { ManagedVolumeArray } from "./typedArrayStore";
 import type { BinaryVolumeMask, IntegerVolumeLabelMap } from "./segmentation";
 
@@ -32,6 +33,7 @@ export type ScientificVolumeProbe = {
 };
 export type ScientificVolumeImport = ScientificVolumeProbe & {
   values: ManagedVolumeArray;
+  sdf?: VolumeSdfMetadata;
   externalReference: { fileName: string; byteLength: number; contentHash: string };
 };
 export type ScientificVolumeImportOptions = {
@@ -55,6 +57,7 @@ const hashBytes=(bytes:Uint8Array):string=>{let hash=2166136261;for(const value 
 const baseName=(fileName:string)=>fileName.replace(/\.[^.]+$/u,"");
 const extension=(fileName:string)=>fileName.split(".").pop()?.toLowerCase()??"";
 const findSidecar=(files:readonly ScientificVolumeFile[],primary:string)=>files.find(file=>file.fileName.toLowerCase()===`${baseName(primary)}.json`.toLowerCase()||file.fileName.toLowerCase()===`${primary}.json`.toLowerCase());
+const findSdfSidecar=(files:readonly ScientificVolumeFile[],primary:string)=>files.find(file=>file.fileName.toLowerCase()===`${baseName(primary)}.sdf.json`.toLowerCase());
 const metadataFromUnknown = (value: unknown): ScientificVolumeMetadata => {
   if (!value || typeof value !== "object") {
     throw new Error("Volume metadata sidecar must be a JSON object.");
@@ -100,7 +103,19 @@ const vtkType=(name:string):VolumeScalarType=>{const map:Record<string,VolumeSca
 const parseVti=(bytes:Uint8Array):{metadata:ScientificVolumeMetadata;values:ManagedVolumeArray}=>{const xml=textDecoder.decode(bytes);if(/compressor\s*=/iu.test(xml)||/<AppendedData/iu.test(xml))throw new Error("Compressed or appended VTI payloads are unsupported in this staged importer.");const image=xml.match(/<ImageData\b[^>]*>/iu)?.[0];const arrayTag=xml.match(/<DataArray\b[^>]*>/iu)?.[0];const arrayBody=xml.match(/<DataArray\b[^>]*>([\s\S]*?)<\/DataArray>/iu)?.[1];if(!image||!arrayTag||arrayBody==null)throw new Error("Malformed VTI ImageData or DataArray header.");if((attribute(arrayTag,"format")??"ascii").toLowerCase()!=="ascii")throw new Error("Only ASCII VTI DataArray payloads are supported.");const extent=numberTuple(attribute(image,"WholeExtent"),6,"WholeExtent");const dimensions:[number,number,number]=[extent[1]-extent[0]+1,extent[3]-extent[2]+1,extent[5]-extent[4]+1];const scalarType=vtkType(attribute(arrayTag,"type")??"");const components=Number(attribute(arrayTag,"NumberOfComponents")??1);const metadata:ScientificVolumeMetadata={dimensions,spacing:numberTuple(attribute(image,"Spacing"),3,"Spacing")as[number,number,number],origin:numberTuple(attribute(image,"Origin"),3,"Origin")as[number,number,number],direction:(attribute(image,"Direction")?numberTuple(attribute(image,"Direction"),9,"Direction"):identityDirection)as ScientificVolumeMetadata["direction"],centering:/<CellData\b/iu.test(xml)?"cell":"point",scalarType,components,coordinateSystem:attribute(image,"CoordinateSystem")??"world-cartesian",positionUnits:attribute(image,"PositionUnits")??"unit",valueUnits:attribute(arrayTag,"ValueUnits")??"unitless",missingValuePolicy:attribute(arrayTag,"MissingValuePolicy")==="sentinel"?"sentinel":attribute(arrayTag,"MissingValuePolicy")==="nan"?"nan":"none",missingValueSentinel:attribute(arrayTag,"MissingValueSentinel")!=null?Number(attribute(arrayTag,"MissingValueSentinel")):null,byteOrder:"little-endian"};const numbers=arrayBody.trim().split(/\s+/u).filter(Boolean).map(Number);if(numbers.length!==elementCount(metadata)||numbers.some(value=>!Number.isFinite(value)&&metadata.missingValuePolicy!=="nan"))throw new Error("VTI scalar payload is truncated or invalid.");const values=scalarCtor(scalarType,new ArrayBuffer(numbers.length*bytesPerScalar[scalarType]));for(let i=0;i<numbers.length;i+=1)values[i]=numbers[i];return{metadata,values};};
 
 export const probeScientificVolume=(files:readonly ScientificVolumeFile[],options:ScientificVolumeImportOptions={}):ScientificVolumeProbe=>{if(!files.length)throw new Error("No scientific Volume file was selected.");const primary=files.find(file=>["raw","npy","vti"].includes(extension(file.fileName)));if(!primary)throw new Error("Supported staged formats are RAW + JSON, NPY + optional JSON, and VTI.");checkCancelled(options);const format=extension(primary.fileName)as VolumeScientificFormat;let metadata:ScientificVolumeMetadata;if(format==="raw")metadata=rawMetadata(files,primary);else if(format==="npy")metadata=npyMetadata(files,primary).metadata;else metadata=parseVti(primary.bytes).metadata;const maximum=options.maximumBytes??1024*1024*1024;validateMetadata(metadata,maximum);const bytes=expectedBytes(metadata);if(format==="raw"&&primary.bytes.byteLength!==bytes)throw new Error(`RAW payload length ${primary.bytes.byteLength} does not match expected ${bytes}.`);if(format==="npy"){const {header}=npyMetadata(files,primary);if(primary.bytes.byteLength-header.offset!==bytes)throw new Error("NPY payload is truncated or has trailing bytes.");}return{format,fileName:primary.fileName,metadata,expectedBytes:bytes,warnings:format==="npy"&&!findSidecar(files,primary.fileName)?["NPY has no Math3D spatial sidecar; unit spacing and origin were assumed."]:[]};};
-export const importScientificVolume=(files:readonly ScientificVolumeFile[],options:ScientificVolumeImportOptions={}):ScientificVolumeImport=>{const probe=probeScientificVolume(files,options);const primary=files.find(file=>file.fileName===probe.fileName)!;options.onProgress?.(.25,"metadata-validated");checkCancelled(options);let values:ManagedVolumeArray;if(probe.format==="raw")values=copyEndian(primary.bytes,probe.metadata.scalarType,probe.metadata.byteOrder);else if(probe.format==="npy"){const {header}=npyMetadata(files,primary);values=copyEndian(primary.bytes.slice(header.offset),probe.metadata.scalarType,probe.metadata.byteOrder);}else values=parseVti(primary.bytes).values;options.onProgress?.(1,"complete");return{...probe,values,externalReference:{fileName:primary.fileName,byteLength:primary.bytes.byteLength,contentHash:hashBytes(primary.bytes)}};};
+export const importScientificVolume=(files:readonly ScientificVolumeFile[],options:ScientificVolumeImportOptions={}):ScientificVolumeImport=>{
+  const probe=probeScientificVolume(files,options);
+  const primary=files.find(file=>file.fileName===probe.fileName)!;
+  options.onProgress?.(.25,"metadata-validated");checkCancelled(options);
+  let values:ManagedVolumeArray;
+  if(probe.format==="raw")values=copyEndian(primary.bytes,probe.metadata.scalarType,probe.metadata.byteOrder);
+  else if(probe.format==="npy"){const {header}=npyMetadata(files,primary);values=copyEndian(primary.bytes.slice(header.offset),probe.metadata.scalarType,probe.metadata.byteOrder);}
+  else values=parseVti(primary.bytes).values;
+  const sdfSidecar=findSdfSidecar(files,primary.fileName);
+  const sdf=sdfSidecar?decodeSdfScientificSidecar(sdfSidecar.bytes,probe.metadata,values as Float32Array):undefined;
+  options.onProgress?.(1,"complete");
+  return{...probe,values,sdf,externalReference:{fileName:primary.fileName,byteLength:primary.bytes.byteLength,contentHash:hashBytes(primary.bytes)}};
+};
 
 export const scientificMetadataFromVolume=(volume:VolumeObject):ScientificVolumeMetadata=>({dimensions:[...volume.spatial.dimensions],spacing:[...volume.spatial.spacing],origin:[...volume.spatial.origin],direction:[...volume.spatial.direction],centering:volume.spatial.centering,scalarType:volume.spatial.scalarType,components:volume.spatial.components,coordinateSystem:volume.spatial.coordinateSystem,positionUnits:volume.spatial.positionUnits,valueUnits:volume.spatial.valueUnits,missingValuePolicy:volume.spatial.missingValuePolicy,missingValueSentinel:volume.spatial.missingValueSentinel,byteOrder:"little-endian"});
 const bytesOf=(values:ManagedVolumeArray)=>new Uint8Array(values.buffer.slice(values.byteOffset,values.byteOffset+values.byteLength));
@@ -110,7 +125,18 @@ const metadataBytes=(metadata:ScientificVolumeMetadata)=>textEncoder.encode(JSON
 const xmlEscape=(value:string)=>value.replace(/&/gu,"&amp;").replace(/"/gu,"&quot;").replace(/</gu,"&lt;");
 const vtkName=(type:VolumeScalarType)=>({float32:"Float32",float64:"Float64",int32:"Int32",uint32:"UInt32",int16:"Int16",uint16:"UInt16",int8:"Int8",uint8:"UInt8"}[type]);
 const encodeVti=(values:ManagedVolumeArray,metadata:ScientificVolumeMetadata):Uint8Array=>{const[nx,ny,nz]=metadata.dimensions;const association=metadata.centering==="cell"?"CellData":"PointData";const payload=Array.from(values,value=>Number.isNaN(value)?"NaN":String(value)).join(" ");return textEncoder.encode(`<?xml version="1.0"?>\n<VTKFile type="ImageData" version="1.0" byte_order="LittleEndian"><ImageData WholeExtent="0 ${nx-1} 0 ${ny-1} 0 ${nz-1}" Origin="${metadata.origin.join(" ")}" Spacing="${metadata.spacing.join(" ")}" Direction="${metadata.direction.join(" ")}" CoordinateSystem="${xmlEscape(metadata.coordinateSystem)}" PositionUnits="${xmlEscape(metadata.positionUnits)}"><Piece Extent="0 ${nx-1} 0 ${ny-1} 0 ${nz-1}"><${association} Scalars="values"><DataArray type="${vtkName(metadata.scalarType)}" Name="values" NumberOfComponents="${metadata.components}" format="ascii" ValueUnits="${xmlEscape(metadata.valueUnits)}" MissingValuePolicy="${metadata.missingValuePolicy}"${metadata.missingValueSentinel==null?"":` MissingValueSentinel="${metadata.missingValueSentinel}"`}>${payload}</DataArray></${association}></Piece></ImageData></VTKFile>`);};
-export const exportScientificVolume=(base:string,format:VolumeScientificFormat,values:ManagedVolumeArray,metadata:ScientificVolumeMetadata):ScientificVolumeArtifact[]=>{validateMetadata(metadata,Number.MAX_SAFE_INTEGER);if(values.length!==elementCount(metadata))throw new Error("Volume export payload length does not match metadata.");const stem=baseName(base)||"math3d-volume";if(format==="raw")return[{fileName:`${stem}.raw`,bytes:bytesOf(values),mediaType:"application/octet-stream"},{fileName:`${stem}.json`,bytes:metadataBytes(metadata),mediaType:"application/json"}];if(format==="npy")return[{fileName:`${stem}.npy`,bytes:encodeNpy(values,metadata),mediaType:"application/octet-stream"},{fileName:`${stem}.json`,bytes:metadataBytes(metadata),mediaType:"application/json"}];return[{fileName:`${stem}.vti`,bytes:encodeVti(values,metadata),mediaType:"application/vnd.vtk"}];};
+export const exportScientificVolume=(base:string,format:VolumeScientificFormat,values:ManagedVolumeArray,metadata:ScientificVolumeMetadata,sdf?:VolumeSdfMetadata):ScientificVolumeArtifact[]=>{
+  validateMetadata(metadata,Number.MAX_SAFE_INTEGER);
+  if(values.length!==elementCount(metadata))throw new Error("Volume export payload length does not match metadata.");
+  const stem=baseName(base)||"math3d-volume";
+  const artifacts:ScientificVolumeArtifact[]=format==="raw"?
+    [{fileName:`${stem}.raw`,bytes:bytesOf(values),mediaType:"application/octet-stream"},{fileName:`${stem}.json`,bytes:metadataBytes(metadata),mediaType:"application/json"}]:
+    format==="npy"?
+    [{fileName:`${stem}.npy`,bytes:encodeNpy(values,metadata),mediaType:"application/octet-stream"},{fileName:`${stem}.json`,bytes:metadataBytes(metadata),mediaType:"application/json"}]:
+    [{fileName:`${stem}.vti`,bytes:encodeVti(values,metadata),mediaType:"application/vnd.vtk"}];
+  if(sdf)artifacts.push({fileName:`${stem}.sdf.json`,bytes:encodeSdfScientificSidecar(sdf,metadata,values as Float32Array),mediaType:"application/json"});
+  return artifacts;
+};
 
 export const exportMaskArtifacts=(base:string,mask:BinaryVolumeMask,metadata:ScientificVolumeMetadata)=>exportScientificVolume(base,"npy",mask.data,{...metadata,scalarType:"uint8",components:1});
 export const exportLabelArtifacts=(base:string,map:IntegerVolumeLabelMap,metadata:ScientificVolumeMetadata):ScientificVolumeArtifact[]=>[...exportScientificVolume(base,"npy",map.data,{...metadata,scalarType:"uint32",components:1}),{fileName:`${baseName(base)}.labels.json`,bytes:textEncoder.encode(JSON.stringify(map.labels,null,2)),mediaType:"application/json"}];

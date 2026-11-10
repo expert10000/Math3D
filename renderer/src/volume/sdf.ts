@@ -206,6 +206,7 @@ export const createSdfMetadata = (args: {
   sources: readonly VolumeSdfSourceDescriptor[];
   sign: VolumeSdfSignDiagnostics;
   sourceMeshFingerprint?: string;
+  sourceEvidence?: "live" | "imported";
   backend: string;
   backendVersion?: string;
   warnings?: readonly string[];
@@ -217,6 +218,7 @@ export const createSdfMetadata = (args: {
   sources: args.sources.map((source) => ({ ...source, transform: [...source.transform] })),
   sign: { ...args.sign },
   sourceMeshFingerprint: args.sourceMeshFingerprint,
+  sourceEvidence: args.sourceEvidence ?? "live",
   outputGridFingerprint: fingerprintSdfGrid(args.grid),
   sampling: {
     dimensions: [...args.grid.dims],

@@ -14,8 +14,10 @@ export const qualifySdfSignEvidence = (
   diagnostics: VolumeSdfSignDiagnostics | null,
   recordedFingerprint: string | null,
   currentFingerprint: string | null,
+  sourceEvidence: "live" | "imported" = "live",
 ): { status: "current" | "historical" | "unavailable"; diagnostics: VolumeSdfSignDiagnostics | null; reason: string } => {
   if (!diagnostics || !recordedFingerprint) return { status: "unavailable", diagnostics: null, reason: "No mesh-bound sign evidence is available." };
+  if (sourceEvidence === "imported") return { status: "historical", diagnostics: null, reason: "Imported sign diagnostics are recorded provenance, not live mesh evidence." };
   if (!currentFingerprint || recordedFingerprint !== currentFingerprint)
     return { status: "historical", diagnostics: null, reason: "The source mesh changed; sign measurements are historical." };
   return { status: "current", diagnostics, reason: diagnostics.reliable ?

@@ -11,5 +11,6 @@ describe("SDF sign evidence", () => {
     mesh.positions[4] = 2;
     expect(qualifySdfSignEvidence(diagnostics, pin, fingerprintSdfSourceMesh(mesh))).toMatchObject({ status: "historical", diagnostics: null });
     expect(qualifySdfSignEvidence(diagnostics, null, pin).status).toBe("unavailable");
+    expect(qualifySdfSignEvidence(diagnostics, pin, pin, "imported")).toMatchObject({ status: "historical", diagnostics: null });
   });
 });

@@ -34590,6 +34590,7 @@ const App: React.FC = () => {
     volumeDataset.sdf?.sign ?? volumeSdfDiagnostics,
     volumeDataset.sdf?.sourceMeshFingerprint ?? volumeSdfDiagnosticsFingerprint,
     surfaceMeshData ? fingerprintSdfSourceMesh(surfaceMeshData) : null,
+    volumeDataset.sdf?.sourceEvidence ?? "live",
   );
   const beginMeshPromotionTrace = useCallback(
     (sourceObjectId: string, sourceObjectName: string, meshLabel: string, mesh: SurfaceMeshData, sourceRevision = 0) => {
@@ -35338,12 +35339,16 @@ const App: React.FC = () => {
         onProgress: (progress, phase) => setVolumeScientificIoStatus(`${phase} · ${Math.round(progress * 100)}%`),
       });
       setRestoredVolumeAdapter(null);
+      setVolumeSdfPreview(null);
+      setVolumeSdfPreviewPin(null);
       setVolumeDatasetOverride({
         kind: "volume",
         grid: importedVolumeGrid(imported),
         label: `Imported: ${imported.fileName}`,
         note: `${imported.format.toUpperCase()} scientific Volume`,
         sourceId: `import:${imported.externalReference.contentHash}`,
+        sdf: imported.sdf,
+        distanceSigned: imported.sdf?.output === "signed-distance",
         scientific: {
           format: imported.format,
           scalarType: imported.metadata.scalarType,
@@ -35360,8 +35365,9 @@ const App: React.FC = () => {
   }, []);
   const handleExportScientificVolume = useCallback(async (format: VolumeScientificFormat) => {
     try {
+      if (qualifiedVolumeSdfPreview) throw new Error("Apply the SDF preview before scientific export.");
       const safeLabel = canonicalVolumeObject.identity.label.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "math3d-volume";
-      const artifacts = exportScientificVolume(safeLabel, format, volumeDataset.grid.scalars, scientificMetadataFromVolume(canonicalVolumeObject));
+      const artifacts = exportScientificVolume(safeLabel, format, volumeDataset.grid.scalars, scientificMetadataFromVolume(canonicalVolumeObject), volumeDataset.sdf);
       if (window.volumeFiles) {
         const response = await window.volumeFiles.save({
           suggestedName: artifacts[0].fileName,
@@ -35385,7 +35391,7 @@ const App: React.FC = () => {
     } catch (error) {
       setVolumeScientificIoStatus(`Export failed: ${error instanceof Error ? error.message : String(error)}`);
     }
-  }, [canonicalVolumeObject, volumeDataset.grid.scalars]);
+  }, [canonicalVolumeObject, qualifiedVolumeSdfPreview, volumeDataset]);
   const volumeComparisonBaselineRef = useRef<VolumeComparisonInput | null>(null);
   const [volumeComparisonBaselineLabel, setVolumeComparisonBaselineLabel] = useState<string | null>(null);
   const [volumeComparisonAlignment, setVolumeComparisonAlignment] = useState<VolumeAlignmentPolicy>("exact-grid");
@@ -63843,6 +63849,7 @@ case "mobius":
       source.sdf?.sign ?? null,
       source.sdf?.sourceMeshFingerprint ?? null,
       surfaceMeshData ? fingerprintSdfSourceMesh(surfaceMeshData) : null,
+      source.sdf?.sourceEvidence ?? "live",
     );
     if (volumeSdfOperation !== "occupancy" && (source.distanceSigned !== true || !signEvidence.diagnostics?.reliable)) {
       setVolumeSdfStatus(`Signed SDF operations require current reliable sign evidence. ${signEvidence.reason}`);
@@ -63893,6 +63900,7 @@ case "mobius":
           message: "Source sign diagnostics are unavailable.",
         },
         sourceMeshFingerprint: source.sdf?.sourceMeshFingerprint,
+        sourceEvidence: source.sdf?.sourceEvidence ?? "live",
         backend: "math3d-native-sdf",
         backendVersion: "1",
         warnings: isBinary ? ["The current analytic preset is sampled as the secondary zero-set operand."] : [],
