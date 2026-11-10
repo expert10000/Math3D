@@ -199,6 +199,13 @@ export const formatVolumeProbeText = (probe: VolumeProbeReading | PinnedVolumePr
     `insideDomain=${probe.insideDomain}`,
   ].join("\n");
 
+export const formatQualifiedVolumeProbeText = (probe: PinnedVolumeProbe, volume: VolumeObject): string =>
+  isPinnedVolumeProbeStale(probe, volume)
+    ? [probe.name, "status=withheld: source changed", `volumeId=${probe.volumeId}`,
+      `volumeRevision=${probe.volumeRevision}`, `gridRevision=${probe.sampledGridRevision}`,
+      `world=(${probe.world.join(", ")})`].join("\n")
+    : formatVolumeProbeText(probe);
+
 const csvCell = (value: unknown): string => {
   const text = String(value);
   const safe = /^[\s\u0000-\u001f]*[=+@-]/u.test(text) && typeof value === "string" ? `'${text}` : text;

@@ -1188,7 +1188,7 @@ import {
   describeVolumeDefinition,
   describeVolumeSource,
   hydrateVolumeRevisionTracker,
-  comparePinnedVolumeProbes,
+  compareCurrentVolumeProbes,
   createVolumeMemoryPlan,
   createVolumeAnalysisResultStore,
   connectedComponentsLabelMap,
@@ -1203,6 +1203,7 @@ import {
   VolumeWorkspaceHistory,
   createPinnedVolumeProbe,
   formatVolumeProbeText,
+  formatQualifiedVolumeProbeText,
   isPinnedVolumeProbeStale,
   readVolumeProbe,
   publishVolumeAnalysis,
@@ -35085,23 +35086,26 @@ const App: React.FC = () => {
     const selected = volumeProbeCompareIds
       .map((id) => volumePinnedProbes.find((probe) => probe.id === id))
       .filter((probe): probe is PinnedVolumeProbe => !!probe);
-    return selected.length === 2 ? comparePinnedVolumeProbes(selected[0], selected[1]) : null;
-  }, [volumePinnedProbes, volumeProbeCompareIds]);
+    return selected.length === 2 ? compareCurrentVolumeProbes(selected[0], selected[1], canonicalVolumeObject) : null;
+  }, [canonicalVolumeObject, volumePinnedProbes, volumeProbeCompareIds]);
   const handleCopyVolumeProbe = useCallback(async (probe?: PinnedVolumeProbe) => {
     const target = probe ?? volumeCrosshairSample;
     if (!target) return;
-    const text = formatVolumeProbeText(target);
+    const text = probe
+      ? formatQualifiedVolumeProbeText(probe, canonicalVolumeObject)
+      : formatVolumeProbeText(target);
     try {
       await navigator.clipboard.writeText(text);
       setVolumeNavigationAnnouncement("Volume probe copied to clipboard.");
     } catch {
       setVolumeNavigationAnnouncement("Clipboard unavailable; use Export CSV for pinned probes.");
     }
-  }, [volumeCrosshairSample]);
+  }, [canonicalVolumeObject, volumeCrosshairSample]);
   const handleExportVolumeProbes = useCallback(() => {
-    downloadTextFile(volumeProbesToCsv(volumePinnedProbes), "math3d-volume-probes.csv", "text/csv");
-    setVolumeNavigationAnnouncement(`${volumePinnedProbes.length} pinned probe${volumePinnedProbes.length === 1 ? "" : "s"} exported.`);
-  }, [volumePinnedProbes]);
+    downloadTextFile(volumeProbesToCsv(volumePinnedProbes, canonicalVolumeObject), "math3d-volume-probes.csv", "text/csv");
+    const withheld = volumePinnedProbes.filter((probe) => isPinnedVolumeProbeStale(probe, canonicalVolumeObject)).length;
+    setVolumeNavigationAnnouncement(`${volumePinnedProbes.length} pinned probe${volumePinnedProbes.length === 1 ? "" : "s"} exported; ${withheld} stale value${withheld === 1 ? "" : "s"} withheld.`);
+  }, [canonicalVolumeObject, volumePinnedProbes]);
   const volumeVectorPreset = useMemo(
     () => getVectorPreset(volumeVectorPresetId),
     [volumeVectorPresetId]

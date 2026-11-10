@@ -558,11 +558,11 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
                     <span style={{ color: stale ? "#b45309" : "#166534" }}>{stale ? "stale revision" : "current"}</span>
                   </div>
                   <div style={{ fontSize: 10, color: "#475569" }}>
-                    voxel ({probe.voxelIndex.join(", ")}) · F {formatNumber(probe.components[0] ?? Number.NaN)} · r{probe.volumeRevision}
+                    voxel ({probe.voxelIndex.join(", ")}) · {stale ? "F withheld (source changed)" : `F ${formatNumber(probe.components[0] ?? Number.NaN)}`} · r{probe.volumeRevision} / grid r{probe.sampledGridRevision}
                   </div>
                   <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
                     <label style={{ fontSize: 10 }}>
-                      <input type="checkbox" checked={probeCompareIds.includes(probe.id)} onChange={() => onToggleProbeCompare(probe.id)} /> Compare
+                      <input type="checkbox" checked={!stale && probeCompareIds.includes(probe.id)} disabled={stale} onChange={() => onToggleProbeCompare(probe.id)} /> Compare
                     </label>
                     <button type="button" onClick={() => onReplayProbe(probe)}>Replay</button>
                     <button type="button" onClick={() => onCopyProbe(probe)}>Copy</button>

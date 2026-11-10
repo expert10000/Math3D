@@ -7,6 +7,7 @@ import {
   comparePinnedVolumeProbes,
   compareCurrentVolumeProbes,
   createPinnedVolumeProbe,
+  formatQualifiedVolumeProbeText,
   isPinnedVolumeProbeStale,
   readVolumeProbe,
   restorePinnedVolumeProbes,
@@ -120,5 +121,7 @@ describe("Volume navigation and probes", () => {
     expect(csv).toContain('"withheld: source changed"');
     expect(csv).toContain('"\'=SUM(1,2)"');
     expect(csv).not.toContain('"analytic"');
+    expect(formatQualifiedVolumeProbeText(first, changedGrid)).toContain("status=withheld: source changed");
+    expect(formatQualifiedVolumeProbeText(first, changedGrid)).not.toContain("gradientMagnitude=");
   });
 });
