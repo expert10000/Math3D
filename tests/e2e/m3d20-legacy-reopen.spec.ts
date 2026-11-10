@@ -100,13 +100,13 @@ test("M3D20 mixed legacy Project package transfers real sidecars and recovers af
       panel = await gallery(ctx!);
       await panel.getByTestId("project-import-file").setInputFiles({ name: "legacy.resources.json", mimeType: "application/json", buffer: Buffer.from(raw) });
     };
-    const assertCurrent = async () => {
+    const assertCurrent = async (expectedProject = fixture.project) => {
       await expect.poll(() => ctx!.page.evaluate(() => {
         const raw = localStorage.getItem("math3d.project.v1");
         return raw ? JSON.parse(raw).identity.id : null;
       })).toBe(fixture.project.identity.id);
       const project = core.parseMath3DProject(await ctx!.page.evaluate(() => localStorage.getItem("math3d.project.v1")!));
-      expect(project.identity).toEqual(fixture.project.identity);
+      expect(project.identity).toEqual(expectedProject.identity);
       expect(project.workspace.entries.map((entry: any) => entry.expected)).toEqual(fixture.project.workspace.entries.map((entry: any) => entry.expected));
       expect(core.readScientificSelectionsFromProject(project)).toEqual(expectedSelections);
     };
@@ -132,6 +132,11 @@ test("M3D20 mixed legacy Project package transfers real sidecars and recovers af
     await panel.getByTestId("project-import-open").click();
     await assertCurrent();
     const outbound = await exportPackage("mixed-outbound.json");
+    // Export checkpoints the live workspace. Transfer must preserve that exact checkpoint.
+    const transferredProject = core.parseMath3DProject(JSON.stringify(JSON.parse(outbound).project));
+    expect(transferredProject.identity.id).toBe(fixture.project.identity.id);
+    expect(transferredProject.workspace.entries.map(e => e.expected)).toEqual(fixture.project.workspace.entries.map(e => e.expected));
+    expect(core.readScientificSelectionsFromProject(transferredProject)).toEqual(expectedSelections);
     expect(signatures(JSON.parse(outbound))).toEqual(signatures(originalPackage));
     // Close/delete the source profile: the destination cannot reuse its caches.
     await closeSurfaceApp(ctx); ctx = null;
@@ -153,12 +158,12 @@ test("M3D20 mixed legacy Project package transfers real sidecars and recovers af
     await importFile(outbound);
     await expect(panel.getByTestId("project-import-open")).toBeEnabled();
     await panel.getByTestId("project-import-open").click();
-    await assertCurrent();
+    await assertCurrent(transferredProject);
     const profile = ctx.profileDir;
     await ctx.app.close(); ctx = await launchSurfaceApp({},profile);
     panel = await gallery(ctx);
     await panel.getByTestId("project-open-saved-" + fixture.project.identity.id).click();
-    await assertCurrent();
+    await assertCurrent(transferredProject);
     const returned = await exportPackage("mixed-returned.json");
     expect(signatures(JSON.parse(returned))).toEqual(signatures(originalPackage));
     // The standard resource parser on UI import/export verifies actual bytes against these digests.
