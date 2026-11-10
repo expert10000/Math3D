@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 import { closeSurfaceApp, launchSurfaceApp, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
 
 test("Compute Center shows live diagnostics and opens Runtimes", async () => {
@@ -22,6 +23,16 @@ test("Compute Center shows live diagnostics and opens Runtimes", async () => {
     await center.getByRole("button", { name: "Open route diagnostics" }).click();
     await expect(center.getByTestId("runtime-operation-admission")).toBeVisible();
     await expect(center.getByTestId("runtime-export-receipt")).toBeEnabled();
+    const file = test.info().outputPath("runtime-receipt.json");
+    await app.app.evaluate(({ session }, target) =>
+      session.defaultSession.once("will-download", (_event, item) => item.setSavePath(target)), file);
+    await center.getByTestId("runtime-export-receipt").click();
+    await expect.poll(async () => { try { return (await readFile(file)).length > 0; } catch { return false; } }).toBe(true);
+    const receipt = JSON.parse(await readFile(file, "utf8"));
+    expect(receipt).toMatchObject({ kind: "math3d.runtime-capability-receipt", schemaVersion: 1 });
+    expect(receipt.checkedAt).toBeGreaterThan(0);
+    expect(receipt.routes).toEqual(expect.arrayContaining([expect.objectContaining({ group: "local" })]));
+    expect(receipt.discoveryFailures).toEqual(expect.objectContaining({ probeFailed: expect.any(Number) }));
     await expect(center.getByTestId("sage-runtime-local")).toContainText("Checked", { timeout: 30_000 });
     await expect(center.getByTestId("sage-runtime-docker")).toContainText("Checked", { timeout: 30_000 });
     await expect(center.getByTestId("sage-runtime-local")).toContainText("Environment: WSL Ubuntu");

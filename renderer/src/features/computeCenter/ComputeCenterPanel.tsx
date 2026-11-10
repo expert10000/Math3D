@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useSyncExternalStore, useState } from "react";
+import React, { useCallback, useEffect, useRef, useSyncExternalStore, useState } from "react";
 import { cgalHealth } from "../../services/cgalMeshClient";
 import { getMeshBackendCapabilities } from "../../services/meshBackend";
 import { getPythonWorkerDiagnostics, type PythonWorkerDiagnosticsSnapshot } from "../../services/pythonWorkerDiagnosticsClient";
@@ -6,7 +6,7 @@ import { sageExecutionRegistry, type SageBackend } from "../../services/sageOper
 import type { ScientificBackendCapabilitySnapshot } from "@math3d/kernel";
 import { discoverScientificBackendReport, getComputeJobs, presentComputeJob, subscribeComputeJobs,
   type BrokerDiscoveryFailure, type ComputeJobRecord } from "./scientificJobTelemetry";
-import { buildRuntimeCapabilityReport, runtimeOperationAdmissions, type RuntimeProbeResult, type RuntimeState } from "./runtimeCapabilityReport";
+import { buildRuntimeCapabilityReport, runtimeOperationAdmissions, type RuntimeCapabilityReport, type RuntimeProbeResult, type RuntimeState } from "./runtimeCapabilityReport";
 import { createRuntimeCapabilityReceipt } from "./runtimeCapabilityReceipt";
 import ComputeEngineManagerPanel from "../computeEngines/ComputeEngineManagerPanel";
 import SageRuntimeInspector from "./SageRuntimeInspector";
@@ -54,6 +54,8 @@ export default function ComputeCenterPanel({ onClose, initialTab = "overview" }:
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedOperation, setSelectedOperation] = useState("");
+  const [receiptStatus, setReceiptStatus] = useState<string | null>(null);
+  const preparedReceiptRef = useRef<{ report: RuntimeCapabilityReport; failures: readonly BrokerDiscoveryFailure[] } | null>(null);
   const capabilities = getMeshBackendCapabilities();
   const vtkBridge = capabilities.vtkPreviewImplicit || capabilities.vtkMeshCleanNormals || capabilities.vtkMeshDecimate || capabilities.vtkMeshSmooth || capabilities.vtkMeshBoolean;
 
@@ -64,33 +66,39 @@ export default function ComputeCenterPanel({ onClose, initialTab = "overview" }:
     ]);
     if (pythonResult.status === "fulfilled") setPython(pythonResult.value);
     if (memoryResult.status === "fulfilled") setMemory(memoryResult.value);
+    return pythonResult.status === "fulfilled" ? pythonResult.value : null;
   }, []);
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
     setPython(null); setCgal(null); setEngines(null); setBrokerBackends([]); setBrokerFailures([]);
     setSageProbes({}); setCheckedAt(0); setError(null);
+    preparedReceiptRef.current = null; setReceiptStatus(null);
     const [[healthResult, engineResult, brokerResult], sageResults] = await Promise.all([
       Promise.allSettled([cgalHealth(),
         window.computeEngines?.getStatus() ?? Promise.resolve(null), discoverScientificBackendReport()]),
       Promise.allSettled((["local", "docker", "private"] as const)
         .map(backend => sageExecutionRegistry.probeBackend(backend))),
     ]);
-    setCgal(healthResult.status === "fulfilled" ? healthResult.value : { ok: false, error: "State check failed" });
-    setEngines(engineResult.status === "fulfilled" ? engineResult.value : null);
-    setBrokerBackends(brokerResult.status === "fulfilled" ? brokerResult.value.backends : []);
-    setBrokerFailures(brokerResult.status === "fulfilled" ? brokerResult.value.failures :
-      [{ name: "broker", reason: "probe-failed" }]);
-    setSageProbes(Object.fromEntries((["local", "docker", "private"] as const).map((backend, index) => {
+    const cgal = healthResult.status === "fulfilled" ? healthResult.value : { ok: false, error: "State check failed" };
+    const engines = engineResult.status === "fulfilled" ? engineResult.value : null;
+    const broker = brokerResult.status === "fulfilled" ? brokerResult.value.backends : [];
+    const failures: readonly BrokerDiscoveryFailure[] = brokerResult.status === "fulfilled" ? brokerResult.value.failures :
+      [{ name: "broker", reason: "probe-failed" }];
+    const sage = Object.fromEntries((["local", "docker", "private"] as const).map((backend, index) => {
       const result = sageResults[index];
       return [backend, result?.status === "fulfilled" ? { probe: result.value } :
         { error: result?.reason instanceof Error ? result.reason.message : "Route probe failed" }];
-    })) as Record<SageBackend, RuntimeProbeResult>);
-    setCheckedAt(Date.now());
+    })) as Record<SageBackend, RuntimeProbeResult>;
+    setCgal(cgal); setEngines(engines); setBrokerBackends(broker); setBrokerFailures(failures); setSageProbes(sage);
     setError(engineResult.status === "rejected" ? "Compute engine status could not be read." : null);
-    await refreshLive();
+    const python = await refreshLive();
+    const checkedAt = Date.now();
+    setCheckedAt(checkedAt);
     setRefreshing(false);
-  }, [refreshLive]);
+    preparedReceiptRef.current = { report: buildRuntimeCapabilityReport({ webWorker: typeof Worker !== "undefined",
+      python, cgal, vtkBridge, engines, broker, sage, checkedAt }), failures };
+  }, [refreshLive, vtkBridge]);
 
   useEffect(() => {
     void refresh();
@@ -114,11 +122,18 @@ export default function ComputeCenterPanel({ onClose, initialTab = "overview" }:
   const admissions = inspectedOperation ? runtimeOperationAdmissions(runtimeReport, inspectedOperation) : [];
   const activeBrokerJobs = jobs.filter((job) => job.status === "routing" || job.status === "running").length;
   const exportReceipt = () => {
-    const receipt = createRuntimeCapabilityReceipt(runtimeReport, jobs, brokerFailures);
+    const prepared = preparedReceiptRef.current;
+    if (!prepared || Date.now() - prepared.report.checkedAt > 60_000) {
+      void refresh().then(() => setReceiptStatus("Capabilities refreshed. Click Export again to download."));
+      return;
+    }
+    const receipt = createRuntimeCapabilityReceipt(prepared.report, getComputeJobs(), prepared.failures);
     const url = URL.createObjectURL(new Blob([JSON.stringify(receipt, null, 2)], { type: "application/json" }));
     const link = document.createElement("a");
-    link.href = url; link.download = "math3d-runtime-capabilities.json"; link.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    link.href = url; link.download = "math3d-runtime-capabilities.json";
+    document.body.appendChild(link); link.click(); link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setReceiptStatus(null);
   };
 
   return <div data-testid="compute-center-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }} style={{ position: "fixed", inset: 0, zIndex: 2650, background: "rgba(15, 23, 42, 0.4)", display: "grid", placeItems: "center", padding: 12 }}>
@@ -177,7 +192,8 @@ export default function ComputeCenterPanel({ onClose, initialTab = "overview" }:
       </div></section>
       </>}
       {activeTab === "runtimes" && <div data-testid="compute-runtimes" style={{ display: "grid", gap: 12 }}>
-        <button type="button" style={{ ...button, justifySelf: "start" }} data-testid="runtime-export-receipt" disabled={!runtimeReport.checkedAt} onClick={exportReceipt}>Export capability receipt</button>
+        <button type="button" style={{ ...button, justifySelf: "start" }} data-testid="runtime-export-receipt" disabled={!runtimeReport.checkedAt || refreshing} onClick={exportReceipt}>Export capability receipt</button>
+        {receiptStatus && <div role="status" style={{ fontSize: 11 }}>{receiptStatus}</div>}
         <section style={card} aria-label="Operation route admission" data-testid="runtime-operation-admission">
           <h3 style={{ margin: "0 0 8px", fontSize: 14 }}>Operation routes</h3>
           {listedOperations.length ? <>
