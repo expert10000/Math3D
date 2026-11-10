@@ -19,6 +19,7 @@ export function VectorField3DResultEvidenceCard({ evidence, label, testId }: Rea
     "absoluteResidual" in values ? values.absoluteResidual : null);
   const safeName = evidence.resultId.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 100);
   return <div data-testid={testId} data-qualification={evidence.qualification}
+    data-publication-status={evidence.publication.assessment.status}
     className="vectorfield3d-result-evidence-card">
     <strong>{label}</strong>
     <p role="status">{current ? `${primary} ${evidence.unit}; ${evidence.method}` :
@@ -39,11 +40,13 @@ export function VectorField3DResultEvidenceCard({ evidence, label, testId }: Rea
       <div><dt>Method</dt><dd>{evidence.method}</dd></div>
       <div><dt>Unit</dt><dd>{evidence.unit}</dd></div>
     </dl></details>
-    {current && <div className="vectorfield3d-result-evidence-actions">
+    {!current && <p data-testid="vectorfield3d-evidence-omissions">Evidence export keeps provenance and
+      omits numerical values: {evidence.publication.assessment.reason}</p>}
+    <div className="vectorfield3d-result-evidence-actions">
       <button type="button" onClick={() => download(`${safeName}.json`,
         vectorField3DResultEvidenceJson(evidence), "application/json;charset=utf-8")}>Export evidence JSON</button>
       <button type="button" onClick={() => download(`${safeName}.csv`,
         vectorField3DResultEvidenceCsv(evidence), "text/csv;charset=utf-8")}>Export evidence CSV</button>
-    </div>}
+    </div>
   </div>;
 }

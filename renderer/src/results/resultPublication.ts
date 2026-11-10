@@ -39,6 +39,8 @@ export function createResultPublication<T>(input: ResultPublicationInput<T>) {
   };
 }
 
+export type ResultPublication<T> = ReturnType<typeof createResultPublication<T>>;
+
 /** Shared two-column evidence CSV: stable row order, CRLF and spreadsheet-safe cells. */
 export function resultEvidenceRowsCsv(rows: ReadonlyArray<readonly [string, unknown]>): string {
   const cell = (value: unknown): string => {

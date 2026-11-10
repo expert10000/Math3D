@@ -41,8 +41,11 @@ describe("Field result evidence", () => {
     expect(evidence.values?.value).toBeCloseTo(2, 10);
     const json = JSON.parse(vectorField3DResultEvidenceJson(evidence));
     expect(json.source.structuralHash).toBe(document.identity.structuralHash);
+    expect(json.publication).toMatchObject({ schema: "math3d.result-publication/v1",
+      module: "vector3d", assessment: { status: "recorded" } });
+    expect(json.publication.summary).toEqual(json.values);
     expect(json.checkScope).toMatch(/No independent mathematical check/);
-    expect(vectorField3DResultEvidenceCsv(evidence)).toContain("value,2");
+    expect(vectorField3DResultEvidenceCsv(evidence)).toContain('"value","2"');
     const card = renderToStaticMarkup(createElement(VectorField3DResultEvidenceCard,
       { evidence, label: "Circulation", testId: "gf10-saved-result" }));
     expect(card).toContain("2 m/s·m");
@@ -54,13 +57,21 @@ describe("Field result evidence", () => {
         vectorField3DExpression("x", "m/s"), vectorField3DExpression("z", "m/s")] } });
     const historical = vectorField3DResultEvidence(project, result, revised);
     expect(historical).toMatchObject({ qualification: "withheld", reason: "source-changed", values: null });
-    expect(() => vectorField3DResultEvidenceJson(historical)).toThrow(/withheld/);
-    expect(() => vectorField3DResultEvidenceCsv(historical)).toThrow(/withheld/);
+    const historicalJson = JSON.parse(vectorField3DResultEvidenceJson(historical));
+    expect(historicalJson.values).toBeNull();
+    expect(historicalJson.publication).toMatchObject({ assessment: {
+      status: "withheld", sourceStatus: "source-changed",
+      omissions: ["summary values"] }, summary: null });
+    const historicalCsv = vectorField3DResultEvidenceCsv(historical);
+    expect(historicalCsv).toContain('"values",""');
+    expect(historicalCsv).toContain('"publication.status","withheld"');
+    expect(historicalCsv).not.toContain('"value","2"');
     const staleCard = renderToStaticMarkup(createElement(VectorField3DResultEvidenceCard,
       { evidence: historical, label: "Circulation", testId: "gf10-saved-result" }));
     expect(staleCard).toContain("Value withheld: source-changed");
     expect(staleCard).not.toContain("2 m/s·m");
-    expect(staleCard).not.toContain("Export evidence JSON");
+    expect(staleCard).toContain("Export evidence JSON");
+    expect(staleCard).toContain("omits numerical values");
   });
 
   it("distinguishes numerical theorem comparison from an independent proof", () => {
@@ -89,11 +100,13 @@ describe("Field result evidence", () => {
     const changed = upsertProjectScientificSelection(project, reversed);
     const historical = vectorField3DResultEvidence(changed, result, document);
     expect(historical).toMatchObject({ qualification: "withheld", reason: "selection-changed", values: null });
+    expect(historical.claim).toContain("outcome withheld");
+    expect(JSON.parse(vectorField3DResultEvidenceJson(historical)).publication.summary).toBeNull();
     const staleCard = renderToStaticMarkup(createElement(VectorField3DResultEvidenceCard,
       { evidence: historical, label: "stokes", testId: "gf11-saved-result" }));
     expect(staleCard).toContain("Value withheld: selection-changed");
     expect(staleCard).not.toContain("boundaryValue");
-    expect(staleCard).not.toContain("Export evidence CSV");
+    expect(staleCard).toContain("Export evidence CSV");
   });
 
   it("withholds partial region measurements even with an unchanged source", () => {
@@ -107,6 +120,9 @@ describe("Field result evidence", () => {
     const evidence = vectorField3DResultEvidence(project, result, document);
     expect(evidence.qualification).toBe("withheld");
     expect(evidence.values).toBeNull();
-    expect(() => vectorField3DResultEvidenceJson(evidence)).toThrow(/withheld/);
+    const exported = JSON.parse(vectorField3DResultEvidenceJson(evidence));
+    expect(exported.values).toBeNull();
+    expect(exported.publication.assessment.status).toBe("withheld");
+    expect(exported.publication.summary).toBeNull();
   });
 });
