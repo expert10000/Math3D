@@ -8,7 +8,7 @@ The Projects Gallery presents 15 curated journeys. Its metadata lives in `render
 | Geometry and topology | Built-in Project | Geometry + Topology | Unit save/reopen and member status |
 | Geometry Note pins | Built-in Project | Geometry | Unit save/reopen; Note pin tests elsewhere |
 | Derivative | Built-in Project | Graph + Curve; recorded derivative on Graph | Unit save/reopen and member status |
-| Catenoid evidence | Built-in Project | None in this slice | Existing saved Mesh, Note and Workbook tests |
+| Catenoid evidence | Built-in Project | Surface + Mesh with pinned Mesh curvature result | Desktop cold restart and exact Result navigation; analytic curvature comparison remains open |
 | Edge path evidence | Built-in Project | None in this slice | Existing exact path and publication tests |
 | Graph derivative notebook | Built-in Project | Graph + Curve; recorded result on Graph | Unit save/reopen and Workbook preservation |
 | Ripple wave | Built-in Project | Graph + Surface + Geometry | Unit layout creation; existing source-chain tests |
@@ -32,7 +32,7 @@ The Projects Gallery presents 15 curated journeys. Its metadata lives in `render
 
 1. Run `npx vitest run renderer/src/projects/curatedStudyCatalog.test.ts renderer/src/projects/curatedStudyProject.test.ts renderer/src/components/ProjectTemplatesPanel.test.tsx`.
 2. Run `npm run build:core` and `npx tsc -p renderer/tsconfig.app.json --noEmit`.
-3. Run `npx playwright test tests/e2e/project-curated-gallery.spec.ts --reporter=list` in a source checkout with Electron available.
+3. Run `npx playwright test tests/e2e/project-curated-gallery.spec.ts --reporter=list` in a source checkout with Electron available. The Catenoid guided copy must reopen its Surface/Mesh Study and navigate to the pinned Mesh result.
 4. In Projects → Starter projects, switch to Guided Studies. Filter Quantum scene and confirm three external-source cards. Filter Algebra and open the CAS examples. Open the Catenary guided copy and confirm its saved two-pane Study after restarting the desktop app.
 
 The 2.0 Gallery exit remains open until every advertised flagship journey has a complete accepted fixture, browser/mobile fallback is exercised, media provenance is captured and release-candidate asset budgets are measured.

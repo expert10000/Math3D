@@ -29,6 +29,8 @@ The gate scripts and source tests are **preparation**, not evidence that a 2.0 i
 
 **Next release path:** qualify the merged installer toolchain fix in the 2.0 packaging path, diagnose the installed memory excess, close or explicitly limit the shared cursor/Study and three flagship journeys, and resolve the native CGAL source-bundle blocker. Then choose and review a 2.0 integration baseline, run the RC1 freeze and acceptance matrix, and qualify the signed candidate, migration, soak, gallery, and host claims. GA sign-off, tagging, staging, publication, and verification of downloaded bytes follow that evidence.
 
+**Flagship source gate (2026-11-10):** `node scripts/release20-flagship-journeys.mjs --plan` lists the bounded Surface, QWZ and algebra desktop journeys; `--run <evidence-json>` requires a clean tracked checkout and built core, then writes a commit-pinned receipt with test-file and output hashes. The guided Catenoid evidence copy now saves a Surface/Mesh Study whose Mesh member cites the recorded curvature result and can navigate to Results after cold restart. This gate does not certify the full roadmap journeys: analytic/discrete Surface curvature comparison, QWZ profile-to-Graph publication, Sage-backed locus/singularity computation and all negative-state permutations remain open. It is source evidence, not installed-candidate acceptance.
+
 ---
 
 ## 0. Executive decision

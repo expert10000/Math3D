@@ -1535,7 +1535,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         NOTEBOOK_STARTERS.some(item => item.id === id) ? instantiateNotebookStarter(id as NotebookStarterId, token) : { project: instantiateMath3DProjectTemplate(id, token), resources: undefined };
       if (sequence !== importSequence.current) return;
       const next = curated ? prepareCuratedStudyProject(bundle.project, id, token) : bundle.project;
-      const inspection = "inspection" in bundle ? bundle.inspection as ProjectCompatibility : inspectProjectCompatibility(next, transferOptions(bundle.resources));
+      const inspection = !curated && "inspection" in bundle ? bundle.inspection as ProjectCompatibility :
+        inspectProjectCompatibility(next, transferOptions(bundle.resources));
       setIncoming({ ...inspection, resources: bundle.resources, inputKind: "Independent starter project" });
       setMessage("Starter preview ready. Current work is unchanged until you choose to open it.");
     } catch (error) { if (sequence === importSequence.current) { setIncoming(null); setMessage(`Starter unavailable: ${(error as Error).message}`); } }
@@ -1569,7 +1570,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       performance.measure("project-open:starter-construction", { start: starterStart, end: performance.now() });
       const next = curated ? prepareCuratedStudyProject(bundle.project, id, token) : bundle.project;
       const inspectionStart = performance.now();
-      const inspection = "inspection" in bundle ? bundle.inspection as ProjectCompatibility : inspectProjectCompatibility(next, transferOptions(bundle.resources));
+      const inspection = !curated && "inspection" in bundle ? bundle.inspection as ProjectCompatibility :
+        inspectProjectCompatibility(next, transferOptions(bundle.resources));
       const candidate = { ...inspection, resources: bundle.resources, inputKind: "Independent starter project" };
       performance.clearMeasures("project-open:starter-inspection");
       performance.measure("project-open:starter-inspection", { start: inspectionStart, end: performance.now() });
@@ -2060,6 +2062,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               }}
               onOpenNote={id => openProjectNotes(id)}
               onOpenQuantumSource={openLinkedQuantumScene}
+              onInspectResult={id => { setResultFocus(previous => ({ id, token: (previous?.token ?? 0) + 1 }));
+                openDetailPage("results"); }}
               onOpenDocument={(id, module) => viewBesideProject(id, module)} />
           </div>}
           {!quick && detailView && project && <ProjectRelationshipMap project={project} titles={documentTitles}

@@ -39,8 +39,24 @@ describe("guided Gallery Project Study copies", () => {
     expect(reopened.workspace.studies![0]!.members[0]!.resultId).toBeDefined();
   });
 
+  it("binds the Catenoid guided Study to its saved Mesh curvature result and preserves its Workbook", () => {
+    const bundle = instantiateNotebookStarter("catenoid-evidence", "catenoid-flagship");
+    const guided = prepareCuratedStudyProject(bundle.project, "catenoid-evidence", "catenoid-flagship");
+    const reopened = parseMath3DProject(serializeMath3DProject(guided));
+    const study = reopened.workspace.studies![0]!;
+    expect(study.members.map(member => reopened.workspace.entries.find(entry =>
+      entry.expected.id === member.documentId)?.module)).toEqual(["surface", "mesh"]);
+    expect(study.members[0]!.resultId).toBeUndefined();
+    expect(study.members[1]!.resultId).toBe(reopened.workspace.results.find(result =>
+      result.provenance.source.documentId === study.members[1]!.documentId)?.resultId);
+    expect(reopened.workbooks).toEqual(bundle.project.workbooks);
+    expect(inspectProjectStudyMembers(reopened, study).map(member => member.status))
+      .toEqual(["current-reference", "current-reference"]);
+  });
+
   it("declares only supported layouts and refuses a mismatched Project", () => {
     expect(curatedStudyHasLayout("ripple-wave-study")).toBe(true);
+    expect(curatedStudyHasLayout("catenoid-evidence")).toBe(true);
     expect(curatedStudyHasLayout("mesh-curvature-study")).toBe(false);
     const project = instantiateMath3DProjectTemplate("catenary-study", "wrong");
     expect(() => prepareCuratedStudyProject(project, "derivative-study", "wrong")).toThrow(/identity/);

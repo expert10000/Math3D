@@ -30,13 +30,14 @@ type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoi
   onCapturePinnedNote?: (studyId: string, memberId: string, selectionId: string) => void;
   onOpenNote?: (id: string) => void;
   onOpenQuantumSource?: (reference: ProjectQuantumSceneReference) => Promise<void>;
+  onInspectResult?: (resultId: string) => void;
   onOpenDocument: (id: string, module: KernelWorkspaceModule) => void }>;
 
 /** A Study is a saved layout of references; opening a pane delegates to its owning document. */
 export function ProjectStudiesPanel({ project, documents, editable, resources, focusStudy, onCreate, onRename, onFork, onConfigure,
   onLink, onLinkCurveSurface, onCreateQwz, onPinQwz, onUnpinQwz, workbookBytes, onOpenWorkbookBlock,
   onCapturePinnedNote, onOpenNote,
-  onOpenQuantumSource, onOpenDocument }: Props) {
+  onOpenQuantumSource, onInspectResult, onOpenDocument }: Props) {
   const [selected, setSelected] = useState<string[]>([]);
   const [title, setTitle] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
@@ -178,6 +179,9 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
               onClick={() => { if (quantumReference) void onOpenQuantumSource?.(quantumReference); }}>
               Verify and view source scene</button> : <button type="button" disabled={!workspaceEntry || status === "changed"}
               onClick={() => { if (workspaceEntry) onOpenDocument(member.documentId, workspaceEntry.module); }}>Open source document</button>}
+            {member.resultId && <button type="button" data-testid={`project-study-open-result-${pane.paneId}`}
+              disabled={status !== "current-reference" || !onInspectResult}
+              onClick={() => onInspectResult?.(member.resultId!)}>Inspect saved result</button>}
             <button type="button" data-testid={`project-study-preview-toggle-${pane.paneId}`}
               onClick={() => setVisiblePaneId(current => current === pane.paneId ? null : pane.paneId)}>
               {visiblePaneId === pane.paneId ? "Hide preview" : "Show preview"}</button>
