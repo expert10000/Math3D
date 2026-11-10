@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createAnalysisResultEnvelope, instantiateMath3DProjectTemplate,
-  viewerSourceFromDocument, type AnalysisResultStatus } from "@math3d/core";
+  viewerSourceFromDocument, VECTOR_FIELD3D_DERIVED_SUBRECTANGLE_RESULT_TYPE,
+  type AnalysisResultStatus } from "@math3d/core";
+import type { ProjectDependencyInspection } from "../projects/projectDependencies";
 import { ProjectResultsBrowser } from "./ProjectResultsBrowser";
 
 const base = instantiateMath3DProjectTemplate("derivative-study", "result-browser-evidence");
@@ -43,5 +45,26 @@ describe("Project saved result presentation", () => {
       expect(html).toContain("No completed result values are available");
       expect(html).not.toContain("<code>m</code>");
     }
+  });
+
+  it("disables report actions until the exact external source check succeeds", () => {
+    const scientific = { ...result, provenance: { ...result.provenance,
+      operation: { ...result.provenance.operation,
+        type: VECTOR_FIELD3D_DERIVED_SUBRECTANGLE_RESULT_TYPE } } };
+    const project = { ...base, workspace: { ...base.workspace, results: [scientific] } };
+    const inspection = { results: [{ id: scientific.resultId, sourceFreshness: "current",
+      freshness: "current", missingArtifactIds: [] }], artifacts: [] } as unknown as ProjectDependencyInspection;
+    const show = (sourceStatus: "checking" | "source-current") => renderToStaticMarkup(
+      <ProjectResultsBrowser project={project} inspection={inspection} titles={new Map()}
+        canOpen={() => true} onOpen={() => {}} onCreateScientificReport={() => {}}
+        onExportScientificReport={() => {}}
+        regionResultStatuses={{ [scientific.resultId]: sourceStatus }} />);
+    const pending = show("checking"), verified = show("source-current");
+    expect(pending).toMatch(/data-testid="project-create-subrectangle-workbook" disabled=""/);
+    expect(pending).toMatch(/data-testid="project-export-subrectangle-report" disabled=""/);
+    expect(pending).toContain('data-summary="withheld"');
+    expect(verified).not.toMatch(/data-testid="project-create-subrectangle-workbook" disabled=""/);
+    expect(verified).not.toMatch(/data-testid="project-export-subrectangle-report" disabled=""/);
+    expect(verified).toContain('data-summary="recorded"');
   });
 });

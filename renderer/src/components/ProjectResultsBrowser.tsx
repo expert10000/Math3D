@@ -23,6 +23,7 @@ import type { ProjectResourceReader } from "../projects/projectResources";
 import { verifySavedMeshResult } from "../projects/projectSavedMeshResultComparison";
 import { projectResultSourceLink } from "../projects/projectResultSourceLink";
 import { presentProjectResultVerification } from "../projects/projectResultVerification";
+import { projectResultActionPolicy } from "../projects/projectResultActionPolicy";
 
 const ProjectSavedMeshGenerationPreview = React.lazy(() => import("./ProjectSavedMeshGenerationPreview").then(module => ({ default: module.ProjectSavedMeshGenerationPreview })));
 
@@ -115,6 +116,13 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
     savedMeshChecked: !!meshVerification?.checked,
     sourceCurrent: resultCard?.integrity.label === "Source verified",
   });
+  const resultActions = result && resultCard && resultVerification ? projectResultActionPolicy({
+    card: resultCard, verification: resultVerification,
+    sourceLink: projectResultSourceLink(project, result.provenance.source),
+    savedMeshChecked: Boolean(meshVerification?.checked),
+    canCreateReport: Boolean(onCreateScientificReport),
+    canExportReport: Boolean(onExportScientificReport),
+  }) : null;
   const artifactStatus = artifact && inspection?.artifacts.find(item => item.id === artifact.handle.artifactId);
   const linkedResults = artifact ? results.filter(item => item.artifacts.some(handle => handle.artifactId === artifact.handle.artifactId)) : [];
   const artifactRelations = artifact ? project.workspace.relations.filter(relation => relation.target.type === "artifact" && relation.target.artifactId === artifact.handle.artifactId) : [];
@@ -194,32 +202,33 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
                   {resultCard[axis].label}</span>{" "}{resultCard[axis].detail}
               </p>)}
           </div>}
+          {resultActions && <p role="status" data-testid="project-result-action-status"
+            data-summary={resultActions.summary}>{resultActions.reason}</p>}
           <button type="button" data-testid="project-result-export-evidence" onClick={exportEvidence}>
             Export result evidence JSON</button>
           {meshResult && <div data-testid="project-saved-mesh-evidence" style={{ border: "1px solid #cbd5e1", borderRadius: 8, padding: 10 }}>
             <strong>Exact saved Mesh evidence</strong>
             {meshVerification?.checked ? <><p>Result {meshResult.resultId} · hash {meshVerification.checked.resultHash}<br />
               Mesh r{meshVerification.checked.source.identity.revision} · {meshVerification.checked.generation} · source hash {meshVerification.checked.source.identity.structuralHash}</p>
-              <button type="button" data-testid="project-open-exact-mesh-generation" onClick={() => setMeshPreviewOpen(true)}>Show exact Mesh generation</button></> :
+              <button type="button" data-testid="project-open-exact-mesh-generation"
+                disabled={!resultActions?.openExactSavedMesh} onClick={() => setMeshPreviewOpen(true)}>Show exact Mesh generation</button></> :
               <p role="alert">Saved result inspection remains available; the exact Mesh generation cannot open: {meshVerification?.error ?? "source bytes are unavailable"}. No current Mesh is substituted.</p>}
           </div>}
           {isScientificSubrectangle(result) && <div className="project-results-links">
-            <button type="button" data-testid="project-create-subrectangle-workbook" disabled={!onCreateScientificReport}
+            <button type="button" data-testid="project-create-subrectangle-workbook" disabled={!resultActions?.createVerifiedReport}
               onClick={() => onCreateScientificReport?.(result.resultId)}>Create source-linked Workbook report</button>
-            <button type="button" data-testid="project-export-subrectangle-report" disabled={!onExportScientificReport}
+            <button type="button" data-testid="project-export-subrectangle-report" disabled={!resultActions?.exportVerifiedReport}
               onClick={() => onExportScientificReport?.(result.resultId)}>Verify and export report</button>
           </div>}
           {isScientificTrajectory(result) && <div className="project-results-links">
             <button type="button" data-testid="project-create-trajectory-workbook"
-              disabled={!onCreateScientificReport ||
-                regionResultStatuses[result.resultId] !== "source-current"}
+              disabled={!resultActions?.createVerifiedReport}
               onClick={() => onCreateScientificReport?.(result.resultId)}>
               Create verified solver Workbook report</button>
           </div>}
           {isScientificEquilibrium(result) && <div className="project-results-links">
             <button type="button" data-testid="project-create-equilibrium-workbook"
-              disabled={!onCreateScientificReport ||
-                regionResultStatuses[result.resultId] !== "source-current"}
+              disabled={!resultActions?.createVerifiedReport}
               onClick={() => onCreateScientificReport?.(result.resultId)}>
               Create verified equilibrium Workbook report</button>
           </div>}
