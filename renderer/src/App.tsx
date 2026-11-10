@@ -789,6 +789,7 @@ import { publishVolumeAnalysisEvidence } from "./volume/analysisPublication";
 import { publishVolumeComparisonEvidence } from "./volume/comparisonPublication";
 import { qualifyVolumeDerivedResult } from "./volume/derivedQualification";
 import { publishVolumeDerivedEvidence } from "./volume/derivedPublication";
+import { qualifyVolumeSegmentation } from "./volume/segmentationQualification";
 import { CurveConstructionRealizer, locateCurveConstructionVertex, type CurveConstructionGeometry } from "./curveAnalysis/curveConstructionGeometry";
 import { curveConstructionSourceStatus, type CurveConstructionRecord } from "./curveAnalysis/curveConstructionKernel";
 import { CurveResultLifecyclePanel } from "./components/CurveResultLifecyclePanel";
@@ -35260,9 +35261,12 @@ const App: React.FC = () => {
     volumeSegmentationSessionRef.current.preview()?.result ?? volumeSegmentationSessionRef.current.current(),
   [volumeSegmentationVersion]);
   const volumeSegmentationHistory = useMemo(() => volumeSegmentationSessionRef.current.summary(), [volumeSegmentationVersion]);
-  const volumeSegmentationStats = useMemo(() => volumeSegmentationMap
+  const volumeSegmentationQualification = qualifyVolumeSegmentation(
+    volumeSegmentationMap, canonicalVolumeObject, volumeSegmentationThreshold, volumeSegmentationHistory.hasPreview,
+  );
+  const volumeSegmentationStats = useMemo(() => volumeSegmentationMap && volumeSegmentationQualification.showValues
     ? labelStatistics(volumeSegmentationMap, volumeDataset.grid)
-    : [], [volumeDataset.grid, volumeSegmentationMap]);
+    : [], [volumeDataset.grid, volumeSegmentationMap, volumeSegmentationQualification.showValues]);
   const handlePreviewVolumeSegmentation = useCallback(() => {
     const mask = thresholdVolumeMask(volumeDataset.grid, volumeSegmentationThreshold, Number.POSITIVE_INFINITY, {
       sourceVolumeId: canonicalVolumeObject.identity.volumeId,
@@ -35274,19 +35278,21 @@ const App: React.FC = () => {
     setVolumeSegmentationVersion((version) => version + 1);
   }, [canonicalVolumeObject.identity.volumeId, canonicalVolumeObject.identity.volumeRevision, volumeDataset.grid, volumeSegmentationThreshold]);
   const handleApplyVolumeSegmentation = useCallback(() => {
+    const preview = volumeSegmentationSessionRef.current.preview();
+    if (!qualifyVolumeSegmentation(preview?.result ?? null, canonicalVolumeObject, volumeSegmentationThreshold, true).canApply) return;
     volumeSegmentationSessionRef.current.applyPreview();
     setVolumeSegmentationVersion((version) => version + 1);
-  }, []);
+  }, [canonicalVolumeObject, volumeSegmentationThreshold]);
   const handleCancelVolumeSegmentation = useCallback(() => {
     volumeSegmentationSessionRef.current.cancelPreview();
     setVolumeSegmentationVersion((version) => version + 1);
   }, []);
   const handleUpdateVolumeSegmentationLabel = useCallback((id: number, patch: Partial<Omit<VolumeLabelDefinition, "id">>) => {
     const current = volumeSegmentationSessionRef.current.current();
-    if (!current) return;
+    if (!current || !qualifyVolumeSegmentation(current, canonicalVolumeObject, volumeSegmentationThreshold, false).canEdit) return;
     volumeSegmentationSessionRef.current.replace(updateVolumeLabel(current, id, patch), "label-metadata");
     setVolumeSegmentationVersion((version) => version + 1);
-  }, []);
+  }, [canonicalVolumeObject, volumeSegmentationThreshold]);
   const [volumeScientificIoStatus, setVolumeScientificIoStatus] = useState("Ready to import or export a scientific Volume.");
   const handleImportScientificVolume = useCallback(async () => {
     const api = window.volumeFiles;
@@ -35630,7 +35636,7 @@ const App: React.FC = () => {
       createVolumeWorkbookBlock({ ...blockBase, id: "volume-slice", operation: "slice", title: "Review slices", parameters: { x: volumePaneIndices.x, y: volumePaneIndices.y, z: volumePaneIndices.z }, preview: { label: "Orthogonal slices", summary: `X ${volumePaneIndices.x + 1} · Y ${volumePaneIndices.y + 1} · Z ${volumePaneIndices.z + 1}` } }),
       createVolumeWorkbookBlock({ ...blockBase, id: "volume-render", operation: "render", title: "Render Volume", parameters: { mode: volumeRenderMode, quality: volumeRenderQuality }, preview: { label: volumeRenderMode.toUpperCase(), summary: volumeTransferFunction.label } }),
       createVolumeWorkbookBlock({ ...blockBase, id: "volume-analyze", operation: "analyze", title: "Analyze Volume", parameters: { threshold: volumeAnalysisThreshold, isoValue: volumeIsoValue }, preview: { label: "Analysis", summary: currentVolumeAnalysisSummary ? `${currentVolumeAnalysisSummary.statistics.finiteCount.toLocaleString()} finite samples` : "Ready to run" } }),
-      createVolumeWorkbookBlock({ ...blockBase, id: "volume-segment", operation: "segment", title: "Segment Volume", parameters: { threshold: volumeSegmentationThreshold }, preview: { label: "Masks & labels", summary: `${volumeSegmentationMap?.labels.length ?? 0} labels` } }),
+      createVolumeWorkbookBlock({ ...blockBase, id: "volume-segment", operation: "segment", title: "Segment Volume", parameters: { threshold: volumeSegmentationThreshold }, preview: { label: "Masks & labels", summary: volumeSegmentationQualification.showValues ? `${volumeSegmentationMap?.labels.length ?? 0} labels` : "Segmentation values withheld" } }),
       createVolumeWorkbookBlock({ ...blockBase, id: "volume-compare", operation: "compare", title: "Compare Volumes", parameters: { alignment: volumeComparisonAlignment, threshold: volumeComparisonThreshold }, preview: { label: "A ↔ B", summary: volumeComparisonBaselineLabel ?? "Capture baseline A" } }),
       createVolumeWorkbookBlock({ ...blockBase, id: "volume-export", operation: "export", title: "Export Volume", parameters: { format: "npy" }, preview: { label: "Scientific export", summary: "NPY + JSON metadata" } }),
     ];
@@ -35647,7 +35653,7 @@ const App: React.FC = () => {
       workbookBlocks,
       handoff: { sourceModule: canonicalVolumeObject.provenance.dependencies[0]?.module === "external" ? "volume" : (canonicalVolumeObject.provenance.dependencies[0]?.module ?? "volume"), sourceObjectId: canonicalVolumeObject.provenance.dependencies[0]?.objectId ?? null, returnCamera: view.camera },
     });
-  }, [activeVolumeKernelAdapter, canonicalVolumeObject, currentVolumeAnalysisSummary, volumeAnalysisThreshold, volumeCameraState, volumeComparisonAlignment, volumeComparisonBaselineLabel, volumeComparisonThreshold, volumeCrosshair, volumeDataset.scientific, volumeDerivedResults, volumeExtractionRecords, volumeIsoValue, volumeLayout, volumeNavigationLinked, volumeOrientationConvention, volumePaneIndices, volumePinnedProbes, volumeRenderMode, volumeRenderQuality, volumeRenderWindow, volumeSegmentationMap?.labels.length, volumeSegmentationThreshold, volumeTextureSampling, volumeTransferFunction, volumeViewMode, volumeVoxelSnap]);
+  }, [activeVolumeKernelAdapter, canonicalVolumeObject, currentVolumeAnalysisSummary, volumeAnalysisThreshold, volumeCameraState, volumeComparisonAlignment, volumeComparisonBaselineLabel, volumeComparisonThreshold, volumeCrosshair, volumeDataset.scientific, volumeDerivedResults, volumeExtractionRecords, volumeIsoValue, volumeLayout, volumeNavigationLinked, volumeOrientationConvention, volumePaneIndices, volumePinnedProbes, volumeRenderMode, volumeRenderQuality, volumeRenderWindow, volumeSegmentationMap?.labels.length, volumeSegmentationQualification.showValues, volumeSegmentationThreshold, volumeTextureSampling, volumeTransferFunction, volumeViewMode, volumeVoxelSnap]);
   const applyVolumeWorkspaceView = useCallback((document: VolumeWorkspaceDocument) => {
     const { view } = document;
     setVolumeLayout(view.layout);
@@ -90782,9 +90788,10 @@ case "mobius":
                         onChangeAnalysisThreshold={setVolumeAnalysisThreshold}
                         onExportAnalysis={handleExportVolumeAnalysis}
                         segmentationThreshold={volumeSegmentationThreshold}
+                        segmentationQualification={volumeSegmentationQualification}
                         segmentationLabels={volumeSegmentationMap?.labels ?? []}
                         segmentationStats={volumeSegmentationStats}
-                        segmentationHasPreview={volumeSegmentationHistory.hasPreview}
+                        segmentationHasPreview={volumeSegmentationQualification.canApply}
                         segmentationHistory={volumeSegmentationHistory}
                         onChangeSegmentationThreshold={setVolumeSegmentationThreshold}
                         onPreviewSegmentation={handlePreviewVolumeSegmentation}

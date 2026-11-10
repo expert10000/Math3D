@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import type { VolumeDocument } from "@math3d/core";
 import { SharedInspectorShell, type SharedInspectorCategory } from "./SharedInspectorShell";
 import type { VolumeDerivedQualification } from "../volume/derivedQualification";
+import type { VolumeSegmentationQualification } from "../volume/segmentationQualification";
 
 import type { VolumeDataset } from "../scene/datasets";
 import type { VolumeSliceHover, VolumeSliceReport } from "../scene/volume/sliceVolume";
@@ -94,6 +95,7 @@ export type VolumeInspectorPanelProps = {
   onChangeAnalysisThreshold: (value: number) => void;
   onExportAnalysis: (format: "json" | "csv" | "receipt") => void;
   segmentationThreshold: number;
+  segmentationQualification: VolumeSegmentationQualification;
   segmentationLabels: readonly VolumeLabelDefinition[];
   segmentationStats: readonly VolumeLabelStatistics[];
   segmentationHasPreview: boolean;
@@ -281,6 +283,7 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
   onChangeAnalysisThreshold,
   onExportAnalysis,
   segmentationThreshold,
+  segmentationQualification,
   segmentationLabels,
   segmentationStats,
   segmentationHasPreview,
@@ -699,6 +702,9 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
       {activeTab === "segmentation" && (
         <div style={cardStyle} data-testid="volume-segmentation-card">
           <div style={{ fontWeight: 850, fontSize: 12 }}>Masks &amp; Labels</div>
+          <div data-testid="volume-segmentation-status" style={{ fontSize: 10, color: segmentationQualification.showValues ? "#166534" : "#92400e" }}>
+            {segmentationQualification.status}: {segmentationQualification.reason}
+          </div>
           <label style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11 }}>
             <span>Threshold</span>
             <input aria-label="Volume segmentation threshold" type="number" step="any" value={segmentationThreshold} onChange={(event) => onChangeSegmentationThreshold(Number(event.target.value) || 0)} style={{ width: 90 }} />
@@ -711,10 +717,10 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
             <button type="button" onClick={onRedoSegmentation} disabled={!segmentationHistory.redoDepth}>Redo</button>
           </div>
           <DetailRow label="Categorical sampling" value="nearest-neighbor only" />
-          <DetailRow label="Labels" value={segmentationLabels.length} />
+          <DetailRow label="Labels" value={segmentationQualification.showValues ? segmentationLabels.length : "withheld"} />
           <DetailRow label="History buffers" value={`${segmentationHistory.undoDepth} undo · ${segmentationHistory.redoDepth} redo · ${formatBytes(segmentationHistory.ownedBytes)}`} />
           {segmentationLabels.length ? segmentationLabels.map((label) => {
-            const stats = segmentationStats.find((entry) => entry.label === label.id);
+            const stats = segmentationQualification.showValues ? segmentationStats.find((entry) => entry.label === label.id) : null;
             return (
               <div key={label.id} data-testid="volume-segmentation-label" style={{ border: "1px solid #d7e2ee", borderRadius: 7, background: "#fff", padding: 7, display: "grid", gap: 5 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10 }}>
@@ -723,8 +729,8 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
                 </div>
                 {stats && <DetailRow label="Region" value={`${stats.voxelCount.toLocaleString()} voxels · ${formatNumber(stats.physicalVolume)} ${spatial.positionUnits}³`} />}
                 <div style={{ display: "flex", gap: 10, fontSize: 10 }}>
-                  <label><input type="checkbox" checked={label.visible} onChange={(event) => onUpdateSegmentationLabel(label.id, { visible: event.target.checked })} /> Visible</label>
-                  <label><input type="checkbox" checked={label.locked} onChange={(event) => onUpdateSegmentationLabel(label.id, { locked: event.target.checked })} /> Locked</label>
+                  <label><input type="checkbox" checked={label.visible} disabled={!segmentationQualification.canEdit} onChange={(event) => onUpdateSegmentationLabel(label.id, { visible: event.target.checked })} /> Visible</label>
+                  <label><input type="checkbox" checked={label.locked} disabled={!segmentationQualification.canEdit} onChange={(event) => onUpdateSegmentationLabel(label.id, { locked: event.target.checked })} /> Locked</label>
                 </div>
               </div>
             );
