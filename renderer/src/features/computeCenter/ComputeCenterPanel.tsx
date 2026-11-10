@@ -7,6 +7,7 @@ import type { ScientificBackendCapabilitySnapshot } from "@math3d/kernel";
 import { discoverScientificBackends, getComputeJobs, presentComputeJob, subscribeComputeJobs,
   type ComputeJobRecord } from "./scientificJobTelemetry";
 import { buildRuntimeCapabilityReport, runtimeOperationAdmissions, type RuntimeProbeResult, type RuntimeState } from "./runtimeCapabilityReport";
+import { createRuntimeCapabilityReceipt } from "./runtimeCapabilityReceipt";
 import ComputeEngineManagerPanel from "../computeEngines/ComputeEngineManagerPanel";
 import SageRuntimeInspector from "./SageRuntimeInspector";
 
@@ -109,6 +110,13 @@ export default function ComputeCenterPanel({ onClose, initialTab = "overview" }:
   const inspectedOperation = advertisedOperations.includes(selectedOperation) ? selectedOperation : advertisedOperations[0] ?? "";
   const admissions = inspectedOperation ? runtimeOperationAdmissions(runtimeReport, inspectedOperation) : [];
   const activeBrokerJobs = jobs.filter((job) => job.status === "routing" || job.status === "running").length;
+  const exportReceipt = () => {
+    const receipt = createRuntimeCapabilityReceipt(runtimeReport, jobs);
+    const url = URL.createObjectURL(new Blob([JSON.stringify(receipt, null, 2)], { type: "application/json" }));
+    const link = document.createElement("a");
+    link.href = url; link.download = "math3d-runtime-capabilities.json"; link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  };
 
   return <div data-testid="compute-center-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }} style={{ position: "fixed", inset: 0, zIndex: 2650, background: "rgba(15, 23, 42, 0.4)", display: "grid", placeItems: "center", padding: 12 }}>
     <div role="dialog" aria-modal="true" aria-labelledby="compute-center-title" data-testid="compute-center" style={{ width: "min(900px, 96vw)", maxHeight: "90vh", overflow: "auto", border: "1px solid #cbd5e1", borderRadius: 12, background: "white", boxShadow: "0 18px 42px rgba(15, 23, 42, 0.24)", padding: 18, display: "grid", gap: 14 }}>
@@ -165,6 +173,7 @@ export default function ComputeCenterPanel({ onClose, initialTab = "overview" }:
       </div></section>
       </>}
       {activeTab === "runtimes" && <div data-testid="compute-runtimes" style={{ display: "grid", gap: 12 }}>
+        <button type="button" style={{ ...button, justifySelf: "start" }} data-testid="runtime-export-receipt" disabled={!runtimeReport.checkedAt} onClick={exportReceipt}>Export capability receipt</button>
         <section style={card} aria-label="Operation route admission" data-testid="runtime-operation-admission">
           <h3 style={{ margin: "0 0 8px", fontSize: 14 }}>Operation routes</h3>
           {advertisedOperations.length ? <>

@@ -20,6 +20,8 @@ test("Compute Center shows live diagnostics and opens Runtimes", async () => {
     await expect(center.getByTestId("compute-center-python-admission")).not.toBeEmpty();
     await expect(center.getByTestId("compute-center-memory")).not.toBeEmpty();
     await center.getByRole("button", { name: "Open route diagnostics" }).click();
+    await expect(center.getByTestId("runtime-operation-admission")).toBeVisible();
+    await expect(center.getByTestId("runtime-export-receipt")).toBeEnabled();
     await expect(center.getByTestId("sage-runtime-local")).toContainText("Checked", { timeout: 30_000 });
     await expect(center.getByTestId("sage-runtime-docker")).toContainText("Checked", { timeout: 30_000 });
     await expect(center.getByTestId("sage-runtime-local")).toContainText("Environment: WSL Ubuntu");
