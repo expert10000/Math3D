@@ -107,6 +107,7 @@ export type VolumeInspectorPanelProps = {
   onUndoSegmentation: () => void;
   onRedoSegmentation: () => void;
   onUpdateSegmentationLabel: (id: number, patch: Partial<Omit<VolumeLabelDefinition, "id">>) => void;
+  onExportSegmentation: (format: "json" | "csv" | "receipt") => void;
   ioStatus: string;
   onImportScientificVolume: () => void;
   onExportScientificVolume: (format: "raw" | "npy" | "vti") => void;
@@ -295,6 +296,7 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
   onUndoSegmentation,
   onRedoSegmentation,
   onUpdateSegmentationLabel,
+  onExportSegmentation,
   ioStatus,
   onImportScientificVolume,
   onExportScientificVolume,
@@ -715,6 +717,9 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
             <button type="button" onClick={onCancelSegmentation} disabled={!segmentationHasPreview}>Cancel</button>
             <button type="button" onClick={onUndoSegmentation} disabled={!segmentationHistory.undoDepth}>Undo</button>
             <button type="button" onClick={onRedoSegmentation} disabled={!segmentationHistory.redoDepth}>Redo</button>
+            <button type="button" onClick={() => onExportSegmentation("json")}>Export JSON</button>
+            <button type="button" onClick={() => onExportSegmentation("csv")}>Export CSV</button>
+            <button type="button" onClick={() => onExportSegmentation("receipt")}>Receipt</button>
           </div>
           <DetailRow label="Categorical sampling" value="nearest-neighbor only" />
           <DetailRow label="Labels" value={segmentationQualification.showValues ? segmentationLabels.length : "withheld"} />

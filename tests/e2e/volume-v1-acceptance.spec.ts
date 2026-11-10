@@ -1,7 +1,37 @@
 import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
 
 test.describe("Volume v1 acceptance", () => {
+  test("segmentation withholds old measurements and exports source-qualified evidence", async () => {
+    let ctx: LaunchedSurfaceApp | null = null;
+    try {
+      ctx = await launchSurfaceApp();
+      await resetSurfaceAppState(ctx.page);
+      await ctx.page.getByTestId("workspace-nav-volume").click();
+      await ctx.page.getByTestId("shared-inspector-tab-analysis").click();
+      const inspector = ctx.page.getByTestId("volume-inspector");
+      await inspector.getByLabel("Analysis view").selectOption("segmentation");
+      const card = inspector.getByTestId("volume-segmentation-card");
+      await card.getByTestId("volume-segmentation-preview").click();
+      await expect(card.getByTestId("volume-segmentation-status")).toContainText("preview");
+      await card.getByTestId("volume-segmentation-apply").click();
+      await expect(card.getByTestId("volume-segmentation-status")).toContainText("current");
+      await card.getByLabel("Volume segmentation threshold").fill("0.5");
+      await expect(card.getByTestId("volume-segmentation-status")).toContainText("stale");
+      await expect(card).toContainText(/Labels\s*withheld/);
+      const target = test.info().outputPath("segmentation-evidence.json");
+      await ctx.app.evaluate(({ session }, file) => session.defaultSession.once("will-download", (_event, item) => item.setSavePath(file)), target);
+      await card.getByRole("button", { name: "Export JSON" }).click();
+      await expect.poll(async () => { try { return JSON.parse(await readFile(target, "utf8")).publication.assessment.status; } catch { return null; } }).toBe("withheld");
+      const report = JSON.parse(await readFile(target, "utf8"));
+      expect(report.publication.assessment.status).toBe("withheld");
+      expect(report.regions).toBeNull();
+      expect(JSON.stringify(report)).not.toContain('"data"');
+    } finally {
+      if (ctx) await closeSurfaceApp(ctx);
+    }
+  });
   test("Volume persistence is reachable, compact and restores responsive workspace state", async () => {
     let ctx: LaunchedSurfaceApp | null = null;
     try {

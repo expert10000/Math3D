@@ -1,6 +1,6 @@
 import { describe,expect,it } from "vitest";
 import type { VolumeGrid } from "../scene/datasets";
-import { closeVolumeMask, connectedComponentsLabelMap, dilateVolumeMask, erodeVolumeMask, fillVolumeMaskHoles, floodFillVolumeMask, intersectVolumeMasks, invertVolumeMask, labelStatistics, mergeVolumeLabels, openVolumeMask, removeSmallMaskComponents, resampleLabelMapNearest, restoreVolumeLabelMap, serializeVolumeLabelMap, splitDisconnectedVolumeLabel, subtractVolumeMasks, thresholdVolumeMask, unionVolumeMasks, VolumeSegmentationSession } from "./segmentation";
+import { closeVolumeMask, connectedComponentsLabelMap, dilateVolumeMask, erodeVolumeMask, fillVolumeMaskHoles, floodFillVolumeMask, intersectVolumeMasks, invertVolumeMask, labelStatistics, mergeVolumeLabels, openVolumeMask, relabelVolume, removeSmallMaskComponents, resampleLabelMapNearest, restoreVolumeLabelMap, serializeVolumeLabelMap, splitDisconnectedVolumeLabel, subtractVolumeMasks, thresholdVolumeMask, unionVolumeMasks, VolumeSegmentationSession } from "./segmentation";
 const grid=(dims:[number,number,number],ones:readonly[number,number,number][]):VolumeGrid=>{const scalars=new Float32Array(dims[0]*dims[1]*dims[2]);for(const[x,y,z]of ones)scalars[x+dims[0]*(y+dims[1]*z)]=1;return{dims,scalars,spacing:[2,2,2],origin:[0,0,0]};};
 const count=(data:ArrayLike<number>)=>Array.from(data).filter(Boolean).length;
 describe("volume masks, labels and segmentation",()=>{
@@ -17,6 +17,7 @@ describe("volume masks, labels and segmentation",()=>{
    const data=grid([2,2,2],[[0,0,0]]);
    const mask=thresholdVolumeMask(data,.5,1,{sourceVolumeId:"field",sourceVolumeRevision:3,sourceSampledGridRevision:7});
    expect(connectedComponentsLabelMap(dilateVolumeMask(mask)).provenance).toMatchObject({sourceVolumeId:"field",sourceVolumeRevision:3,sourceSampledGridRevision:7});
+   expect(relabelVolume(connectedComponentsLabelMap(mask),1,9).provenance.parameters.low).toBe(.5);
    expect(resampleLabelMapNearest(connectedComponentsLabelMap(mask),[3,3,3]).provenance.sourceSampledGridRevision).toBe(7);
    const other=thresholdVolumeMask(data,.5,1,{sourceVolumeId:"field",sourceVolumeRevision:3,sourceSampledGridRevision:8});
    expect(()=>unionVolumeMasks(mask,other)).toThrow(/same Volume source and sampled grid revision/);

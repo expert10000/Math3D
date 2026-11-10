@@ -790,6 +790,7 @@ import { publishVolumeComparisonEvidence } from "./volume/comparisonPublication"
 import { qualifyVolumeDerivedResult } from "./volume/derivedQualification";
 import { publishVolumeDerivedEvidence } from "./volume/derivedPublication";
 import { qualifyVolumeSegmentation } from "./volume/segmentationQualification";
+import { publishVolumeSegmentationEvidence } from "./volume/segmentationPublication";
 import { CurveConstructionRealizer, locateCurveConstructionVertex, type CurveConstructionGeometry } from "./curveAnalysis/curveConstructionGeometry";
 import { curveConstructionSourceStatus, type CurveConstructionRecord } from "./curveAnalysis/curveConstructionKernel";
 import { CurveResultLifecyclePanel } from "./components/CurveResultLifecyclePanel";
@@ -35292,6 +35293,13 @@ const App: React.FC = () => {
     if (!current || !qualifyVolumeSegmentation(current, canonicalVolumeObject, volumeSegmentationThreshold, false).canEdit) return;
     volumeSegmentationSessionRef.current.replace(updateVolumeLabel(current, id, patch), "label-metadata");
     setVolumeSegmentationVersion((version) => version + 1);
+  }, [canonicalVolumeObject, volumeSegmentationThreshold]);
+  const handleExportVolumeSegmentation = useCallback((format: "json" | "csv" | "receipt") => {
+    const preview = volumeSegmentationSessionRef.current.preview();
+    const map = preview?.result ?? volumeSegmentationSessionRef.current.current();
+    const evidence = publishVolumeSegmentationEvidence(map, canonicalVolumeObject, volumeSegmentationThreshold, !!preview);
+    const body = format === "csv" ? evidence.csv : format === "receipt" ? evidence.receiptJson : evidence.reportJson;
+    downloadTextFile(body, `math3d-volume-segmentation-r${canonicalVolumeObject.identity.volumeRevision}${format === "receipt" ? "-receipt" : ""}.${format === "csv" ? "csv" : "json"}`, format === "csv" ? "text/csv" : "application/json");
   }, [canonicalVolumeObject, volumeSegmentationThreshold]);
   const [volumeScientificIoStatus, setVolumeScientificIoStatus] = useState("Ready to import or export a scientific Volume.");
   const handleImportScientificVolume = useCallback(async () => {
@@ -90806,6 +90814,7 @@ case "mobius":
                           setVolumeSegmentationVersion((version) => version + 1);
                         }}
                         onUpdateSegmentationLabel={handleUpdateVolumeSegmentationLabel}
+                        onExportSegmentation={handleExportVolumeSegmentation}
                         ioStatus={volumeScientificIoStatus}
                         onImportScientificVolume={() => void handleImportScientificVolume()}
                         onExportScientificVolume={(format) => void handleExportScientificVolume(format)}
