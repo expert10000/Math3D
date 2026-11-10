@@ -49,6 +49,7 @@ export type VolumeSdfMetadata = {
   parameters: Readonly<Record<string, number>>;
   sources: readonly VolumeSdfSourceDescriptor[];
   sign: VolumeSdfSignDiagnostics;
+  sourceMeshFingerprint?: string;
   sampling: {
     dimensions: readonly [number, number, number];
     origin: readonly [number, number, number];

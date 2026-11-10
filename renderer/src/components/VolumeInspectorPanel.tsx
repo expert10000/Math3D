@@ -67,6 +67,7 @@ export type VolumeInspectorPanelProps = {
   distanceError: string | null;
   sdfMetadata: VolumeSdfMetadata | null;
   sdfDiagnostics: VolumeSdfSignDiagnostics | null;
+  sdfSignEvidenceStatus: string;
   sdfOperation: VolumeSdfOperation;
   sdfAmount: number;
   sdfSmoothness: number;
@@ -256,6 +257,7 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
   distanceError,
   sdfMetadata,
   sdfDiagnostics,
+  sdfSignEvidenceStatus,
   sdfOperation,
   sdfAmount,
   sdfSmoothness,
@@ -848,6 +850,7 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
               <div style={{ fontSize: 10, color: sdfDiagnostics.reliable ? "#166534" : "#9a3412" }}>{sdfDiagnostics.message}</div>
             </div>
           )}
+          <div data-testid="volume-sdf-sign-status" style={{ color: sdfDiagnostics ? "#166534" : "#92400e", fontSize: 10 }}>{sdfSignEvidenceStatus}</div>
           <label style={{ display: "grid", gap: 4, fontSize: 10 }}>
             Operation
             <select aria-label="SDF operation" value={sdfOperation} onChange={(event) => onChangeSdfOperation(event.target.value as VolumeSdfOperation)}>
