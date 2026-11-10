@@ -587,6 +587,12 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
         {pick ? ` Selected local xyz: ${JSON.stringify(pick.point)}${pick.uv ? `; stored (u,v): ${JSON.stringify(pick.uv)}` : ""}.` : " No point selected."}</p>
       <button data-testid="project-comparison-export-evidence" disabled={!saved || !!resolved.error || report.busy} onClick={() => void report.exportEvidence()}>
         {report.busy ? "Capturing views…" : "Export checked HTML report with views"}</button>
+      <button type="button" data-testid="project-comparison-export-json" disabled={!saved || !!resolved.error || report.busy}
+        onClick={() => void report.exportEvidence("json")}>Export evidence JSON</button>
+      <button type="button" data-testid="project-comparison-export-csv" disabled={!saved || !!resolved.error || report.busy}
+        onClick={() => void report.exportEvidence("csv")}>Export evidence CSV</button>
+      <button type="button" data-testid="project-comparison-export-receipt" disabled={!saved || !!resolved.error || report.busy}
+        onClick={() => void report.exportEvidence("receipt")}>Export common receipt JSON</button>
       {report.message && <span role="status" style={{ marginLeft: 8 }}>{report.message}</span>}
     </section>}
     {saved && <section data-testid="project-comparison-observations" style={{ border: "1px solid #cbd5e1", borderRadius: 8, padding: 10 }}>

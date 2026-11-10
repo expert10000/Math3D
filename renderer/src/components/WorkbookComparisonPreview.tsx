@@ -71,6 +71,9 @@ const WorkbookComparisonPreview: React.FC<Props> = ({ project, composition, read
       <div>Selection: {pick ? `${pick.memberId} · r${pick.revision} · ${pick.hash} · local xyz ${JSON.stringify(pick.point)}${pick.uv ? ` · stored (u,v) ${JSON.stringify(pick.uv)}` : ""}` : "No point selected."}</div>
       <button data-testid="workbook-comparison-export-evidence" disabled={report.busy} onClick={() => void report.exportEvidence()}>
         {report.busy ? "Capturing views…" : "Export checked HTML report with views"}</button>
+      <button type="button" disabled={report.busy} onClick={() => void report.exportEvidence("json")}>Export evidence JSON</button>
+      <button type="button" disabled={report.busy} onClick={() => void report.exportEvidence("csv")}>Export evidence CSV</button>
+      <button type="button" disabled={report.busy} onClick={() => void report.exportEvidence("receipt")}>Export common receipt JSON</button>
       {report.message && <span role="status">{report.message}</span>}
     </section>
   </div>;

@@ -2,6 +2,7 @@ import { inspectProjectNoteAnchor, qualifyProjectOverlayCoordinates, structuralH
 import { verifyProjectCompositionEvidenceSources } from "./projectCompositionEvidenceSource";
 import { resolveSavedCoordinateProbe } from "./projectLinkedCoordinateProbe";
 import type { ProjectResourceReader } from "./projectResources";
+import { createResultPublication, resultEvidenceRowsCsv } from "../results/resultPublication";
 
 export type ComparisonEvidenceSelection = Readonly<{
   memberId: string; revision: number; hash: string;
@@ -45,19 +46,46 @@ export function createProjectComparisonEvidence(project: Math3DProject, composit
         sourceHash: probe.source.hash, point: probe.point, frame: probe.frame, unit: probe.unit,
         axes: probe.axes, handedness: probe.handedness } } : {}) };
   });
+  const members = resolved.map((member, index) => ({ slot: index === 0 ? "A" as const : "B" as const, documentId: member.id,
+    title: project.metadata.documents?.[member.id]?.title ?? member.id, revision: member.revision, structuralHash: member.hash, generation: member.generation,
+    unit: member.unit, visible: composition.members[index]!.visible }));
+  const publication = createResultPublication({ module: "comparison", resultId: composition.id,
+    source: { id: composition.id, revision: null, generation: null, hash: compositionHash },
+    sourceStatus: "both saved sources reverified", status: "recorded",
+    reason: "Both exact saved source generations were rechecked for this comparison export.",
+    recordedClaim: "A captured comparison view and local viewer selection from two saved sources.",
+    independentCheck: "Saved bytes and declared coordinate frames are checked; a view or operator alignment does not prove scientific equivalence.",
+    summary: { mode: composition.mode, alignment, members: members.map(({ documentId, revision,
+      structuralHash, generation, unit }) => ({ documentId, revision, structuralHash, generation, unit })),
+      selection: selection ? { memberId: selection.memberId, point: selection.point, uv: selection.uv ?? null } : null,
+      observationIds: observations.map(note => note.noteId) } });
   return {
     schemaVersion: 1 as const, projectId: project.identity.id, compositionId: composition.id, compositionHash,
     title: composition.title, mode: composition.mode, alignment,
     alignmentFrame: composition.alignment?.frame ?? null, alignmentUnit: composition.alignment?.unit ?? null,
-    members: resolved.map((member, index) => ({ slot: index === 0 ? "A" as const : "B" as const, documentId: member.id,
-      title: project.metadata.documents?.[member.id]?.title ?? member.id, revision: member.revision, structuralHash: member.hash, generation: member.generation,
-      unit: member.unit, visible: composition.members[index]!.visible })),
+    members,
     selection: selection ? { ...selection, coordinateMeaning: selection.uv ? "source-defined surface chart (u,v) and display-derived local xyz" : "display-derived local xyz; no cross-source correspondence inferred" } : null,
     observations,
     qualification: "Captured views and viewer-picked coordinates are display derivations of verified saved sources, not copied source samples or proof of scientific equivalence. Hashes verify saved bytes, not producer claims.",
+    publication,
   };
 }
 export type ProjectComparisonEvidence = ReturnType<typeof createProjectComparisonEvidence>;
+
+export function projectComparisonEvidenceCsv(evidence: ProjectComparisonEvidence): string {
+  return resultEvidenceRowsCsv([
+    ["projectId", evidence.projectId], ["compositionId", evidence.compositionId],
+    ["compositionHash", evidence.compositionHash], ["publicationStatus", evidence.publication.assessment.status],
+    ["sourceStatus", evidence.publication.assessment.sourceStatus],
+    ["mode", evidence.mode], ["alignment", evidence.alignment],
+    ["alignmentFrame", evidence.alignmentFrame], ["alignmentUnit", evidence.alignmentUnit],
+    ["members", evidence.publication.summary?.members ?? null],
+    ["selection", evidence.publication.summary?.selection ?? null],
+    ["observationIds", evidence.publication.summary?.observationIds ?? null],
+    ["recordedClaim", evidence.publication.assessment.recordedClaim],
+    ["independentCheck", evidence.publication.assessment.independentCheck],
+  ]);
+}
 
 const esc = (value: unknown) => String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 export function projectComparisonEvidenceHtml(evidence: ProjectComparisonEvidence, views: readonly string[]): string {

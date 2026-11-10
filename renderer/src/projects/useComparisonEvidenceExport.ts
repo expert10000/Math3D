@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { structuralHash, type Math3DProject, type ProjectComposition } from "@math3d/core";
 import type { ProjectResourceReader } from "./projectResources";
-import { createProjectComparisonEvidence, projectComparisonEvidenceHtml, type ComparisonEvidenceSelection } from "./projectComparisonEvidence";
+import { createProjectComparisonEvidence, projectComparisonEvidenceCsv,
+  projectComparisonEvidenceHtml, type ComparisonEvidenceSelection } from "./projectComparisonEvidence";
 import { downloadStudyBlob } from "./studyComparisonExport";
+import { resultPublicationJson } from "../results/resultPublication";
 
 /** Captures only the already-mounted comparison panes. No second renderer or source copy. */
 export function useComparisonEvidenceExport(project: Math3DProject, composition: ProjectComposition | null,
@@ -17,12 +19,22 @@ export function useComparisonEvidenceExport(project: Math3DProject, composition:
     request.images[slot] = image;
     if (request.images.every(Boolean)) { clearTimeout(request.timer); pending.current = null; request.resolve(request.images as string[]); }
   }, []);
-  const exportEvidence = useCallback(async () => {
+  const exportEvidence = useCallback(async (format: "html" | "json" | "csv" | "receipt" = "html") => {
     if (busy) return;
     setBusy(true); setMessage("");
     try {
       if (!composition) throw new TypeError("Choose a saved comparison before exporting.");
       const before = createProjectComparisonEvidence(project, composition, readResource, selection);
+      if (format !== "html") {
+        const content = format === "json" ? JSON.stringify(before, null, 2) + "\n" :
+          format === "csv" ? projectComparisonEvidenceCsv(before) :
+            resultPublicationJson(before.publication);
+        downloadStudyBlob(new Blob([content],
+          { type: format === "csv" ? "text/csv;charset=utf-8" : "application/json;charset=utf-8" }),
+          `math3d-project-comparison-${format === "receipt" ? "publication" : "evidence"}.${format === "csv" ? "csv" : "json"}`);
+        setMessage("Checked comparison evidence downloaded from verified saved sources.");
+        return;
+      }
       const count = composition.mode === "overlay" ? 1 : 2;
       const images = await new Promise<string[]>((resolve, reject) => {
         const timer = setTimeout(() => { pending.current = null; reject(new TypeError("Comparison view capture timed out.")); }, 8_000);

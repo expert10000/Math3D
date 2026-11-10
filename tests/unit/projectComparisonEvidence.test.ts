@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { parseMath3DProject, serializeMath3DProject, upsertMath3DProjectComposition } from "@math3d/core";
 import { createProjectComparisonTemplate } from "../../packages/core/src/projectComparisonTemplates";
-import { createProjectComparisonEvidence, projectComparisonEvidenceHtml } from "../../renderer/src/projects/projectComparisonEvidence";
+import { createProjectComparisonEvidence, projectComparisonEvidenceCsv,
+  projectComparisonEvidenceHtml } from "../../renderer/src/projects/projectComparisonEvidence";
 import { createDefaultWorkbook, createWorkbookComparisonReference } from "@math3d/workbook";
 import { createPortableNotebookPublication, inspectPortableNotebookPublication, notebookPublicationManifest, notebookPublicationManifestHtml, notebookPublicationMarkdown } from "../../renderer/src/workbook/notebookPublication";
 import { mobileMixedProjectFixture } from "../fixtures/unified-projects/mobileProjects";
@@ -23,6 +24,15 @@ describe("PC08 checked comparison evidence", () => {
     expect(evidence.members.map(member => member.structuralHash)).toEqual(comparison.members.map(member => member.expected.structuralHash));
     expect(evidence.alignment).toBe("not applicable");
     expect(evidence.selection?.uv).toEqual(selected.uv);
+    expect(evidence.publication).toMatchObject({ schema: "math3d.result-publication/v1",
+      module: "comparison", source: { id: comparison.id, hash: evidence.compositionHash },
+      assessment: { status: "recorded", sourceStatus: "both saved sources reverified" },
+      summary: { selection: { memberId: selected.memberId } } });
+    expect(evidence.publication.assessment.independentCheck).toMatch(/does not prove scientific equivalence/);
+    const csv = projectComparisonEvidenceCsv(evidence);
+    expect(csv).toContain('"compositionHash"');
+    expect(csv).toContain('"selection"');
+    expect(csv).not.toContain("data:image/jpeg");
     const html = projectComparisonEvidenceHtml(evidence, [jpeg, jpeg]);
     expect(html).toContain("source-defined surface chart");
     expect(html).toContain(comparison.members[0].expected.structuralHash);
