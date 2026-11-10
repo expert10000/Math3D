@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { inspectProjectQwzPinnedSample,
   type Math3DProject, type ProjectQwzPair, type StudyRecordV1 } from "@math3d/core";
 import { verifyProjectQwzSample } from "../projects/qwzStudySample";
-import { buildQwzStudyEvidence } from "../projects/qwzStudyEvidence";
+import { buildQwzStudyEvidence, qwzStudyEvidenceCsv } from "../projects/qwzStudyEvidence";
+import { resultPublicationJson } from "../results/resultPublication";
 import { scientificCursorBus } from "./scientificCursor";
 
 /** Publish only an importer-verified band sample after the curvature target is qualified. */
@@ -56,14 +57,16 @@ export function StudyQwzCursorControl({ project, pair, study, editable, onPin, o
     }
   }, [study.id, study.pinnedSelectionIds, pin.status === "current" ? pin.sampleIndex : null,
     pin.status === "withheld" ? pin.reason : null, share, verifiedIndex]);
-  const exportEvidence = async () => {
+  const exportEvidence = async (format: "json" | "csv" | "receipt") => {
     setExportBusy(true); setExportMessage("Rechecking both QWZ sources for publication…");
     try {
       const evidence = await buildQwzStudyEvidence(project, study);
-      const url = URL.createObjectURL(new Blob([JSON.stringify(evidence, null, 2) + "\n"],
-        { type: "application/json" }));
+      const content = format === "json" ? JSON.stringify(evidence, null, 2) + "\n" :
+        format === "csv" ? qwzStudyEvidenceCsv(evidence) : resultPublicationJson(evidence.publication);
+      const url = URL.createObjectURL(new Blob([content],
+        { type: format === "csv" ? "text/csv;charset=utf-8" : "application/json" }));
       const link = document.createElement("a");
-      link.href = url; link.download = `qwz-study-${study.id.slice(0, 12)}.evidence.json`;
+      link.href = url; link.download = `qwz-study-${study.id.slice(0, 12)}.${format === "receipt" ? "publication" : "evidence"}.${format === "csv" ? "csv" : "json"}`;
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       setExportMessage(evidence.verification.status === "verified" ?
@@ -84,7 +87,11 @@ export function StudyQwzCursorControl({ project, pair, study, editable, onPin, o
     {pin.status === "current" && <p data-testid="project-study-qwz-pin-status">Pinned band sample {pin.sampleIndex}; source verified on open.</p>}
     {message && <p role="status" data-testid="project-study-qwz-cursor-status">{message}</p>}
     <button type="button" data-testid="project-study-export-qwz-evidence" disabled={exportBusy}
-      onClick={() => { void exportEvidence(); }}>Export Study evidence JSON</button>
+      onClick={() => { void exportEvidence("json"); }}>Export Study evidence JSON</button>
+    <button type="button" data-testid="project-study-export-qwz-evidence-csv" disabled={exportBusy}
+      onClick={() => { void exportEvidence("csv"); }}>Export Study evidence CSV</button>
+    <button type="button" data-testid="project-study-export-qwz-receipt" disabled={exportBusy}
+      onClick={() => { void exportEvidence("receipt"); }}>Export common receipt JSON</button>
     {exportMessage && <p role="status" data-testid="project-study-qwz-export-status">{exportMessage}</p>}
   </div>;
 }

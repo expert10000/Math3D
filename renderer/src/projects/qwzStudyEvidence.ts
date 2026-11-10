@@ -2,8 +2,52 @@ import { inspectProjectQwzPinnedSample, qualifyProjectQwzQuadStudy,
   type Math3DProject, type StudyRecordV1 } from "@math3d/core";
 import { openVerifiedStudyQuantumScene } from "./studyQuantumSource";
 import { verifyProjectQwzSample } from "./qwzStudySample";
+import { createResultPublication, resultEvidenceRowsCsv } from "../results/resultPublication";
 
 const omittedQuantities = ["band energy", "Berry curvature", "reciprocal projection", "topology invariants"] as const;
+
+type QwzEvidenceReport = {
+  projectId: string; studyId: string;
+  source: { runId: string; resultSha256: string;
+    bands: { documentId: string; revision: number; sceneFingerprint: string };
+    curvature: { documentId: string; revision: number; sceneFingerprint: string } };
+  verification: { status: "verified" | "withheld"; reason?: string;
+    selection: unknown; invariants: unknown };
+};
+
+export function qwzStudyPublication(evidence: QwzEvidenceReport) {
+  const verified = evidence.verification.status === "verified";
+  return createResultPublication({ module: "study", resultId: evidence.studyId,
+    source: { id: evidence.studyId, revision: null, generation: null, hash: null },
+    sourceStatus: verified ? "both scene bundles reverified" : "source or pin withheld",
+    status: verified ? "recorded" : "withheld",
+    reason: verified ? "Exact band and curvature bundles and the pinned reciprocal mapping were rechecked." :
+      evidence.verification.reason ?? "Pinned quantities are unavailable.",
+    recordedClaim: "Producer band energy, Berry curvature and topology invariants at the pinned QWZ sample.",
+    independentCheck: "Math3D rechecks both bundle hashes and the reciprocal sample mapping; topology invariants are producer claims, not independently proved.",
+    summary: { source: evidence.source, selection: evidence.verification.selection,
+      invariants: evidence.verification.invariants } });
+}
+
+export function qwzStudyEvidenceCsv(evidence: QwzEvidenceReport): string {
+  const publication = qwzStudyPublication(evidence);
+  return resultEvidenceRowsCsv([
+    ["studyId", evidence.studyId], ["projectId", evidence.projectId],
+    ["publicationStatus", publication.assessment.status],
+    ["sourceStatus", publication.assessment.sourceStatus],
+    ["bandsDocumentId", evidence.source.bands.documentId],
+    ["bandsRevision", evidence.source.bands.revision],
+    ["bandsFingerprint", evidence.source.bands.sceneFingerprint],
+    ["curvatureDocumentId", evidence.source.curvature.documentId],
+    ["curvatureRevision", evidence.source.curvature.revision],
+    ["curvatureFingerprint", evidence.source.curvature.sceneFingerprint],
+    ["recordedClaim", publication.assessment.recordedClaim],
+    ["independentCheck", publication.assessment.independentCheck],
+    ["selection", publication.summary?.selection ?? null],
+    ["invariants", publication.summary?.invariants ?? null],
+    ["omissions", evidence.verification.status === "withheld" ? omittedQuantities : []],
+  ]);
+}
 
 /** A frozen report references source generations; it never embeds their arrays. */
 export async function buildQwzStudyEvidence(project: Math3DProject, study: StudyRecordV1) {
@@ -19,9 +63,12 @@ export async function buildQwzStudyEvidence(project: Math3DProject, study: Study
   };
   const base = { schema: "math3d.qwz-study-evidence/v1" as const,
     projectId: project.identity.id, studyId: study.id, studyTitle: study.title, source };
-  const withheld = (reason: string) => ({ ...base, verification: {
+  const withheld = (reason: string) => {
+    const report = { ...base, verification: {
     status: "withheld" as const, reason, omissions: [...omittedQuantities], selection: null,
-    invariants: null } });
+    invariants: null } };
+    return { ...report, publication: qwzStudyPublication(report) };
+  };
   const pin = inspectProjectQwzPinnedSample(study, pair);
   if (pin.status === "none") return withheld("This Study has no pinned QWZ band sample.");
   if (pin.status === "withheld") return withheld(pin.reason);
@@ -30,7 +77,7 @@ export async function buildQwzStudyEvidence(project: Math3DProject, study: Study
     // Recheck both external bundles after the sample reads, immediately before freezing the report.
     await openVerifiedStudyQuantumScene(project, pair.bands);
     await openVerifiedStudyQuantumScene(project, pair.curvature);
-    return { ...base, verification: {
+    const report = { ...base, verification: {
       status: "verified" as const, omissions: [] as string[],
       selection: {
         band: { sampleId: band.sampleId, sampleIndex: band.sampleIndex,
@@ -43,5 +90,6 @@ export async function buildQwzStudyEvidence(project: Math3DProject, study: Study
           candidateCount: projection.candidateCount, strategy: projection.strategy },
       }, invariants: review.invariants,
     } };
+    return { ...report, publication: qwzStudyPublication(report) };
   } catch (error) { return withheld((error as Error).message); }
 }
