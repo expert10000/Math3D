@@ -37,6 +37,10 @@ test("GRA-16 desktop shows a checked known-tone spectrum with frequency units", 
     const evidence = JSON.parse(readFileSync(evidencePath, "utf8"));
     expect(evidence.schema).toBe("math3d.graph2d-result-evidence/v1");
     expect(evidence.assessment.status).toBe("current");
+    expect(evidence.publication.schema).toBe("math3d.result-publication/v1");
+    expect(evidence.publication.assessment.status).toBe("recorded");
+    expect(evidence.publication.source.id).toBe(evidence.source.documentId);
+    expect(evidence.publication.summary).toEqual(evidence.summary);
     expect(evidence.summary.samples).toBe(128);
     expect(evidence.summary.channels).toBe(1);
     const diagnostics = panel.getByTestId("gf20-spectral-diagnostics");

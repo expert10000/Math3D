@@ -17,9 +17,16 @@ describe("Geometry selected-result evidence", () => {
     const evidence = createGeometryAnalysisEvidence(record, 2);
     expect(evidence).toMatchObject({ result: { id: "saved-one", version: 4 },
       source: { objectId: "shape", recordedRevision: 2, currentRevision: 2 },
+      publication: { schema: "math3d.result-publication/v1", module: "geometry",
+        source: { id: "shape", revision: 2, hash: null },
+        assessment: { status: "recorded" }, summary: { sentinel: 1729 } },
       assessment: { status: "current", omissions: [] }, statistics: { sentinel: 1729 } });
+    expect(evidence.execution).toEqual({ computeTimeMs: 5, createdAt: 1,
+      updatedAt: 2, savedAt: 2 });
+    expect(evidence.assessment.sourceCheck).toContain("does not retain a source content hash");
     expect(geometryAnalysisEvidenceJson(evidence)).not.toContain("dense values");
     expect(geometryAnalysisEvidenceCsv(evidence)).toContain('"statistics","{""sentinel"":1729}"');
+    expect(geometryAnalysisEvidenceCsv(evidence)).toContain('"publication.status","recorded"');
   });
 
   it("omits statistics for historical, missing and incomplete records in both formats", () => {
@@ -28,10 +35,13 @@ describe("Geometry selected-result evidence", () => {
     ] as const) {
       const evidence = createGeometryAnalysisEvidence(entry, revision);
       expect(evidence.statistics).toBeNull();
+      expect(evidence.publication.summary).toBeNull();
+      expect(evidence.publication.assessment.status).toBe("withheld");
       expect(evidence.assessment.omissions).toContain("statistics");
       expect(geometryAnalysisEvidenceJson(evidence)).not.toContain("1729");
       expect(geometryAnalysisEvidenceCsv(evidence)).not.toContain("1729");
       expect(geometryAnalysisEvidenceCsv(evidence)).toContain('"statistics",""');
+      expect(geometryAnalysisEvidenceCsv(evidence)).toContain('"publication.status","withheld"');
     }
   });
 

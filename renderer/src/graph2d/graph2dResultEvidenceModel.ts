@@ -1,4 +1,5 @@
 import type { ScientificSourceGeneration } from "@math3d/core";
+import { createResultPublication, resultEvidenceRowsCsv } from "../results/resultPublication";
 
 export type Graph2DResultEvidenceInput = Readonly<{
   current: boolean;
@@ -16,17 +17,29 @@ export type Graph2DResultEvidenceInput = Readonly<{
 export function createGraph2DResultEvidence(input: Graph2DResultEvidenceInput) {
   const status = input.preview ? "preview" as const : input.current ? "current" as const :
     "historical" as const;
+  const publication = createResultPublication({ module: "graph2d", resultId: input.resultId,
+    source: { id: input.source.documentId, revision: input.source.revision,
+      generation: input.source.generation, hash: input.source.structuralHash },
+    sourceStatus: status,
+    status: status === "current" ? "recorded" : status === "preview" ? "preview" : "withheld",
+    reason: status === "current" ? "The exact Graph source and analysis options qualify this result." :
+      status === "preview" ? "Transient viewport or parameter preview; no committed result values are published." :
+        "The Graph source, selection or analysis options changed.",
+    recordedClaim: input.claim,
+    independentCheck: `No independent mathematical check is recorded. ${input.limitation}`,
+    summary: input.summary ?? {} });
   return {
     schema: "math3d.graph2d-result-evidence/v1" as const,
     resultId: input.resultId,
+    publication,
     source: input.source,
     claim: input.claim,
     method: input.method,
     units: input.units,
     assessment: { status, mathematicalCheck: "No independent mathematical check is recorded.",
       limitation: input.limitation,
-      omissions: status === "current" ? [] : ["summary values"] },
-    summary: status === "current" ? input.summary ?? {} : null,
+      omissions: publication.assessment.omissions },
+    summary: publication.summary,
   };
 }
 
@@ -47,11 +60,11 @@ export function graph2DResultEvidenceCsv(evidence: Graph2DResultEvidenceRecord):
     ["assessment.mathematicalCheck", evidence.assessment.mathematicalCheck],
     ["assessment.limitation", evidence.assessment.limitation],
     ["assessment.omissions", evidence.assessment.omissions], ["summary", evidence.summary],
+    ["publication.schema", evidence.publication.schema],
+    ["publication.status", evidence.publication.assessment.status],
+    ["publication.sourceStatus", evidence.publication.assessment.sourceStatus],
+    ["publication.recordedClaim", evidence.publication.assessment.recordedClaim],
+    ["publication.independentCheck", evidence.publication.assessment.independentCheck],
   ];
-  const cell = (value: unknown) => {
-    const raw = value == null ? "" : typeof value === "string" ? value : JSON.stringify(value);
-    const safe = /^\s*[=+\-@]/.test(raw) ? `'${raw}` : raw;
-    return `"${safe.replaceAll('"', '""')}"`;
-  };
-  return ["field,value", ...rows.map(([field, value]) => `${cell(field)},${cell(value)}`)].join("\r\n") + "\r\n";
+  return resultEvidenceRowsCsv(rows);
 }

@@ -15,11 +15,16 @@ describe("Graph numerical Inspector evidence", () => {
   it("exports a bounded, source-qualified summary in JSON and CSV", () => {
     const evidence = createGraph2DResultEvidence(input);
     expect(evidence).toMatchObject({ assessment: { status: "current", omissions: [] },
+      publication: { schema: "math3d.result-publication/v1", module: "graph2d",
+        assessment: { status: "recorded", sourceStatus: "current" }, summary: { roots: 7 } },
       summary: { roots: 7 }, source: { revision: 2 } });
     expect(graph2DResultEvidenceJson(evidence)).toContain('"roots": 7');
     expect(graph2DResultEvidenceCsv(evidence)).toContain('"summary","{""roots"":7,""scanStatus"":""complete""}"');
+    expect(graph2DResultEvidenceCsv(evidence)).toContain('"publication.status","recorded"');
     const html = renderToStaticMarkup(<Graph2DResultEvidence {...input} />);
     expect(html).toContain('data-qualification="current"');
+    expect(html).toContain('data-publication-status="recorded"');
+    expect(html).toContain("generation 2");
     expect(html).toContain('data-testid="graph2d-result-export-evidence-json"');
     expect(html).toContain('data-testid="graph2d-result-export-evidence-csv"');
   });
@@ -29,12 +34,16 @@ describe("Graph numerical Inspector evidence", () => {
       const entry = { ...input, ...state };
       const evidence = createGraph2DResultEvidence(entry);
       expect(evidence.summary).toBeNull();
+      expect(evidence.publication.summary).toBeNull();
+      expect(evidence.publication.assessment.status).toBe(state.current ? "preview" : "withheld");
       expect(evidence.assessment.omissions).toContain("summary values");
       expect(graph2DResultEvidenceJson(evidence)).not.toContain('"roots": 7');
       expect(graph2DResultEvidenceCsv(evidence)).not.toContain("roots");
+      expect(graph2DResultEvidenceCsv(evidence)).toContain(`"publication.status","${state.current ? "preview" : "withheld"}"`);
       const html = renderToStaticMarkup(<Graph2DResultEvidence {...entry} />);
       expect(html).not.toContain("roots: 7");
       expect(html).toContain("Values withheld");
+      expect(html).toContain(`data-publication-status="${state.current ? "preview" : "withheld"}"`);
     }
   });
 
