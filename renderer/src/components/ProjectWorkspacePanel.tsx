@@ -2388,6 +2388,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           {fullDetails && detailPage === "documents" && project && <ProjectResearchLinks project={project} titles={documentTitles}
             workbookBytes={projectWorkbookBytes} readResource={comparisonResource} canOpenDocument={(id, module) => !preview && !!canNavigateDocument?.(id, module)}
             onOpenDocument={viewBesideProject} onInspectResult={(id) => { setResultFocus(previous => ({ id, token: (previous?.token ?? 0) + 1 })); openDetailPage("results"); }}
+            onOpenStudy={(id) => { setStudyFocus(previous => ({ id, token: (previous?.token ?? 0) + 1 })); setQuick(false); setDetailView(true); openDetailPage("overview"); }}
             onOpenWorkbookBlock={(id, stageId, blockId) => { void openProjectWorkbook(id, true, stageId, blockId); }}
             onOpenNote={(id) => openProjectNotes(id)} canOpenNote={!preview && !busy}
             onAddRippleResearch={!preview && !managed && library.entries.some(entry => entry.id === project.identity.id)
