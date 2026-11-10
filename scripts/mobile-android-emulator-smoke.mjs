@@ -70,8 +70,8 @@ const expectText = (text) => {
   }
   throw new Error(`Expected visible text: ${text}`);
 };
-const expectOneOf = (texts) => {
-  for (let attempt = 0; attempt < 8; attempt += 1) {
+const expectOneOf = (texts, maxAttempts = 8) => {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const snapshot = nodes();
     const found = texts.find(text => snapshot.some(node =>
       (node.text === text || node.description === text) && node.bounds));
@@ -143,10 +143,15 @@ try {
   });
   check("Workspace opens or restores the bundled offline Catenoid", () => {
     adb("shell", "am", "start", "-n", `${packageName}/com.math3d.mobile.MainActivity`);
-    if (expectOneOf(["Catenoid", "Workspace is ready"]) === "Workspace is ready") {
-      tap("Explore examples");
-      expectText("Examples");
-      tapVisibleInspectorControl("Catenoid", "Examples", "mobile-example-catenoid");
+    if (expectOneOf(["Catenoid", "Explore examples"], 20) === "Explore examples") {
+      try { tap("Explore examples"); }
+      catch (error) {
+        if (!findText("Catenoid")) throw error;
+      }
+      if (!findText("Catenoid")) {
+        expectText("Examples");
+        tapVisibleInspectorControl("Catenoid", "Examples", "mobile-example-catenoid");
+      }
     }
     expectText("Catenoid");
     expectText("Swipe up for tools");
