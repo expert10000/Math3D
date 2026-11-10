@@ -88,4 +88,24 @@ describe("Runtime Center capability report", () => {
     expect(admissions.find(item => item.routeId === "sage-private")).toMatchObject({ admitted: false, reason: "Gateway permission denied" });
     expect(admissions.find(item => item.routeId === "broker-other")).toMatchObject({ admitted: false, reason: "Operation not advertised by this route" });
   });
+  it("uses the Sage manifest to explain excluded and worker-unadvertised operations", () => {
+    const probe = sageProbe(true);
+    const catalog = [
+      { id: "factor", operationType: "symbolic.factor", supported: true, reason: null },
+      { id: "console", operationType: "sage.console.execute", supported: false, reason: "Docker route excludes console." },
+      { id: "roots", operationType: "polynomial.roots.exact", supported: false, reason: "Worker did not advertise roots." },
+    ];
+    const report = buildRuntimeCapabilityReport(input({ sage: { docker: { probe: {
+      ...probe, manifest: { ...probe.manifest, operations: catalog },
+    } as SageRuntimeProbe } } }));
+    expect(report.routes.find(item => item.id === "sage-docker")?.state).toBe("ready");
+    expect(runtimeOperationAdmissions(report, "sage.console.execute").find(item => item.routeId === "sage-docker"))
+      .toMatchObject({ admitted: false, reason: "Docker route excludes console." });
+    expect(runtimeOperationAdmissions(report, "polynomial.roots.exact").find(item => item.routeId === "sage-docker"))
+      .toMatchObject({ admitted: false, reason: "Worker did not advertise roots." });
+    const divergent = buildRuntimeCapabilityReport(input({ sage: { docker: { probe: {
+      ...probe, manifest: { ...probe.manifest, operations: [...catalog, { id: "wrong", operationType: "symbolic.expand", supported: true, reason: null }] },
+    } as SageRuntimeProbe } } }));
+    expect(divergent.routes.find(item => item.id === "sage-docker")?.state).toBe("unavailable");
+  });
 });

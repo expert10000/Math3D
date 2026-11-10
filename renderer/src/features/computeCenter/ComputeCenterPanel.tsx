@@ -108,9 +108,9 @@ export default function ComputeCenterPanel({ onClose, initialTab = "overview" }:
   const localRoutes = runtimeReport.routes.filter(route => route.group === "local");
   const sageRoutes = runtimeReport.routes.filter(route => route.group === "sage");
   const brokerRoutes = runtimeReport.routes.filter(route => route.group === "broker");
-  const advertisedOperations = [...new Set([...sageRoutes, ...brokerRoutes]
-    .flatMap(route => route.operations ?? []))].sort();
-  const inspectedOperation = advertisedOperations.includes(selectedOperation) ? selectedOperation : advertisedOperations[0] ?? "";
+  const listedOperations = [...new Set([...sageRoutes, ...brokerRoutes]
+    .flatMap(route => [...(route.operations ?? []), ...(route.operationCatalog?.map(item => item.operationType) ?? [])]))].sort();
+  const inspectedOperation = listedOperations.includes(selectedOperation) ? selectedOperation : listedOperations[0] ?? "";
   const admissions = inspectedOperation ? runtimeOperationAdmissions(runtimeReport, inspectedOperation) : [];
   const activeBrokerJobs = jobs.filter((job) => job.status === "routing" || job.status === "running").length;
   const exportReceipt = () => {
@@ -180,15 +180,15 @@ export default function ComputeCenterPanel({ onClose, initialTab = "overview" }:
         <button type="button" style={{ ...button, justifySelf: "start" }} data-testid="runtime-export-receipt" disabled={!runtimeReport.checkedAt} onClick={exportReceipt}>Export capability receipt</button>
         <section style={card} aria-label="Operation route admission" data-testid="runtime-operation-admission">
           <h3 style={{ margin: "0 0 8px", fontSize: 14 }}>Operation routes</h3>
-          {advertisedOperations.length ? <>
-            <label style={{ fontSize: 12 }}>Operation <select data-testid="runtime-operation-select" value={inspectedOperation} onChange={event => setSelectedOperation(event.target.value)}>{advertisedOperations.map(operation => <option key={operation} value={operation}>{operation}</option>)}</select></label>
+          {listedOperations.length ? <>
+            <label style={{ fontSize: 12 }}>Operation <select data-testid="runtime-operation-select" value={inspectedOperation} onChange={event => setSelectedOperation(event.target.value)}>{listedOperations.map(operation => <option key={operation} value={operation}>{operation}</option>)}</select></label>
             <div style={{ display: "grid", gap: 4, marginTop: 8 }}>{admissions.map(admission => {
               const route = runtimeReport.routes.find(item => item.id === admission.routeId)!;
               return <div key={route.id} data-testid={`runtime-operation-route-${route.id}`} data-admitted={admission.admitted} style={{ fontSize: 11, padding: 6, background: "white", border: "1px solid #dbe4f0", borderRadius: 6 }}>
                 <strong>{route.label}</strong> · {admission.admitted ? "Admitted" : "Unavailable"} · {admission.reason}
               </div>;
             })}</div>
-          </> : <div style={{ fontSize: 11, color: "#64748b" }}>No operation has been advertised by a live route probe.</div>}
+          </> : <div style={{ fontSize: 11, color: "#64748b" }}>No operation catalog is available from a live route probe.</div>}
         </section>
         <SageRuntimeInspector />
         <ComputeEngineManagerPanel embedded />

@@ -13,6 +13,7 @@ export type RuntimeRoute = Readonly<{
   transport: string | null;
   operationCount: number | null;
   operations?: readonly string[];
+  operationCatalog?: readonly Readonly<{ operationType: string; supported: boolean; reason: string | null }>[];
   artifactSha256?: string | null;
   launchOrigin?: string | null;
   packageVersion?: string | null;
@@ -24,10 +25,13 @@ export type RuntimeOperationAdmission = Readonly<{ routeId: string; operationTyp
 /** An operation is admitted only by a ready route that advertised it in this probe. */
 export function runtimeOperationAdmissions(report: RuntimeCapabilityReport, operationType: string): readonly RuntimeOperationAdmission[] {
   return report.routes.filter(route => route.group === "sage" || route.group === "broker")
-    .map(route => ({ routeId: route.id, operationType,
+    .map(route => {
+      const catalog = route.operationCatalog?.find(item => item.operationType === operationType);
+      return { routeId: route.id, operationType,
       admitted: route.state === "ready" && !!route.operations?.includes(operationType),
       reason: route.state !== "ready" ? route.detail : route.operations?.includes(operationType) ?
-        "Advertised by live capability probe" : "Operation not advertised by this route" }));
+        "Advertised by live capability probe" : catalog?.reason ?? "Operation not advertised by this route" };
+    });
 }
 export type RuntimeProbeResult = Readonly<{ probe?: SageRuntimeProbe; error?: string }>;
 export type RuntimeReportInputs = Readonly<{
@@ -78,9 +82,16 @@ export function buildRuntimeCapabilityReport(input: RuntimeReportInputs): Runtim
   const sage = (["local", "docker", "private"] as const).map((backend) => {
     const result = input.sage[backend];
     const probe = result?.probe;
+    const catalog = probe?.manifest.operations?.map(item => ({ operationType: item.operationType,
+      supported: item.supported, reason: item.reason })) ?? [];
+    const advertised = probe?.operations.map(item => item.operationType) ?? [];
+    const manifestSupported = catalog.filter(item => item.supported).map(item => item.operationType);
+    const operationMismatch = catalog.length > 0 && (
+      new Set(manifestSupported).size !== new Set(advertised).size ||
+      manifestSupported.some(operation => !advertised.includes(operation)));
     const mismatch = probe && (probe.backend !== backend || probe.backendId !== probe.manifest.backendId ||
       probe.backendVersion !== probe.manifest.adapterVersion ||
-      (probe.health.engineVersion ?? null) !== probe.manifest.sageVersion);
+      (probe.health.engineVersion ?? null) !== probe.manifest.sageVersion || operationMismatch);
     const healthy = probe?.health.available === true && probe.manifest.availability === "available" && !mismatch;
     const state: RuntimeState = !result ? "checking" : !healthy ? "unavailable" :
       probe.operations.length ? "ready" : "limited";
@@ -92,7 +103,7 @@ export function buildRuntimeCapabilityReport(input: RuntimeReportInputs): Runtim
     return { ...route(`sage-${backend}`, backend === "local" ? "Sage Local WSL" :
       backend === "docker" ? "Sage Docker" : "Sage private gateway", "sage", state,
     detail, probe?.health.engineVersion ?? null, probe?.transport ?? null,
-    probe?.operations.length ?? null), operations: probe?.operations.map(item => item.operationType) ?? [] };
+    probe?.operations.length ?? null), operations: advertised, operationCatalog: catalog };
   });
   const broker = input.broker.map((item) => ({ ...route(`broker-${item.backendId}`, item.backendId,
     "broker", item.availability === "available" ? item.operations.length ? "ready" : "limited" : "unavailable",
