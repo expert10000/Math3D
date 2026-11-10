@@ -114,6 +114,9 @@ test("M3D20 mixed legacy Project package transfers real sidecars and recovers af
       panel = await gallery(ctx!);
       if (await panel.getAttribute("data-project-placement"))
         await panel.getByTestId("project-gallery-layout-toggle").click();
+      if (await panel.locator(".project-gallery-layout-detail").count())
+        await panel.getByTestId("project-detail-toggle").click();
+      await expect(panel.getByTestId("project-sidebar-transfer")).toBeVisible();
     };
     const exportPackage = async (name: string) => {
       await fullDetails();
