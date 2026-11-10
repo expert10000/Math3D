@@ -45,6 +45,7 @@ describe("shared research reference", () => {
     const project = createProjectStudyFromDocuments(base, "pane-reference", "Mesh evidence", [mesh.expected.id]);
     const study = project.workspace.studies![0]!;
     const pane = createStudyPaneResearchReference(project, study, study.layout.panes[0]!.paneId);
+    expect(study.paneReferences?.[0]?.reference).toEqual(pane);
     expect(pane.source.revision).toBe(mesh.expected.revision);
     expect(pane.resources.length).toBeGreaterThan(0);
     expect(inspectResearchReference(project, pane, item => resources.bytes(item)).status).toBe("current");

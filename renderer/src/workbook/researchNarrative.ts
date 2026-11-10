@@ -1,11 +1,11 @@
-import { canonicalJsonStringify, createResearchReference, inspectProjectNoteAnchor,
-  projectResourceInventory, researchResourcePins, sha256Checksum, structuralHash, upsertMath3DProjectWorkbook,
+import { canonicalJsonStringify, createResearchReference, inspectProjectNoteAnchor, inspectResearchReference,
+  sha256Checksum, structuralHash, upsertMath3DProjectWorkbook,
   verifyProjectResourceBytes, type Math3DProject, type ProjectNote } from "@math3d/core";
 import { type NotebookReference, type Workbook } from "@math3d/workbook";
 import { assessProjectResearchCitation } from "../projects/projectResearchCitation";
 import { projectNoteSourceResolver } from "../projects/projectNoteTargets";
 import { projectNoteRenderedBody, resolveProjectNoteValues } from "../projects/projectNoteValues";
-import { captureProjectResources, exportProjectPackage, parseProjectPackage,
+import { captureProjectResources, exportProjectPackage, parseProjectPackage, projectResourceInventory,
   type ProjectResourceReader, type VerifiedProjectResources } from "../projects/projectResources";
 import { prepareProjectWorkbook, readProjectWorkbook } from "../projects/projectWorkbookBinding";
 
@@ -41,10 +41,22 @@ const narrativeEvidence = (project: Math3DProject, books: readonly Workbook[], r
   const notes = (project.notes ?? []).map((note: ProjectNote) => {
     const inspection = inspectProjectNoteAnchor(note, { ...resolver, workbookBlock });
     const source = note.anchor && "source" in note.anchor ? note.anchor.source : null;
-    const reference = source ? createResearchReference({ projectId: project.identity.id, kind: "selection",
-      targetId: note.identity.id, selectionId: note.anchor?.kind === "study-selection" ? note.anchor.selectionId : note.identity.id,
-      source, targetHash: note.identity.structuralHash, resources: researchResourcePins(project, source.documentId) }) : null;
+    const reference = note.anchor?.researchReference ?? (source ? createResearchReference({
+      projectId: project.identity.id, kind: note.anchor?.kind === "result" ? "result" :
+        note.anchor?.kind === "document" ? "document" : "selection",
+      targetId: note.anchor?.kind === "result" ? note.anchor.resultId :
+        note.anchor?.kind === "document" ? source.documentId : note.identity.id,
+      ...(note.anchor?.kind !== "result" && note.anchor?.kind !== "document" ? { selectionId: note.identity.id } : {}),
+      source, targetHash: note.anchor?.kind === "result" ? note.anchor.resultHash : source.structuralHash,
+      resources: [], pinState: "legacy-unpinned" }) : null);
     let status = inspection.status, reason = inspection.reason;
+    if (status === "current" && reference) {
+      const checked = inspectResearchReference(project, reference, reader);
+      if (checked.status !== "current") {
+        status = checked.status === "missing" ? "missing" : "stale";
+        reason = checked.reason;
+      }
+    }
     if (status === "current" && reference) for (const pin of reference.resources) {
       const required = inventory.find(item => item.kind === pin.kind && item.id === pin.id &&
         structuralHash(item.reference) === pin.descriptorHash);

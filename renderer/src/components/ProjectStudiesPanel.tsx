@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { createStudyPaneResearchReference, inspectResearchReference, inspectProjectNoteAnchor,
+import { migrateLegacyStudyPaneResearchReference, inspectResearchReference, inspectProjectNoteAnchor,
   inspectProjectStudyMembers, qualifyProjectQwzPair, qualifyProjectQwzQuadStudy, structuralHash,
   type KernelWorkspaceModule, type Math3DProject, type ProjectQuantumSceneReference } from "@math3d/core";
 import type { VerifiedProjectResources } from "../projects/projectResources";
@@ -160,7 +160,8 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
           const choice = choiceById.get(member.documentId);
           const status = statusByMember.get(member.memberId) ?? "missing-document";
           const paneEvidence = inspectResearchReference(project,
-            createStudyPaneResearchReference(project, open, pane.paneId),
+            open.paneReferences?.find(item => item.paneId === pane.paneId)?.reference ??
+              migrateLegacyStudyPaneResearchReference(open, pane.paneId),
             resources ? item => resources.bytes(item) : undefined);
           const sourceCurrent = status === "current-reference" && paneEvidence.status === "current";
           const workspaceEntry = project.workspace.entries.find(entry => entry.expected.id === member.documentId);

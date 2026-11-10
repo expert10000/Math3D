@@ -1,4 +1,4 @@
-import { createProjectNote, structuralHash, upsertMath3DProjectNote,
+import { createProjectNote, pinProjectNoteAnchor, structuralHash, upsertMath3DProjectNote,
   type Math3DProject, type MixedWorkspaceDocument, type ProjectNoteAnchor } from "@math3d/core";
 
 export type ProjectNoteDraft = Readonly<{
@@ -30,7 +30,8 @@ export const bindProjectNoteDrafts = (project: Math3DProject, drafts: readonly P
   let next = project;
   for (const draft of drafts) {
     const note = createProjectNote({ projectId: project.identity.id, stableKey: draft.id, kind: "text",
-      title: draft.title.trim(), body: draft.body, anchor: draft.anchor, createdAt: draft.createdAt });
+      title: draft.title.trim(), body: draft.body,
+      anchor: draft.anchor ? pinProjectNoteAnchor(next, draft.anchor) : null, createdAt: draft.createdAt });
     next = upsertMath3DProjectNote(next, note);
   }
   return next;

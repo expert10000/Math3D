@@ -10,6 +10,7 @@ import {
 import type { ValidationResult } from "./validation";
 import type { ProjectCoordinateFrame } from "./projectComposition";
 import { normalizeProjectNoteValueBindings, normalizeProjectNoteValueSnapshot, type ProjectNoteValueBinding, type ProjectNoteValueSnapshot } from "./projectNoteValues";
+import { normalizeResearchReference, type ResearchReference } from "./researchReferenceSchema";
 
 export const PROJECT_NOTE_SCHEMA_VERSION = 1 as const;
 export const MAX_PROJECT_NOTE_BYTES = 16 * 1024;
@@ -21,7 +22,7 @@ export type ProjectComparisonCoordinateProbe = Readonly<{
   point: NotePoint3;
   coordinateFrame: ProjectCoordinateFrame;
 }>;
-export type ProjectNoteAnchor =
+export type ProjectNoteAnchor = (
   | Readonly<{ kind: "comparison"; compositionId: string; compositionHash: StructuralHash;
       members: readonly [DocumentIdentity, DocumentIdentity]; alignment: "source-declared match" | "operator assertion" | "not applicable";
       coordinateProbe?: ProjectComparisonCoordinateProbe }>
@@ -37,7 +38,8 @@ export type ProjectNoteAnchor =
       studyHash: StructuralHash; memberId: string; selectionId: string }>
   | Readonly<{ kind: "graph-selection"; source: ScientificSourceGeneration; objectId: string; objectHash: StructuralHash;
       probe?: Readonly<{ x: number; y: number; parameter?: number; rowId?: string }> }>
-  | Readonly<{ kind: "workbook-block"; workbookId: StableDocumentId; workbookRevision: number; blockId: string; blockHash: StructuralHash }>;
+  | Readonly<{ kind: "workbook-block"; workbookId: StableDocumentId; workbookRevision: number; blockId: string; blockHash: StructuralHash }>) &
+  Readonly<{ researchReference?: ResearchReference }>;
 
 export type ProjectNote = Readonly<{
   schemaVersion: typeof PROJECT_NOTE_SCHEMA_VERSION;
@@ -81,6 +83,8 @@ const record = (value: unknown): value is Record<string, unknown> =>
   (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
 const exact = (value: Record<string, unknown>, keys: readonly string[]) =>
   Object.keys(value).sort().join("|") === [...keys].sort().join("|");
+const anchorExact = (value: Record<string, unknown>, keys: readonly string[]) =>
+  exact(value, [...keys, ...("researchReference" in value ? ["researchReference"] : [])]);
 const id = (value: unknown): value is string =>
   typeof value === "string" && value.length > 0 && value.length <= 256 && value.trim() === value;
 const positive = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 1;
@@ -90,8 +94,17 @@ const point = (value: unknown): value is NotePoint3 =>
 
 export const normalizeProjectNoteAnchor = (value: unknown): ProjectNoteAnchor | null => {
   if (!record(value)) return null;
+  if ("researchReference" in value) {
+    const reference = normalizeResearchReference(value.researchReference);
+    if (!reference || !isScientificSourceGeneration(value.source) ||
+      !matchesScientificSourceGeneration(reference.source, value.source) ||
+      reference.kind !== (value.kind === "result" ? "result" : value.kind === "document" ? "document" : "selection") ||
+      reference.targetHash !== (value.kind === "result" ? value.resultHash : value.kind === "study-selection" ? value.studyHash :
+        value.kind === "graph-selection" ? value.objectHash : value.kind === "object-local" ? value.shapeHash :
+          value.kind === "entity-selection" || value.kind === "subentity" ? value.topologyHash : value.source.structuralHash)) return null;
+  }
   if (value.kind === "comparison") {
-    if (!exact(value, ["kind", "compositionId", "compositionHash", "members", "alignment",
+    if (!anchorExact(value, ["kind", "compositionId", "compositionHash", "members", "alignment",
       ...(value.coordinateProbe === undefined ? [] : ["coordinateProbe"])]) ||
       !id(value.compositionId) || value.compositionId.length > 120 || !isStructuralHash(value.compositionHash) ||
       !Array.isArray(value.members) || value.members.length !== 2 ||
@@ -115,26 +128,26 @@ export const normalizeProjectNoteAnchor = (value: unknown): ProjectNoteAnchor | 
     const side = (candidate: unknown) => record(candidate) && exact(candidate, ["resultId", "resultHash", "meshId", "revision", "sourceHash"]) &&
       id(candidate.resultId) && isStructuralHash(candidate.resultHash) && isStableDocumentId(candidate.meshId) &&
       positive(candidate.revision) && isStructuralHash(candidate.sourceHash);
-    if (!exact(value, ["kind", "comparisonId", "comparisonHash", "metricPath", "a", "b"]) ||
+    if (!anchorExact(value, ["kind", "comparisonId", "comparisonHash", "metricPath", "a", "b"]) ||
       !id(value.comparisonId) || value.comparisonId.length > 120 || !isStructuralHash(value.comparisonHash) ||
       !id(value.metricPath) || !side(value.a) || !side(value.b)) return null;
   } else if (value.kind === "workbook-block") {
-    if (!exact(value, ["kind", "workbookId", "workbookRevision", "blockId", "blockHash"]) ||
+    if (!anchorExact(value, ["kind", "workbookId", "workbookRevision", "blockId", "blockHash"]) ||
       !isStableDocumentId(value.workbookId) || !value.workbookId.startsWith("math3d:workbook:") ||
       !positive(value.workbookRevision) || !id(value.blockId) || !isStructuralHash(value.blockHash)) return null;
   } else {
     if (!isScientificSourceGeneration(value.source)) return null;
     if (value.kind === "document") {
-      if (!exact(value, ["kind", "source"])) return null;
+      if (!anchorExact(value, ["kind", "source"])) return null;
     } else if (value.kind === "object-local") {
-      if (!exact(value, ["kind", "source", "objectId", "localPosition", "shapeHash"]) ||
+      if (!anchorExact(value, ["kind", "source", "objectId", "localPosition", "shapeHash"]) ||
         !id(value.objectId) || !point(value.localPosition) || !isStructuralHash(value.shapeHash)) return null;
     } else if (value.kind === "entity-selection") {
-      if (!exact(value, ["kind", "source", "objectId", "entityKind", "entityId", "topologyHash"]) ||
+      if (!anchorExact(value, ["kind", "source", "objectId", "entityKind", "entityId", "topologyHash"]) ||
         !id(value.objectId) || !["face", "edge", "vertex"].includes(String(value.entityKind)) ||
         !id(value.entityId) || !isStructuralHash(value.topologyHash)) return null;
     } else if (value.kind === "subentity") {
-      if (!exact(value, "barycentric" in value
+      if (!anchorExact(value, "barycentric" in value
         ? ["kind", "source", "objectId", "entityKind", "entityId", "topologyHash", "barycentric"]
         : ["kind", "source", "objectId", "entityKind", "entityId", "topologyHash"]) ||
         !id(value.objectId) || !["face", "edge", "vertex"].includes(String(value.entityKind)) ||
@@ -142,15 +155,15 @@ export const normalizeProjectNoteAnchor = (value: unknown): ProjectNoteAnchor | 
         (value.entityKind === "face" ? !point(value.barycentric) || Math.abs((value.barycentric as NotePoint3).reduce((sum, coordinate) => sum + coordinate, 0) - 1) > 1e-6 ||
           (value.barycentric as NotePoint3).some((coordinate) => coordinate < -1e-6 || coordinate > 1 + 1e-6) : "barycentric" in value)) return null;
     } else if (value.kind === "result") {
-      if (!exact(value, ["kind", "source", "resultId", "resultHash"]) ||
+      if (!anchorExact(value, ["kind", "source", "resultId", "resultHash"]) ||
         !id(value.resultId) || !isStructuralHash(value.resultHash)) return null;
     } else if (value.kind === "study-selection") {
-      if (!exact(value, ["kind", "source", "studyId", "studyHash", "memberId", "selectionId"]) ||
+      if (!anchorExact(value, ["kind", "source", "studyId", "studyHash", "memberId", "selectionId"]) ||
         !isStableDocumentId(value.studyId) || !value.studyId.startsWith("math3d:study:") ||
         !isStructuralHash(value.studyHash) || !id(value.memberId) || !id(value.selectionId) ||
         value.memberId.length > 160 || value.selectionId.length > 160) return null;
     } else if (value.kind === "graph-selection") {
-      if (!exact(value, "probe" in value ? ["kind", "source", "objectId", "objectHash", "probe"] : ["kind", "source", "objectId", "objectHash"]) ||
+      if (!anchorExact(value, "probe" in value ? ["kind", "source", "objectId", "objectHash", "probe"] : ["kind", "source", "objectId", "objectHash"]) ||
         !id(value.objectId) || !isStructuralHash(value.objectHash)) return null;
       if ("probe" in value) {
         if (!record(value.probe) || !exact(value.probe, ["x", "y", ...(value.probe.parameter === undefined ? [] : ["parameter"]), ...(value.probe.rowId === undefined ? [] : ["rowId"])]) ||

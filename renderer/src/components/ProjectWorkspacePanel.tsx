@@ -4,7 +4,7 @@ import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, 
   parseMixedWorkspaceDocument, createMixedWorkspaceDocument, updateMath3DProjectMetadata, replaceMath3DProjectWorkspace,
   deleteProjectDocument, duplicateProjectDocument, serializeMath3DProject, setProjectDocumentMetadata,
   instantiateMath3DProjectTemplate, MATH3D_PROJECT_TEMPLATES, type Math3DProjectTemplateId,
-  upsertMath3DProjectWorkbook, upsertMath3DProjectNote, updateProjectNote,
+  upsertMath3DProjectWorkbook, upsertMath3DProjectNote, updateProjectNote, inspectResearchReference,
   relinkMath3DProjectQuantumScene, upsertMath3DProjectQuantumScene, type ProjectQuantumSceneReference,
   linkQuantumSceneDocuments,
   createQuantumStudyFromTemplate, QUANTUM_STUDY_TEMPLATES, type QuantumStudyTemplateId,
@@ -719,7 +719,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       const current = project?.identity.id === note.projectId ? project : notesProject;
       const checked = current && inspectProjectNoteAnchor(note,
         projectNoteSourceResolver(current.identity.id, current.workspace));
-      if (!checked || checked.status !== "current") {
+      const pinned = current && anchor.researchReference &&
+        inspectResearchReference(current, anchor.researchReference, comparisonResource);
+      if (!checked || checked.status !== "current" || pinned && pinned.status !== "current") {
         setNotesMessage("The exact Study selection or its source generation is unavailable."); return;
       }
       setStudyFocus(previous => ({ id: anchor.studyId, selectionId: anchor.selectionId,
@@ -758,7 +760,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         return target && block ? { revision: target.revision, hash: structuralHash(block) } : null;
       },
     });
-    if (!qualification || qualification.status !== "current") {
+    const pinned = current && anchor.researchReference &&
+      inspectResearchReference(current, anchor.researchReference, comparisonResource);
+    if (!qualification || qualification.status !== "current" || pinned && pinned.status !== "current") {
       setNotesMessage("The Note's exact saved target or source generation is unavailable."); return;
     }
     if (anchor.kind === "workbook-block") {

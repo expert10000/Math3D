@@ -1,6 +1,6 @@
-import { createResearchReference, inspectResearchReference, researchResourcePins,
-  type Math3DProject, type ProjectResourceReader } from "@math3d/core";
-import { inspectNotebookReference, normalizeNotebookReference, type NotebookReference } from "@math3d/workbook";
+import { inspectResearchReference, type Math3DProject, type ProjectResourceReader } from "@math3d/core";
+import { inspectNotebookReference, migrateLegacyNotebookReference, normalizeNotebookReference,
+  type NotebookReference } from "@math3d/workbook";
 
 export type ResearchCitationStatus = "current" | "historical" | "missing" | "corrupt" | "different-project";
 export type ResearchCitationAssessment = Readonly<{ status: ResearchCitationStatus; reason: string;
@@ -22,13 +22,10 @@ export function assessProjectResearchCitation(project: Math3DProject, candidate:
   if (inspection.status !== "current") return { ...base,
     status: inspection.status === "stale" ? "historical" : inspection.status,
     reason: inspection.reason, resourceStatus: "not-checked" };
-  const targetHash = reference.kind === "result" ? reference.resultHash :
-    reference.kind === "study" ? reference.studyHash : reference.source.structuralHash;
   try {
-    const shared = createResearchReference({ projectId: reference.projectId, kind: reference.kind,
-      targetId: reference.targetId, source: reference.source, targetHash,
-      resources: researchResourcePins(project, reference.source.documentId) });
-    const checked = inspectResearchReference(project, shared, reader);
+    const saved = migrateLegacyNotebookReference(reference);
+    if (!saved?.pinnedEvidence) throw new TypeError("Citation has no saved evidence reference.");
+    const checked = inspectResearchReference(project, saved.pinnedEvidence, reader);
     return { ...base, status: checked.resourceStatus === "missing" ? "missing" : checked.status === "current" ? "current" :
       checked.status === "historical" ? "historical" : checked.status === "invalid" ? "corrupt" : checked.status,
       reason: checked.reason, resourceStatus: checked.resourceStatus };

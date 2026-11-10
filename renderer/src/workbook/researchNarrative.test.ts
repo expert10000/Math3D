@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createMixedWorkspaceDocument, createProjectNote, replaceMath3DProjectWorkspace,
-  replaceMeshDocumentSource, sha256Checksum, structuralHash, upsertMath3DProjectNote } from "@math3d/core";
+  replaceMeshDocumentSource, sha256Checksum, structuralHash, upsertMath3DProjectNote,
+  pinProjectNoteAnchor } from "@math3d/core";
 import { instantiateNotebookStarter } from "../projects/notebookStarters";
 import { captureProjectResources } from "../projects/projectResources";
 import { readProjectWorkbook } from "../projects/projectWorkbookBinding";
@@ -13,7 +14,7 @@ const fixture = () => {
   const source = book.stages[1]!.blocks[0]!.notebookReference!.source;
   const note = createProjectNote({ projectId: made.project.identity.id, stableKey: "research-note", kind: "text",
     title: "Edge path observation", body: "A source-bound observation.",
-    anchor: { kind: "document", source }, createdAt: 1 });
+    anchor: pinProjectNoteAnchor(made.project, { kind: "document", source }), createdAt: 1 });
   const project = upsertMath3DProjectNote(made.project, note);
   return { project, resources: made.resources, book, note };
 };

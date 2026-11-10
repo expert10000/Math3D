@@ -7,6 +7,12 @@ import {
   normalizeMath3DProject,
   structuralHash,
   viewerSourceFromDocument,
+  createResearchReference,
+  inspectResearchReference,
+  matchesScientificSourceGeneration as sourceMatches,
+  normalizeResearchReference,
+  researchResourcePins,
+  type ResearchReference,
   type AnalysisResultEnvelope,
   type Math3DProject,
   type ScientificSourceGeneration,
@@ -15,14 +21,15 @@ import {
   type StructuralHash,
 } from "@math3d/core";
 
-export const NOTEBOOK_REFERENCE_SCHEMA_VERSION = 1 as const;
+export const NOTEBOOK_REFERENCE_SCHEMA_VERSION = 2 as const;
 
 /** A citation into a normal named Project. No document, result or figure bytes are copied into a Workbook cell. */
 type NotebookReferenceBase = Readonly<{
-  schemaVersion: typeof NOTEBOOK_REFERENCE_SCHEMA_VERSION;
+  schemaVersion: 1 | typeof NOTEBOOK_REFERENCE_SCHEMA_VERSION;
   projectId: StableDocumentId;
   targetId: string;
   source: ScientificSourceGeneration;
+  pinnedEvidence?: ResearchReference;
 }>;
 export type NotebookReference =
   | (NotebookReferenceBase & Readonly<{ kind: "document" }>)
@@ -41,11 +48,13 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 
 export function normalizeNotebookReference(value: unknown): NotebookReference | null {
+  const pinned = value && typeof value === "object" && !Array.isArray(value) &&
+    (value as Record<string, unknown>).schemaVersion === 2;
   if (!isRecord(value) || Object.keys(value).sort().join("|") !==
-      (value.kind === "result" ? "kind|projectId|resultHash|schemaVersion|source|targetId" :
-        value.kind === "study" ? "kind|projectId|schemaVersion|source|studyHash|targetId" :
-          "kind|projectId|schemaVersion|source|targetId") ||
-    value.schemaVersion !== NOTEBOOK_REFERENCE_SCHEMA_VERSION ||
+      (value.kind === "result" ? `kind|projectId|resultHash|schemaVersion|source|targetId${pinned ? "|pinnedEvidence" : ""}` :
+        value.kind === "study" ? `kind|projectId|schemaVersion|source|studyHash|targetId${pinned ? "|pinnedEvidence" : ""}` :
+          `kind|projectId|schemaVersion|source|targetId${pinned ? "|pinnedEvidence" : ""}`).split("|").sort().join("|") ||
+    (value.schemaVersion !== 1 && value.schemaVersion !== NOTEBOOK_REFERENCE_SCHEMA_VERSION) ||
     !isStableDocumentId(value.projectId) || !value.projectId.startsWith("math3d:project:") ||
     (value.kind !== "document" && value.kind !== "result" && value.kind !== "study") ||
     typeof value.targetId !== "string" || value.targetId.length < 1 || value.targetId.length > 256 ||
@@ -54,11 +63,17 @@ export function normalizeNotebookReference(value: unknown): NotebookReference | 
     (value.kind === "result" && !isStructuralHash(value.resultHash)) ||
     (value.kind === "study" && (!isStableDocumentId(value.targetId) ||
       !value.targetId.startsWith("math3d:study:") || !isStructuralHash(value.studyHash)))) return null;
+  const evidence = pinned ? normalizeResearchReference(value.pinnedEvidence) : null;
+  if (pinned && (!evidence || evidence.kind !== value.kind || evidence.projectId !== value.projectId ||
+    evidence.targetId !== value.targetId || !sourceMatches(evidence.source, value.source) ||
+    evidence.targetHash !== (value.kind === "result" ? value.resultHash :
+      value.kind === "study" ? value.studyHash : value.source.structuralHash))) return null;
   const base = {
-    schemaVersion: NOTEBOOK_REFERENCE_SCHEMA_VERSION,
+    schemaVersion: value.schemaVersion as 1 | 2,
     projectId: value.projectId,
     targetId: value.targetId,
     source: { ...value.source },
+    ...(evidence ? { pinnedEvidence: evidence } : {}),
   };
   return value.kind === "result"
     ? { ...base, kind: "result", resultHash: value.resultHash as StructuralHash }
@@ -84,12 +99,16 @@ export function createNotebookReference(project: Math3DProject, kind: NotebookRe
     : kind === "study" ? study?.members[0] && viewerSourceFromDocument({ identity: study.members[0].expected })
       : result?.provenance.source ?? null;
   if (!source) throw new RangeError(`Project ${kind} '${targetId}' was not found.`);
+  const pinnedEvidence = createResearchReference({ projectId: current.identity.id, kind, targetId, source,
+    targetHash: result ? structuralHash(result) : study ? structuralHash(study) : source.structuralHash,
+    resources: researchResourcePins(current, source.documentId) });
   const reference = normalizeNotebookReference({
     schemaVersion: NOTEBOOK_REFERENCE_SCHEMA_VERSION,
     projectId: current.identity.id,
     kind,
     targetId,
     source,
+    pinnedEvidence,
     ...(result ? { resultHash: structuralHash(result) } : {}),
     ...(study ? { studyHash: structuralHash(study) } : {}),
   });
@@ -97,8 +116,20 @@ export function createNotebookReference(project: Math3DProject, kind: NotebookRe
   return reference;
 }
 
+/** Convert v1 without borrowing resource descriptors from a later Project generation. */
+export function migrateLegacyNotebookReference(candidate: unknown): NotebookReference | null {
+  const ref = normalizeNotebookReference(candidate);
+  if (!ref) return null;
+  if (ref.schemaVersion === 2) return ref;
+  const pinnedEvidence = createResearchReference({ projectId: ref.projectId, kind: ref.kind,
+    targetId: ref.targetId, source: ref.source,
+    targetHash: ref.kind === "result" ? ref.resultHash : ref.kind === "study" ? ref.studyHash : ref.source.structuralHash,
+    resources: [], pinState: "legacy-unpinned" });
+  return normalizeNotebookReference({ ...ref, schemaVersion: 2, pinnedEvidence });
+}
+
 /** Resolves IDs and source generations only. A later viewer must still verify replay and artifact bytes. */
-export function inspectNotebookReference(project: Math3DProject, candidate: unknown): NotebookReferenceInspection {
+const inspectNotebookReferenceBase = (project: Math3DProject, candidate: unknown): NotebookReferenceInspection => {
   const reference = normalizeNotebookReference(candidate);
   if (!reference) return { status: "missing", reason: "Invalid notebook reference." };
   const current = validatedProject(project);
@@ -141,4 +172,14 @@ export function inspectNotebookReference(project: Math3DProject, candidate: unkn
   return matchesScientificSourceGeneration(reference.source, currentSource)
     ? { status: "current", reason: "Result source generation matches.", currentSource, result }
     : { status: "stale", reason: "Result is historical after a source edit.", currentSource, result };
+};
+
+export function inspectNotebookReference(project: Math3DProject, candidate: unknown): NotebookReferenceInspection {
+  const base = inspectNotebookReferenceBase(project, candidate);
+  if (base.status !== "current") return base;
+  const evidence = normalizeNotebookReference(candidate)?.pinnedEvidence;
+  if (!evidence || evidence.pinState === "legacy-unpinned") return base;
+  const pinned = inspectResearchReference(project, evidence);
+  return pinned.status === "missing" ? { ...base, status: "missing", reason: pinned.reason } :
+    pinned.status === "historical" ? { ...base, status: "stale", reason: pinned.reason } : base;
 }

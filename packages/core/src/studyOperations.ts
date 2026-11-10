@@ -5,6 +5,9 @@ import { parseMath3DProject, replaceMath3DProjectWorkspace, serializeMath3DProje
 import { createStudyRecordV1, normalizeStudyRecordV1, type StudyRecordV1 } from "./studyRecord";
 import { normalizeQuantumStudyDocument } from "./quantumStudyDocument";
 import type { QuantumSceneDocument } from "./quantumSceneDocument";
+import { createStudyPaneResearchReference } from "./researchReference";
+import { createResearchReference } from "./researchReferenceSchema";
+import { viewerSourceFromDocument } from "./viewerProvenance";
 
 const current = (project: Math3DProject): Math3DProject => parseMath3DProject(serializeMath3DProject(project));
 
@@ -27,7 +30,19 @@ export function upsertProjectStudy(project: Math3DProject, study: StudyRecordV1)
   const source = current(project), checked = normalizeStudyRecordV1(study);
   if (!checked.ok) throw new TypeError(checked.errors.join(" "));
   if (checked.value.projectId !== source.identity.id) throw new TypeError("Study belongs to another Project.");
-  const studies = [...(source.workspace.studies ?? []).filter(item => item.id !== study.id), checked.value]
+  const existing = source.workspace.studies?.some(item => item.id === study.id);
+  const saved = checked.value.paneReferences ? checked.value : { ...checked.value,
+    paneReferences: checked.value.layout.panes.map(pane => {
+      const member = checked.value.members.find(item => item.memberId === pane.memberId)!;
+      const sourceGeneration = viewerSourceFromDocument({ identity: member.expected });
+      return { paneId: pane.paneId, reference: existing ? createResearchReference({
+        projectId: checked.value.projectId, kind: "document", targetId: member.documentId,
+        source: sourceGeneration, targetHash: member.expected.structuralHash, resources: [], pinState: "legacy-unpinned",
+      }) : createStudyPaneResearchReference(source, checked.value, pane.paneId) };
+    }) };
+  const validated = normalizeStudyRecordV1(saved);
+  if (!validated.ok) throw new TypeError(validated.errors.join(" "));
+  const studies = [...(source.workspace.studies ?? []).filter(item => item.id !== study.id), validated.value]
     .sort((a, b) => a.id.localeCompare(b.id));
   if (canonicalJsonStringify(studies) === canonicalJsonStringify(source.workspace.studies ?? [])) return source;
   return replaceMath3DProjectWorkspace(source, createMixedWorkspaceDocument({ ...source.workspace, studies }));
@@ -68,6 +83,7 @@ export function forkProjectStudy(project: Math3DProject, id: string, stableKey: 
   const fork = createStudyRecordV1(source.identity.id, stableKey, { title,
     members: study.members, layout: study.layout, links: study.links,
     pinnedSelectionIds: study.pinnedSelectionIds,
+    ...(study.paneReferences === undefined ? {} : { paneReferences: study.paneReferences }),
     ...(study.description === undefined ? {} : { description: study.description }),
     ...(study.notesRefs === undefined ? {} : { notesRefs: study.notesRefs }),
     ...(study.workbookRefs === undefined ? {} : { workbookRefs: study.workbookRefs }) });

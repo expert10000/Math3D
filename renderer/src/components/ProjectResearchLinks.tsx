@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { inspectProjectNoteAnchor, matchesScientificSourceGeneration, structuralHash, viewerSourceFromDocument,
+import { inspectProjectNoteAnchor, inspectResearchReference, matchesScientificSourceGeneration, structuralHash, viewerSourceFromDocument,
   type KernelWorkspaceModule, type Math3DProject, type ProjectNote, type ScientificSourceGeneration } from "@math3d/core";
 import { type NotebookReference, type Workbook, type WorkbookStageId } from "@math3d/workbook";
 import { readProjectWorkbook } from "../projects/projectWorkbookBinding";
@@ -92,9 +92,16 @@ export const ProjectResearchLinks: React.FC<Props> = ({ project, titles, workboo
       const block = loaded?.workbook?.stages.flatMap(stage => stage.blocks).find(item => item.id === blockId);
       return loaded && block ? { revision: loaded.reference.revision, hash: structuralHash(block) } : null;
     };
-    const notes = (project.notes ?? []).map(note => ({ note, inspection: inspectProjectNoteAnchor(note, { ...resolver,
-      comparison: id => resolveProjectComparisonNoteTarget(project, id, readResource,
-        note.anchor?.kind === "comparison" ? note.anchor.alignment : "not applicable"), workbookBlock: blockLookup }) }));
+    const notes = (project.notes ?? []).map(note => {
+      const base = inspectProjectNoteAnchor(note, { ...resolver,
+        comparison: id => resolveProjectComparisonNoteTarget(project, id, readResource,
+          note.anchor?.kind === "comparison" ? note.anchor.alignment : "not applicable"), workbookBlock: blockLookup });
+      const pinned = note.anchor?.researchReference && inspectResearchReference(project, note.anchor.researchReference, readResource);
+      const inspection = base.status === "current" && pinned && pinned.status !== "current" ?
+        { ...base, status: pinned.status === "missing" ? "missing" as const : "stale" as const,
+          reason: pinned.reason } : base;
+      return { note, inspection };
+    });
     return { workbooks, citations, noteUses, notes };
   }, [project, workbookBytes, readResource]);
 
