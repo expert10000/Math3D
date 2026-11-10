@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SageRuntimeProbe } from "../../services/sageOperationExecution";
-import { buildRuntimeCapabilityReport, type RuntimeReportInputs } from "./runtimeCapabilityReport";
+import { buildRuntimeCapabilityReport, runtimeOperationAdmissions, type RuntimeReportInputs } from "./runtimeCapabilityReport";
 
 const input = (overrides: Partial<RuntimeReportInputs> = {}): RuntimeReportInputs => ({
   webWorker: true, python: null, cgal: null, vtkBridge: true, engines: null,
@@ -74,5 +74,18 @@ describe("Runtime Center capability report", () => {
     expect(report.routes.find(item => item.id === "broker-remote-sage")).toMatchObject({
       state: "limited", operationCount: 0,
     });
+  });
+  it("admits each operation only on routes advertising it while reporting offline and permission reasons", () => {
+    const report = buildRuntimeCapabilityReport(input({
+      sage: { docker: { probe: sageProbe(true) }, private: { error: "Gateway permission denied" },
+        local: { probe: { ...sageProbe(false), backend: "local" } } },
+      broker: [{ backendId: "other", backendVersion: "1", transport: "worker",
+        availability: "available", operations: [{ operationType: "curve.analyze" }] } as RuntimeReportInputs["broker"][number]],
+    }));
+    const admissions = runtimeOperationAdmissions(report, "symbolic.factor");
+    expect(admissions.find(item => item.routeId === "sage-docker")).toMatchObject({ admitted: true });
+    expect(admissions.find(item => item.routeId === "sage-local")).toMatchObject({ admitted: false, reason: "Service offline" });
+    expect(admissions.find(item => item.routeId === "sage-private")).toMatchObject({ admitted: false, reason: "Gateway permission denied" });
+    expect(admissions.find(item => item.routeId === "broker-other")).toMatchObject({ admitted: false, reason: "Operation not advertised by this route" });
   });
 });

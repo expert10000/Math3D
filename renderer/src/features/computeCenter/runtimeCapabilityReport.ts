@@ -12,11 +12,23 @@ export type RuntimeRoute = Readonly<{
   version: string | null;
   transport: string | null;
   operationCount: number | null;
+  operations?: readonly string[];
   artifactSha256?: string | null;
   launchOrigin?: string | null;
   packageVersion?: string | null;
 }>;
 export type RuntimeCapabilityReport = Readonly<{ routes: readonly RuntimeRoute[]; checkedAt: number }>;
+export type RuntimeOperationAdmission = Readonly<{ routeId: string; operationType: string;
+  admitted: boolean; reason: string }>;
+
+/** An operation is admitted only by a ready route that advertised it in this probe. */
+export function runtimeOperationAdmissions(report: RuntimeCapabilityReport, operationType: string): readonly RuntimeOperationAdmission[] {
+  return report.routes.filter(route => route.group === "sage" || route.group === "broker")
+    .map(route => ({ routeId: route.id, operationType,
+      admitted: route.state === "ready" && !!route.operations?.includes(operationType),
+      reason: route.state !== "ready" ? route.detail : route.operations?.includes(operationType) ?
+        "Advertised by live capability probe" : "Operation not advertised by this route" }));
+}
 export type RuntimeProbeResult = Readonly<{ probe?: SageRuntimeProbe; error?: string }>;
 export type RuntimeReportInputs = Readonly<{
   webWorker: boolean;
@@ -77,17 +89,17 @@ export function buildRuntimeCapabilityReport(input: RuntimeReportInputs): Runtim
       probe.manifest.unavailableReason ?? probe.health.status :
       probe.operations.length ? `${probe.operations.length} advertised operation(s)` :
         "Healthy route; no operations advertised" : "Checking route health");
-    return route(`sage-${backend}`, backend === "local" ? "Sage Local WSL" :
+    return { ...route(`sage-${backend}`, backend === "local" ? "Sage Local WSL" :
       backend === "docker" ? "Sage Docker" : "Sage private gateway", "sage", state,
     detail, probe?.health.engineVersion ?? null, probe?.transport ?? null,
-    probe?.operations.length ?? null);
+    probe?.operations.length ?? null), operations: probe?.operations.map(item => item.operationType) ?? [] };
   });
-  const broker = input.broker.map((item) => route(`broker-${item.backendId}`, item.backendId,
+  const broker = input.broker.map((item) => ({ ...route(`broker-${item.backendId}`, item.backendId,
     "broker", item.availability === "available" ? item.operations.length ? "ready" : "limited" : "unavailable",
     item.availability === "available" ? item.operations.length ?
       `${item.operations.length} advertised operation(s)` : "No operations advertised" :
       item.unavailableReason ?? "Backend unavailable", item.backendVersion, item.transport,
-    item.operations.length));
+    item.operations.length), operations: item.operations.map(operation => operation.operationType) }));
   const manager = input.engines ? input.engines.engines.map((engine) => route(
     `manager-${engine.id}`, `${engine.label} managed service`, "manager",
     engine.healthy ? "ready" : engine.running ? "limited" : "unavailable",

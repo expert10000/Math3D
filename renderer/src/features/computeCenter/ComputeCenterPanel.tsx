@@ -6,7 +6,7 @@ import { sageExecutionRegistry, type SageBackend } from "../../services/sageOper
 import type { ScientificBackendCapabilitySnapshot } from "@math3d/kernel";
 import { discoverScientificBackends, getComputeJobs, presentComputeJob, subscribeComputeJobs,
   type ComputeJobRecord } from "./scientificJobTelemetry";
-import { buildRuntimeCapabilityReport, type RuntimeProbeResult, type RuntimeState } from "./runtimeCapabilityReport";
+import { buildRuntimeCapabilityReport, runtimeOperationAdmissions, type RuntimeProbeResult, type RuntimeState } from "./runtimeCapabilityReport";
 import ComputeEngineManagerPanel from "../computeEngines/ComputeEngineManagerPanel";
 import SageRuntimeInspector from "./SageRuntimeInspector";
 
@@ -51,6 +51,7 @@ export default function ComputeCenterPanel({ onClose, initialTab = "overview" }:
   const [checkedAt, setCheckedAt] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedOperation, setSelectedOperation] = useState("");
   const capabilities = getMeshBackendCapabilities();
   const vtkBridge = capabilities.vtkPreviewImplicit || capabilities.vtkMeshCleanNormals || capabilities.vtkMeshDecimate || capabilities.vtkMeshSmooth || capabilities.vtkMeshBoolean;
 
@@ -103,6 +104,10 @@ export default function ComputeCenterPanel({ onClose, initialTab = "overview" }:
   const localRoutes = runtimeReport.routes.filter(route => route.group === "local");
   const sageRoutes = runtimeReport.routes.filter(route => route.group === "sage");
   const brokerRoutes = runtimeReport.routes.filter(route => route.group === "broker");
+  const advertisedOperations = [...new Set([...sageRoutes, ...brokerRoutes]
+    .flatMap(route => route.operations ?? []))].sort();
+  const inspectedOperation = advertisedOperations.includes(selectedOperation) ? selectedOperation : advertisedOperations[0] ?? "";
+  const admissions = inspectedOperation ? runtimeOperationAdmissions(runtimeReport, inspectedOperation) : [];
   const activeBrokerJobs = jobs.filter((job) => job.status === "routing" || job.status === "running").length;
 
   return <div data-testid="compute-center-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }} style={{ position: "fixed", inset: 0, zIndex: 2650, background: "rgba(15, 23, 42, 0.4)", display: "grid", placeItems: "center", padding: 12 }}>
@@ -152,6 +157,18 @@ export default function ComputeCenterPanel({ onClose, initialTab = "overview" }:
       </div></section>
       </>}
       {activeTab === "runtimes" && <div data-testid="compute-runtimes" style={{ display: "grid", gap: 12 }}>
+        <section style={card} aria-label="Operation route admission" data-testid="runtime-operation-admission">
+          <h3 style={{ margin: "0 0 8px", fontSize: 14 }}>Operation routes</h3>
+          {advertisedOperations.length ? <>
+            <label style={{ fontSize: 12 }}>Operation <select data-testid="runtime-operation-select" value={inspectedOperation} onChange={event => setSelectedOperation(event.target.value)}>{advertisedOperations.map(operation => <option key={operation} value={operation}>{operation}</option>)}</select></label>
+            <div style={{ display: "grid", gap: 4, marginTop: 8 }}>{admissions.map(admission => {
+              const route = runtimeReport.routes.find(item => item.id === admission.routeId)!;
+              return <div key={route.id} data-testid={`runtime-operation-route-${route.id}`} data-admitted={admission.admitted} style={{ fontSize: 11, padding: 6, background: "white", border: "1px solid #dbe4f0", borderRadius: 6 }}>
+                <strong>{route.label}</strong> · {admission.admitted ? "Admitted" : "Unavailable"} · {admission.reason}
+              </div>;
+            })}</div>
+          </> : <div style={{ fontSize: 11, color: "#64748b" }}>No operation has been advertised by a live route probe.</div>}
+        </section>
         <SageRuntimeInspector />
         <ComputeEngineManagerPanel embedded />
       </div>}
