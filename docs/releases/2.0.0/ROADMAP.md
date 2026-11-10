@@ -33,6 +33,8 @@ The gate scripts and source tests are **preparation**, not evidence that a 2.0 i
 
 **Native CGAL source integration (2026-11-10):** The Windows public-source inventory now selects the native reference build's CGAL 6.2.1, Boost 1.92.0, GMP 6.3.0, MPFR 4.2.2 and pinned vcpkg recipes. The release workflow verifies every archive hash and the exact Git source archive before asset staging; the SBOM records the sources and fails on an unowned optional native binary. Installer inclusion remains opt-in and requires that source receipt plus the pinned local build. This is a source-distribution gate implementation, not evidence of a built, signed or installed 2.0 candidate.
 
+**Study cursor qualification (2026-11-11):** A saved two-pane Surface/Mesh Study can now link a transient physical coordinate marker when both pinned documents replay and declare the same frame and units. Graph/Curve promotion, Curve/Surface chart, and four-pane QWZ links remain separately qualified; the Study view states why an incompatible or changed pair is disabled. The Surface/Mesh marker does not infer a Mesh vertex, analytic curvature, or correspondence between unrelated elements. The focused desktop journey saves and cold-reopens this link. Complete coordinate propagation into every native module Inspector remains an open broader acceptance item.
+
 ---
 
 ## 0. Executive decision

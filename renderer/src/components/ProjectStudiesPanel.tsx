@@ -8,8 +8,10 @@ import { projectStudyWorkbookReferences } from "../projects/projectStudyReferenc
 import { projectNoteSourceResolver } from "../projects/projectNoteTargets";
 import { qualifyStudyGraphCurveLink, studyHasQualifiedGraphCurveLink } from "../projects/studyGraphCurveLink";
 import { qualifyStudyCurveSurfaceLink, studyHasQualifiedCurveSurfaceLink } from "../projects/studyCurveSurfaceLink";
+import { qualifyStudySurfaceMeshLink, studyHasQualifiedSurfaceMeshLink } from "../projects/studySurfaceMeshLink";
 import { StudyGraphCurveControl } from "./StudyGraphCurveControl";
 import { StudyCurveSurfaceControl } from "./StudyCurveSurfaceControl";
+import { StudySurfaceMeshControl } from "./StudySurfaceMeshControl";
 import { StudyQwzCursorControl } from "./StudyQwzCursorControl";
 
 const StudyPanePreview = lazy(() => import("./StudyPanePreview").then(module => ({ default: module.StudyPanePreview })));
@@ -21,6 +23,7 @@ type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoi
   onCreate: (title: string, ids: readonly string[]) => void; onRename: (id: string, title: string) => void;
   onFork: (id: string, title: string) => void; onLink: (id: string) => void;
   onLinkCurveSurface: (id: string) => void;
+  onLinkSurfaceMesh: (id: string) => void;
   onConfigure: (id: string, description: string, mode: StudyRecordV1["layout"]["mode"], paneIds: readonly string[]) => void;
   onCreateQwz: (quantumStudyId: string) => void;
   onPinQwz: (studyId: string, sampleIndex: number) => void;
@@ -35,7 +38,7 @@ type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoi
 
 /** A Study is a saved layout of references; opening a pane delegates to its owning document. */
 export function ProjectStudiesPanel({ project, documents, editable, resources, focusStudy, onCreate, onRename, onFork, onConfigure,
-  onLink, onLinkCurveSurface, onCreateQwz, onPinQwz, onUnpinQwz, workbookBytes, onOpenWorkbookBlock,
+  onLink, onLinkCurveSurface, onLinkSurfaceMesh, onCreateQwz, onPinQwz, onUnpinQwz, workbookBytes, onOpenWorkbookBlock,
   onCapturePinnedNote, onOpenNote,
   onOpenQuantumSource, onInspectResult, onOpenDocument }: Props) {
   const [selected, setSelected] = useState<string[]>([]);
@@ -66,7 +69,17 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
   const graphCurveLinked = !!open && !!graphCurvePair && studyHasQualifiedGraphCurveLink(open, graphCurvePair);
   const curveSurfacePair = open ? qualifyStudyCurveSurfaceLink(project, open) : null;
   const curveSurfaceLinked = !!open && !!curveSurfacePair && studyHasQualifiedCurveSurfaceLink(open, curveSurfacePair);
+  const surfaceMesh = open ? qualifyStudySurfaceMeshLink(project, open) : null;
+  const surfaceMeshPair = surfaceMesh?.status === "ready" ? surfaceMesh.value : null;
+  const surfaceMeshLinked = !!open && !!surfaceMeshPair && studyHasQualifiedSurfaceMeshLink(open, surfaceMeshPair);
   const qwzPair = open ? qualifyProjectQwzQuadStudy(project, open) : null;
+  const paneModules = open?.layout.panes.map(pane => {
+    const id = open.members.find(member => member.memberId === pane.memberId)?.documentId;
+    return project.workspace.entries.find(entry => entry.expected.id === id)?.module ?? "missing";
+  }) ?? [];
+  const pairKind = paneModules.length === 2 ? [...paneModules].sort().join(":") : "";
+  const withheldMember = open && inspectProjectStudyMembers(project, open)
+    .find(member => member.status !== "current-reference");
   const choiceById = new Map(documents.map(document => [document.id, document]));
   const statusByMember = new Map(open ? inspectProjectStudyMembers(project, open).map(item => [item.memberId, item.status]) : []);
   const statusLabel = { "current-reference": "Source current", changed: "Source changed",
@@ -124,6 +137,21 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
         <button type="button" data-testid="project-study-save-configuration" onClick={() =>
           onConfigure(open.id, description, layoutMode, paneOrder)}>Save Study layout</button>
       </fieldset>}
+      {pairKind && ["curve:graph2d", "curve:surface", "mesh:surface"].includes(pairKind) &&
+        <p role="status" data-testid="project-study-cursor-qualification">{withheldMember ?
+          `Linked selection disabled: ${withheldMember.status}.` : pairKind === "curve:graph2d" ?
+          graphCurvePair ? "Graph–Curve parameter mapping qualified by exact promotion and source generation." :
+            "Graph–Curve link disabled: no current exact promotion relation or compatible parameter frame." :
+          pairKind === "curve:surface" ? curveSurfacePair ?
+            "Curve–Surface chart mapping qualified by exact relation and source generation." :
+            "Curve–Surface link disabled: no current exact chart relation or compatible parameter frame." :
+          surfaceMesh?.status === "ready" ?
+            "Surface–Mesh physical marker qualified by exact generations and declared frame; no element correspondence is inferred." :
+            `Surface–Mesh link disabled: ${surfaceMesh?.reason ?? "Source unavailable."}`}</p>}
+      {open.layout.mode === "quad" && paneModules.includes("quantum") && <p role="status"
+        data-testid="project-study-quantum-cursor-qualification">{qwzPair ?
+          "QWZ reciprocal k mapping qualified by exact scene generations and reciprocal frame; sample bytes are checked before sharing." :
+          "QWZ link disabled: source scenes, Study roles or reciprocal frames differ."}</p>}
       {graphCurvePair && !graphCurveLinked && editable && <button type="button" data-testid="project-study-link-graph-curve"
         onClick={() => onLink(open.id)}>Link promoted Graph and Curve</button>}
       {graphCurvePair && graphCurveLinked && <StudyGraphCurveControl project={project} pair={graphCurvePair} studyId={open.id} />}
@@ -132,6 +160,11 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
         Link Curve parameter and Surface chart</button>}
       {curveSurfacePair && curveSurfaceLinked && <StudyCurveSurfaceControl project={project}
         pair={curveSurfacePair} studyId={open.id} />}
+      {surfaceMeshPair && !surfaceMeshLinked && editable && <button type="button"
+        data-testid="project-study-link-surface-mesh" onClick={() => onLinkSurfaceMesh(open.id)}>
+        Link Surface and Mesh physical coordinates</button>}
+      {surfaceMeshPair && surfaceMeshLinked && <StudySurfaceMeshControl project={project}
+        pair={surfaceMeshPair} studyId={open.id} />}
       {qwzPair && <StudyQwzCursorControl project={project} pair={qwzPair} study={open}
         editable={editable} onPin={onPinQwz} onUnpin={onUnpinQwz} />}
       {qwzPair && editable && open.pinnedSelectionIds.filter(id => id.startsWith("qwz:band-0:")).map(id =>
