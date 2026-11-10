@@ -72,7 +72,42 @@ export const removeSmallMaskComponents=(mask:BinaryVolumeMask,minimumSize:number
 export const distanceTransformVolumeMask=(mask:BinaryVolumeMask,spacing:readonly[number,number,number]=[1,1,1]):Float32Array=>{const foreground:number[]=[];for(let i=0;i<mask.data.length;i+=1)if(mask.data[i])foreground.push(i);const output=new Float32Array(mask.data.length);for(let i=0;i<output.length;i+=1){if(mask.data[i])continue;const[x,y,z]=coords(mask.dimensions,i);let best=Infinity;for(const candidate of foreground){const[cx,cy,cz]=coords(mask.dimensions,candidate);best=Math.min(best,Math.hypot((x-cx)*spacing[0],(y-cy)*spacing[1],(z-cz)*spacing[2]));}output[i]=best;}return output;};
 
 export const defaultLabelColor=(id:number):string=>["#3b82f6","#ef4444","#22c55e","#f59e0b","#a855f7","#06b6d4"][(Math.max(1,id)-1)%6];
-export const labelStatistics=(map:IntegerVolumeLabelMap,grid:Pick<VolumeGrid,"spacing"|"origin"|"direction"|"centering">):VolumeLabelStatistics[]=>{const ids=[...new Set(map.data)].filter(id=>id!==0).sort((a,b)=>a-b);const volume=Math.abs((grid.spacing?.[0]??1)*(grid.spacing?.[1]??1)*(grid.spacing?.[2]??1));const pseudo:VolumeGrid={dims:map.dimensions,scalars:new Float32Array(0),...grid};return ids.map(label=>{let count=0;const sum:[number,number,number]=[0,0,0],min:[number,number,number]=[Infinity,Infinity,Infinity],max:[number,number,number]=[-Infinity,-Infinity,-Infinity];for(let i=0;i<map.data.length;i+=1)if(map.data[i]===label){const world=volumeGridIndexToWorld(pseudo,coords(map.dimensions,i));count+=1;for(let a=0;a<3;a+=1){sum[a]+=world[a];min[a]=Math.min(min[a],world[a]);max[a]=Math.max(max[a],world[a]);}}return{label,voxelCount:count,physicalVolume:count*volume,centroid:count?sum.map(v=>v/count)as[number,number,number]:null,bounds:count?{min,max}:null};});};
+export const labelStatistics = (
+  map: IntegerVolumeLabelMap,
+  grid: Pick<VolumeGrid, "spacing" | "origin" | "direction" | "centering">,
+): VolumeLabelStatistics[] => {
+  assertLength(map.dimensions, map.data.length);
+  const [a,b,c,d,e,f,g,h,i] = grid.direction ?? [1,0,0,0,1,0,0,0,1];
+  const determinant = a*(e*i-f*h)-b*(d*i-f*g)+c*(d*h-e*g);
+  const voxelVolume = Math.abs(determinant *
+    (grid.spacing?.[0] ?? 1) * (grid.spacing?.[1] ?? 1) * (grid.spacing?.[2] ?? 1));
+  if (!Number.isFinite(voxelVolume) || voxelVolume <= 0) throw new Error("Label statistics require a nondegenerate Volume grid transform.");
+  type Accumulator = { count: number; sum: [number,number,number]; min: [number,number,number]; max: [number,number,number] };
+  const byLabel = new Map<number, Accumulator>();
+  for (let index = 0; index < map.data.length; index += 1) {
+    const label = map.data[index];
+    if (label === 0) continue;
+    let entry = byLabel.get(label);
+    if (!entry) {
+      entry = { count: 0, sum: [0,0,0], min: [Infinity,Infinity,Infinity], max: [-Infinity,-Infinity,-Infinity] };
+      byLabel.set(label, entry);
+    }
+    const world = volumeGridIndexToWorld(grid, coords(map.dimensions, index));
+    entry.count += 1;
+    for (let axis = 0; axis < 3; axis += 1) {
+      entry.sum[axis] += world[axis];
+      entry.min[axis] = Math.min(entry.min[axis], world[axis]);
+      entry.max[axis] = Math.max(entry.max[axis], world[axis]);
+    }
+  }
+  return [...byLabel].sort(([left], [right]) => left - right).map(([label, entry]) => ({
+    label,
+    voxelCount: entry.count,
+    physicalVolume: entry.count * voxelVolume,
+    centroid: entry.sum.map(value => value / entry.count) as [number,number,number],
+    bounds: { min: entry.min, max: entry.max },
+  }));
+};
 const locked=(map:IntegerVolumeLabelMap,id:number)=>map.labels.some(label=>label.id===id&&label.locked);
 export const relabelVolume=(map:IntegerVolumeLabelMap,from:number,to:number):IntegerVolumeLabelMap=>{if(locked(map,from))return copyLabelMap(map);const data=new Uint32Array(map.data);for(let i=0;i<data.length;i+=1)if(data[i]===from)data[i]=to;const labels=map.labels.filter(l=>l.id!==from&&l.id!==to);const target=map.labels.find(l=>l.id===to)??{id:to,name:`Label ${to}`,color:defaultLabelColor(to),visible:true,locked:false};labels.push({...target});labels.sort((a,b)=>a.id-b.id);return{...map,data,labels,provenance:derivedProvenance(map.provenance,"relabel",{from,to})};};
 export const mergeVolumeLabels=(map:IntegerVolumeLabelMap,ids:readonly number[],target:number):IntegerVolumeLabelMap=>ids.reduce((result,id)=>id===target?result:relabelVolume(result,id,target),map);

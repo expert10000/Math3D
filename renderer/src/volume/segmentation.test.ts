@@ -1,9 +1,18 @@
 import { describe,expect,it } from "vitest";
 import type { VolumeGrid } from "../scene/datasets";
-import { closeVolumeMask, connectedComponentsLabelMap, dilateVolumeMask, erodeVolumeMask, fillVolumeMaskHoles, floodFillVolumeMask, intersectVolumeMasks, invertVolumeMask, mergeVolumeLabels, openVolumeMask, removeSmallMaskComponents, resampleLabelMapNearest, restoreVolumeLabelMap, serializeVolumeLabelMap, splitDisconnectedVolumeLabel, subtractVolumeMasks, thresholdVolumeMask, unionVolumeMasks, VolumeSegmentationSession } from "./segmentation";
+import { closeVolumeMask, connectedComponentsLabelMap, dilateVolumeMask, erodeVolumeMask, fillVolumeMaskHoles, floodFillVolumeMask, intersectVolumeMasks, invertVolumeMask, labelStatistics, mergeVolumeLabels, openVolumeMask, removeSmallMaskComponents, resampleLabelMapNearest, restoreVolumeLabelMap, serializeVolumeLabelMap, splitDisconnectedVolumeLabel, subtractVolumeMasks, thresholdVolumeMask, unionVolumeMasks, VolumeSegmentationSession } from "./segmentation";
 const grid=(dims:[number,number,number],ones:readonly[number,number,number][]):VolumeGrid=>{const scalars=new Float32Array(dims[0]*dims[1]*dims[2]);for(const[x,y,z]of ones)scalars[x+dims[0]*(y+dims[1]*z)]=1;return{dims,scalars,spacing:[2,2,2],origin:[0,0,0]};};
 const count=(data:ArrayLike<number>)=>Array.from(data).filter(Boolean).length;
 describe("volume masks, labels and segmentation",()=>{
+ it("measures directed-grid labels in one pass with transform-aware physical volume",()=>{
+   const data=grid([2,2,1],[[0,0,0],[1,1,0]]);
+   const map=connectedComponentsLabelMap(thresholdVolumeMask(data,.5));
+   map.data=Uint32Array.from([4_000_000_001,2,0,4_000_000_001]);
+   const stats=labelStatistics(map,{origin:[10,20,30],spacing:[2,3,4],direction:[0,-2,0,1,0,0,0,0,1]});
+   expect(stats.map(entry=>entry.label)).toEqual([2,4_000_000_001]);
+   expect(stats[1]).toMatchObject({voxelCount:2,physicalVolume:96,centroid:[7,21,30],bounds:{min:[4,20,30],max:[10,22,30]}});
+   expect(()=>labelStatistics(map,{direction:[0,0,0,0,0,0,0,0,0]})).toThrow(/nondegenerate/);
+ });
  it("preserves sampled-grid lineage and refuses mixed-source mask arithmetic",()=>{
    const data=grid([2,2,2],[[0,0,0]]);
    const mask=thresholdVolumeMask(data,.5,1,{sourceVolumeId:"field",sourceVolumeRevision:3,sourceSampledGridRevision:7});
