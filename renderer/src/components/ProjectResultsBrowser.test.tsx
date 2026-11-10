@@ -36,6 +36,7 @@ describe("Project saved result presentation", () => {
     expect(html).toContain("Saved Graph</button>");
     expect(html).toContain("<code>m</code>");
     expect(html).toContain('data-summary="recorded"');
+    expect(html).toContain('data-publication-status="recorded"');
     expect(html).toContain('data-testid="project-result-export-evidence"');
     expect(html).toContain('data-testid="project-result-export-evidence-csv"');
   });
@@ -46,6 +47,7 @@ describe("Project saved result presentation", () => {
     expect(html).not.toContain("Saved Graph</button>");
     expect(html).not.toContain("<code>m</code>");
     expect(html).toContain('data-summary="withheld"');
+    expect(html).toContain('data-publication-status="withheld"');
   });
 
   it("withholds summary values for an operation without a completed result", () => {

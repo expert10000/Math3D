@@ -24,6 +24,7 @@ import { verifySavedMeshResult } from "../projects/projectSavedMeshResultCompari
 import { projectResultSourceLink } from "../projects/projectResultSourceLink";
 import { presentProjectResultVerification } from "../projects/projectResultVerification";
 import { projectResultActionPolicy } from "../projects/projectResultActionPolicy";
+import { ResultPublicationActions } from "../results/ResultPublicationActions";
 
 const ProjectSavedMeshGenerationPreview = React.lazy(() => import("./ProjectSavedMeshGenerationPreview").then(module => ({ default: module.ProjectSavedMeshGenerationPreview })));
 
@@ -111,6 +112,7 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
   ] : [];
   const resultCard = result && presentProjectResultCard(result, resultStatus,
     regionResultStatuses[result.resultId], isRegionResult(result.provenance.operation.type));
+  const resultEvidence = result && resultCard ? createProjectResultEvidence(result, resultCard, resultStatus) : null;
   const resultVerification = result && presentProjectResultVerification({
     kind: meshResult ? "mesh" : isRegionResult(result.provenance.operation.type) ? "field" : "other",
     savedMeshChecked: !!meshVerification?.checked,
@@ -139,8 +141,8 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
         </span>;
   };
   const exportEvidence = (format: "json" | "csv") => {
-    if (!result || !resultCard) return;
-    const evidence = createProjectResultEvidence(result, resultCard, resultStatus);
+    if (!result || !resultEvidence) return;
+    const evidence = resultEvidence;
     const content = format === "json" ? JSON.stringify(evidence, null, 2) + "\n" :
       createProjectResultEvidenceCsv(evidence);
     const url = URL.createObjectURL(new Blob([content],
@@ -207,10 +209,10 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
           </div>}
           {resultActions && <p role="status" data-testid="project-result-action-status"
             data-summary={resultActions.summary}>{resultActions.reason}</p>}
-          <button type="button" data-testid="project-result-export-evidence" onClick={() => exportEvidence("json")}>
-            Export result evidence JSON</button>
-          <button type="button" data-testid="project-result-export-evidence-csv" onClick={() => exportEvidence("csv")}>
-            Export result evidence CSV</button>
+          {resultEvidence && <ResultPublicationActions publication={resultEvidence.publication}
+            onExport={exportEvidence} jsonTestId="project-result-export-evidence"
+            csvTestId="project-result-export-evidence-csv"
+            jsonLabel="Export result evidence JSON" csvLabel="Export result evidence CSV" />}
           {meshResult && <div data-testid="project-saved-mesh-evidence" style={{ border: "1px solid #cbd5e1", borderRadius: 8, padding: 10 }}>
             <strong>Exact saved Mesh evidence</strong>
             {meshVerification?.checked ? <><p>Result {meshResult.resultId} · hash {meshVerification.checked.resultHash}<br />

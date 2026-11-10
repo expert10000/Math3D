@@ -46,7 +46,19 @@ test("GF-10 saves an oriented circulation and withholds the old sign after rever
     await expect(integral.getByTestId("gf10-saved-result")).toContainText("Value withheld: selection-changed");
     const historical = integral.getByTestId("gf10-saved-result").filter({ hasText: "selection-changed" });
     await expect(historical).not.toContainText("32 m/s·m");
-    await expect(historical.getByRole("button", { name: "Export evidence JSON" })).toHaveCount(0);
+    await expect(historical.getByTestId("result-publication-actions")).toHaveAttribute(
+      "data-publication-status", "withheld");
+    await expect(historical.getByRole("button", { name: "Export evidence JSON" })).toBeVisible();
+    const historicalPath = test.info().outputPath("field-historical-evidence.json");
+    await app.app.evaluate(({ session }, target) => session.defaultSession.once("will-download",
+      (_event, item) => item.setSavePath(target)), historicalPath);
+    await historical.getByRole("button", { name: "Export evidence JSON" }).click();
+    await expect.poll(() => { try { return JSON.parse(readFileSync(historicalPath, "utf8")); }
+      catch { return null; } }).not.toBeNull();
+    const historicalEvidence = JSON.parse(readFileSync(historicalPath, "utf8"));
+    expect(historicalEvidence.values).toBeNull();
+    expect(historicalEvidence.publication).toMatchObject({ schema: "math3d.result-publication/v1",
+      assessment: { status: "withheld", sourceStatus: "selection-changed" }, summary: null });
     await integral.getByRole("button", { name: "Compute and save result" }).click();
     await expect(integral.getByTestId("gf10-saved-result").filter({ hasText: "-32 m/s·m" })).toBeVisible();
     await page.getByTestId("projects-toggle").click();

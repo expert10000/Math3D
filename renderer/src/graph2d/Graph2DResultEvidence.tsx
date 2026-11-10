@@ -1,6 +1,7 @@
 import type { ScientificSourceGeneration } from "@math3d/core";
 import { createGraph2DResultEvidence, graph2DResultEvidenceCsv,
   graph2DResultEvidenceJson } from "./graph2dResultEvidenceModel";
+import { ResultPublicationActions } from "../results/ResultPublicationActions";
 
 type Props = Readonly<{
   current: boolean;
@@ -31,7 +32,8 @@ export function Graph2DResultEvidence({ current, resultId, source, claim, method
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   return <div className="graph2d-result-evidence" data-testid="graph2d-result-evidence"
-    data-qualification={evidence.assessment.status}>
+    data-qualification={evidence.assessment.status}
+    data-publication-status={evidence.publication.assessment.status}>
     <p role="status"><strong>{preview ? "Transient numerical preview" : current ?
       "Current numerical result" : "Historical numerical result"}</strong>
       {evidence.assessment.status === "current" ? ` · ${claim}` :
@@ -40,19 +42,18 @@ export function Graph2DResultEvidence({ current, resultId, source, claim, method
     <details><summary>Result evidence</summary><dl>
       <div><dt>Result</dt><dd><code>{resultId}</code></dd></div>
       <div><dt>Source</dt><dd><code>{source.documentId}</code> revision {source.revision}
-        {" "}· <code>{source.structuralHash}</code></dd></div>
+        {" "}· generation {source.generation} · <code>{source.structuralHash}</code></dd></div>
       <div><dt>Method</dt><dd>{method}</dd></div>
       <div><dt>Units</dt><dd>{units}</dd></div>
       <div><dt>Independent check</dt><dd>None recorded. {limitation}</dd></div>
+      <div><dt>Publication</dt><dd>{evidence.publication.assessment.status} · {
+        evidence.publication.assessment.reason}</dd></div>
       <div><dt>Summary</dt><dd>{evidence.summary === null ? "Values withheld" :
         Object.entries(evidence.summary).map(([key, value]) =>
           <span key={key}>{key}: {String(value)}; </span>)}</dd></div>
     </dl></details>
-    <div className="graph2d-result-evidence-actions">
-      <button type="button" data-testid="graph2d-result-export-evidence-json"
-        onClick={() => exportEvidence("json")}>Export evidence JSON</button>
-      <button type="button" data-testid="graph2d-result-export-evidence-csv"
-        onClick={() => exportEvidence("csv")}>Export evidence CSV</button>
-    </div>
+    <ResultPublicationActions publication={evidence.publication} onExport={exportEvidence}
+      jsonTestId="graph2d-result-export-evidence-json"
+      csvTestId="graph2d-result-export-evidence-csv" />
   </div>;
 }

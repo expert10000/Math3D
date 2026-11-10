@@ -1,4 +1,6 @@
 import React from "react";
+import { createGeometryAnalysisEvidence } from "../geometry/geometryAnalysisEvidence";
+import { ResultPublicationActions } from "../results/ResultPublicationActions";
 import {
   canGeometryResultDriveViewport,
   compareQualifiedGeometryAnalysisRecords,
@@ -61,6 +63,7 @@ export function GeometryAnalysisInspectorPanel(props: GeometryAnalysisInspectorP
   }
   const lifecycle = lifecycleColors[result.lifecycle];
   const qualification = qualifyGeometryAnalysisRecord(result, props.currentSourceRevision);
+  const publication = createGeometryAnalysisEvidence(result, props.currentSourceRevision).publication;
   const viewportCurrent = canGeometryResultDriveViewport(result, props.currentSourceRevision) &&
     props.canPublishSelectedResult;
   const comparison = props.compareResult ? compareQualifiedGeometryAnalysisRecords(result,
@@ -123,11 +126,9 @@ export function GeometryAnalysisInspectorPanel(props: GeometryAnalysisInspectorP
         <button type="button" onClick={props.onOpenSource} disabled={qualification.status !== "current"}>Open source</button>
         <button type="button" onClick={props.onOpenDerivative} disabled={!viewportCurrent}>Open derivative</button>
         <button type="button" onClick={props.onPromoteOverlay} disabled={!viewportCurrent}>Promote overlay</button>
-        <button type="button" data-testid="geometry-analysis-export-json"
-          onClick={() => props.onExportEvidence("json")}>Export evidence JSON</button>
-        <button type="button" data-testid="geometry-analysis-export-csv"
-          onClick={() => props.onExportEvidence("csv")}>Export evidence CSV</button>
       </div>
+      <ResultPublicationActions publication={publication} onExport={props.onExportEvidence}
+        jsonTestId="geometry-analysis-export-json" csvTestId="geometry-analysis-export-csv" />
       {props.savedResults.length > 0 && (
         <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 7, display: "grid", gap: 5 }}>
           <strong>Saved results</strong>

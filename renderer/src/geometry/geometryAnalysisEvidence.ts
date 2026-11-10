@@ -1,13 +1,26 @@
 import { qualifyGeometryAnalysisRecord, type GeometryAnalysisInspectorRecord } from "./analysisResultWorkflow";
+import { createResultPublication, resultEvidenceRowsCsv } from "../results/resultPublication";
 
 /** A portable selected-record view; no raw geometry payload or unqualified statistics. */
 export function createGeometryAnalysisEvidence(record: GeometryAnalysisInspectorRecord,
   currentSourceRevision: number | null) {
   const qualification = qualifyGeometryAnalysisRecord(record, currentSourceRevision);
+  const publication = createResultPublication({ module: "geometry", resultId: record.id,
+    source: { id: record.sourceObjectId, revision: record.sourceRevision,
+      generation: null, hash: null },
+    sourceStatus: qualification.status,
+    status: qualification.valuesAvailable ? "recorded" : "withheld",
+    reason: qualification.reason,
+    recordedClaim: `${record.quantity} (${record.units}) by ${record.method}`,
+    independentCheck: "No independent mathematical check is recorded for this result.",
+    summary: record.statistics });
   return {
     schema: "math3d.geometry-analysis-evidence/v1" as const,
+    publication,
     result: { id: record.id, key: record.resultKey, version: record.resultVersion,
       name: record.name, lifecycle: record.lifecycle },
+    execution: { computeTimeMs: record.computeTimeMs, createdAt: record.createdAt,
+      updatedAt: record.updatedAt, savedAt: record.savedAt },
     source: { objectId: record.sourceObjectId, objectName: record.sourceObjectName,
       recordedRevision: record.sourceRevision, currentRevision: currentSourceRevision },
     analysis: { kind: record.kind, domain: record.domain, quantity: record.quantity,
@@ -17,8 +30,9 @@ export function createGeometryAnalysisEvidence(record: GeometryAnalysisInspector
     assessment: { status: qualification.status, reason: qualification.reason,
       claim: "Producer-recorded Geometry analysis",
       independentCheck: "No independent mathematical check is recorded for this result.",
+      sourceCheck: "Current Geometry object ID and revision checked in this session; this record does not retain a source content hash.",
       omissions: qualification.valuesAvailable ? [] : ["statistics"] },
-    statistics: qualification.valuesAvailable ? record.statistics : null,
+    statistics: publication.summary,
     warnings: record.warnings,
   };
 }
@@ -35,6 +49,10 @@ export function geometryAnalysisEvidenceCsv(evidence: GeometryAnalysisEvidence):
     ["schema", evidence.schema], ["result.id", evidence.result.id],
     ["result.key", evidence.result.key], ["result.version", evidence.result.version],
     ["result.lifecycle", evidence.result.lifecycle],
+    ["execution.computeTimeMs", evidence.execution.computeTimeMs],
+    ["execution.createdAt", evidence.execution.createdAt],
+    ["execution.updatedAt", evidence.execution.updatedAt],
+    ["execution.savedAt", evidence.execution.savedAt],
     ["source.objectId", evidence.source.objectId],
     ["source.recordedRevision", evidence.source.recordedRevision],
     ["source.currentRevision", evidence.source.currentRevision],
@@ -47,13 +65,14 @@ export function geometryAnalysisEvidenceCsv(evidence: GeometryAnalysisEvidence):
     ["assessment.status", evidence.assessment.status], ["assessment.reason", evidence.assessment.reason],
     ["assessment.claim", evidence.assessment.claim],
     ["assessment.independentCheck", evidence.assessment.independentCheck],
+    ["assessment.sourceCheck", evidence.assessment.sourceCheck],
     ["assessment.omissions", evidence.assessment.omissions],
     ["statistics", evidence.statistics], ["warnings", evidence.warnings],
+    ["publication.schema", evidence.publication.schema],
+    ["publication.status", evidence.publication.assessment.status],
+    ["publication.sourceStatus", evidence.publication.assessment.sourceStatus],
+    ["publication.recordedClaim", evidence.publication.assessment.recordedClaim],
+    ["publication.independentCheck", evidence.publication.assessment.independentCheck],
   ];
-  const cell = (value: unknown) => {
-    const raw = value == null ? "" : typeof value === "string" ? value : JSON.stringify(value);
-    const safe = /^\s*[=+\-@]/.test(raw) ? `'${raw}` : raw;
-    return `"${safe.replaceAll('"', '""')}"`;
-  };
-  return ["field,value", ...rows.map(([key, value]) => `${cell(key)},${cell(value)}`)].join("\r\n") + "\r\n";
+  return resultEvidenceRowsCsv(rows);
 }

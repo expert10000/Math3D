@@ -17,6 +17,8 @@ describe("Project result evidence", () => {
     const evidence = createProjectResultEvidence(result, presentProjectResultCard(result, dependency), dependency);
     expect(evidence).toMatchObject({ schema: "math3d.project-result-evidence/v1",
       assessment: { status: "recorded-only", mathematics: "Recorded numerical" },
+      publication: { schema: "math3d.result-publication/v1", module: "project",
+        assessment: { status: "recorded", recordedClaim: "Recorded numerical" } },
       summary: { mean: 42 } });
   });
   it("withholds values for changed external bytes, stale generations and missing artifacts", () => {
@@ -29,6 +31,8 @@ describe("Project result evidence", () => {
       const evidence = createProjectResultEvidence(result, card, inspection);
       expect(evidence.assessment.status).toBe("withheld");
       expect(evidence.summary).toBeNull();
+      expect(evidence.publication.summary).toBeNull();
+      expect(evidence.publication.assessment.status).toBe("withheld");
       expect(evidence.assessment.omissions).toContain("summary values");
     }
   });
@@ -46,10 +50,12 @@ describe("Project result evidence", () => {
     const recorded = createProjectResultEvidenceCsv(safe);
     expect(recorded).toContain('"summary","{""mean"":42}"');
     expect(recorded).toContain('"assessment.status","recorded-only"');
+    expect(recorded).toContain('"publication.status","recorded"');
     const withheld = createProjectResultEvidenceCsv(createProjectResultEvidence(result,
       presentProjectResultCard(result, { ...dependency, sourceFreshness: "stale" }), dependency));
     expect(withheld).toContain('"summary",""');
     expect(withheld).toContain('"assessment.status","withheld"');
+    expect(withheld).toContain('"publication.status","withheld"');
     expect(withheld).not.toContain("42");
   });
 

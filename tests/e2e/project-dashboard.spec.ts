@@ -122,6 +122,8 @@ test("Catenoid Project Details shows freshness for its saved Mesh analysis", asy
     await expect(detail).toContainText(result.provenance.operation.algorithm);
     await expect(detail).toContainText(`Revision ${result.provenance.source.revision} · generation ${result.provenance.source.generation}`);
     await expect(detail.getByTestId("project-result-card-axes")).toContainText("Recorded");
+    await expect(detail.getByTestId("result-publication-actions")).toHaveAttribute(
+      "data-publication-status", "recorded");
     const evidencePath = test.info().outputPath("project-result-evidence.json");
     await ctx.app.evaluate(({ session }, path) => session.defaultSession.once("will-download",
       (_event, item) => item.setSavePath(path)), evidencePath);
@@ -133,6 +135,9 @@ test("Catenoid Project Details shows freshness for its saved Mesh analysis", asy
     expect(evidence.schema).toBe("math3d.project-result-evidence/v1");
     expect(evidence.resultId).toBe(result.resultId);
     expect(evidence.source).toEqual(result.provenance.source);
+    expect(evidence.publication).toMatchObject({ schema: "math3d.result-publication/v1",
+      module: "project", assessment: { status: "recorded" } });
+    expect(evidence.publication.summary).toEqual(evidence.summary);
     expect(evidence.assessment.mathematics).toMatch(/^Recorded /);
     if (evidence.assessment.status === "withheld") expect(evidence.summary).toBeNull();
     else expect(evidence.summary).toEqual(result.summary);
@@ -148,6 +153,14 @@ test("Catenoid Project Details shows freshness for its saved Mesh analysis", asy
     expect(csv).toContain('"assessment.status","' + evidence.assessment.status + '"');
     if (evidence.summary === null) expect(csv).toContain('"summary",""');
     else expect(csv).toContain('"summary","' + JSON.stringify(evidence.summary).replaceAll('"', '""') + '"');
+    const receiptPath = test.info().outputPath("result-publication.json");
+    await ctx.app.evaluate(({ session }, path) => session.defaultSession.once("will-download",
+      (_event, item) => item.setSavePath(path)), receiptPath);
+    await detail.getByTestId("result-publication-export-receipt").click();
+    await expect.poll(async () => {
+      try { return JSON.parse(await readFile(receiptPath, "utf8")); } catch { return null; }
+    }, { timeout: 60_000 }).not.toBeNull();
+    expect(JSON.parse(await readFile(receiptPath, "utf8"))).toEqual(evidence.publication);
     await browser.getByRole("searchbox", { name: "Search saved outputs" }).fill("no such output");
     await expect(browser.getByText("No matching results.")).toBeVisible();
     await browser.getByRole("searchbox", { name: "Search saved outputs" }).fill("");

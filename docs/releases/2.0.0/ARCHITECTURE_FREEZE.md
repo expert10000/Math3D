@@ -19,6 +19,10 @@
 
 Legacy `math3d.scene-project`, Project handoff, and workspace handoff remain explicit transport/compatibility inputs. They do not replace `Math3DProject`. `QuantumStudyDocument` remains its existing domain-specific model while a general Project-owned Study record is designed; no rename or automatic reinterpretation is authorized by this freeze.
 
+### Result publication receipt
+
+`math3d.result-publication/v1` is a derived export view, not a saved result owner. It carries a module and result ID, exact source identity where known, a recorded producer claim, a separate independent-check statement, source qualification and a bounded summary. A `withheld` or `preview` receipt has a null summary and an explicit omission. Module-specific evidence formats can include this receipt while retaining their existing schemas. CSV writers use the same two-column escaping rule; formula-like cells are neutralized before spreadsheet import. The receipt never upgrades a producer result to a proof or silently reopens external bytes at export time.
+
 ## Cross-module adapter contract
 
 `packages/core/src/crossModuleAdapterRegistry.ts` defines a **version 1 declarative registry**. Each descriptor names its source/target workspace module, selection kind, source/target frame IDs, ordered axes with dimension and unit, versioned mapping ID and accuracy, required host facilities, and optional existing worker operation ID. Descriptors are validated, bounded, and unique by ID. They contain no document bytes, result payload, execution function, or new persistence owner.
