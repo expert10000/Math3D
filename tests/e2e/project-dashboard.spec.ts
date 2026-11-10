@@ -136,6 +136,18 @@ test("Catenoid Project Details shows freshness for its saved Mesh analysis", asy
     expect(evidence.assessment.mathematics).toMatch(/^Recorded /);
     if (evidence.assessment.status === "withheld") expect(evidence.summary).toBeNull();
     else expect(evidence.summary).toEqual(result.summary);
+    const csvPath = test.info().outputPath("project-result-evidence.csv");
+    await ctx.app.evaluate(({ session }, path) => session.defaultSession.once("will-download",
+      (_event, item) => item.setSavePath(path)), csvPath);
+    await detail.getByTestId("project-result-export-evidence-csv").click();
+    await expect.poll(async () => {
+      try { return await readFile(csvPath, "utf8"); } catch { return null; }
+    }, { timeout: 60_000 }).not.toBeNull();
+    const csv = await readFile(csvPath, "utf8");
+    expect(csv).toContain('"resultId","' + result.resultId + '"');
+    expect(csv).toContain('"assessment.status","' + evidence.assessment.status + '"');
+    if (evidence.summary === null) expect(csv).toContain('"summary",""');
+    else expect(csv).toContain('"summary","' + JSON.stringify(evidence.summary).replaceAll('"', '""') + '"');
     await browser.getByRole("searchbox", { name: "Search saved outputs" }).fill("no such output");
     await expect(browser.getByText("No matching results.")).toBeVisible();
     await browser.getByRole("searchbox", { name: "Search saved outputs" }).fill("");

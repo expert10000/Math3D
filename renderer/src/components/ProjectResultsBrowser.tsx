@@ -10,7 +10,7 @@ import { VECTOR_FIELD3D_POINT_RESULT_TYPE, VECTOR_FIELD3D_REGION_RESULT_TYPE,
   presentAnalysisResultClaim } from "@math3d/core";
 import type { ProjectDependencyInspection } from "../projects/projectDependencies";
 import { presentProjectResultCard } from "../projects/projectResultCard";
-import { createProjectResultEvidence } from "../projects/projectResultEvidence";
+import { createProjectResultEvidence, createProjectResultEvidenceCsv } from "../projects/projectResultEvidence";
 import { resultNoteReferences, resultStudyReferences, resultWorkbookReferences } from
   "../projects/projectResultReferences";
 import type { WorkbookStageId } from "@math3d/workbook";
@@ -138,14 +138,16 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
           {label} · {link.status === "historical" ? "historical source generation" : "missing source"}
         </span>;
   };
-  const exportEvidence = () => {
+  const exportEvidence = (format: "json" | "csv") => {
     if (!result || !resultCard) return;
     const evidence = createProjectResultEvidence(result, resultCard, resultStatus);
-    const url = URL.createObjectURL(new Blob([JSON.stringify(evidence, null, 2) + "\n"],
-      { type: "application/json" }));
+    const content = format === "json" ? JSON.stringify(evidence, null, 2) + "\n" :
+      createProjectResultEvidenceCsv(evidence);
+    const url = URL.createObjectURL(new Blob([content],
+      { type: format === "json" ? "application/json" : "text/csv;charset=utf-8" }));
     const link = document.createElement("a");
     link.href = url;
-    link.download = `result-${result.resultId.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 80)}.evidence.json`;
+    link.download = `result-${result.resultId.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 80)}.evidence.${format}`;
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
@@ -205,8 +207,10 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
           </div>}
           {resultActions && <p role="status" data-testid="project-result-action-status"
             data-summary={resultActions.summary}>{resultActions.reason}</p>}
-          <button type="button" data-testid="project-result-export-evidence" onClick={exportEvidence}>
+          <button type="button" data-testid="project-result-export-evidence" onClick={() => exportEvidence("json")}>
             Export result evidence JSON</button>
+          <button type="button" data-testid="project-result-export-evidence-csv" onClick={() => exportEvidence("csv")}>
+            Export result evidence CSV</button>
           {meshResult && <div data-testid="project-saved-mesh-evidence" style={{ border: "1px solid #cbd5e1", borderRadius: 8, padding: 10 }}>
             <strong>Exact saved Mesh evidence</strong>
             {meshVerification?.checked ? <><p>Result {meshResult.resultId} · hash {meshVerification.checked.resultHash}<br />

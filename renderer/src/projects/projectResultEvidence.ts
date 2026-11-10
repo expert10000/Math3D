@@ -31,3 +31,37 @@ export function createProjectResultEvidence(result: AnalysisResultEnvelope, card
     diagnostics: result.diagnostics,
   };
 }
+
+/** Two-column, spreadsheet-safe view of the same qualified evidence as the JSON export. */
+export function createProjectResultEvidenceCsv(evidence: ReturnType<typeof createProjectResultEvidence>): string {
+  const fields: ReadonlyArray<readonly [string, unknown]> = [
+    ["schema", evidence.schema], ["resultId", evidence.resultId],
+    ["source.documentId", evidence.source.documentId],
+    ["source.revision", evidence.source.revision],
+    ["source.generation", evidence.source.generation],
+    ["source.structuralHash", evidence.source.structuralHash],
+    ["operation.type", evidence.operation.type],
+    ["operation.algorithm", evidence.operation.algorithm],
+    ["operation.algorithmVersion", evidence.operation.algorithmVersion],
+    ["operation.parameters", evidence.operation.parameters],
+    ["engine.name", evidence.engine.name], ["engine.version", evidence.engine.version],
+    ["authority", evidence.authority],
+    ["assessment.status", evidence.assessment.status],
+    ["assessment.execution", evidence.assessment.execution],
+    ["assessment.integrity", evidence.assessment.integrity],
+    ["assessment.mathematics", evidence.assessment.mathematics],
+    ["assessment.explanation", evidence.assessment.explanation],
+    ["assessment.omissions", evidence.assessment.omissions],
+    ["summary", evidence.summary],
+    ["artifactHandles", evidence.artifactHandles],
+    ["missingArtifactIds", evidence.missingArtifactIds],
+    ["warnings", evidence.warnings], ["diagnostics", evidence.diagnostics],
+  ];
+  const cell = (value: unknown) => {
+    const raw = value === null || value === undefined ? "" :
+      typeof value === "string" ? value : JSON.stringify(value);
+    const safe = /^[\s]*[=+\-@]/.test(raw) ? `'${raw}` : raw;
+    return `"${safe.replace(/"/g, '""')}"`;
+  };
+  return ["field,value", ...fields.map(([name, value]) => `${cell(name)},${cell(value)}`)].join("\r\n") + "\r\n";
+}

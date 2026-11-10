@@ -36,6 +36,8 @@ describe("Project saved result presentation", () => {
     expect(html).toContain("Saved Graph</button>");
     expect(html).toContain("<code>m</code>");
     expect(html).toContain('data-summary="recorded"');
+    expect(html).toContain('data-testid="project-result-export-evidence"');
+    expect(html).toContain('data-testid="project-result-export-evidence-csv"');
   });
 
   it("shows a historical source without a misleading current-document button", () => {
