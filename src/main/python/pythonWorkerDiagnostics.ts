@@ -2,6 +2,7 @@ import { app, ipcMain } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import type { PythonWorkerBackend, PythonWorkerStartupStatus } from "./pythonWorker";
+import { identifyWorkerArtifact, type WorkerArtifactIdentity } from "./workerArtifactIdentity";
 
 export type PythonWorkerFailureCategory =
   | "worker-missing"
@@ -35,6 +36,7 @@ export type PythonWorkerDiagnosticsSnapshot = {
   restartFailuresInWindow?: number;
   restartRetryAfter?: number | null;
   admission?: { active: number; queued: number; queuedBytes: number };
+  runtime?: WorkerArtifactIdentity;
 };
 
 type MutableDiagnosticsState = PythonWorkerDiagnosticsSnapshot;
@@ -255,10 +257,13 @@ export function recordPythonWorkerFailure(
   return diagError;
 }
 
-export function getPythonWorkerDiagnosticsSnapshot(): PythonWorkerDiagnosticsSnapshot {
+export async function getPythonWorkerDiagnosticsSnapshot(): Promise<PythonWorkerDiagnosticsSnapshot> {
   syncLogPath();
+  const runtime = await identifyWorkerArtifact({ backend: state.backend, command: state.command,
+    packaged: app.isPackaged, resourcesPath: process.resourcesPath, packageVersion: app.getVersion() });
   return {
     ...state,
+    runtime,
     args: state.args ? [...state.args] : undefined,
     lastError: state.lastError ? { ...state.lastError } : undefined,
   };

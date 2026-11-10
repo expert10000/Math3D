@@ -30,6 +30,12 @@ export type PythonWorkerDiagnosticsSnapshot = {
   restartFailuresInWindow?: number;
   restartRetryAfter?: number | null;
   admission?: { active: number; queued: number; queuedBytes: number };
+  runtime?: {
+    packaged: boolean;
+    launchOrigin: "packaged-resource" | "override" | "source-script" | "unknown";
+    artifactSha256: string | null;
+    packageVersion: string | null;
+  };
 };
 
 const fallbackSnapshot = (message: string): PythonWorkerDiagnosticsSnapshot => ({

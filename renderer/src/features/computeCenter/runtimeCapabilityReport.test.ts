@@ -16,6 +16,15 @@ const sageProbe = (available: boolean, operations = 1): SageRuntimeProbe => ({
 } as unknown as SageRuntimeProbe);
 
 describe("Runtime Center capability report", () => {
+  it("requires the packaged worker artifact before reporting an installed Python or VTK route ready", () => {
+    const python = { startupChecked: true, available: true, statusMessage: "Handshake passed", version: "1", logPath: "", lastCheckAt: 42,
+      runtime: { packaged: true, launchOrigin: "override" as const, artifactSha256: "abc", packageVersion: "2.0.0" } };
+    const refused = buildRuntimeCapabilityReport(input({ python }));
+    expect(refused.routes.find(item => item.id === "python")?.state).toBe("unavailable");
+    expect(refused.routes.find(item => item.id === "vtk")?.state).toBe("unavailable");
+    const ready = buildRuntimeCapabilityReport(input({ python: { ...python, runtime: { ...python.runtime, launchOrigin: "packaged-resource" } } }));
+    expect(ready.routes.find(item => item.id === "python")).toMatchObject({ state: "ready", artifactSha256: "abc", packageVersion: "2.0.0" });
+  });
   it("keeps unprobed routes checking and does not infer Sage from Docker manager health", () => {
     const report = buildRuntimeCapabilityReport(input({ engines: {
       engines: [{ id: "sage", label: "SageMath", healthy: true, running: true,

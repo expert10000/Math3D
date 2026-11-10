@@ -12,6 +12,9 @@ export type RuntimeRoute = Readonly<{
   version: string | null;
   transport: string | null;
   operationCount: number | null;
+  artifactSha256?: string | null;
+  launchOrigin?: string | null;
+  packageVersion?: string | null;
 }>;
 export type RuntimeCapabilityReport = Readonly<{ routes: readonly RuntimeRoute[]; checkedAt: number }>;
 export type RuntimeProbeResult = Readonly<{ probe?: SageRuntimeProbe; error?: string }>;
@@ -34,17 +37,27 @@ const route = (id: string, label: string, group: RuntimeRoute["group"], state: R
 /** A route is ready only when its own live probe says so. Manager health is not Sage route health. */
 export function buildRuntimeCapabilityReport(input: RuntimeReportInputs): RuntimeCapabilityReport {
   const python = input.python;
+  const installedWorkerVerified = python?.runtime?.packaged
+    ? python.runtime.launchOrigin === "packaged-resource" && !!python.runtime.artifactSha256
+    : python?.backend !== "bundled-exe" || !!python.runtime;
+  const pythonReady = python?.available === true && installedWorkerVerified;
+  const pythonDetail = python?.runtime?.packaged && !installedWorkerVerified
+    ? "Installed worker executable is missing or outside packaged resources" :
+    python?.statusMessage ?? "Checking worker diagnostics";
   const local: RuntimeRoute[] = [
     route("javascript", "JavaScript", "local", "ready", "Local renderer"),
     route("web-worker", "Web Worker", "local", input.webWorker ? "ready" : "unavailable",
       input.webWorker ? "Browser worker available" : "Web Worker unavailable"),
-    route("python", "Python worker", "local", !python || !python.startupChecked ? "checking" :
-      python.available ? "ready" : "unavailable", python?.statusMessage ?? "Checking worker diagnostics",
+    { ...route("python", "Python worker", "local", !python || !python.startupChecked ? "checking" :
+      pythonReady ? "ready" : "unavailable", pythonDetail,
       python?.version ?? null, python?.backend ?? null),
+      artifactSha256: python?.runtime?.artifactSha256 ?? null,
+      launchOrigin: python?.runtime?.launchOrigin ?? null,
+      packageVersion: python?.runtime?.packageVersion ?? null },
     route("vtk", "VTK bridge", "local", !input.vtkBridge ? "unavailable" :
-      !python || !python.startupChecked ? "checking" : python.available ? "ready" : "unavailable",
-      !input.vtkBridge ? "VTK bridge unavailable" : python?.available ?
-        "VTK bridge and Python worker available" : "Python worker unavailable",
+      !python || !python.startupChecked ? "checking" : pythonReady ? "ready" : "unavailable",
+      !input.vtkBridge ? "VTK bridge unavailable" : pythonReady ?
+        "VTK bridge and Python worker available" : pythonDetail,
       python?.version ?? null, python?.backend ?? null),
     route("cgal", "CGAL", "local", !input.cgal ? "checking" : input.cgal.ok ? "ready" : "unavailable",
       !input.cgal ? "Checking CGAL health" : input.cgal.ok ? "Health check passed" :
