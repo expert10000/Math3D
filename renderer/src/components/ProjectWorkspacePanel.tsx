@@ -48,6 +48,9 @@ import { ProjectCursorInspector } from "./ProjectCursorInspector";
 import { ProjectStudiesPanel } from "./ProjectStudiesPanel";
 import { addQualifiedStudyGraphCurveLink } from "../projects/studyGraphCurveLink";
 import { prepareCuratedStudyBundle } from "../projects/curatedStudyProject";
+import { curatedStudy } from "../projects/curatedStudyCatalog";
+import { qualifyCuratedStudy } from "../projects/curatedStudyQualification";
+import { CuratedStudyResearchPreview } from "./CuratedStudyResearchPreview";
 import { projectOpenBackup } from "../projects/projectOpenBackup";
 import { measureCuratedStudyAssets } from "../projects/curatedStudyQualification";
 import { probeRendererPlatformCapabilities } from "../kernel/rendererPlatformCapabilities";
@@ -463,6 +466,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [inspectionOpen, setInspectionOpen] = useState(false), [inspectedId, setInspectedId] = useState<string | null>(null);
   const [incoming, setIncoming] = useState<ReturnType<typeof previewProjectImport> | null>(null);
   const [incomingNarrative, setIncomingNarrative] = useState<ReturnType<typeof createPortableResearchNarrative> | null>(null);
+  const [incomingHostLimit, setIncomingHostLimit] = useState<string | null>(null);
   const [galleryAssetBytes, setGalleryAssetBytes] = useState<Record<string, number>>({});
   const galleryHost = useMemo(() => probeRendererPlatformCapabilities(), []);
   const importSequence = useRef(0);
@@ -595,7 +599,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     if (!keepManagement) { setThumbnail(null); setReplaceThumbnail(false); setThumbnailMessage(""); } setExplorer(tree); setPreview(savedPreview);
     if (!keepManagement) { setManaged(null); setManagedBytes(undefined); }
     if (!keepManagement) { setInspectionOpen(false); setInspectedId(null); }
-    if (!keepManagement) { setIncoming(null); importSequence.current++; }
+    if (!keepManagement) { setIncoming(null); setIncomingHostLimit(null); importSequence.current++; }
     if (!savedPreview) { loadedProject.current = next; onCurrentProjectChange?.(next, resourceSession.current ?? undefined); }
   };
   const refreshLibrary = () => {
@@ -1326,6 +1330,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     const sequence = ++importSequence.current;
     setIncoming(null);
     setIncomingNarrative(null);
+    setIncomingHostLimit(null);
     try {
       if (file.size > MAX_RESEARCH_NARRATIVE_FILE_BYTES) throw new Error("Import exceeds its size limit.");
       const raw = await file.text();
@@ -1372,6 +1377,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         reference.sceneFingerprint, reference.directory);
       const prepared = previewProjectImport(exportProjectPackage(restored, packageContent.resources), transferOptions());
       setIncoming(prepared);
+      setIncomingHostLimit(null);
       setQuantumSceneMessage("Portable quantum Project verified. Review compatibility before opening.");
     } catch (error) { setQuantumSceneMessage(`Portable import refused: ${String((error as Error).message)}`); }
     finally { setBusy(false); }
@@ -1438,6 +1444,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         localStorage.getItem(projectPayloadKey(prepared.project.identity.id)) !== null ? prepared.project.identity.id : project?.identity.id);
       measurePhase("compatibility");
       if (openWorkspace && (!onRestoreWorkspace || !prepared.canOpenWorkspace)) throw new Error("This project is preview-only on this host.");
+      if (openWorkspace && candidate === incoming && incomingHostLimit) throw new Error(incomingHostLimit);
       if (openWorkspace) await verifyProjectQuantumSceneDocuments(prepared.project, onVerifyQuantumSceneDocument);
       previous = openWorkspace ? currentCapture.current() : null;
       measurePhase("capture");
@@ -1493,6 +1500,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       display(prepared.project, !openWorkspace, false, prepared.resolved);
       setIncoming(null);
       setIncomingNarrative(null);
+      setIncomingHostLimit(null);
       if (candidate.inputKind === "Independent starter project") { setHighlightedSavedId(prepared.project.identity.id); setCollection("All projects"); setQuery(""); setModuleFilter("All modules"); }
       if (openWorkspace) {
         stagedBackup.current = null; backupStageSequence.current++;
@@ -1565,6 +1573,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       const next = loadLibraryProject(localStorage, project.identity.id), resources = await loadProjectResources(next);
       if (sequence !== importSequence.current) return;
       setIncoming({ ...inspectProjectCompatibility(next, transferOptions(resources)), resources, inputKind: "Saved project" });
+      setIncomingHostLimit(null);
       setMessage("Review editor compatibility before opening this saved project.");
     } catch (error) { setMessage(`Saved project unavailable: ${(error as Error).message}`); }
   };
@@ -1581,6 +1590,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         if (curated) setGalleryAssetBytes(current => ({ ...current,
           [id]: measureCuratedStudyAssets(next, resources).totalBytes }));
         setIncoming({ ...inspectProjectCompatibility(next, transferOptions(resources)), resources, inputKind: "Saved starter copy" });
+        const card = curated ? curatedStudy(id) : null;
+        const qualification = card ? qualifyCuratedStudy(card, galleryHost) : null;
+        setIncomingHostLimit(qualification?.mode === "preview" ? qualification.reason : null);
         setMessage(`Previewing your saved copy “${next.metadata.title}”. Opening or saving this preview keeps the same project.`);
         return;
       }
@@ -1593,6 +1605,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         [id]: measureCuratedStudyAssets(next, prepared.resources).totalBytes }));
       const inspection = !curated && "inspection" in bundle ? bundle.inspection as ProjectCompatibility : inspectProjectCompatibility(next, transferOptions(prepared.resources));
       setIncoming({ ...inspection, resources: prepared.resources, inputKind: "Independent starter project" });
+      const card = curated ? curatedStudy(id) : null;
+      const qualification = card ? qualifyCuratedStudy(card, galleryHost) : null;
+      setIncomingHostLimit(qualification?.mode === "preview" ? qualification.reason : null);
       setMessage("Starter preview ready. Current work is unchanged until you choose to open it.");
     } catch (error) { if (sequence === importSequence.current) { setIncoming(null); setMessage(`Starter unavailable: ${(error as Error).message}`); } }
   };
@@ -1935,7 +1950,12 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           onPreviewCurated={id => { void previewTemplate(id, true); }} onOpenCurated={id => { void openTemplate(id, false, true); }}
           onNewCuratedCopy={id => { void openTemplate(id, true, true); }}
           onImportQuantumScene={onImportQuantumScene} quantumImportAvailable={!!window.quantumScenes?.open}
-          onOpenCasGallery={onOpenCasGallery} busy={busy} />}
+          onOpenCasGallery={onOpenCasGallery} casProvenance={project && !preview && (project.algebraObjects?.length || project.algebraEvidence?.length) ? {
+            projectTitle: project.metadata.title,
+            definitions: (project.algebraObjects ?? []).map(entry => entry.revisions[entry.revisions.length - 1]!)
+              .map(record => ({ label: record.label, revision: record.revision })),
+            results: project.algebraEvidence?.length ?? 0,
+          } : null} busy={busy} />}
         {collection !== "Starter projects" && <>
         <h3>Your saved projects ({library.entries.length})</h3><p>Favorites first, then recent. Open a project or preview its documents and compatibility.</p>
         {libraryMessage && <p role="status" data-testid="project-library-message">{libraryMessage}</p>}
@@ -2641,7 +2661,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           <ul>{incomingNarrative.evidence.omissions.map((item, index) => <li key={index}>{item.kind} · {item.targetId}: {item.reason}</li>)}</ul>
           {!incomingNarrative.evidence.omissions.length && <p>No evidence omitted.</p>}
         </section>}
-        <ProjectCompatibilityPanel busy={busy} preview={incoming} canOpen={!!onRestoreWorkspace} onCancel={() => { importSequence.current++; setIncoming(null); setIncomingNarrative(null); setMessage("Import cancelled. Current workspace and library unchanged."); }} onImport={() => { void importPreview(false); }} onOpen={() => { void importPreview(true); }} /></div></div>}
+        {incoming.project.metadata.tags?.includes("curated-study-v1") && <CuratedStudyResearchPreview project={incoming.project} resources={incoming.resources} />}
+        <ProjectCompatibilityPanel busy={busy} preview={incoming} canOpen={!!onRestoreWorkspace && !incomingHostLimit} openLimit={incomingHostLimit} onCancel={() => { importSequence.current++; setIncoming(null); setIncomingNarrative(null); setIncomingHostLimit(null); setMessage("Import cancelled. Current workspace and library unchanged."); }} onImport={() => { void importPreview(false); }} onOpen={() => { void importPreview(true); }} /></div></div>}
       {quantumOverlay && project && <React.Suspense fallback={<p role="status">Opening quantum overlay…</p>}>
         <QuantumNativeOverlayView project={project} reference={quantumOverlay} readResource={comparisonResource}
           onClose={() => setQuantumOverlay(null)} onOpenQuantum={() => { setQuantumOverlay(null); void openLinkedQuantumScene(quantumOverlay); }}
