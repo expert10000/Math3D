@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AnalysisResultEnvelope } from "@math3d/core";
 import type { ProjectDependencyInspection } from "./projectDependencies";
 import { presentProjectResultCard } from "./projectResultCard";
-import { createProjectResultEvidence } from "./projectResultEvidence";
+import { createProjectResultEvidence, createProjectResultEvidenceCsv } from "./projectResultEvidence";
 
 const result = { resultId: "saved", status: "numerical",
   provenance: { source: { documentId: "source", revision: 1 },
@@ -38,5 +38,29 @@ describe("Project result evidence", () => {
     expect(evidence.assessment).toMatchObject({ status: "recorded-only",
       mathematics: "Recorded numerical" });
     expect(evidence.assessment.explanation).toContain("did not reopen");
+  });
+
+  it("exports the qualified record as CSV without leaking withheld values", () => {
+    const safe = createProjectResultEvidence(result,
+      presentProjectResultCard(result, dependency), dependency);
+    const recorded = createProjectResultEvidenceCsv(safe);
+    expect(recorded).toContain('"summary","{""mean"":42}"');
+    expect(recorded).toContain('"assessment.status","recorded-only"');
+    const withheld = createProjectResultEvidenceCsv(createProjectResultEvidence(result,
+      presentProjectResultCard(result, { ...dependency, sourceFreshness: "stale" }), dependency));
+    expect(withheld).toContain('"summary",""');
+    expect(withheld).toContain('"assessment.status","withheld"');
+    expect(withheld).not.toContain("42");
+  });
+
+  it("quotes CSV fields and neutralizes spreadsheet formulas", () => {
+    const malicious = { ...result, warnings: ['=HYPERLINK("https://example.invalid")', "line\nbreak"] };
+    const csv = createProjectResultEvidenceCsv(createProjectResultEvidence(malicious,
+      presentProjectResultCard(malicious, dependency), dependency));
+    expect(csv).toContain('"warnings","[""=HYPERLINK(');
+    const formula = { ...result, provenance: { ...result.provenance,
+      source: { ...result.provenance.source, documentId: "=1+1" } } };
+    expect(createProjectResultEvidenceCsv(createProjectResultEvidence(formula,
+      presentProjectResultCard(formula, dependency), dependency))).toContain('"source.documentId","\'=1+1"');
   });
 });

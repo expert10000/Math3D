@@ -140,6 +140,8 @@ export function Graph2DRegressionPanel({ document, model, onModel, result, onRes
     {pending && <><button onClick={() => cancel()}>Cancel fit</button><p aria-live="polite">Fitting checked point series…</p></>}
     {error && <p role="alert">{error}</p>}
     {result && <><Graph2DResultEvidence current={!!current} resultId={result.publication.resultId}
+      summary={{ model: result.model, samples: result.n, excluded: result.excluded,
+        residualStandardDeviation: result.residualSD, rSquared: result.rSquared }}
       source={result.source} claim={`${result.model} fit to checksum-verified rows`}
       method={result.publication.provenance.operation.algorithm} units="Source dataset x and y world units"
       limitation="Model assumptions and global optimality are not independently verified." />

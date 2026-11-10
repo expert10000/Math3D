@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   canGeometryResultDriveViewport,
+  canGeometryInspectorPublishSelected,
   compareGeometryAnalysisRecords,
+  compareQualifiedGeometryAnalysisRecords,
   duplicateGeometryAnalysisSettings,
   geometryInspectorLifecycleState,
   markGeometryAnalysisRecordStale,
   parseGeometryAnalysisRecords,
+  qualifyGeometryAnalysisRecord,
   renameGeometryAnalysisRecord,
   saveGeometryAnalysisRecord,
   serializeGeometryAnalysisRecords,
@@ -59,6 +62,15 @@ describe("Geometry analysis result workflow", () => {
     expect(stale.payload).toEqual({ exact: true });
     expect(canGeometryResultDriveViewport(stale, 5)).toBe(false);
     expect(canGeometryResultDriveViewport(record(), 4)).toBe(true);
+    expect(canGeometryResultDriveViewport(record(), null)).toBe(false);
+    expect(qualifyGeometryAnalysisRecord(record(), 4)).toMatchObject({ status: "current",
+      valuesAvailable: true });
+    expect(qualifyGeometryAnalysisRecord(record(), 5)).toMatchObject({ status: "historical",
+      valuesAvailable: false });
+    expect(qualifyGeometryAnalysisRecord(record(), null)).toMatchObject({ status: "unavailable",
+      valuesAvailable: false });
+    expect(qualifyGeometryAnalysisRecord(record({ lifecycle: "preview" }), 4)).toMatchObject({
+      status: "incomplete", valuesAvailable: false });
   });
 
   it("supports save, rename, duplicate settings and comparison", () => {
@@ -74,6 +86,37 @@ describe("Geometry analysis result workflow", () => {
     const sourceRevisionRow = compareGeometryAnalysisRecords(saved, record({ sourceRevision: 5 }))
       .find((row) => row.key === "source revision");
     expect(sourceRevisionRow?.equal).toBe(false);
+  });
+
+  it("refuses to promote incomplete or historical runs into saved results", () => {
+    for (const lifecycle of ["preview", "running", "failed", "cancelled", "stale"] as const)
+      expect(() => saveGeometryAnalysisRecord(record({ lifecycle }))).toThrow(/Cannot save/);
+  });
+
+  it("only compares scalar statistics of current, compatible results", () => {
+    const other = record({ id: "result-2", statistics: { minimum: -2 } });
+    const current = compareQualifiedGeometryAnalysisRecords(record(), other, 4, 4);
+    expect(current.status).toBe("comparable");
+    expect(current.rows.some(row => row.key === "statistics")).toBe(true);
+    for (const comparison of [
+      compareQualifiedGeometryAnalysisRecords(record(), other, 4, null),
+      compareQualifiedGeometryAnalysisRecords(record(), other, 5, 4),
+      compareQualifiedGeometryAnalysisRecords(record(), { ...other, units: "m" }, 4, 4),
+      compareQualifiedGeometryAnalysisRecords(record(), { ...other, lifecycle: "preview" }, 4, 4),
+    ]) {
+      expect(comparison.status).toBe("metadata-only");
+      expect(comparison.rows.some(row => row.key === "statistics")).toBe(false);
+    }
+  });
+
+  it("binds viewport publication to the exact quick result identity", () => {
+    const saved = record({ lifecycle: "saved" });
+    expect(canGeometryInspectorPublishSelected(saved, 4, record())).toBe(true);
+    for (const quick of [record({ resultKey: "other" }), record({ resultVersion: 3 }),
+      record({ sourceObjectId: "other" }), record({ sourceRevision: 5 })])
+      expect(canGeometryInspectorPublishSelected(saved, 4, quick)).toBe(false);
+    expect(canGeometryInspectorPublishSelected(saved, null, record())).toBe(false);
+    expect(canGeometryInspectorPublishSelected(saved, 4, null)).toBe(false);
   });
 
   it("round trips persisted records and rejects malformed storage", () => {

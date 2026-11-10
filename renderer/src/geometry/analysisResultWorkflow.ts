@@ -70,20 +70,54 @@ export const geometryInspectorLifecycleState = (
 
 export const canGeometryResultDriveViewport = (
   record: Pick<GeometryAnalysisInspectorRecord, "lifecycle" | "sourceRevision">,
-  currentSourceRevision: number
+  currentSourceRevision: number | null
 ): boolean =>
   (record.lifecycle === "complete" || record.lifecycle === "saved") &&
-  record.sourceRevision === currentSourceRevision;
+  currentSourceRevision !== null && record.sourceRevision === currentSourceRevision;
+
+/** A saved Inspector selection cannot publish a different quick result with a similar name. */
+export const canGeometryInspectorPublishSelected = (
+  record: Pick<GeometryAnalysisInspectorRecord,
+    "lifecycle" | "resultKey" | "resultVersion" | "sourceObjectId" | "sourceRevision">,
+  currentSourceRevision: number | null,
+  quick: Pick<GeometryAnalysisInspectorRecord,
+    "resultKey" | "resultVersion" | "sourceObjectId" | "sourceRevision"> | null
+): boolean => canGeometryResultDriveViewport(record, currentSourceRevision) && quick !== null &&
+  record.resultKey === quick.resultKey && record.resultVersion === quick.resultVersion &&
+  record.sourceObjectId === quick.sourceObjectId && record.sourceRevision === quick.sourceRevision;
+
+export type GeometryResultQualification = Readonly<{
+  status: "current" | "historical" | "unavailable" | "incomplete";
+  reason: string;
+  valuesAvailable: boolean;
+}>;
+
+/** A matching revision only qualifies a result when the source still exists and execution completed. */
+export const qualifyGeometryAnalysisRecord = (
+  record: Pick<GeometryAnalysisInspectorRecord, "lifecycle" | "sourceRevision">,
+  currentSourceRevision: number | null
+): GeometryResultQualification => {
+  if (currentSourceRevision === null) return { status: "unavailable", valuesAvailable: false,
+    reason: "The recorded source object is missing." };
+  if (record.sourceRevision !== currentSourceRevision ||
+      record.lifecycle === "stale" || record.lifecycle === "superseded")
+    return { status: "historical", valuesAvailable: false,
+      reason: `The result belongs to source revision ${record.sourceRevision}; the current revision is ${currentSourceRevision}.` };
+  if (record.lifecycle !== "complete" && record.lifecycle !== "saved")
+    return { status: "incomplete", valuesAvailable: false,
+      reason: `The recorded ${record.lifecycle} run has no completed result values.` };
+  return { status: "current", valuesAvailable: true,
+    reason: "The source object and recorded revision match; mathematical correctness was not independently checked." };
+};
 
 export const saveGeometryAnalysisRecord = (
   record: GeometryAnalysisInspectorRecord,
   now = Date.now()
-): GeometryAnalysisInspectorRecord => ({
-  ...record,
-  lifecycle: "saved",
-  savedAt: now,
-  updatedAt: now,
-});
+): GeometryAnalysisInspectorRecord => {
+  if (record.lifecycle !== "complete" && record.lifecycle !== "saved")
+    throw new TypeError(`Cannot save ${record.lifecycle} Geometry analysis as a completed result.`);
+  return { ...record, lifecycle: "saved", savedAt: now, updatedAt: now };
+};
 
 export const renameGeometryAnalysisRecord = (
   record: GeometryAnalysisInspectorRecord,
@@ -97,10 +131,10 @@ export const renameGeometryAnalysisRecord = (
 
 export const markGeometryAnalysisRecordStale = (
   record: GeometryAnalysisInspectorRecord,
-  currentSourceRevision: number,
+  currentSourceRevision: number | null,
   now = Date.now()
 ): GeometryAnalysisInspectorRecord =>
-  record.sourceRevision === currentSourceRevision
+  currentSourceRevision !== null && record.sourceRevision === currentSourceRevision
     ? record
     : { ...record, lifecycle: "stale", updatedAt: now };
 
@@ -140,6 +174,33 @@ export const compareGeometryAnalysisRecords = (
     const rightText = displayValue(rightValue);
     return { key, left: leftText, right: rightText, equal: leftText === rightText };
   });
+};
+
+export type QualifiedGeometryAnalysisComparison = Readonly<{
+  status: "comparable" | "metadata-only";
+  reason: string;
+  rows: readonly GeometryAnalysisComparisonRow[];
+}>;
+
+/** Comparison never upgrades a stale result or an incompatible quantity to a numeric claim. */
+export const compareQualifiedGeometryAnalysisRecords = (
+  left: GeometryAnalysisInspectorRecord,
+  right: GeometryAnalysisInspectorRecord,
+  leftCurrentRevision: number | null,
+  rightCurrentRevision: number | null
+): QualifiedGeometryAnalysisComparison => {
+  const leftQualification = qualifyGeometryAnalysisRecord(left, leftCurrentRevision);
+  const rightQualification = qualifyGeometryAnalysisRecord(right, rightCurrentRevision);
+  const compatible = left.quantity === right.quantity && left.units === right.units &&
+    left.domain === right.domain;
+  const comparable = leftQualification.valuesAvailable && rightQualification.valuesAvailable && compatible;
+  const reason = comparable ?
+    "Both results are current and use the same quantity, domain and units; differences remain producer-recorded values, not an independent validation." :
+    !leftQualification.valuesAvailable ? `Selected result: ${leftQualification.reason}` :
+      !rightQualification.valuesAvailable ? `Comparison result: ${rightQualification.reason}` :
+        "Quantity, domain or units differ; scalar statistics are withheld from this comparison.";
+  return { status: comparable ? "comparable" : "metadata-only", reason,
+    rows: compareGeometryAnalysisRecords(left, right).filter(row => comparable || row.key !== "statistics") };
 };
 
 export const serializeGeometryAnalysisRecords = (

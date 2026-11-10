@@ -51,6 +51,9 @@ export function Graph2DIntersectionResultsTable({ analysis, document, onSelectio
       item.confidence, item.method, item.source.documentId, item.source.revision, analysis.status,
       analysis.interval.min, analysis.interval.max]));
   const evidence = <Graph2DResultEvidence current={current} resultId={analysis.resultId}
+    summary={{ crossings: analysis.candidates.filter(item => item.classification === "crossing").length,
+      possibleTangencies: analysis.candidates.filter(item => item.classification === "tangent-possible").length,
+      unresolvedCells: analysis.unresolvedIntervals.length, scanStatus: analysis.status }}
     source={analysis.source} claim="bounded intersection scan"
     method={analysis.publication.provenance.operation.algorithm} units="Graph x and y world units"
     limitation="Crossing and possible tangency classifications are numerical, not certified isolation." />;

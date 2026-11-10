@@ -34,6 +34,8 @@ export function Graph2DIntervalResultsPanel({ analysis, document, onFocus, focus
       item.concavity, item.leftBoundary, item.rightBoundary, item.confidence, analysis.status,
       analysis.source.documentId, analysis.source.revision]));
   const evidence = <Graph2DResultEvidence current={current} resultId={analysis.resultId}
+    summary={{ intervals: analysis.partitions.length, uncertain, invalidSamples: analysis.invalidSamples,
+      scanStatus: analysis.status }}
     source={analysis.source} claim="sampled monotonicity and concavity partitions"
     method={analysis.publication.provenance.operation.algorithm} units="Graph x world units"
     limitation="Signs are sampled; narrow changes and discontinuities may be missed." />;
