@@ -116,6 +116,11 @@ jobs:
           path: integration-evidence/**
 
   desktop-reopen:
+    env:
+      electron_config_cache: '${{ github.workspace }}\\.cache\\electron'
+      MATH3D_ELECTRON_DOWNLOAD_TIMEOUT_MS: '600000'
+      MATH3D_ELECTRON_EXTRACT_TIMEOUT_MS: '180000'
+      MATH3D_ELECTRON_DOWNLOAD_RETRIES: '2'
     needs: scoped-integration-unit
     runs-on: windows-2022
     timeout-minutes: 25
@@ -131,7 +136,21 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.11'
-      - run: npm ci && npm --prefix renderer ci
+      - uses: actions/cache@v6
+        with:
+          path: ${{ env.electron_config_cache }}
+          key: ${{ runner.os }}-electron-cache-${{ hashFiles('package-lock.json') }}
+      - name: Install root locked dependencies
+        shell: bash
+        run: |
+          mkdir -p acceptance-reopen
+          set -o pipefail
+          npm ci --foreground-scripts --loglevel verbose 2>&1 | tee acceptance-reopen/npm-root.log
+      - name: Install renderer locked dependencies
+        shell: bash
+        run: |
+          set -o pipefail
+          npm --prefix renderer ci --foreground-scripts --loglevel verbose 2>&1 | tee acceptance-reopen/npm-renderer.log
       - run: npm run typecheck:noemit && npm run build:core
       - name: Record source and execute cold reopen journeys
         shell: bash
