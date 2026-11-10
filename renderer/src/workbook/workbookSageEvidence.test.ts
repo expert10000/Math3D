@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { resolveWorkbookSageFreshness, type WorkbookSageEvidence, type WorkbookBlock } from "@math3d/workbook";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { WorkbookSageEvidenceView } from "../components/WorkbookSageEvidence";
+import { workbookSageEvidenceCsv, workbookSageEvidenceJson,
+  workbookSagePublication } from "./workbookSagePublication";
 
 const evidence: WorkbookSageEvidence = {
   schemaVersion: 1, kind: "sage-result/v1", savedAt: 100,
@@ -55,5 +60,26 @@ describe("durable Sage Workbook evidence", () => {
     expect(reopened.sageEvidence?.request).toEqual(hosted.request);
     expect(reopened.sageEvidence?.engine).toEqual(hosted.engine);
     expect(reopened.sageEvidence?.diagnostics).toEqual(hosted.diagnostics);
+  });
+
+  it("publishes current Sage values while withholding changed-source and failed responses", () => {
+    const current = workbookSagePublication(evidence, "current");
+    expect(current).toMatchObject({ module: "workbook", source: { revision: 3, hash: "source-a" },
+      assessment: { status: "recorded", sourceStatus: "current" },
+      summary: { result: { components: ["2*x", "2*y", "2*z"] } } });
+    expect(workbookSageEvidenceCsv(evidence, "current")).toContain("2*x");
+    const stale = JSON.parse(workbookSageEvidenceJson(evidence, "stale"));
+    expect(stale.publication.summary).toBeNull();
+    expect(stale.response).toEqual({ success: true, error: null, errorCode: null });
+    expect(JSON.stringify(stale)).not.toContain("2*x");
+    expect(workbookSageEvidenceCsv(evidence, "stale")).not.toContain("2*x");
+    const markup = renderToStaticMarkup(createElement(WorkbookSageEvidenceView,
+      { evidence, currentSource: { ...evidence.source, revision: 4 } }));
+    expect(markup).toContain("Evidence export: withheld");
+    expect(markup).not.toContain("2*x");
+    const failed = { ...evidence, response: { ...evidence.response,
+      success: false, result: { leaked: 42 }, error: "not invertible" } };
+    expect(workbookSagePublication(failed, "current").summary).toBeNull();
+    expect(workbookSageEvidenceJson(failed, "current")).not.toContain("leaked");
   });
 });
