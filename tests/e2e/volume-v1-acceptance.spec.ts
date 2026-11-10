@@ -60,6 +60,16 @@ test.describe("Volume v1 acceptance", () => {
       // Mesh analysis can outlast Playwright's normal click wait; assert the return action independently.
       await ctx.page.getByTestId("volume-handoff-return").evaluate((button: HTMLButtonElement) => button.click());
       await expect(ctx.page.getByTestId("workspace-nav-volume")).toHaveAttribute("aria-pressed", "true");
+      const controls = ctx.page.getByTestId("volume-detailed-controls");
+      await controls.getByLabel("Volume dim Ny").fill("63");
+      await controls.getByTestId("volume-apply-sampling").click();
+      await ctx.page.getByTestId("shared-inspector-tab-geometry").click();
+      await inspector.getByLabel("Geometry view").selectOption("derived");
+      const stale = inspector.getByTestId("volume-derived-result-stale");
+      await expect(stale).toContainText("Metrics withheld");
+      await expect(stale.getByText("Mesh", { exact: true })).toHaveCount(0);
+      await expect(stale.getByTestId("volume-derived-send-mesh")).toBeDisabled();
+      await expect(inspector.getByTestId("volume-derived-result-snapshot").getByTestId("volume-derived-send-mesh")).toBeEnabled();
       await ctx.page.getByTestId("shared-inspector-tab-history").click();
       await inspector.getByTestId("volume-save-workspace").click();
       const saved = await ctx.page.evaluate(() => JSON.parse(localStorage.getItem("math3d.volume.workspace.v1") ?? "{}"));

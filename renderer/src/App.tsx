@@ -788,6 +788,7 @@ import { VolumeIsosurfaceScientificJob } from "./volume/volumeScientificJob";
 import { publishVolumeAnalysisEvidence } from "./volume/analysisPublication";
 import { publishVolumeComparisonEvidence } from "./volume/comparisonPublication";
 import { qualifyVolumeDerivedResult } from "./volume/derivedQualification";
+import { publishVolumeDerivedEvidence } from "./volume/derivedPublication";
 import { CurveConstructionRealizer, locateCurveConstructionVertex, type CurveConstructionGeometry } from "./curveAnalysis/curveConstructionGeometry";
 import { curveConstructionSourceStatus, type CurveConstructionRecord } from "./curveAnalysis/curveConstructionKernel";
 import { CurveResultLifecyclePanel } from "./components/CurveResultLifecyclePanel";
@@ -35578,6 +35579,14 @@ const App: React.FC = () => {
     volumeDerivedGeometryRef.current.delete(id);
     setVolumeDerivedResults((previous) => deleteVolumeDerivedResult(previous, id, volumeStorageStoreRef.current));
   }, []);
+  const handleExportVolumeDerivedResult = useCallback((id: string, format: "json" | "csv" | "receipt") => {
+    const result = volumeDerivedResults.find((entry) => entry.id === id);
+    if (!result) return;
+    const evidence = publishVolumeDerivedEvidence(result, canonicalVolumeObject, { isoValue: volumeIsoValue }, volumeDerivedGeometryRef.current.has(id));
+    const body = format === "csv" ? evidence.csv : format === "receipt" ? evidence.receiptJson : evidence.reportJson;
+    const safeId = id.replace(/[^a-zA-Z0-9._-]/g, "-");
+    downloadTextFile(body, `math3d-volume-derived-${safeId}${format === "receipt" ? "-receipt" : ""}.${format === "csv" ? "csv" : "json"}`, format === "csv" ? "text/csv" : "application/json");
+  }, [canonicalVolumeObject, volumeDerivedResults, volumeIsoValue]);
   const volumeWorkspaceHistoryRef = useRef<VolumeWorkspaceHistory | null>(null);
   const [volumeWorkspaceHistorySummary, setVolumeWorkspaceHistorySummary] = useState({ undoDepth: 0, redoDepth: 0 });
   const [volumePersistenceStatus, setVolumePersistenceStatus] = useState("Workspace persistence is ready.");
@@ -90823,6 +90832,7 @@ case "mobius":
                         onSendDerivedResultToGeometry={(id) => openVolumeDerivedResult(id, "geometry")}
                         onOpenDerivedResultInMeshAnalysis={(id) => openVolumeDerivedResult(id, "analysis")}
                         onDeleteDerivedResult={handleDeleteVolumeDerivedResult}
+                        onExportDerivedResult={handleExportVolumeDerivedResult}
                         onChangeSdfOperation={setVolumeSdfOperation}
                         onChangeSdfAmount={setVolumeSdfAmount}
                         onChangeSdfSmoothness={setVolumeSdfSmoothness}

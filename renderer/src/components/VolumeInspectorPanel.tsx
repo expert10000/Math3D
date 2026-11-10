@@ -139,6 +139,7 @@ export type VolumeInspectorPanelProps = {
   onSendDerivedResultToGeometry: (id: string) => void;
   onOpenDerivedResultInMeshAnalysis: (id: string) => void;
   onDeleteDerivedResult: (id: string) => void;
+  onExportDerivedResult: (id: string, format: "json" | "csv" | "receipt") => void;
   onChangeSdfOperation: (operation: VolumeSdfOperation) => void;
   onChangeSdfAmount: (amount: number) => void;
   onChangeSdfSmoothness: (smoothness: number) => void;
@@ -325,6 +326,7 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
   onSendDerivedResultToGeometry,
   onOpenDerivedResultInMeshAnalysis,
   onDeleteDerivedResult,
+  onExportDerivedResult,
   onChangeSdfOperation,
   onChangeSdfAmount,
   onChangeSdfSmoothness,
@@ -641,6 +643,9 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
                 <button type="button" data-testid="volume-derived-send-geometry" onClick={() => onSendDerivedResultToGeometry(result.id)} disabled={!qualification?.canTransfer}>Send to Geometry</button>
                 <button type="button" data-testid="volume-derived-open-analysis" onClick={() => onOpenDerivedResultInMeshAnalysis(result.id)} disabled={!qualification?.canTransfer}>Open in Mesh Analysis</button>
                 <button type="button" onClick={() => onDeleteDerivedResult(result.id)}>Delete</button>
+                <button type="button" onClick={() => onExportDerivedResult(result.id, "json")}>Export JSON</button>
+                <button type="button" onClick={() => onExportDerivedResult(result.id, "csv")}>Export CSV</button>
+                <button type="button" onClick={() => onExportDerivedResult(result.id, "receipt")}>Receipt</button>
               </div>
             </div>
           ); }) : (
