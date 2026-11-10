@@ -48,6 +48,7 @@ import { ProjectCursorInspector } from "./ProjectCursorInspector";
 import { ProjectStudiesPanel } from "./ProjectStudiesPanel";
 import { addQualifiedStudyGraphCurveLink } from "../projects/studyGraphCurveLink";
 import { prepareCuratedStudyBundle } from "../projects/curatedStudyProject";
+import { projectOpenBackup } from "../projects/projectOpenBackup";
 import { measureCuratedStudyAssets } from "../projects/curatedStudyQualification";
 import { probeRendererPlatformCapabilities } from "../kernel/rendererPlatformCapabilities";
 const ProjectCompositionView = React.lazy(() => import("./ProjectCompositionView").then(module => ({ default: module.ProjectCompositionView })));
@@ -799,6 +800,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     if (item.kind === "graph-point-table") { const rows = pointTableStore.resolve(item.reference as import("@math3d/core").Graph2DPointTableReference); if (rows) return new TextEncoder().encode(canonicalJsonStringify(rows)); }
     return extra?.bytes(item) ?? null;
   };
+  const backupLiveProject = (workspace: MixedWorkspaceDocument): Math3DProject => {
+    const current = projectStateRef.current;
+    return projectOpenBackup(workspace, current && !preview && !managed ? current : null);
+  };
   useEffect(() => {
     if (!open) return;
     const sequence = ++backupStageSequence.current;
@@ -811,7 +816,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           const workspace = currentCapture.current(), snapshot = canonicalJsonStringify(workspace);
           const inputToken = workspaceInputSequence.current, session = resourceSession.current;
           if (stagedBackup.current?.snapshot === snapshot && stagedBackup.current.session === session && stagedBackup.current.inputToken === inputToken) return;
-          const project = adoptMixedWorkspaceProject(workspace, "Before project open");
+          const project = backupLiveProject(workspace);
           const resources = await captureProjectResourcesAsync(project, resourceBytes(session), true);
           if (!resources.byteEntries().length || sequence !== backupStageSequence.current) return;
           const slot = await stageProjectBackupResources(project, resources);
@@ -1441,7 +1446,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         && stagedBackup.current.inputToken === inputToken && stagedBackup.current.session === previousResources ? stagedBackup.current : null;
       performance.clearMarks("project-open:used-staged-backup");
       performance.mark("project-open:used-staged-backup", { detail: !!staged });
-      const backupProject = previous ? staged?.project ?? adoptMixedWorkspaceProject(previous, "Before project open") : null;
+      const backupProject = previous ? staged?.project ?? backupLiveProject(previous) : null;
       const backup = backupProject ? serializeMath3DProject(backupProject) : undefined;
       measurePhase("backup-document");
       const backupResources = backupProject ? staged?.resources ?? await captureProjectResourcesAsync(backupProject, resourceBytes(previousResources), true) : null;
@@ -1505,7 +1510,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     finally { setBusy(false); }
   };
   const openLibraryProject = async (id: string, showDetails = false, preferredVectorDocumentId?: string) => {
-    if (busy) return;
+    if (busy) return false;
     clearJustCreatedScientificSubrectangleReport();
     const sequence = ++importSequence.current;
     setBusy(true);
@@ -1517,12 +1522,19 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       if (!onRestoreWorkspace || !prepared.canOpenWorkspace) {
         display(next, true); setIncoming(prepared);
         setMessage("This saved project has preview support. Review its compatibility details below.");
-        return;
+        return false;
       }
-      await importPreview(true, prepared, canReuseProjectResourceArchive(next, resources), true,
+      return await importPreview(true, prepared, canReuseProjectResourceArchive(next, resources), true,
         preferredVectorDocumentId);
-    } catch (error) { setMessage(`Saved project unavailable: ${(error as Error).message}`); }
+    } catch (error) { setMessage(`Saved project unavailable: ${(error as Error).message}`); return false; }
     finally { setBusy(false); }
+  };
+  const focusGuidedStudy = (next: Math3DProject) => {
+    const study = next.workspace.studies?.[0];
+    if (!study) return;
+    setStudyFocus(previous => ({ id: study.id, token: (previous?.token ?? 0) + 1 }));
+    setQuick(false); setViewerCompanion(false); setDetailView(true); setDetailPage("overview");
+    onOpenChange(true);
   };
   useEffect(() => {
     if (hasOpenProject && project && !preview && !managed && activeProjectDocumentId)
@@ -1594,13 +1606,17 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         const copy = findProjectStarterCopy(curated ? { ...available, entries: available.entries.filter(entry => entry.tags.includes("curated-study-v1")) } :
           available, id, activeId);
         if (copy) {
-          loadLibraryProject(localStorage, copy.id);
+          const savedCopy = loadLibraryProject(localStorage, copy.id);
           if (hasOpenProject && copy.id === activeId && !preview && !managed && project?.identity.id === copy.id) {
             const first = (["geometry", "surface", "mesh", "volume", "curve", "graph2d"] as const)
               .map(module => project.workspace.entries.find(entry => entry.module === module)).find(Boolean) ?? project.workspace.entries[0];
             if (first) { onNavigateDocument?.(first.expected.id, first.module); setViewingDocumentId(first.expected.id); }
             placeProject("left"); onOpenChange(true); // Keep the active edited Project; do not restore an older saved snapshot.
-          } else await openLibraryProject(copy.id, true);
+            if (curated) focusGuidedStudy(project);
+          } else {
+            const opened = await openLibraryProject(copy.id, true);
+            if (curated && opened) focusGuidedStudy(savedCopy);
+          }
           return;
         }
       }
@@ -1613,6 +1629,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       performance.measure("project-open:starter-construction", { start: starterStart, end: performance.now() });
       const prepared = curated ? prepareCuratedStudyBundle(bundle, id, token) : bundle;
       const next = prepared.project;
+      if (newCopy) {
+        const existing = findProjectStarterCopy(parseProjectLibrary(localStorage.getItem(PROJECT_LIBRARY_KEY)), id, readActiveProjectId());
+        if (existing?.id === next.identity.id) throw new Error("New copy repeated an existing Project identity.");
+      }
       if (curated) setGalleryAssetBytes(current => ({ ...current,
         [id]: measureCuratedStudyAssets(next, prepared.resources).totalBytes }));
       const inspectionStart = performance.now();
@@ -1620,7 +1640,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       const candidate = { ...inspection, resources: prepared.resources, inputKind: "Independent starter project" };
       performance.clearMeasures("project-open:starter-inspection");
       performance.measure("project-open:starter-inspection", { start: inspectionStart, end: performance.now() });
-      await importPreview(true, candidate, false, true);
+      const opened = await importPreview(true, candidate, false, true);
+      if (opened && curated) focusGuidedStudy(next);
     } catch (error) { setMessage(`Starter unavailable: ${(error as Error).message}`); }
     finally { openingStarter.current = false; }
   };
