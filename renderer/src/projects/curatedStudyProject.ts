@@ -49,15 +49,11 @@ export function prepareCuratedStudyProject(project: Math3DProject, id: CuratedSt
   });
 }
 
-const narrativeIds = new Set<CuratedStarterId>([
-  "catenoid-evidence", "edge-path-evidence", "mesh-comparison-study", "mesh-curvature-study",
-]);
-
 /** Guided copies gain a connected Study, Note, and Workbook while ordinary starters stay unchanged. */
 export function prepareCuratedStudyBundle(bundle: { project: Math3DProject; resources?: VerifiedProjectResources },
   id: CuratedStarterId, instanceKey: string) {
   let project = prepareCuratedStudyProject(bundle.project, id, instanceKey);
-  if (!narrativeIds.has(id)) return { project, resources: bundle.resources };
+  if (!layouts[id]) return { project, resources: bundle.resources };
   const study = project.workspace.studies?.[0], card = curatedStudy(id);
   if (!study || !card) throw new TypeError("Guided research Study is unavailable.");
   const member = study.members[0]!, result = member.resultId && project.workspace.results.find(item => item.resultId === member.resultId);

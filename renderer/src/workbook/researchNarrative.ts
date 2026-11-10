@@ -10,6 +10,7 @@ import { captureProjectResources, exportProjectPackage, parseProjectPackage, pro
 import { prepareProjectWorkbook, readProjectWorkbook } from "../projects/projectWorkbookBinding";
 
 export const RESEARCH_NARRATIVE_FORMAT = "math3d.research-narrative/v1" as const;
+export const MAX_RESEARCH_NARRATIVE_FILE_BYTES = 113 * 1024 * 1024;
 
 const narrativeEvidence = (project: Math3DProject, books: readonly Workbook[], reader: ProjectResourceReader,
   selected?: readonly string[]) => {
@@ -142,4 +143,24 @@ export function inspectPortableResearchNarrative(payload: ReturnType<typeof crea
   if (canonicalJsonStringify(checked) !== canonicalJsonStringify(payload.evidence))
     throw new TypeError("Research narrative evidence or omissions differ from the imported Project.");
   return reopened;
+}
+
+/** Parse an untrusted download before the verified package reaches the Project importer. */
+export function parsePortableResearchNarrative(raw: string) {
+  if (new TextEncoder().encode(raw).byteLength > MAX_RESEARCH_NARRATIVE_FILE_BYTES)
+    throw new TypeError("Research narrative exceeds its import size limit.");
+  const value: unknown = JSON.parse(raw);
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new TypeError("Unsupported research narrative.");
+  const candidate = value as Record<string, unknown>;
+  if (candidate.format !== RESEARCH_NARRATIVE_FORMAT || candidate.schemaVersion !== 1 ||
+      typeof candidate.projectId !== "string" || typeof candidate.packageJson !== "string" ||
+      typeof candidate.packageChecksum !== "string" || typeof candidate.contentHash !== "string" ||
+      !Array.isArray(candidate.workbookIds) || !candidate.workbookIds.every(id => typeof id === "string") ||
+      !(candidate.selectedBlockIds === null || Array.isArray(candidate.selectedBlockIds) &&
+        candidate.selectedBlockIds.every(id => typeof id === "string")) ||
+      !candidate.evidence || typeof candidate.evidence !== "object")
+    throw new TypeError("Unsupported research narrative.");
+  const narrative = candidate as ReturnType<typeof createPortableResearchNarrative>;
+  const packageContent = inspectPortableResearchNarrative(narrative);
+  return { narrative, ...packageContent };
 }
