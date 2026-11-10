@@ -5,7 +5,9 @@ import {
   adaptAnalyticVolume,
   adaptDenseGridVolume,
   comparePinnedVolumeProbes,
+  compareCurrentVolumeProbes,
   createPinnedVolumeProbe,
+  isPinnedVolumeProbeStale,
   readVolumeProbe,
   restorePinnedVolumeProbes,
   type VolumeRevisionTracker,
@@ -107,7 +109,16 @@ describe("Volume navigation and probes", () => {
     const restored = restorePinnedVolumeProbes(JSON.parse(JSON.stringify([first, second])));
     expect(restored).toEqual([first, second]);
     expect(comparePinnedVolumeProbes(first, second).worldDistance).toBeCloseTo(Math.SQRT2);
-    expect(volumeProbesToCsv(restored)).toContain('"gradientMethod"');
-    expect(volumeProbesToCsv(restored)).toContain('"analytic"');
+    expect(volumeProbesToCsv(restored, volume)).toContain('"gradientMethod"');
+    expect(volumeProbesToCsv(restored, volume)).toContain('"analytic"');
+    expect(compareCurrentVolumeProbes(first, second, volume)?.worldDistance).toBeCloseTo(Math.SQRT2);
+
+    const changedGrid = { ...volume, identity: { ...volume.identity, sampledGridRevision: volume.identity.sampledGridRevision + 1 } };
+    expect(isPinnedVolumeProbeStale(first, changedGrid)).toBe(true);
+    expect(compareCurrentVolumeProbes(first, second, changedGrid)).toBeNull();
+    const csv = volumeProbesToCsv([{ ...first, name: '=SUM(1,2)' }, second], changedGrid);
+    expect(csv).toContain('"withheld: source changed"');
+    expect(csv).toContain('"\'=SUM(1,2)"');
+    expect(csv).not.toContain('"analytic"');
   });
 });

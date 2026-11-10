@@ -158,7 +158,18 @@ export const createPinnedVolumeProbe = (args: {
 };
 
 export const isPinnedVolumeProbeStale = (probe: PinnedVolumeProbe, volume: VolumeObject): boolean =>
-  probe.volumeId !== volume.identity.volumeId || probe.volumeRevision !== volume.identity.volumeRevision;
+  probe.volumeId !== volume.identity.volumeId ||
+  probe.volumeRevision !== volume.identity.volumeRevision ||
+  probe.sampledGridRevision !== volume.identity.sampledGridRevision;
+
+export const compareCurrentVolumeProbes = (
+  first: PinnedVolumeProbe,
+  second: PinnedVolumeProbe,
+  volume: VolumeObject,
+): VolumeProbeComparison | null =>
+  isPinnedVolumeProbeStale(first, volume) || isPinnedVolumeProbeStale(second, volume)
+    ? null
+    : comparePinnedVolumeProbes(first, second);
 
 export const comparePinnedVolumeProbes = (
   first: PinnedVolumeProbe,
@@ -188,18 +199,26 @@ export const formatVolumeProbeText = (probe: VolumeProbeReading | PinnedVolumePr
     `insideDomain=${probe.insideDomain}`,
   ].join("\n");
 
-const csvCell = (value: unknown): string => `"${String(value).replaceAll('"', '""')}"`;
+const csvCell = (value: unknown): string => {
+  const text = String(value);
+  const safe = /^[\s\u0000-\u001f]*[=+@-]/u.test(text) && typeof value === "string" ? `'${text}` : text;
+  return `"${safe.replaceAll('"', '""')}"`;
+};
 
-export const volumeProbesToCsv = (probes: readonly PinnedVolumeProbe[]): string => {
+export const volumeProbesToCsv = (probes: readonly PinnedVolumeProbe[], volume: VolumeObject): string => {
   const header = [
-    "id", "name", "volumeId", "volumeRevision", "gridRevision", "i", "j", "k", "x", "y", "z",
+    "id", "name", "status", "volumeId", "volumeRevision", "gridRevision", "i", "j", "k", "x", "y", "z",
     "value", "gradientX", "gradientY", "gradientZ", "gradientMagnitude", "gradientMethod", "insideDomain", "pinnedAt",
   ];
-  const rows = probes.map((probe) => [
-    probe.id, probe.name, probe.volumeId, probe.volumeRevision, probe.sampledGridRevision,
-    ...probe.continuousIndex, ...probe.world, probe.components[0] ?? "", ...probe.gradient,
-    probe.gradientMagnitude, probe.gradientMethod, probe.insideDomain, new Date(probe.pinnedAt).toISOString(),
-  ]);
+  const rows = probes.map((probe) => {
+    const stale = isPinnedVolumeProbeStale(probe, volume);
+    return [
+      probe.id, probe.name, stale ? "withheld: source changed" : "current", probe.volumeId, probe.volumeRevision, probe.sampledGridRevision,
+      ...probe.continuousIndex, ...probe.world, stale ? "" : probe.components[0] ?? "",
+      ...(stale ? ["", "", ""] : probe.gradient), stale ? "" : probe.gradientMagnitude,
+      stale ? "" : probe.gradientMethod, stale ? "" : probe.insideDomain, new Date(probe.pinnedAt).toISOString(),
+    ];
+  });
   return [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\n");
 };
 
