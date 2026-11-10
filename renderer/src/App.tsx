@@ -13746,13 +13746,17 @@ const App: React.FC = () => {
     if (geometrySelectedSavedAnalysisResultId) {
       const saved = geometrySavedAnalysisResults.find((entry) => entry.id === geometrySelectedSavedAnalysisResultId) ?? null;
       if (saved) {
-        const currentRevision = geometryObjectRevisionById[saved.sourceObjectId] ?? saved.sourceRevision;
+        const sourceExists = geometryObjects.some(object => object.id === saved.sourceObjectId) ||
+          geometryDatasetMeshObjects.some(object => object.id === saved.sourceObjectId);
+        const currentRevision = sourceExists ? geometryObjectRevisionById[saved.sourceObjectId] ?? 0 : null;
         return markGeometryAnalysisRecordStale(saved, currentRevision);
       }
     }
     const result = geometrySelectedQuickAnalysisResult;
     if (!result) return null;
-    const currentRevision = geometryObjectRevisionById[result.sourceObjectId] ?? result.sourceRevision;
+    const sourceExists = geometryObjects.some(object => object.id === result.sourceObjectId) ||
+      geometryDatasetMeshObjects.some(object => object.id === result.sourceObjectId);
+    const currentRevision = sourceExists ? geometryObjectRevisionById[result.sourceObjectId] ?? 0 : null;
     const record: GeometryAnalysisInspectorRecord = {
       id: result.id,
       resultKey: result.resultKey,
@@ -13783,6 +13787,8 @@ const App: React.FC = () => {
     return markGeometryAnalysisRecordStale(record, currentRevision);
   }, [
     geometryObjectRevisionById,
+    geometryObjects,
+    geometryDatasetMeshObjects,
     geometrySavedAnalysisResults,
     geometrySelectedQuickAnalysisResult,
     geometrySelectedSavedAnalysisResultId,
@@ -13792,8 +13798,10 @@ const App: React.FC = () => {
     [geometryCompareAnalysisResultId, geometrySavedAnalysisResults]
   );
   const geometryAnalysisInspectorSourceRevision = geometryActiveAnalysisInspectorRecord
-    ? geometryObjectRevisionById[geometryActiveAnalysisInspectorRecord.sourceObjectId] ?? geometryActiveAnalysisInspectorRecord.sourceRevision
-    : 0;
+    ? (geometryObjects.some(object => object.id === geometryActiveAnalysisInspectorRecord.sourceObjectId) ||
+        geometryDatasetMeshObjects.some(object => object.id === geometryActiveAnalysisInspectorRecord.sourceObjectId))
+      ? geometryObjectRevisionById[geometryActiveAnalysisInspectorRecord.sourceObjectId] ?? 0 : null
+    : null;
   useEffect(() => {
     try {
       window.localStorage.setItem(

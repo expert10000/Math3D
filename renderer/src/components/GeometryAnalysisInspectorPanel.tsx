@@ -2,6 +2,7 @@ import React from "react";
 import {
   canGeometryResultDriveViewport,
   compareGeometryAnalysisRecords,
+  qualifyGeometryAnalysisRecord,
   type GeometryAnalysisInspectorRecord,
 } from "../geometry/analysisResultWorkflow";
 
@@ -9,7 +10,7 @@ type GeometryAnalysisInspectorPanelProps = {
   result: GeometryAnalysisInspectorRecord | null;
   savedResults: readonly GeometryAnalysisInspectorRecord[];
   compareResult: GeometryAnalysisInspectorRecord | null;
-  currentSourceRevision: number;
+  currentSourceRevision: number | null;
   onSelectSaved: (id: string) => void;
   onSave: () => void;
   onRename: () => void;
@@ -56,6 +57,7 @@ export function GeometryAnalysisInspectorPanel(props: GeometryAnalysisInspectorP
     );
   }
   const lifecycle = lifecycleColors[result.lifecycle];
+  const qualification = qualifyGeometryAnalysisRecord(result, props.currentSourceRevision);
   const viewportCurrent = canGeometryResultDriveViewport(result, props.currentSourceRevision);
   const comparison = props.compareResult ? compareGeometryAnalysisRecords(result, props.compareResult) : [];
   return (
@@ -65,6 +67,14 @@ export function GeometryAnalysisInspectorPanel(props: GeometryAnalysisInspectorP
         <span data-testid="geometry-analysis-inspector-lifecycle" style={{ ...lifecycle, border: `1px solid ${lifecycle.border}`, borderRadius: 999, padding: "2px 8px", fontWeight: 800 }}>
           {result.lifecycle}
         </span>
+      </div>
+      <div role="status" data-testid="geometry-analysis-inspector-qualification"
+        data-qualification={qualification.status}>
+        <strong>Source integrity:</strong> {qualification.status} · {qualification.reason}
+      </div>
+      <div data-testid="geometry-analysis-inspector-claim">
+        <strong>Recorded claim:</strong> {result.quantity} ({result.units}) · {result.method}.
+        <strong> Independent check:</strong> None recorded for this result.
       </div>
       <div data-testid="geometry-analysis-inspector-metadata" style={{ display: "grid", gridTemplateColumns: "92px minmax(0, 1fr)", gap: "4px 8px" }}>
         {[
@@ -84,9 +94,10 @@ export function GeometryAnalysisInspectorPanel(props: GeometryAnalysisInspectorP
       <div data-testid="geometry-analysis-inspector-statistics" style={{ borderTop: "1px solid #e2e8f0", paddingTop: 7 }}>
         <strong>Statistics</strong>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 4, marginTop: 4 }}>
-          {Object.entries(result.statistics).length
+          {qualification.valuesAvailable && Object.entries(result.statistics).length
             ? Object.entries(result.statistics).map(([key, value]) => <div key={key}><span style={label}>{key}: </span>{String(value ?? "n/a")}</div>)
-            : <div style={label}>No scalar statistics for this result.</div>}
+            : <div style={label}>{qualification.valuesAvailable ? "No scalar statistics for this result." :
+              `Values withheld. ${qualification.reason}`}</div>}
         </div>
       </div>
       <div data-testid="geometry-analysis-inspector-warnings" style={{ color: result.warnings.length ? "#92400e" : "#166534" }}>
@@ -103,7 +114,7 @@ export function GeometryAnalysisInspectorPanel(props: GeometryAnalysisInspectorP
         <button type="button" onClick={props.onCompare}>Compare</button>
         <button type="button" onClick={props.onDuplicateSettings}>Duplicate settings</button>
         <button type="button" onClick={props.onRecompute}>Recompute</button>
-        <button type="button" onClick={props.onOpenSource}>Open source</button>
+        <button type="button" onClick={props.onOpenSource} disabled={qualification.status !== "current"}>Open source</button>
         <button type="button" onClick={props.onOpenDerivative} disabled={!viewportCurrent}>Open derivative</button>
         <button type="button" onClick={props.onPromoteOverlay} disabled={!viewportCurrent}>Promote overlay</button>
         <button type="button" onClick={props.onExport}>Export</button>

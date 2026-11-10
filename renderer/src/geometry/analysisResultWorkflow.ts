@@ -70,10 +70,34 @@ export const geometryInspectorLifecycleState = (
 
 export const canGeometryResultDriveViewport = (
   record: Pick<GeometryAnalysisInspectorRecord, "lifecycle" | "sourceRevision">,
-  currentSourceRevision: number
+  currentSourceRevision: number | null
 ): boolean =>
   (record.lifecycle === "complete" || record.lifecycle === "saved") &&
-  record.sourceRevision === currentSourceRevision;
+  currentSourceRevision !== null && record.sourceRevision === currentSourceRevision;
+
+export type GeometryResultQualification = Readonly<{
+  status: "current" | "historical" | "unavailable" | "incomplete";
+  reason: string;
+  valuesAvailable: boolean;
+}>;
+
+/** A matching revision only qualifies a result when the source still exists and execution completed. */
+export const qualifyGeometryAnalysisRecord = (
+  record: Pick<GeometryAnalysisInspectorRecord, "lifecycle" | "sourceRevision">,
+  currentSourceRevision: number | null
+): GeometryResultQualification => {
+  if (currentSourceRevision === null) return { status: "unavailable", valuesAvailable: false,
+    reason: "The recorded source object is missing." };
+  if (record.sourceRevision !== currentSourceRevision ||
+      record.lifecycle === "stale" || record.lifecycle === "superseded")
+    return { status: "historical", valuesAvailable: false,
+      reason: `The result belongs to source revision ${record.sourceRevision}; the current revision is ${currentSourceRevision}.` };
+  if (record.lifecycle !== "complete" && record.lifecycle !== "saved")
+    return { status: "incomplete", valuesAvailable: false,
+      reason: `The recorded ${record.lifecycle} run has no completed result values.` };
+  return { status: "current", valuesAvailable: true,
+    reason: "The source object and recorded revision match; mathematical correctness was not independently checked." };
+};
 
 export const saveGeometryAnalysisRecord = (
   record: GeometryAnalysisInspectorRecord,
@@ -97,10 +121,10 @@ export const renameGeometryAnalysisRecord = (
 
 export const markGeometryAnalysisRecordStale = (
   record: GeometryAnalysisInspectorRecord,
-  currentSourceRevision: number,
+  currentSourceRevision: number | null,
   now = Date.now()
 ): GeometryAnalysisInspectorRecord =>
-  record.sourceRevision === currentSourceRevision
+  currentSourceRevision !== null && record.sourceRevision === currentSourceRevision
     ? record
     : { ...record, lifecycle: "stale", updatedAt: now };
 

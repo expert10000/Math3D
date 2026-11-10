@@ -6,6 +6,7 @@ import {
   geometryInspectorLifecycleState,
   markGeometryAnalysisRecordStale,
   parseGeometryAnalysisRecords,
+  qualifyGeometryAnalysisRecord,
   renameGeometryAnalysisRecord,
   saveGeometryAnalysisRecord,
   serializeGeometryAnalysisRecords,
@@ -59,6 +60,15 @@ describe("Geometry analysis result workflow", () => {
     expect(stale.payload).toEqual({ exact: true });
     expect(canGeometryResultDriveViewport(stale, 5)).toBe(false);
     expect(canGeometryResultDriveViewport(record(), 4)).toBe(true);
+    expect(canGeometryResultDriveViewport(record(), null)).toBe(false);
+    expect(qualifyGeometryAnalysisRecord(record(), 4)).toMatchObject({ status: "current",
+      valuesAvailable: true });
+    expect(qualifyGeometryAnalysisRecord(record(), 5)).toMatchObject({ status: "historical",
+      valuesAvailable: false });
+    expect(qualifyGeometryAnalysisRecord(record(), null)).toMatchObject({ status: "unavailable",
+      valuesAvailable: false });
+    expect(qualifyGeometryAnalysisRecord(record({ lifecycle: "preview" }), 4)).toMatchObject({
+      status: "incomplete", valuesAvailable: false });
   });
 
   it("supports save, rename, duplicate settings and comparison", () => {
