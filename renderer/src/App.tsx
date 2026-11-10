@@ -793,6 +793,7 @@ import { qualifyVolumeSegmentation } from "./volume/segmentationQualification";
 import { publishVolumeSegmentationEvidence } from "./volume/segmentationPublication";
 import { createSdfPreviewPin, qualifySdfPreview, sdfNeedsOperand, type SdfPreviewPin } from "./volume/sdfPreviewPin";
 import { fingerprintSdfSourceMesh, qualifySdfSignEvidence } from "./volume/sdfSignEvidence";
+import { publishSdfEvidence } from "./volume/sdfPublication";
 import { CurveConstructionRealizer, locateCurveConstructionVertex, type CurveConstructionGeometry } from "./curveAnalysis/curveConstructionGeometry";
 import { curveConstructionSourceStatus, type CurveConstructionRecord } from "./curveAnalysis/curveConstructionKernel";
 import { CurveResultLifecyclePanel } from "./components/CurveResultLifecyclePanel";
@@ -63942,6 +63943,12 @@ case "mobius":
     setVolumeSdfPreviewPin(null);
     setVolumeSdfStatus("SDF preview discarded; the applied source is unchanged.");
   }, []);
+  const handleExportVolumeSdfEvidence = useCallback((format: "json" | "csv" | "receipt") => {
+    const evidence = publishSdfEvidence(volumeDataset, canonicalVolumeObject,
+      surfaceMeshData ? fingerprintSdfSourceMesh(surfaceMeshData) : null, !!qualifiedVolumeSdfPreview);
+    const body = format === "csv" ? evidence.csv : format === "receipt" ? evidence.receiptJson : evidence.reportJson;
+    downloadTextFile(body, `math3d-volume-sdf-r${canonicalVolumeObject.identity.volumeRevision}${format === "receipt" ? "-receipt" : ""}.${format === "csv" ? "csv" : "json"}`, format === "csv" ? "text/csv" : "application/json");
+  }, [canonicalVolumeObject, qualifiedVolumeSdfPreview, surfaceMeshData, volumeDataset]);
 
   const handleUseImplicitBakeDomain = useCallback(() => {
     const zSpan = Math.max(activeImplicitDomain.xSpan, activeImplicitDomain.ySpan);
@@ -90897,6 +90904,7 @@ case "mobius":
                         onChangeSdfSmoothness={setVolumeSdfSmoothness}
                         onPreviewSdfOperation={handlePreviewVolumeSdfOperation}
                         onApplySdfOperation={handleApplyVolumeSdfOperation}
+                        onExportSdfEvidence={handleExportVolumeSdfEvidence}
                         onCancelSdfPreview={handleCancelVolumeSdfPreview}
                         onChangeRenderMode={handleVolumeRenderModeChange}
                         onChangeTransferPreset={handleVolumeTransferPresetChange}

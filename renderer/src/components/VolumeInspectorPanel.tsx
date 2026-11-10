@@ -149,6 +149,7 @@ export type VolumeInspectorPanelProps = {
   onChangeSdfSmoothness: (smoothness: number) => void;
   onPreviewSdfOperation: () => void;
   onApplySdfOperation: () => void;
+  onExportSdfEvidence: (format: "json" | "csv" | "receipt") => void;
   onCancelSdfPreview: () => void;
   onChangeRenderMode: (mode: VolumeRenderMode) => void;
   onChangeTransferPreset: (id: string) => void;
@@ -339,6 +340,7 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
   onChangeSdfSmoothness,
   onPreviewSdfOperation,
   onApplySdfOperation,
+  onExportSdfEvidence,
   onCancelSdfPreview,
   onChangeRenderMode,
   onChangeTransferPreset,
@@ -880,6 +882,9 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
             <button type="button" data-testid="volume-sdf-preview" onClick={onPreviewSdfOperation} disabled={!sdfMetadata}>Preview</button>
             <button type="button" data-testid="volume-sdf-apply" onClick={onApplySdfOperation} disabled={!sdfPreviewActive}>Apply</button>
             <button type="button" data-testid="volume-sdf-cancel" onClick={onCancelSdfPreview} disabled={!sdfPreviewActive}>Discard preview</button>
+            <button type="button" onClick={() => onExportSdfEvidence("json")}>Export JSON</button>
+            <button type="button" onClick={() => onExportSdfEvidence("csv")}>Export CSV</button>
+            <button type="button" onClick={() => onExportSdfEvidence("receipt")}>Receipt</button>
           </div>
           <div role="status" data-testid="volume-sdf-status" style={{ color: sdfPreviewActive ? "#1d4ed8" : "#475569", fontSize: 10 }}>{sdfStatus}</div>
           {sdfMetadata?.warnings.map((warning) => <div key={warning} style={{ color: "#92400e", fontSize: 10 }}>{warning}</div>)}

@@ -1,4 +1,5 @@
 import type { VolumeGrid } from "../scene/datasets";
+import { fingerprintSdfGrid } from "./sdfPreviewPin";
 import type {
   VolumeSdfMetadata,
   VolumeSdfOperation,
@@ -216,6 +217,7 @@ export const createSdfMetadata = (args: {
   sources: args.sources.map((source) => ({ ...source, transform: [...source.transform] })),
   sign: { ...args.sign },
   sourceMeshFingerprint: args.sourceMeshFingerprint,
+  outputGridFingerprint: fingerprintSdfGrid(args.grid),
   sampling: {
     dimensions: [...args.grid.dims],
     origin: [...(args.grid.origin ?? [0, 0, 0])],
