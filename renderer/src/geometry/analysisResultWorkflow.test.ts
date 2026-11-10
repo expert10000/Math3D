@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   canGeometryResultDriveViewport,
   compareGeometryAnalysisRecords,
+  compareQualifiedGeometryAnalysisRecords,
   duplicateGeometryAnalysisSettings,
   geometryInspectorLifecycleState,
   markGeometryAnalysisRecordStale,
@@ -84,6 +85,22 @@ describe("Geometry analysis result workflow", () => {
     const sourceRevisionRow = compareGeometryAnalysisRecords(saved, record({ sourceRevision: 5 }))
       .find((row) => row.key === "source revision");
     expect(sourceRevisionRow?.equal).toBe(false);
+  });
+
+  it("only compares scalar statistics of current, compatible results", () => {
+    const other = record({ id: "result-2", statistics: { minimum: -2 } });
+    const current = compareQualifiedGeometryAnalysisRecords(record(), other, 4, 4);
+    expect(current.status).toBe("comparable");
+    expect(current.rows.some(row => row.key === "statistics")).toBe(true);
+    for (const comparison of [
+      compareQualifiedGeometryAnalysisRecords(record(), other, 4, null),
+      compareQualifiedGeometryAnalysisRecords(record(), other, 5, 4),
+      compareQualifiedGeometryAnalysisRecords(record(), { ...other, units: "m" }, 4, 4),
+      compareQualifiedGeometryAnalysisRecords(record(), { ...other, lifecycle: "preview" }, 4, 4),
+    ]) {
+      expect(comparison.status).toBe("metadata-only");
+      expect(comparison.rows.some(row => row.key === "statistics")).toBe(false);
+    }
   });
 
   it("round trips persisted records and rejects malformed storage", () => {

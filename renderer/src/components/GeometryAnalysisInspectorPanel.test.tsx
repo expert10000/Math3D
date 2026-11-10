@@ -14,7 +14,7 @@ const record: GeometryAnalysisInspectorRecord = {
 
 const show = (currentSourceRevision: number | null, lifecycle = record.lifecycle) =>
   renderToStaticMarkup(<GeometryAnalysisInspectorPanel result={{ ...record, lifecycle }} savedResults={[]}
-    compareResult={null} currentSourceRevision={currentSourceRevision} onSelectSaved={() => {}}
+    compareResult={null} compareSourceRevision={null} currentSourceRevision={currentSourceRevision} onSelectSaved={() => {}}
     onSave={() => {}} onRename={() => {}} onCompare={() => {}} onDuplicateSettings={() => {}}
     onRecompute={() => {}} onOpenSource={() => {}} onOpenDerivative={() => {}}
     onPromoteOverlay={() => {}} onExport={() => {}} />);
@@ -42,6 +42,27 @@ describe("Geometry analysis Inspector authority", () => {
       const html = show(2, lifecycle);
       expect(html).toContain('data-qualification="incomplete"');
       expect(html).not.toContain("secretStatistic");
+    }
+  });
+
+  it("shows comparison statistics only when both current records have matching units and quantity", () => {
+    const compare = (other: GeometryAnalysisInspectorRecord, compareSourceRevision: number | null) =>
+      renderToStaticMarkup(<GeometryAnalysisInspectorPanel result={record} savedResults={[]}
+        compareResult={other} compareSourceRevision={compareSourceRevision} currentSourceRevision={2}
+        onSelectSaved={() => {}} onSave={() => {}} onRename={() => {}} onCompare={() => {}}
+        onDuplicateSettings={() => {}} onRecompute={() => {}} onOpenSource={() => {}}
+        onOpenDerivative={() => {}} onPromoteOverlay={() => {}} onExport={() => {}} />);
+    const current = compare({ ...record, id: "analysis-2", statistics: { otherStatistic: 7 } }, 2);
+    expect(current).toContain('data-qualification="comparable"');
+    expect(current).toContain("otherStatistic");
+    for (const [other, revision] of [
+      [{ ...record, statistics: { otherStatistic: 7 } }, 3],
+      [{ ...record, statistics: { otherStatistic: 7 }, units: "m" }, 2],
+      [{ ...record, statistics: { otherStatistic: 7 } }, null],
+    ] as const) {
+      const html = compare(other, revision);
+      expect(html).toContain('data-qualification="metadata-only"');
+      expect(html).not.toContain("otherStatistic");
     }
   });
 });

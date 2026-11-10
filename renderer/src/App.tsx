@@ -107569,6 +107569,10 @@ case "mobius":
                         result={geometryActiveAnalysisInspectorRecord}
                         savedResults={geometrySavedAnalysisResults}
                         compareResult={geometryCompareAnalysisResult}
+                        compareSourceRevision={geometryCompareAnalysisResult &&
+                          (geometryObjects.some(object => object.id === geometryCompareAnalysisResult.sourceObjectId) ||
+                            geometryDatasetMeshObjects.some(object => object.id === geometryCompareAnalysisResult.sourceObjectId))
+                          ? geometryObjectRevisionById[geometryCompareAnalysisResult.sourceObjectId] ?? 0 : null}
                         currentSourceRevision={geometryAnalysisInspectorSourceRevision}
                         onSelectSaved={(id) => {
                           setGeometrySelectedSavedAnalysisResultId(id);

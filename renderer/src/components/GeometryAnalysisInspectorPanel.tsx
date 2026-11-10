@@ -1,7 +1,7 @@
 import React from "react";
 import {
   canGeometryResultDriveViewport,
-  compareGeometryAnalysisRecords,
+  compareQualifiedGeometryAnalysisRecords,
   qualifyGeometryAnalysisRecord,
   type GeometryAnalysisInspectorRecord,
 } from "../geometry/analysisResultWorkflow";
@@ -10,6 +10,7 @@ type GeometryAnalysisInspectorPanelProps = {
   result: GeometryAnalysisInspectorRecord | null;
   savedResults: readonly GeometryAnalysisInspectorRecord[];
   compareResult: GeometryAnalysisInspectorRecord | null;
+  compareSourceRevision: number | null;
   currentSourceRevision: number | null;
   onSelectSaved: (id: string) => void;
   onSave: () => void;
@@ -59,7 +60,8 @@ export function GeometryAnalysisInspectorPanel(props: GeometryAnalysisInspectorP
   const lifecycle = lifecycleColors[result.lifecycle];
   const qualification = qualifyGeometryAnalysisRecord(result, props.currentSourceRevision);
   const viewportCurrent = canGeometryResultDriveViewport(result, props.currentSourceRevision);
-  const comparison = props.compareResult ? compareGeometryAnalysisRecords(result, props.compareResult) : [];
+  const comparison = props.compareResult ? compareQualifiedGeometryAnalysisRecords(result,
+    props.compareResult, props.currentSourceRevision, props.compareSourceRevision) : null;
   return (
     <div data-testid="geometry-analysis-inspector" style={card}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
@@ -132,7 +134,9 @@ export function GeometryAnalysisInspectorPanel(props: GeometryAnalysisInspectorP
       {props.compareResult && (
         <div data-testid="geometry-analysis-inspector-comparison" style={{ borderTop: "1px solid #e2e8f0", paddingTop: 7, display: "grid", gap: 3 }}>
           <strong>Compare with {props.compareResult.name}</strong>
-          {comparison.map((row) => (
+          <p role="status" data-testid="geometry-analysis-inspector-comparison-status"
+            data-qualification={comparison!.status}>{comparison!.reason}</p>
+          {comparison!.rows.map((row) => (
             <div key={row.key} style={{ display: "grid", gridTemplateColumns: "80px 1fr 1fr", gap: 5, color: row.equal ? "#475569" : "#9a3412" }}>
               <span>{row.key}</span><span>{row.left}</span><span>{row.right}</span>
             </div>

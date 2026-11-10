@@ -166,6 +166,33 @@ export const compareGeometryAnalysisRecords = (
   });
 };
 
+export type QualifiedGeometryAnalysisComparison = Readonly<{
+  status: "comparable" | "metadata-only";
+  reason: string;
+  rows: readonly GeometryAnalysisComparisonRow[];
+}>;
+
+/** Comparison never upgrades a stale result or an incompatible quantity to a numeric claim. */
+export const compareQualifiedGeometryAnalysisRecords = (
+  left: GeometryAnalysisInspectorRecord,
+  right: GeometryAnalysisInspectorRecord,
+  leftCurrentRevision: number | null,
+  rightCurrentRevision: number | null
+): QualifiedGeometryAnalysisComparison => {
+  const leftQualification = qualifyGeometryAnalysisRecord(left, leftCurrentRevision);
+  const rightQualification = qualifyGeometryAnalysisRecord(right, rightCurrentRevision);
+  const compatible = left.quantity === right.quantity && left.units === right.units &&
+    left.domain === right.domain;
+  const comparable = leftQualification.valuesAvailable && rightQualification.valuesAvailable && compatible;
+  const reason = comparable ?
+    "Both results are current and use the same quantity, domain and units; differences remain producer-recorded values, not an independent validation." :
+    !leftQualification.valuesAvailable ? `Selected result: ${leftQualification.reason}` :
+      !rightQualification.valuesAvailable ? `Comparison result: ${rightQualification.reason}` :
+        "Quantity, domain or units differ; scalar statistics are withheld from this comparison.";
+  return { status: comparable ? "comparable" : "metadata-only", reason,
+    rows: compareGeometryAnalysisRecords(left, right).filter(row => comparable || row.key !== "statistics") };
+};
+
 export const serializeGeometryAnalysisRecords = (
   records: readonly GeometryAnalysisInspectorRecord[]
 ): string => JSON.stringify(records);
