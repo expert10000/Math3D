@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { getGeometryExactSurfacePreset } from "../geometry/exactSurfaceAnalysis";
-import { adaptSurfaceDefinition } from "./infrastructure";
+import { adaptSurfaceDefinition, createSurfaceAnalysisRegistry, createSurfaceAnalysisRequest,
+  createSurfaceAnalysisResultStore, getSurfaceAnalysisResult, invalidateSurfaceAnalysisResult,
+  publishSurfaceAnalysisResult } from "./infrastructure";
+import { presentSurfaceAnalysisResult } from "./surfaceResultPresentation";
+import { createSurfaceCurvatureEvidence, surfaceCurvatureEvidenceCsv,
+  surfaceCurvatureEvidenceJson } from "./surfaceCurvatureEvidence";
 import { analyzeExactSurfaceDifferentialPoint, adaptMeshDifferentialPoint } from "./differentialGeometry";
 import {
   classifySurfaceCurvature,
@@ -65,5 +70,39 @@ describe("Surface canonical curvature result", () => {
     const field = createSurfaceCurvatureFieldFromDifferential([point]);
     const payload = createSurfaceCurvaturePayload({ definition, method: "analytic", field });
     expect(payload).toMatchObject({ surfaceId: "mesh", surfaceRevision: 3, method: "mesh-approximation", units: { length: "mm" }, data: { units: { K: "mm^-2", H: "mm^-1", shapeIndex: "1" } } });
+  });
+
+  it("publishes bounded curvature statistics and withholds historical sample arrays", () => {
+    const definition = adaptSurfaceDefinition({ id: "plane", revision: 2, label: "Plane",
+      representation: "parametric", expressions: { x: "u", y: "v", z: "0" },
+      domain: { kind: "parameter", u: { min: 0, max: 1 }, v: { min: 0, max: 1 } },
+      units: { length: "m" } });
+    const field = createSurfaceCurvatureField({ sampleCount: 2,
+      K: [2, 3], H: [1, 1], k1: [2, 3], k2: [1, 1] });
+    const payload = createSurfaceCurvaturePayload({ definition, method: "surface-sampling", field });
+    const registry = createSurfaceAnalysisRegistry();
+    let store = publishSurfaceAnalysisResult({ store: createSurfaceAnalysisResultStore(), registry,
+      request: createSurfaceAnalysisRequest({ requestId: "source", kind: "surface-definition",
+        definition, domain: "surface", method: "surface-sampling" }), now: 1 });
+    store = publishSurfaceAnalysisResult({ store, registry,
+      request: createSurfaceAnalysisRequest({ requestId: "curvature", kind: "curvature-field",
+        definition, domain: "surface", method: "surface-sampling" }), payload, now: 2 });
+    const result = getSurfaceAnalysisResult(store, definition.identity, "curvature-field")!;
+    const evidence = createSurfaceCurvatureEvidence({ definition, result,
+      qualification: presentSurfaceAnalysisResult(definition, result, store) });
+    expect(evidence.publication).toMatchObject({ module: "surface",
+      assessment: { status: "recorded", sourceStatus: "current" },
+      summary: { sampleCount: 2 } });
+    expect(JSON.parse(surfaceCurvatureEvidenceJson(evidence)).field.gaussianCurvature).toEqual([2, 3]);
+    expect(surfaceCurvatureEvidenceCsv(evidence)).toContain('"sampleCount","2"');
+    expect(surfaceCurvatureEvidenceCsv(evidence)).not.toContain("gaussianCurvature");
+    store = invalidateSurfaceAnalysisResult(store, definition.identity, "surface-definition", "default", 3);
+    const historical = getSurfaceAnalysisResult(store, definition.identity, "curvature-field")!;
+    const withheld = createSurfaceCurvatureEvidence({ definition, result: historical,
+      qualification: presentSurfaceAnalysisResult(definition, historical, store) });
+    expect(withheld.field).toBeNull();
+    expect(withheld.publication.summary).toBeNull();
+    expect(surfaceCurvatureEvidenceJson(withheld)).not.toContain("gaussianCurvature");
+    expect(surfaceCurvatureEvidenceCsv(withheld)).not.toContain('"sampleCount","2"');
   });
 });

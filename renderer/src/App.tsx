@@ -422,6 +422,8 @@ import {
 import { qualifySurfaceLayerResult } from "./surfaceAnalysis/surfaceLayerQualification";
 import { createSurfaceLayerEvidence, surfaceLayerEvidenceCsv,
   surfaceLayerPublication } from "./surfaceAnalysis/surfaceLayerEvidence";
+import { createSurfaceCurvatureEvidence, surfaceCurvatureEvidenceCsv,
+  surfaceCurvatureEvidenceJson } from "./surfaceAnalysis/surfaceCurvatureEvidence";
 import { editSurfaceLayerDisplay } from "./surfaceAnalysis/surfaceLayerDisplay";
 import { presentSurfaceAnalysisResult } from "./surfaceAnalysis/surfaceResultPresentation";
 import { createSurfaceChartEvidence, editSurfaceChartOverlay, serializeSurfaceChartEvidence,
@@ -50566,6 +50568,10 @@ case "mobius":
   const activeSurfaceCurvatureField = activeSurfaceCurvatureResult?.payload?.data.kind === "curvature"
     ? activeSurfaceCurvatureResult.payload.data
     : null;
+  const activeSurfaceCurvatureEvidence = activeSurfaceCurvatureField && activeSurfaceCurvatureResult &&
+    activeSurfaceCurvaturePresentation.status !== "unavailable"
+    ? createSurfaceCurvatureEvidence({ definition: activeCanonicalSurfaceDefinition,
+      result: activeSurfaceCurvatureResult, qualification: activeSurfaceCurvaturePresentation }) : null;
   const surfaceCurvatureValues = useCallback((field: SurfaceCurvatureFieldPayload, scalar: SurfaceCurvatureScalar): ArrayLike<number> => {
     if (scalar === "K") return field.gaussianCurvature;
     if (scalar === "H") return field.meanCurvature;
@@ -50642,26 +50648,19 @@ case "mobius":
     }
     setSurfaceCurvatureCompareLabel(`${surfaceCurvatureScalar} Δmean ${(current.mean - previous.mean).toPrecision(4)} · ΔRMS ${(current.rms - previous.rms).toPrecision(4)} · ${baseline.sampleCount.toLocaleString()}→${activeSurfaceCurvatureField.sampleCount.toLocaleString()} samples`);
   }, [activeSurfaceCurvatureField, activeSurfaceCurvaturePresentation.canUseCurrentValues, surfaceCurvatureScalar]);
-  const handleExportSurfaceCurvature = useCallback(() => {
-    if (!activeSurfaceCurvatureField || !activeSurfaceCurvaturePresentation.canUseCurrentValues) return;
-    const field = activeSurfaceCurvatureField;
-    const serializable = {
-      ...activeSurfaceCurvatureResult?.payload,
-      data: {
-        ...field,
-        parameters: Array.from(field.parameters), positions: Array.from(field.positions), gaussianCurvature: Array.from(field.gaussianCurvature), meanCurvature: Array.from(field.meanCurvature),
-        principalCurvatures: Array.from(field.principalCurvatures), principalDirections: Array.from(field.principalDirections), shapeIndex: Array.from(field.shapeIndex), curvedness: Array.from(field.curvedness),
-        classificationCodes: Array.from(field.classificationCodes), validityMask: Array.from(field.validityMask), uncertaintyMask: Array.from(field.uncertaintyMask), directionValidityMask: Array.from(field.directionValidityMask),
-        regions: field.regions.map((region) => ({ classification: region.classification, indices: Array.from(region.indices) })),
-      },
-    };
-    const url = URL.createObjectURL(new Blob([JSON.stringify(serializable, null, 2)], { type: "application/json" }));
+  const handleExportSurfaceCurvature = useCallback((format: "json" | "csv") => {
+    if (!activeSurfaceCurvatureEvidence || !activeSurfaceCurvaturePresentation.canUseCurrentValues) return;
+    const content = format === "json" ? surfaceCurvatureEvidenceJson(activeSurfaceCurvatureEvidence)
+      : surfaceCurvatureEvidenceCsv(activeSurfaceCurvatureEvidence);
+    const url = URL.createObjectURL(new Blob([content],
+      { type: format === "json" ? "application/json" : "text/csv;charset=utf-8" }));
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `surface-curvature-${activeCanonicalSurfaceDefinition.identity.surfaceId.replace(/[^a-z0-9_-]+/gi, "-")}-r${activeCanonicalSurfaceDefinition.identity.surfaceRevision}.json`;
+    anchor.download = `surface-curvature-${activeCanonicalSurfaceDefinition.identity.surfaceId.replace(/[^a-z0-9_-]+/gi, "-")}-r${activeCanonicalSurfaceDefinition.identity.surfaceRevision}.${format}`;
     anchor.click();
     URL.revokeObjectURL(url);
-  }, [activeCanonicalSurfaceDefinition.identity, activeSurfaceCurvatureField, activeSurfaceCurvaturePresentation.canUseCurrentValues, activeSurfaceCurvatureResult?.payload]);
+  }, [activeCanonicalSurfaceDefinition.identity, activeSurfaceCurvatureEvidence,
+    activeSurfaceCurvaturePresentation.canUseCurrentValues]);
 
   const handleProbeCurrentSurfaceSample = useCallback(async () => {
     const source = surfaceCurvatureSource;
@@ -80176,6 +80175,7 @@ case "mobius":
                         onSave: handleSaveSurfaceCurvature,
                         onCompare: handleCompareSurfaceCurvature,
                         onExport: handleExportSurfaceCurvature,
+                        publication: activeSurfaceCurvatureEvidence?.publication,
                         onToggleVisible: handleToggleSurfaceCurvatureVisible,
                         onRecompute: handleComputeSurfaceCurvature,
                       } : undefined}

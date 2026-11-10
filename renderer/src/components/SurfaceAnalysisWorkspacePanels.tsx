@@ -384,7 +384,8 @@ export function SurfaceAnalysisInspectorPanel({
     onSelectRegion: (classification: SurfaceCurvatureClass) => void;
     onSave: () => void;
     onCompare: () => void;
-    onExport: () => void;
+    onExport: (format: "json" | "csv") => void;
+    publication?: ResultPublication<unknown>;
     onToggleVisible: () => void;
     onRecompute: () => void;
   };
@@ -476,11 +477,13 @@ export function SurfaceAnalysisInspectorPanel({
                 {curvatureActions && <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                   <button type="button" onClick={curvatureActions.onSave}>Save</button>
                   <button type="button" onClick={curvatureActions.onCompare}>Compare</button>
-                  <button type="button" onClick={curvatureActions.onExport}>Export JSON</button>
                   <button type="button" onClick={curvatureActions.onToggleVisible}>{curvatureActions.visible ? "Hide" : "Show"}</button>
                   <button type="button" onClick={curvatureActions.onRecompute}>Recompute</button>
                   <span style={{ color: "#64748b", alignSelf: "center" }}>{curvatureActions.compareLabel}</span>
                 </div>}
+                {curvatureActions?.publication && <ResultPublicationActions
+                  publication={curvatureActions.publication} onExport={curvatureActions.onExport}
+                  jsonLabel="Export JSON" csvLabel="Export CSV" />}
               </section>
             )}
             {layerActions && <SurfaceResultLayersInspector {...layerActions} />}
