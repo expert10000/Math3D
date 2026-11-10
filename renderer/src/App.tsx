@@ -420,7 +420,8 @@ import {
   removeSurfaceResultLayer,
 } from "./surfaceAnalysis/surfaceResultLayers";
 import { qualifySurfaceLayerResult } from "./surfaceAnalysis/surfaceLayerQualification";
-import { createSurfaceLayerEvidence } from "./surfaceAnalysis/surfaceLayerEvidence";
+import { createSurfaceLayerEvidence, surfaceLayerEvidenceCsv,
+  surfaceLayerPublication } from "./surfaceAnalysis/surfaceLayerEvidence";
 import { editSurfaceLayerDisplay } from "./surfaceAnalysis/surfaceLayerDisplay";
 import { presentSurfaceAnalysisResult } from "./surfaceAnalysis/surfaceResultPresentation";
 import { createSurfaceChartEvidence, editSurfaceChartOverlay, serializeSurfaceChartEvidence,
@@ -50913,11 +50914,11 @@ case "mobius":
     : activeSurfaceComputation === "surface-features" && activeSurfaceLayerResult?.payload?.data.kind === "feature-layers"
       ? activeSurfaceLayerResult.payload.data
       : null;
-  const handleSurfaceLayerAction = useCallback((layerId: string, action: "toggle" | "select" | "frame" | "save" | "compare" | "export" | "recompute" | "remove") => {
+  const handleSurfaceLayerAction = useCallback((layerId: string, action: "toggle" | "select" | "frame" | "save" | "compare" | "export" | "export-csv" | "recompute" | "remove") => {
     if (!activeSurfaceLayerPayload) return;
     const layer = activeSurfaceLayerPayload.layers.find((entry) => entry.layerId === layerId);
     if (!layer) return;
-    if (!activeSurfaceLayerQualification.canUseCurrentActions && action !== "export" && action !== "recompute") return;
+    if (!activeSurfaceLayerQualification.canUseCurrentActions && action !== "export" && action !== "export-csv" && action !== "recompute") return;
     const resultKind = activeSurfaceLayerPayload.kind === "curve-layers" ? "surface-curves" : "surface-features";
     if (action === "recompute") {
       if (resultKind === "surface-curves") handleCollectSurfaceCurveLayers(); else handleCollectSurfaceFeatureLayers();
@@ -50937,13 +50938,15 @@ case "mobius":
       }
       return;
     }
-    if (action === "export") {
+    if (action === "export" || action === "export-csv") {
       if (!activeSurfaceLayerResult || activeSurfaceLayerQualification.status === "unavailable") return;
       const evidence = createSurfaceLayerEvidence({ definition: activeCanonicalSurfaceDefinition,
         result: activeSurfaceLayerResult, layer, qualification: activeSurfaceLayerQualification });
-      const url = URL.createObjectURL(new Blob([JSON.stringify(evidence, null, 2)], { type: "application/json" }));
+      const csv = action === "export-csv";
+      const url = URL.createObjectURL(new Blob([csv ? surfaceLayerEvidenceCsv(evidence) : JSON.stringify(evidence, null, 2)],
+        { type: csv ? "text/csv;charset=utf-8" : "application/json" }));
       const anchor = document.createElement("a"); anchor.href = url;
-      anchor.download = `${layer.layerKind}-r${layer.identity.surfaceRevision}-v${activeSurfaceLayerResult.resultVersion}.json`;
+      anchor.download = `${layer.layerKind}-r${layer.identity.surfaceRevision}-v${activeSurfaceLayerResult.resultVersion}.${csv ? "csv" : "json"}`;
       anchor.click(); URL.revokeObjectURL(url);
       return;
     }
@@ -80193,6 +80196,9 @@ case "mobius":
                       layerActions={activeSurfaceLayerPayload ? {
                         payload: activeSurfaceLayerPayload,
                         qualification: activeSurfaceLayerQualification,
+                        publications: activeSurfaceLayerResult ? Object.fromEntries(activeSurfaceLayerPayload.layers.map(layer => [
+                          layer.layerId, surfaceLayerPublication({ definition: activeCanonicalSurfaceDefinition,
+                            result: activeSurfaceLayerResult, layer, qualification: activeSurfaceLayerQualification })])) : {},
                         compareLabel: surfaceLayerCompareLabel,
                         onAction: handleSurfaceLayerAction,
                       } : undefined}

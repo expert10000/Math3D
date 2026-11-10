@@ -405,8 +405,9 @@ export function SurfaceAnalysisInspectorPanel({
   layerActions?: {
     payload: SurfaceCurveLayersPayload | SurfaceFeatureLayersPayload;
     qualification: SurfaceLayerQualification;
+    publications: Record<string, ResultPublication<unknown>>;
     compareLabel: string;
-    onAction: (layerId: string, action: "toggle" | "select" | "frame" | "save" | "compare" | "export" | "recompute" | "remove") => void;
+    onAction: (layerId: string, action: "toggle" | "select" | "frame" | "save" | "compare" | "export" | "export-csv" | "recompute" | "remove") => void;
   };
   chartActions?: {
     chart: SurfaceChartPayload;
@@ -584,7 +585,7 @@ function SurfaceChartDiagnosticsInspector({ chart, focusedIndex, onSelectIndex, 
   );
 }
 
-function SurfaceResultLayersInspector({ payload, qualification, compareLabel, onAction }: NonNullable<Parameters<typeof SurfaceAnalysisInspectorPanel>[0]["layerActions"]>) {
+function SurfaceResultLayersInspector({ payload, qualification, publications, compareLabel, onAction }: NonNullable<Parameters<typeof SurfaceAnalysisInspectorPanel>[0]["layerActions"]>) {
   return (
     <section data-testid="surface-result-layers" style={{ display: "grid", gap: 6, marginTop: 6, paddingTop: 7, borderTop: "1px solid #e2e8f0" }}>
       <strong>{payload.kind === "curve-layers" ? "Surface Curves" : "Surface Features"} · {payload.layers.length} layers</strong>
@@ -600,7 +601,7 @@ function SurfaceResultLayersInspector({ payload, qualification, compareLabel, on
           : `${statistics.pointCount} points · ${statistics.curveCount} curves · confidence ${statistics.meanConfidence?.toPrecision(3) ?? "undefined"}`;
         return <article key={layer.layerId} data-testid={`surface-result-layer-${layer.layerKind}`} style={{ border: `1px solid ${layer.selected ? "#60a5fa" : "#dbe4f0"}`, borderRadius: 7, padding: 6, display: "grid", gap: 4 }}>
           <div><strong>{layer.label}</strong> · {layer.state} · {layer.method} · revision {layer.identity.surfaceRevision}</div>
-          <div style={{ color: "#475467" }}>{statisticsLabel}</div>
+          <div style={{ color: "#475467" }}>{qualification.canUseCurrentActions ? statisticsLabel : "Layer geometry and statistics withheld until the source is current."}</div>
           <div style={{ color: "#64748b" }}>Seed: {layer.selectionSource.kind}{layer.selectionSource.references.length ? ` (${layer.selectionSource.references.join(", ")})` : ""} · boundary: {layer.policy.boundaryBehavior}</div>
           {!!layer.warnings.length && <div style={{ color: "#9a3412" }}>{layer.warnings.join(" · ")}</div>}
           <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
@@ -609,10 +610,12 @@ function SurfaceResultLayersInspector({ payload, qualification, compareLabel, on
             <button type="button" disabled={!qualification.canUseCurrentActions || layer.state !== "ready"} onClick={() => onAction(layer.layerId, "frame")}>Frame</button>
             <button type="button" disabled={!qualification.canUseCurrentActions} onClick={() => onAction(layer.layerId, "save")}>Save</button>
             <button type="button" disabled={!qualification.canUseCurrentActions} onClick={() => onAction(layer.layerId, "compare")}>Compare</button>
-            <button type="button" disabled={qualification.status === "unavailable"} onClick={() => onAction(layer.layerId, "export")}>Export</button>
             <button type="button" onClick={() => onAction(layer.layerId, "recompute")}>Recompute</button>
             <button type="button" disabled={!qualification.canUseCurrentActions} onClick={() => onAction(layer.layerId, "remove")}>Remove</button>
           </div>
+          {publications[layer.layerId] && <ResultPublicationActions publication={publications[layer.layerId]}
+            onExport={format => onAction(layer.layerId, format === "json" ? "export" : "export-csv")}
+            jsonLabel="Export" csvLabel="Export CSV" />}
         </article>;
       })}
       <div style={{ color: "#64748b" }}>{compareLabel}</div>
