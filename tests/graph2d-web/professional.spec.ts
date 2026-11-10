@@ -2,6 +2,8 @@ import { expect, test, type Page } from "@playwright/test";
 import { editGraph, graphEditor, openGraphType, saveGraphEditor } from "../e2e/helpers/graphAuthoring";
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
+const currentFitStatus = (model: string) => `Current numerical result · ${model} fit to checksum-verified rows`;
+const historicalFitStatus = "Historical numerical result · source or settings changed; recorded values are withheld";
 const start = async (page: Page) => {
   await page.route("**/api/worker/**", r => r.fulfill({ status: 503, body: '{"error":"Optional backend unavailable"}', contentType: "application/json" }));
   await page.goto("/"); await page.evaluate(() => { localStorage.clear(); localStorage.setItem("math3d.computeEngines.firstLaunchSeen", "1"); }); await page.reload();
@@ -51,7 +53,7 @@ test("GRA-12.2 cancels an in-flight regression worker and permits a fresh fit", 
   await expect(panel.getByRole("button", { name: "Cancel fit", exact: true })).toHaveCount(0);
   await page.evaluate(() => { window.Worker = (window as unknown as { __regressionWorkerOriginal: typeof Worker }).__regressionWorkerOriginal; });
   await panel.getByRole("button", { name: "Fit dataset", exact: true }).click();
-  await expect(panel.getByRole("status")).toHaveText("Current regression");
+  await expect(panel.getByRole("status")).toHaveText(currentFitStatus("quadratic"));
 });
 
 test("10,000-point gallery preset opens with a bounded plot and fits its original rows", async ({ page }) => {
@@ -68,11 +70,11 @@ test("10,000-point gallery preset opens with a bounded plot and fits its origina
   const panel = inspector.getByRole("region", { name: "Regression fitting", exact: true });
   await panel.getByLabel("Regression model", { exact: true }).selectOption("cubic");
   await panel.getByRole("button", { name: "Fit dataset", exact: true }).click();
-  await expect(panel.getByRole("status")).toHaveText("Current regression");
+  await expect(panel.getByRole("status")).toHaveText(currentFitStatus("cubic"));
   await expect(panel).toContainText("n=10000 · excluded=0 · df=9996");
   await panel.getByLabel("Regression model", { exact: true }).selectOption("quartic");
   await panel.getByRole("button", { name: "Fit dataset", exact: true }).click();
-  await expect(panel.getByRole("status")).toHaveText("Current regression");
+  await expect(panel.getByRole("status")).toHaveText(currentFitStatus("quartic"));
   await expect(panel).toContainText("n=10000 · excluded=0 · df=9995");
 });
 
@@ -200,19 +202,19 @@ test("G2D39 checked data fitting, residuals, stale models and offline uncertaint
   await functions.getByRole("button", { name: "Select Measurements", exact: true }).click(); await save(page);
   const before = await page.evaluate(() => localStorage.getItem("math3d.mixed-workspace.v1")), panel = page.getByRole("region", { name: "Regression fitting", exact: true });
   await expect(page.getByTestId("graph2d-regression-overlay")).toHaveCount(0);
-  await panel.getByRole("button", { name: "Fit dataset", exact: true }).click(); await expect(panel.getByRole("status")).toHaveText("Current regression");
+  await panel.getByRole("button", { name: "Fit dataset", exact: true }).click(); await expect(panel.getByRole("status")).toHaveText(currentFitStatus("linear"));
   await expect(panel).toContainText("n=6 · excluded=1 · df=4"); await expect(page.getByTestId("graph2d-regression-overlay")).toHaveCount(1);
   await panel.getByText("Residuals (6)", { exact: true }).click(); await expect(panel.getByRole("button", { name: "Highlight residual row row_1", exact: true })).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem("math3d.mixed-workspace.v1"))).toBe(before);
   await page.getByTestId("main-viewer").getByRole("button", { name: "Fit selection", exact: true }).click();
   await page.screenshot({ path: info.outputPath("regression.png") });
-  await panel.getByLabel("Regression model", { exact: true }).selectOption("quadratic"); await expect(panel.getByRole("status")).toContainText("Stale regression");
+  await panel.getByLabel("Regression model", { exact: true }).selectOption("quadratic"); await expect(panel.getByRole("status")).toHaveText(historicalFitStatus);
   await expect(page.getByTestId("graph2d-regression-overlay")).toHaveCount(0); await panel.getByRole("button", { name: "Fit dataset", exact: true }).click();
-  await expect(panel.getByRole("status")).toHaveText("Current regression"); await expect(panel).toContainText("df=3");
+  await expect(panel.getByRole("status")).toHaveText(currentFitStatus("quadratic")); await expect(panel).toContainText("df=3");
   await panel.getByLabel("Regression model", { exact: true }).selectOption("cubic");
-  await expect(panel.getByRole("status")).toContainText("Stale regression");
+  await expect(panel.getByRole("status")).toHaveText(historicalFitStatus);
   await panel.getByRole("button", { name: "Fit dataset", exact: true }).click();
-  await expect(panel.getByRole("status")).toHaveText("Current regression");
+  await expect(panel.getByRole("status")).toHaveText(currentFitStatus("cubic"));
   await expect(panel).toContainText("df=2");
   await expect(panel).toContainText("·z³");
   await expect(page.getByTestId("graph2d-regression-overlay")).toHaveCount(1);

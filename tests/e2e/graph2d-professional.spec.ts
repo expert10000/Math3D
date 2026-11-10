@@ -66,7 +66,7 @@ test("G2D40 Electron professional scales, checked regression and frozen local pu
     await functions.getByRole("button", { name: "Select Measurements", exact: true }).click();
     const panel = page.getByRole("region", { name: "Regression fitting", exact: true });
     await panel.getByRole("button", { name: "Fit dataset", exact: true }).click();
-    await expect(panel.getByRole("status")).toHaveText(/^Current (regression|numerical result · linear fit to checksum-verified rows)$/);
+    await expect(panel.getByRole("status")).toHaveText("Current numerical result · linear fit to checksum-verified rows");
     await expect(page.getByTestId("graph2d-regression-overlay")).toHaveCount(1);
     const before = await page.evaluate(() => localStorage.getItem("math3d.mixed-workspace.v1"));
     await openMore();

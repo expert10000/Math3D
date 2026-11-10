@@ -54,7 +54,7 @@ test("10,000-point Gallery and regression controls stay responsive; spline is dr
     expect(await plot.getAttribute("d")).toBe(renderBeforeBudget);
     await panel.getByLabel("Regression analysis row budget").selectOption("10000");
     await panel.getByRole("button", { name: "Fit dataset", exact: true }).click();
-    await expect(panel.getByRole("status")).toHaveText("Current regression");
+    await expect(panel.getByRole("status")).toHaveText("Current numerical result · spline fit to checksum-verified rows");
     const overlay = page.getByTestId("graph2d-regression-overlay");
     await expect(overlay.locator('path[stroke="#b45309"]')).toHaveAttribute("d", /^M/);
     expect(await page.evaluate(() => {
