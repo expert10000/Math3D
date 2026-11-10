@@ -6,6 +6,7 @@ on:
     paths:
       - .github/workflows/m3d20-acceptance-batch01.yml
       - tests/unit/crossModuleAdapterRegistry.test.ts
+      - tests/e2e/m3d20-legacy-reopen.spec.ts
   workflow_dispatch:
     inputs:
       source_sha:
@@ -113,3 +114,37 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
           path: integration-evidence/**
+
+  desktop-reopen:
+    needs: scoped-integration-unit
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+          cache: npm
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - run: npm ci && npm --prefix renderer ci
+      - run: npm run typecheck:noemit && npm run build:core
+      - name: Record source and execute cold reopen journeys
+        shell: bash
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: acceptance-reopen/playwright.json
+        run: |
+          mkdir -p acceptance-reopen
+          git rev-parse HEAD > acceptance-reopen/source.txt
+          npx playwright test tests/e2e/m3d20-legacy-reopen.spec.ts --workers=1 --retries=0 --reporter=list,json
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: m3d20-acceptance-reopen
+          path: |
+            acceptance-reopen/**
+            test-results/**
