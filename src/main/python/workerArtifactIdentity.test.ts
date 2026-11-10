@@ -20,6 +20,12 @@ describe("installed Python worker identity", () => {
       const override = path.join(root, "worker.exe");
       fs.writeFileSync(override, "different-worker");
       expect((await identifyWorkerArtifact({ backend: "bundled-exe", command: override, packaged: true, resourcesPath, packageVersion: "2.0.0" })).launchOrigin).toBe("override");
+      const sibling = path.join(packagedDir, "helper.exe");
+      fs.writeFileSync(sibling, "helper");
+      expect((await identifyWorkerArtifact({ backend: "bundled-exe", command: sibling, packaged: true, resourcesPath, packageVersion: "2.0.0" })).launchOrigin).toBe("override");
+      fs.rmSync(command);
+      fs.symlinkSync(override, command, "file");
+      expect((await identifyWorkerArtifact({ backend: "bundled-exe", command, packaged: true, resourcesPath, packageVersion: "2.0.0" })).launchOrigin).toBe("override");
       expect((await identifyWorkerArtifact({ backend: "python-script", command: "python", packaged: false, resourcesPath, packageVersion: null })).launchOrigin).toBe("source-script");
     } finally { fs.rmSync(root, { recursive: true, force: true }); }
   });

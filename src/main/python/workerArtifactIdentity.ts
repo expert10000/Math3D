@@ -25,18 +25,23 @@ export async function identifyWorkerArtifact(args: {
     packageVersion: args.packageVersion,
   };
   const command = path.resolve(args.command);
-  const normalized = process.platform === "win32" ? command.toLowerCase() : command;
+  const normalize = (value: string) => process.platform === "win32" ? value.toLowerCase() : value;
+  let resolvedCommand = command;
+  try { resolvedCommand = await fs.promises.realpath(command); } catch { /* Missing artifact is reported below. */ }
+  const normalized = normalize(resolvedCommand);
   const packagedRoots = [
     path.join(args.resourcesPath, "python-worker"),
     path.join(args.resourcesPath, "app.asar.unpacked", "python-worker"),
-  ].map((item) => process.platform === "win32" ? path.resolve(item).toLowerCase() : path.resolve(item));
-  const launchOrigin = args.packaged && packagedRoots.some((root) => path.dirname(normalized) === root)
+  ].map((item) => normalize(path.resolve(item)));
+  const expectedName = process.platform === "win32" ? "worker.exe" : "worker";
+  const launchOrigin = args.packaged && normalize(path.basename(command)) === expectedName &&
+    packagedRoots.some((root) => path.dirname(normalized) === root)
     ? "packaged-resource" : "override";
   let artifactSha256: string | null = null;
   try {
     const stat = await fs.promises.stat(command);
     if (stat.isFile()) {
-      const key = `${command}:${stat.size}:${stat.mtimeMs}`;
+      const key = `${command}:${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}`;
       let pending = cache.get(key);
       if (!pending) {
         pending = (async () => {
