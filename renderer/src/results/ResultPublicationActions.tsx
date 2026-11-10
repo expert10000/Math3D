@@ -1,13 +1,16 @@
 import { resultPublicationJson, type ResultPublication } from "./resultPublication";
 
 export function ResultPublicationActions({ publication, onExport, jsonTestId, csvTestId,
-  jsonLabel = "Export evidence JSON", csvLabel = "Export evidence CSV" }: Readonly<{
+  jsonLabel = "Export evidence JSON", csvLabel = "Export evidence CSV",
+  exportDisabled = false, onExportReceipt }: Readonly<{
   publication: ResultPublication<unknown>;
   onExport: (format: "json" | "csv") => void;
   jsonTestId?: string;
   csvTestId?: string;
   jsonLabel?: string;
   csvLabel?: string;
+  exportDisabled?: boolean;
+  onExportReceipt?: () => void;
 }>) {
   const { assessment } = publication;
   const exportReceipt = () => {
@@ -36,10 +39,12 @@ export function ResultPublicationActions({ publication, onExport, jsonTestId, cs
       <p>{assessment.reason}</p>
     </details>
     <div className="result-publication-downloads" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-      <button type="button" data-testid={jsonTestId} onClick={() => onExport("json")}>{jsonLabel}</button>
-      <button type="button" data-testid={csvTestId} onClick={() => onExport("csv")}>{csvLabel}</button>
+      <button type="button" data-testid={jsonTestId} disabled={exportDisabled}
+        onClick={() => onExport("json")}>{jsonLabel}</button>
+      <button type="button" data-testid={csvTestId} disabled={exportDisabled}
+        onClick={() => onExport("csv")}>{csvLabel}</button>
       <button type="button" data-testid="result-publication-export-receipt"
-        onClick={exportReceipt}>Export common receipt JSON</button>
+        disabled={exportDisabled} onClick={onExportReceipt ?? exportReceipt}>Export common receipt JSON</button>
     </div>
   </section>;
 }

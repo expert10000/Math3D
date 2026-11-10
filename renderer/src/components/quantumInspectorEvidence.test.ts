@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { quantumInspectorEvidence, quantumInspectorEvidenceJson,
+import { quantumInspectorEvidence, quantumInspectorEvidenceCsv, quantumInspectorEvidenceJson,
+  quantumInspectorPublication,
   type QuantumInspectorEvidenceInput } from "./quantumInspectorEvidence";
 
 const input: QuantumInspectorEvidenceInput = {
@@ -23,6 +24,14 @@ describe("Quantum Inspector evidence qualification", () => {
       qualification: "current", producerInvariants: [{ value: 1, status: "producer-computed" }],
       source: { fingerprint: "a".repeat(64) } });
     expect(JSON.stringify(report)).not.toMatch(/directory|sampleValue|parameter/i);
+    expect(report.publication).toMatchObject({ schema: "math3d.result-publication/v1",
+      module: "quantum", source: { id: "run-1", hash: "a".repeat(64) },
+      assessment: { status: "recorded", sourceStatus: "current" },
+      summary: { producerInvariants: [{ value: 1 }] } });
+    const csv = quantumInspectorEvidenceCsv(evidence);
+    expect(csv).toContain('"producerInvariants"');
+    expect(csv).toContain('"recordedClaim"');
+    expect(csv).not.toContain("sampleValue");
   });
 
   it("withholds dataset and invariant numbers while checking or after a source change", () => {
@@ -32,6 +41,8 @@ describe("Quantum Inspector evidence qualification", () => {
       expect(evidence.invariants).toEqual([]);
       expect(JSON.stringify(evidence)).not.toContain("producer-computed");
       expect(() => quantumInspectorEvidenceJson(evidence)).toThrow(/withheld/);
+      expect(() => quantumInspectorEvidenceCsv(evidence)).toThrow(/withheld/);
+      expect(quantumInspectorPublication(evidence).summary).toBeNull();
     }
     const malformed = quantumInspectorEvidence({ ...input, fingerprint: "../changed" });
     expect(malformed.status).toBe("withheld");
