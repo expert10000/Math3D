@@ -21,6 +21,7 @@ export class VolumeIsosurfaceScientificJob {
   readonly #execution;
   readonly #resources = createInMemoryM3DResourceStore();
   readonly #resourceOwners = new Map<string, ScientificSourceGeneration>();
+  readonly #unregisterDiscovery: () => void;
 
   constructor(adapter: () => VolumeDocumentAdapter, coordinator: VolumeWorkerCoordinator) {
     this.#adapter = adapter;
@@ -44,13 +45,14 @@ export class VolumeIsosurfaceScientificJob {
       }],
     });
     this.#execution = createExecutionService(this.#broker);
-    registerBrokerDiscovery("volume", () => this.#broker.discoverCapabilities());
+    this.#unregisterDiscovery = registerBrokerDiscovery("volume", () => this.#broker.discoverCapabilities());
   }
   capabilities() { return this.#broker.discoverCapabilities(); }
   executionCapabilities() { return this.#execution.discoverCapabilities(); }
   cancel(jobId: string) { return this.#execution.cancel(jobId); }
   resources() { this.#pruneStaleResources(this.#adapter().sourceGeneration()); return this.#resources.list(); }
   dispose() {
+    this.#unregisterDiscovery();
     for (const jobId of this.#pending.keys()) this.cancel(jobId);
     for (const ownerId of this.#resourceOwners.keys()) this.#resources.releaseOwner(ownerId);
     this.#resourceOwners.clear();

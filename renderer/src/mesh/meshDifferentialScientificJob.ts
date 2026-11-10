@@ -45,6 +45,7 @@ export class MeshDifferentialScientificJob {
   readonly #execution;
   readonly #results = new Map<string, AnalysisResultEnvelope>();
   readonly #outcomes = new Map<string, ScientificBrokerOutcome>();
+  readonly #unregisterDiscovery: () => void;
   #sequence = 0;
 
   constructor(
@@ -73,13 +74,17 @@ export class MeshDifferentialScientificJob {
       }],
     });
     this.#execution = createExecutionService(this.#broker);
-    registerBrokerDiscovery("mesh", () => this.#broker.discoverCapabilities());
+    this.#unregisterDiscovery = registerBrokerDiscovery("mesh", () => this.#broker.discoverCapabilities());
   }
 
   async capabilities() { return this.#broker.discoverCapabilities(); }
   executionCapabilities() { return this.#execution.discoverCapabilities(); }
   results(): readonly AnalysisResultEnvelope[] { return [...this.#results.values()]; }
   outcomes(): readonly ScientificBrokerOutcome[] { return [...this.#outcomes.values()]; }
+  dispose(): void {
+    this.#unregisterDiscovery();
+    for (const jobId of this.#pending.keys()) this.cancel(jobId);
+  }
   cancel(jobId: string): boolean {
     const cancelled = this.#execution.cancel(jobId);
     if (cancelled) this.#workers.get(jobId)?.terminate();

@@ -20,6 +20,7 @@ export class CurveScientificJob {
   readonly #service;
   readonly #broker: ScientificExecutionBroker;
   readonly #execution;
+  readonly #unregisterDiscovery: () => void;
 
   constructor(bridge: CurveAnalysisKernelBridge, coordinator: CurveWorkerCoordinator) {
     this.#bridge = bridge;
@@ -43,14 +44,14 @@ export class CurveScientificJob {
       }],
     });
     this.#execution = createExecutionService(this.#broker);
-    registerBrokerDiscovery("curve", () => this.#broker.discoverCapabilities());
+    this.#unregisterDiscovery = registerBrokerDiscovery("curve", () => this.#broker.discoverCapabilities());
   }
 
   capabilities() { return this.#broker.discoverCapabilities(); }
   executionCapabilities() { return this.#execution.discoverCapabilities(); }
   cache() { return this.#coordinator.cache; }
   cancel(jobId: string) { return this.#execution.cancel(jobId); }
-  dispose() { for (const jobId of this.#pending.keys()) this.cancel(jobId); this.#coordinator.dispose(); }
+  dispose() { this.#unregisterDiscovery(); for (const jobId of this.#pending.keys()) this.cancel(jobId); this.#coordinator.dispose(); }
 
   submit(request: CurveWorkerRequest, onProgress?: Pending["onProgress"]): CurveScientificHandle {
     const source = this.#bridge.source();

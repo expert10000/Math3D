@@ -42,8 +42,9 @@ const brokerSettled = new Set<string>();
 const brokerDiscoverers = new Map<string, () => Promise<readonly ScientificBackendCapabilitySnapshot[]>>();
 export type BrokerDiscoveryFailure = Readonly<{ name: string; reason: "probe-failed" | "duplicate-backend" }>;
 
-export function registerBrokerDiscovery(name: string, discover: () => Promise<readonly ScientificBackendCapabilitySnapshot[]>): void {
+export function registerBrokerDiscovery(name: string, discover: () => Promise<readonly ScientificBackendCapabilitySnapshot[]>): () => void {
   brokerDiscoverers.set(name, discover);
+  return () => { if (brokerDiscoverers.get(name) === discover) brokerDiscoverers.delete(name); };
 }
 
 export async function discoverScientificBackends(): Promise<readonly ScientificBackendCapabilitySnapshot[]> {

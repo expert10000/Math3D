@@ -23,6 +23,17 @@ describe("Compute Center job lifecycle", () => {
     ]));
     expect(JSON.stringify(report)).not.toContain("credential");
   });
+  it("unregisters only the discoverer owned by the disposing service", async () => {
+    const first = registerBrokerDiscovery("test-lifecycle", async () => []);
+    const second = registerBrokerDiscovery("test-lifecycle", async () => [{
+      backendId: "live-lifecycle-backend", backendVersion: "1", transport: "worker",
+      availability: "available", operations: [],
+    } as ScientificBackendCapabilitySnapshot]);
+    first();
+    expect((await discoverScientificBackendReport()).backends.some(item => item.backendId === "live-lifecycle-backend")).toBe(true);
+    second();
+    expect((await discoverScientificBackendReport()).backends.some(item => item.backendId === "live-lifecycle-backend")).toBe(false);
+  });
   it("distinguishes route refusal, stale source, timeout, cancellation and completion", () => {
     expect(presentComputeJob(job({ status: "routing" })).label).toBe("Checking route");
     expect(presentComputeJob(job({ status: "failed", failureCode: "capability-unavailable" })).label).toBe("Not admitted");
