@@ -13,19 +13,22 @@ describe("Volume analysis publication", () => {
     });
     const volume = makeVolume(1);
     const summary = runVolumeAnalysis({ volume, grid, store: createVolumeTypedArrayStore(), threshold: 10, now: 2 });
-    const snapshot = { identityKey: volume.identity.key, summary };
-    const current = publishVolumeAnalysisEvidence(volume, snapshot);
+    const settings = { threshold: 10, isoValue: 10 };
+    const snapshot = { identityKey: volume.identity.key, ...settings, summary };
+    const current = publishVolumeAnalysisEvidence(volume, snapshot, settings);
     expect(current.publication.assessment.status).toBe("recorded");
     expect(current.csv).toContain('"finiteCount","27"');
     expect(current.reportJson).toContain('"analysis"');
 
     grid.scalars[0] = 99;
     const changed = makeVolume(3);
-    const withheld = publishVolumeAnalysisEvidence(changed, snapshot);
+    const withheld = publishVolumeAnalysisEvidence(changed, snapshot, settings);
     expect(withheld.publication.assessment.status).toBe("withheld");
     expect(withheld.publication.summary).toBeNull();
     expect(withheld.csv).toBeNull();
     expect(withheld.reportJson).toBeNull();
-    expect(withheld.receiptJson).toContain("source changed");
+    expect(withheld.receiptJson).toContain("source or settings changed");
+    expect(publishVolumeAnalysisEvidence(volume, snapshot, { threshold: 11, isoValue: 10 }).reportJson).toBeNull();
+    expect(publishVolumeAnalysisEvidence(volume, snapshot, { threshold: 10, isoValue: 11 }).csv).toBeNull();
   });
 });

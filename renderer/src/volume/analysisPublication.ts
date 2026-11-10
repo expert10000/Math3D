@@ -3,10 +3,17 @@ import type { VolumeAnalysisSummary } from "./analysis";
 import type { VolumeObject } from "./contracts";
 import { serializeVolumeObject } from "./infrastructure";
 
-export type VolumeAnalysisSnapshot = { identityKey: string; summary: VolumeAnalysisSummary };
+export type VolumeAnalysisSnapshot = { identityKey: string; threshold: number; isoValue: number; summary: VolumeAnalysisSummary };
 
-export const publishVolumeAnalysisEvidence = (volume: VolumeObject, snapshot: VolumeAnalysisSnapshot | null) => {
-  const current = snapshot?.identityKey === volume.identity.key && volume.state === "current";
+export const publishVolumeAnalysisEvidence = (
+  volume: VolumeObject,
+  snapshot: VolumeAnalysisSnapshot | null,
+  settings: { threshold: number; isoValue: number },
+) => {
+  const current = snapshot?.identityKey === volume.identity.key &&
+    snapshot?.threshold === settings.threshold && snapshot?.isoValue === settings.isoValue &&
+    snapshot?.summary.region.threshold.low === settings.threshold && snapshot?.summary.iso.isoValue === settings.isoValue &&
+    volume.state === "current";
   const summary = current ? snapshot.summary : null;
   const publication = createResultPublication({
     module: "volume",
@@ -19,9 +26,9 @@ export const publishVolumeAnalysisEvidence = (volume: VolumeObject, snapshot: Vo
     },
     sourceStatus: volume.state,
     status: summary ? "recorded" : "withheld",
-    reason: summary ? "Analysis belongs to the current Volume grid." : "Analysis source changed or has not been computed.",
+    reason: summary ? "Analysis belongs to the current Volume grid and settings." : "Analysis source or settings changed, or analysis has not been computed.",
     recordedClaim: "Volume analysis summary was computed from the captured grid.",
-    independentCheck: summary ? "Snapshot identity and current Volume identity match." : "Snapshot identity does not match the current Volume identity.",
+    independentCheck: summary ? "Snapshot identity, threshold and iso value match the current Volume and settings." : "Snapshot identity or analysis settings do not match the current Volume.",
     summary: summary ? {
       statistics: summary.statistics,
       region: { threshold: summary.region.threshold, voxelCount: summary.region.voxelCount, physicalVolume: summary.region.physicalVolume, components: summary.region.components.length },
