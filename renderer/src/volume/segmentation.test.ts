@@ -4,6 +4,16 @@ import { closeVolumeMask, connectedComponentsLabelMap, dilateVolumeMask, erodeVo
 const grid=(dims:[number,number,number],ones:readonly[number,number,number][]):VolumeGrid=>{const scalars=new Float32Array(dims[0]*dims[1]*dims[2]);for(const[x,y,z]of ones)scalars[x+dims[0]*(y+dims[1]*z)]=1;return{dims,scalars,spacing:[2,2,2],origin:[0,0,0]};};
 const count=(data:ArrayLike<number>)=>Array.from(data).filter(Boolean).length;
 describe("volume masks, labels and segmentation",()=>{
+ it("preserves sampled-grid lineage and refuses mixed-source mask arithmetic",()=>{
+   const data=grid([2,2,2],[[0,0,0]]);
+   const mask=thresholdVolumeMask(data,.5,1,{sourceVolumeId:"field",sourceVolumeRevision:3,sourceSampledGridRevision:7});
+   expect(connectedComponentsLabelMap(dilateVolumeMask(mask)).provenance).toMatchObject({sourceVolumeId:"field",sourceVolumeRevision:3,sourceSampledGridRevision:7});
+   expect(resampleLabelMapNearest(connectedComponentsLabelMap(mask),[3,3,3]).provenance.sourceSampledGridRevision).toBe(7);
+   const other=thresholdVolumeMask(data,.5,1,{sourceVolumeId:"field",sourceVolumeRevision:3,sourceSampledGridRevision:8});
+   expect(()=>unionVolumeMasks(mask,other)).toThrow(/same Volume source and sampled grid revision/);
+   const serialized=serializeVolumeLabelMap(connectedComponentsLabelMap(mask));
+   expect(()=>restoreVolumeLabelMap({...serialized,provenance:{...serialized.provenance,sourceSampledGridRevision:0}})).toThrow(/sampled-grid revision/);
+ });
  it("matches deterministic 6/18/26 connectivity truth cases",()=>{const mask=thresholdVolumeMask(grid([3,3,3],[[0,0,0],[1,1,0],[2,2,1]]),.5);expect(connectedComponentsLabelMap(mask,6).labels).toHaveLength(3);expect(connectedComponentsLabelMap(mask,18).labels).toHaveLength(2);expect(connectedComponentsLabelMap(mask,26).labels).toHaveLength(1);});
  it("implements binary morphology and hole/component operations",()=>{const center=thresholdVolumeMask(grid([5,5,5],[[2,2,2]]),.5);expect(count(dilateVolumeMask(center,1,6).data)).toBe(7);expect(count(erodeVolumeMask(dilateVolumeMask(center,1,6),1,6).data)).toBe(1);expect(count(openVolumeMask(center,1,6).data)).toBe(0);expect(count(closeVolumeMask(center,1,6).data)).toBe(1);const shellPoints:[number,number,number][]=[];for(let z=1;z<=3;z++)for(let y=1;y<=3;y++)for(let x=1;x<=3;x++)if(x!==2||y!==2||z!==2)shellPoints.push([x,y,z]);const shell=thresholdVolumeMask(grid([5,5,5],shellPoints),.5);expect(count(fillVolumeMaskHoles(shell).data)).toBe(27);const noisy=thresholdVolumeMask(grid([5,5,5],[[0,0,0],[2,2,2],[3,2,2]]),.5);expect(count(removeSmallMaskComponents(noisy,2).data)).toBe(2);});
  it("supports Boolean masks, inversion, flood fill, ROI restriction, and cancellation",()=>{const a=thresholdVolumeMask(grid([3,3,1],[[0,0,0],[1,0,0]]),.5);const b=thresholdVolumeMask(grid([3,3,1],[[1,0,0],[2,0,0]]),.5);expect(count(unionVolumeMasks(a,b).data)).toBe(3);expect(count(intersectVolumeMasks(a,b).data)).toBe(1);expect(count(subtractVolumeMasks(a,b).data)).toBe(1);expect(count(invertVolumeMask(a).data)).toBe(7);expect(count(floodFillVolumeMask(a,[0,0,0],6).data)).toBe(2);expect(count(thresholdVolumeMask(grid([3,3,1],[[0,0,0],[2,2,0]]),.5,1,{roi:{min:[0,0,0],max:[1,1,0]}}).data)).toBe(1);expect(()=>thresholdVolumeMask(grid([32,32,1],[]),.5,1,{cancelled:()=>true})).toThrow(/cancelled/i);});

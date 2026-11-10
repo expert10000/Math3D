@@ -35267,6 +35267,7 @@ const App: React.FC = () => {
     const mask = thresholdVolumeMask(volumeDataset.grid, volumeSegmentationThreshold, Number.POSITIVE_INFINITY, {
       sourceVolumeId: canonicalVolumeObject.identity.volumeId,
       sourceVolumeRevision: canonicalVolumeObject.identity.volumeRevision,
+      sourceSampledGridRevision: canonicalVolumeObject.identity.sampledGridRevision,
     });
     const labels = connectedComponentsLabelMap(mask, 6);
     volumeSegmentationSessionRef.current.createPreview(labels, "range-threshold");
