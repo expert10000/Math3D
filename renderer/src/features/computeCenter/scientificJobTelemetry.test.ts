@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { ScientificBrokerOutcome } from "@math3d/kernel";
-import { getComputeJobs, linkComputeJobResult, observeBrokerJob, presentComputeJob, recordScientificJobEvent,
+import type { ScientificBackendCapabilitySnapshot, ScientificBrokerOutcome } from "@math3d/kernel";
+import { discoverScientificBackendReport, getComputeJobs, linkComputeJobResult, observeBrokerJob, presentComputeJob, recordScientificJobEvent, registerBrokerDiscovery,
   type ComputeJobRecord } from "./scientificJobTelemetry";
 
 const job = (changes: Partial<ComputeJobRecord>): ComputeJobRecord => ({ jobId: "job",
@@ -9,6 +9,20 @@ const failure = (jobId: string, code: string): ScientificBrokerOutcome => ({ ok:
   code, message: `Backend returned ${code}`, attempts: [], schemaVersion: 1 } as ScientificBrokerOutcome);
 
 describe("Compute Center job lifecycle", () => {
+  it("reports failed discovery and duplicate backend identities without duplicating routes", async () => {
+    const backend = { backendId: "unique-test-backend", backendVersion: "1", transport: "worker",
+      availability: "available", operations: [] } as ScientificBackendCapabilitySnapshot;
+    registerBrokerDiscovery("test-first", async () => [backend]);
+    registerBrokerDiscovery("test-duplicate", async () => [backend]);
+    registerBrokerDiscovery("test-rejected", async () => { throw Error("private credential must not leak"); });
+    const report = await discoverScientificBackendReport();
+    expect(report.backends.filter(item => item.backendId === "unique-test-backend")).toHaveLength(1);
+    expect(report.failures).toEqual(expect.arrayContaining([
+      { name: "test-duplicate", reason: "duplicate-backend" },
+      { name: "test-rejected", reason: "probe-failed" },
+    ]));
+    expect(JSON.stringify(report)).not.toContain("credential");
+  });
   it("distinguishes route refusal, stale source, timeout, cancellation and completion", () => {
     expect(presentComputeJob(job({ status: "routing" })).label).toBe("Checking route");
     expect(presentComputeJob(job({ status: "failed", failureCode: "capability-unavailable" })).label).toBe("Not admitted");

@@ -40,14 +40,34 @@ const listeners = new Set<() => void>();
 let jobs: readonly ComputeJobRecord[] = [];
 const brokerSettled = new Set<string>();
 const brokerDiscoverers = new Map<string, () => Promise<readonly ScientificBackendCapabilitySnapshot[]>>();
+export type BrokerDiscoveryFailure = Readonly<{ name: string; reason: "probe-failed" | "duplicate-backend" }>;
 
 export function registerBrokerDiscovery(name: string, discover: () => Promise<readonly ScientificBackendCapabilitySnapshot[]>): void {
   brokerDiscoverers.set(name, discover);
 }
 
 export async function discoverScientificBackends(): Promise<readonly ScientificBackendCapabilitySnapshot[]> {
-  const results = await Promise.allSettled([...brokerDiscoverers.values()].map((discover) => discover()));
-  return results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
+  return (await discoverScientificBackendReport()).backends;
+}
+
+export async function discoverScientificBackendReport(): Promise<{
+  backends: readonly ScientificBackendCapabilitySnapshot[]; failures: readonly BrokerDiscoveryFailure[]
+}> {
+  const entries = [...brokerDiscoverers.entries()];
+  const results = await Promise.allSettled(entries.map(([, discover]) => discover()));
+  const backends: ScientificBackendCapabilitySnapshot[] = [];
+  const failures: BrokerDiscoveryFailure[] = [];
+  const seen = new Set<string>();
+  results.forEach((result, index) => {
+    const name = entries[index][0];
+    if (result.status === "rejected") { failures.push({ name, reason: "probe-failed" }); return; }
+    for (const backend of result.value) {
+      if (seen.has(backend.backendId)) { failures.push({ name, reason: "duplicate-backend" }); continue; }
+      seen.add(backend.backendId);
+      backends.push(backend);
+    }
+  });
+  return { backends, failures };
 }
 
 const publish = (record: ComputeJobRecord) => {

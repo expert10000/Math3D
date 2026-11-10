@@ -4,8 +4,8 @@ import { getMeshBackendCapabilities } from "../../services/meshBackend";
 import { getPythonWorkerDiagnostics, type PythonWorkerDiagnosticsSnapshot } from "../../services/pythonWorkerDiagnosticsClient";
 import { sageExecutionRegistry, type SageBackend } from "../../services/sageOperationExecution";
 import type { ScientificBackendCapabilitySnapshot } from "@math3d/kernel";
-import { discoverScientificBackends, getComputeJobs, presentComputeJob, subscribeComputeJobs,
-  type ComputeJobRecord } from "./scientificJobTelemetry";
+import { discoverScientificBackendReport, getComputeJobs, presentComputeJob, subscribeComputeJobs,
+  type BrokerDiscoveryFailure, type ComputeJobRecord } from "./scientificJobTelemetry";
 import { buildRuntimeCapabilityReport, runtimeOperationAdmissions, type RuntimeProbeResult, type RuntimeState } from "./runtimeCapabilityReport";
 import { createRuntimeCapabilityReceipt } from "./runtimeCapabilityReceipt";
 import ComputeEngineManagerPanel from "../computeEngines/ComputeEngineManagerPanel";
@@ -48,6 +48,7 @@ export default function ComputeCenterPanel({ onClose, initialTab = "overview" }:
   const [engines, setEngines] = useState<ComputeEngineSnapshot | null>(null);
   const [memory, setMemory] = useState<MemorySnapshot | null>(null);
   const [brokerBackends, setBrokerBackends] = useState<readonly ScientificBackendCapabilitySnapshot[]>([]);
+  const [brokerFailures, setBrokerFailures] = useState<readonly BrokerDiscoveryFailure[]>([]);
   const [sageProbes, setSageProbes] = useState<Partial<Record<SageBackend, RuntimeProbeResult>>>({});
   const [checkedAt, setCheckedAt] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
@@ -67,17 +68,19 @@ export default function ComputeCenterPanel({ onClose, initialTab = "overview" }:
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
-    setPython(null); setCgal(null); setEngines(null); setBrokerBackends([]);
+    setPython(null); setCgal(null); setEngines(null); setBrokerBackends([]); setBrokerFailures([]);
     setSageProbes({}); setCheckedAt(0); setError(null);
     const [[healthResult, engineResult, brokerResult], sageResults] = await Promise.all([
       Promise.allSettled([cgalHealth(),
-        window.computeEngines?.getStatus() ?? Promise.resolve(null), discoverScientificBackends()]),
+        window.computeEngines?.getStatus() ?? Promise.resolve(null), discoverScientificBackendReport()]),
       Promise.allSettled((["local", "docker", "private"] as const)
         .map(backend => sageExecutionRegistry.probeBackend(backend))),
     ]);
     setCgal(healthResult.status === "fulfilled" ? healthResult.value : { ok: false, error: "State check failed" });
     setEngines(engineResult.status === "fulfilled" ? engineResult.value : null);
-    setBrokerBackends(brokerResult.status === "fulfilled" ? brokerResult.value : []);
+    setBrokerBackends(brokerResult.status === "fulfilled" ? brokerResult.value.backends : []);
+    setBrokerFailures(brokerResult.status === "fulfilled" ? brokerResult.value.failures :
+      [{ name: "broker", reason: "probe-failed" }]);
     setSageProbes(Object.fromEntries((["local", "docker", "private"] as const).map((backend, index) => {
       const result = sageResults[index];
       return [backend, result?.status === "fulfilled" ? { probe: result.value } :
@@ -134,6 +137,7 @@ export default function ComputeCenterPanel({ onClose, initialTab = "overview" }:
         {localRoutes.map((entry) => <div key={entry.id} data-testid={`runtime-route-${entry.id}`} style={{ display: "flex", gap: 8, alignItems: "start", background: "white", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 10px" }}><span aria-label={entry.state} style={{ color: statusColor(entry.state), fontWeight: 800 }}>{entry.state === "ready" ? "✓" : "○"}</span><div><strong style={{ fontSize: 12 }}>{entry.label}</strong><div style={{ fontSize: 11, color: "#64748b", overflowWrap: "anywhere" }}>{entry.detail}</div>{entry.version && <small>Version {entry.version}{entry.transport ? ` · ${entry.transport}` : ""}</small>}{entry.launchOrigin && <div style={{ fontSize: 10, color: "#64748b" }}>{entry.launchOrigin} · app {entry.packageVersion ?? "unknown"}{entry.artifactSha256 ? ` · SHA-256 ${entry.artifactSha256.slice(0, 12)}…` : ""}</div>}</div></div>)}
       </div><div style={{ color: "#64748b", fontSize: 11, marginTop: 10 }}>Broker routes discovered from active scientific job adapters</div>
       {brokerRoutes.length ? <div data-testid="compute-center-broker-backends" style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 5 }}>{brokerRoutes.map((backend) => <span key={backend.id} data-testid={`runtime-route-${backend.id}`} title={backend.detail} style={{ background: "white", border: "1px solid #dbe4f0", borderRadius: 6, padding: "4px 7px", fontSize: 11 }}>{backend.state === "ready" ? "✓" : "○"} {backend.label} · {backend.transport} · v{backend.version} · {backend.state}</span>)}</div> : <div style={{ color: "#64748b", fontSize: 11 }}>No broker adapters active yet.</div>}
+      {brokerFailures.length > 0 && <div data-testid="compute-center-broker-discovery-failures" role="status" style={{ color: "#92400e", fontSize: 11, marginTop: 6 }}>{brokerFailures.map(item => `${item.name}: ${item.reason === "probe-failed" ? "capability probe failed" : "duplicate backend identity"}`).join(" · ")}</div>}
       <button type="button" style={{ ...button, marginTop: 10 }} onClick={() => setActiveTab("runtimes")}>Open Runtimes</button></section>
       <section style={card} aria-label="Sage routes" data-testid="runtime-center-sage-routes"><h3 style={{ margin: "0 0 6px", fontSize: 14 }}>Sage routes</h3>
         <p style={{ fontSize: 11, color: "#64748b" }}>Each route uses its own live health and capability manifest. A running Docker container alone does not verify the Sage operation route.</p>
