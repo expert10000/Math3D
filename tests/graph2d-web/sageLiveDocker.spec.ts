@@ -60,7 +60,7 @@ test("browser Sage Docker cancel reaches the live service", async ({ page }) => 
   expect(outcome.error).toContain("cancelled");
 });
 
-// One live session retains all Compute records, while each operation keeps the 120s test limit.
+// One live session retains all Compute records; the final audit runs two operations.
 test.describe.serial("live Docker Sage operation journey", () => {
   let page: import("@playwright/test").Page;
   let panel: import("@playwright/test").Locator;
@@ -97,6 +97,7 @@ test.describe.serial("live Docker Sage operation journey", () => {
     });
   }
   test("rejects a noninvertible input, computes in Geometry and audits all broker records", async () => {
+    test.setTimeout(180_000);
     await panel.getByLabel("Operation").selectOption("sage.numberTheory.modInverse");
     await panel.getByLabel("Integer", { exact: true }).fill("2");
     await panel.getByLabel("Modulus (greater than 1)").fill("4");
@@ -105,9 +106,8 @@ test.describe.serial("live Docker Sage operation journey", () => {
   
     const geometry = await openGeometryServices(page);
     await expect(geometry.getByLabel("Services preset")).toHaveValue("All");
-    await geometry.getByLabel("SageMath backend").scrollIntoViewIfNeeded();
-    await geometry.getByLabel("SageMath backend").selectOption("docker");
     await geometry.getByLabel("Operation").selectOption("sage.groebner.compute");
+    await expect(geometry.getByLabel("SageMath backend")).toHaveValue("docker");
     await geometry.getByRole("button", { name: "Run", exact: true }).click();
     await expect(geometry).toContainText("y^2 - 1/2", { timeout: 60_000 });
   
