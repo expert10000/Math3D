@@ -1,3 +1,4 @@
+import { mixedLegacyResourceFixture } from "./helpers/meshProjectResources";
 import { expect, test } from "@playwright/test";
 import { resolve } from "node:path";
 import { readFileSync } from "node:fs";
@@ -82,4 +83,82 @@ test("M3D20 AC03 metadata-only artifact remains unavailable after cold Project r
     await expect(missing).toContainText("missing or unverified");
     expect(await journey.ctx.page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).workspace.artifacts)).toEqual([descriptor]);
   } finally { await closeSurfaceApp(journey.ctx); }
+});
+
+test("M3D20 mixed legacy Project package transfers real sidecars and recovers after rejected resources", async () => {
+  test.setTimeout(300_000);
+  const fixture = mixedLegacyResourceFixture();
+  const expectedSelections = core.readScientificSelectionsFromProject(fixture.project);
+  const originalPackage = JSON.parse(fixture.raw);
+  expect(originalPackage.resources.length).toBeGreaterThan(0);
+  const signatures = (p: any) => p.resources.map((r: any) => ({ id: r.id, checksum: r.checksum, byteLength: r.byteLength })).sort((a: any,b: any) => a.id.localeCompare(b.id));
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    let panel = await gallery(ctx);
+    const importFile = async (raw: string) => {
+      panel = await gallery(ctx!);
+      await panel.getByTestId("project-import-file").setInputFiles({ name: "legacy.resources.json", mimeType: "application/json", buffer: Buffer.from(raw) });
+    };
+    const assertCurrent = async () => {
+      await expect.poll(() => ctx!.page.evaluate(() => {
+        const raw = localStorage.getItem("math3d.project.v1");
+        return raw ? JSON.parse(raw).identity.id : null;
+      })).toBe(fixture.project.identity.id);
+      const project = core.parseMath3DProject(await ctx!.page.evaluate(() => localStorage.getItem("math3d.project.v1")!));
+      expect(project.identity).toEqual(fixture.project.identity);
+      expect(project.workspace.entries.map((entry: any) => entry.expected)).toEqual(fixture.project.workspace.entries.map((entry: any) => entry.expected));
+      expect(core.readScientificSelectionsFromProject(project)).toEqual(expectedSelections);
+    };
+    const fullDetails = async () => {
+      panel = await gallery(ctx!);
+      if (await panel.getAttribute("data-project-placement"))
+        await panel.getByTestId("project-gallery-layout-toggle").click();
+    };
+    const exportPackage = async (name: string) => {
+      await fullDetails();
+      const path = test.info().outputPath(name);
+      await ctx!.app.evaluate(({ session }, savePath) => session.defaultSession.once("will-download", (_event,item) => item.setSavePath(savePath)), path);
+      await panel.getByTestId("project-export-resources").click();
+      await expect(panel.getByTestId("project-message")).toContainText("Exported project with verified");
+      await expect.poll(() => { try { return JSON.parse(readFileSync(path,"utf8")).format; } catch { return null; } }).toBe("math3d.project-package");
+      return readFileSync(path,"utf8");
+    };
+    await importFile(fixture.raw);
+    await expect(panel.getByTestId("project-import-open")).toBeEnabled();
+    await panel.getByTestId("project-import-open").click();
+    await assertCurrent();
+    const outbound = await exportPackage("mixed-outbound.json");
+    expect(signatures(JSON.parse(outbound))).toEqual(signatures(originalPackage));
+    // Close/delete the source profile: the destination cannot reuse its caches.
+    await closeSurfaceApp(ctx); ctx = null;
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    panel = await gallery(ctx);
+    const storage = () => ctx!.page.evaluate(() => Object.fromEntries(Object.entries(localStorage).filter(([k]) => k.startsWith("math3d.project"))));
+    const empty = await storage();
+    const absent = JSON.parse(outbound); absent.resources.splice(0,1);
+    await importFile(JSON.stringify(absent));
+    await expect(panel.getByTestId("project-import-open")).toBeDisabled();
+    expect(await storage()).toEqual(empty);
+    const corrupt = JSON.parse(outbound);
+    const data = corrupt.resources[0].data;
+    corrupt.resources[0].data = (data[0] === "A" ? "B" : "A") + data.slice(1);
+    await importFile(JSON.stringify(corrupt));
+    await expect(panel.getByTestId("project-message")).toContainText("rejected");
+    expect(await storage()).toEqual(empty);
+    // Correct original bytes are imported normally; no safety override/rebinding.
+    await importFile(outbound);
+    await expect(panel.getByTestId("project-import-open")).toBeEnabled();
+    await panel.getByTestId("project-import-open").click();
+    await assertCurrent();
+    const profile = ctx.profileDir;
+    await ctx.app.close(); ctx = await launchSurfaceApp({},profile);
+    panel = await gallery(ctx);
+    await panel.getByTestId("project-open-saved-" + fixture.project.identity.id).click();
+    await assertCurrent();
+    const returned = await exportPackage("mixed-returned.json");
+    expect(signatures(JSON.parse(returned))).toEqual(signatures(originalPackage));
+    // The standard resource parser on UI import/export verifies actual bytes against these digests.
+    expect(JSON.parse(returned).resources.map((r: any) => r.data)).toEqual(JSON.parse(outbound).resources.map((r: any) => r.data));
+  } finally { await closeSurfaceApp(ctx); }
 });

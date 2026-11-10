@@ -23,7 +23,7 @@ const scalarReference: Graph2DFieldReference = {
 };
 
 /** A normal v1 Project: its field selections predate ScientificSelection IDs. */
-export const createGf01LegacyProject = () => {
+export const createGf01LegacyProject = (store = new Graph2DPointTableStore()) => {
   const initial = createVectorField3DDocument(source, { stableKey: "gf01-field" });
   const region = { normalAxis: 2 as const, fixedCoordinate: 3,
     bounds: [[-2, 2], [-1, 1]] as const, vectorChannel: "speed" as const, visible: true };
@@ -35,7 +35,6 @@ export const createGf01LegacyProject = () => {
   const sampled = sampleVectorField3DAnalyticLine(vector, "p", 0, [1, 2, 3]);
   const rows = Array.from({ length: 17 }, (_, index) =>
     ({ id: `row_${index + 1}`, x: -2 + index / 4, y: index / 4 }));
-  const store = new Graph2DPointTableStore();
   const style = { color: "#2563eb", lineWidth: 2,
     lineStyle: "solid" as const, visible: true };
   const vectorDocumentJson = serializeVectorField3DDocument(vector);
