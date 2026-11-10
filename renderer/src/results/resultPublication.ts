@@ -8,7 +8,7 @@ export type ResultPublicationSource = Readonly<{
 }>;
 
 export type ResultPublicationInput<T> = Readonly<{
-  module: "project" | "geometry" | "graph2d" | "vector3d" | "cas" | "quantum" | "mesh" | "surface";
+  module: "project" | "geometry" | "graph2d" | "vector3d" | "cas" | "quantum" | "mesh" | "surface" | "curve";
   resultId: string;
   source: ResultPublicationSource;
   sourceStatus: string;

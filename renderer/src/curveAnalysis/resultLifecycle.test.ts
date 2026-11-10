@@ -115,13 +115,23 @@ describe("Curve scientific result lifecycle", () => {
     expect(curveResultToJson(card, definition())).toBe(curveResultToJson(card, definition()));
     expect(curveResultToCsv(card, definition())).toContain("# Math3D-Curve-Manifest:");
     expect(curveResultToCsv(card, definition())).not.toContain('"NaN"');
-    expect(curveResultToCsv(card, definition()).split("\n")[2]).toContain(',"","false"');
+    expect(curveResultToCsv(card, definition()).split("\n")[3]).toContain(',"","false"');
     expect(curveResultToSvg(card, definition())).toContain("<metadata>{&quot;definition&quot;");
     const masked = { ...card, series: { ...card.series!, valid: card.series!.valid!.map((valid, index) =>
       index === 3 ? false : valid) } };
     const polylinePoints = (svg: string) => /<polyline[^>]+points="([^"]*)"/.exec(svg)![1]!.split(" ");
     expect(polylinePoints(curveResultToSvg(masked, definition()))).toHaveLength(
       polylinePoints(curveResultToSvg(card, definition())).length - 1);
+    const historicalDefinition = definition(4);
+    const withheld = JSON.parse(curveResultToJson(card, historicalDefinition));
+    expect(withheld.publication).toMatchObject({ module: "curve",
+      assessment: { status: "withheld", sourceStatus: "historical" }, summary: null });
+    expect(withheld.manifest.definition).toBeNull();
+    expect(withheld.series).toBeNull();
+    expect(withheld.statistics).toBeNull();
+    expect(curveResultToCsv(card, historicalDefinition)).not.toContain("parameter,value,valid\n\"0\"");
+    expect(curveResultToSvg(card, historicalDefinition)).toContain('data-publication-status="withheld"');
+    expect(curveResultToSvg(card, historicalDefinition)).toContain('points=""');
   });
 
   it("aligns comparisons over the common domain independent of sampling", () => {

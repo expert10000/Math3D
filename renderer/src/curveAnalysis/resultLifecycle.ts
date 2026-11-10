@@ -4,6 +4,8 @@ import type { CurveAnalysisWorkspaceDocument } from "./persistence";
 import type { CanonicalCurveDefinition, CurveAnalysisMethod, CurveIdentity, CurveResultKind, CurveUnits } from "./contracts";
 import { upsertCurveAnalysisResult, type CurveAnalysisResultStore } from "./infrastructure";
 import type { CurveScalarPlotKey } from "./scalarPlots";
+import { qualifyCurveResult } from "./resultQualification";
+import { createResultPublication } from "../results/resultPublication";
 
 export type CurveResultLayerAction = "show" | "hide" | "select" | "frame" | "pin" | "unpin" | "save" | "unsave";
 export type CurveResultLayerState = { visible: boolean; selected: boolean; framed: boolean; pinned: boolean; saved: boolean };
@@ -209,15 +211,46 @@ export const saveCurveResultReference = (document: CurveAnalysisWorkspaceDocumen
   return { ...document, savedResults: [reference, ...document.savedResults.filter((saved) => saved.id !== reference.id)].slice(0, 96) };
 };
 
-export type CurveResultExportManifest = { schema: "math3d.curve-result/v1"; identity: CurveIdentity; result: { kind: CurveResultKind; variant: string; version: number; state: AnalysisResultState }; definition: { representation: string; fingerprint: string; domain: CanonicalCurveDefinition["domain"] }; sampling: CanonicalCurveDefinition["sampling"]; method: string; units: CurveUnits & { value: string }; tolerances: { sampling: number | null; uncertainty: number | null }; warnings: readonly string[]; software: { product: "Math3D"; schemaVersion: 1; backend: string; backendVersion: string } };
-export const createCurveResultExportManifest = (card: CurveResultCard, definition: CanonicalCurveDefinition): CurveResultExportManifest => ({ schema: "math3d.curve-result/v1", identity: card.identity, result: { kind: card.kind, variant: card.variant, version: card.resultVersion, state: card.state }, definition: { representation: definition.representation, fingerprint: definition.fingerprint, domain: definition.domain }, sampling: definition.sampling, method: card.method, units: { ...definition.units, value: card.valueUnit }, tolerances: { sampling: definition.sampling.tolerance ?? null, uncertainty: card.uncertainty?.absolute ?? null }, warnings: card.warnings, software: { product: "Math3D", schemaVersion: 1, backend: card.backend, backendVersion: "1" } });
+export type CurveResultExportManifest = { schema: "math3d.curve-result/v1"; identity: CurveIdentity; result: { kind: CurveResultKind; variant: string; version: number; state: AnalysisResultState }; definition: { representation: string; fingerprint: string; domain: CanonicalCurveDefinition["domain"] } | null; sampling: CanonicalCurveDefinition["sampling"] | null; method: string; units: (CurveUnits & { value: string }) | { value: string }; tolerances: { sampling: number | null; uncertainty: number | null }; warnings: readonly string[]; software: { product: "Math3D"; schemaVersion: 1; backend: string; backendVersion: string } };
+export const createCurveResultExportManifest = (card: CurveResultCard, definition: CanonicalCurveDefinition): CurveResultExportManifest => {
+  const current = qualifyCurveResult(card, definition).canPublish;
+  return { schema: "math3d.curve-result/v1", identity: card.identity,
+    result: { kind: card.kind, variant: card.variant, version: card.resultVersion, state: card.state },
+    definition: current ? { representation: definition.representation, fingerprint: definition.fingerprint, domain: definition.domain } : null,
+    sampling: current ? definition.sampling : null, method: card.method,
+    units: current ? { ...definition.units, value: card.valueUnit } : { value: card.valueUnit },
+    tolerances: { sampling: current ? definition.sampling.tolerance ?? null : null,
+      uncertainty: current ? card.uncertainty?.absolute ?? null : null },
+    warnings: card.warnings, software: { product: "Math3D", schemaVersion: 1,
+      backend: card.backend, backendVersion: "1" } };
+};
+export const curveResultPublication = (card: CurveResultCard, definition: CanonicalCurveDefinition) => {
+  const qualification = qualifyCurveResult(card, definition);
+  return createResultPublication({ module: "curve", resultId: `${card.resultKey}:v${card.resultVersion}`,
+    source: { id: card.identity.key, revision: card.identity.curveRevision, generation: null,
+      hash: qualification.canPublish ? definition.fingerprint : null },
+    sourceStatus: qualification.status, status: qualification.canPublish ? "recorded" : "withheld",
+    reason: qualification.reason, recordedClaim: qualification.claim,
+    independentCheck: qualification.verification,
+    summary: { label: card.label, method: card.method, valueUnit: card.valueUnit,
+      statistics: card.statistics, uncertainty: card.uncertainty,
+      sampleCount: card.series?.parameter.length ?? null } });
+};
 const stable = (value: unknown): unknown => Array.isArray(value) ? value.map(stable) : value && typeof value === "object" ? Object.fromEntries(Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)).map(([key, entry]) => [key, stable(entry)])) : typeof value === "number" && !Number.isFinite(value) ? null : value;
-export const curveResultToJson = (card: CurveResultCard, definition: CanonicalCurveDefinition): string => JSON.stringify(stable({ manifest: createCurveResultExportManifest(card, definition), statistics: card.statistics, uncertainty: card.uncertainty, series: card.series }), null, 2);
+export const curveResultToJson = (card: CurveResultCard, definition: CanonicalCurveDefinition): string => {
+  const publication = curveResultPublication(card, definition);
+  return JSON.stringify(stable({ manifest: createCurveResultExportManifest(card, definition),
+    publication, statistics: publication.assessment.status === "recorded" ? card.statistics : null,
+    uncertainty: publication.assessment.status === "recorded" ? card.uncertainty : null,
+    series: publication.assessment.status === "recorded" ? card.series : null }), null, 2);
+};
 const csvCell = (value: unknown): string => `"${String(value ?? "").replace(/"/g, '""')}"`;
 export const curveResultToCsv = (card: CurveResultCard, definition: CanonicalCurveDefinition): string => {
   const manifest = JSON.stringify(stable(createCurveResultExportManifest(card, definition)));
-  const lines = [`# Math3D-Curve-Manifest: ${manifest}`, "parameter,value,valid"];
-  card.series?.parameter.forEach((parameter, index) => {
+  const publication = JSON.stringify(stable(curveResultPublication(card, definition)));
+  const lines = [`# Math3D-Curve-Manifest: ${manifest}`,
+    `# Math3D-Curve-Publication: ${publication}`, "parameter,value,valid"];
+  (qualifyCurveResult(card, definition).canPublish ? card.series : null)?.parameter.forEach((parameter, index) => {
     const value = card.series!.value[index];
     const valid = Number.isFinite(parameter) && Number.isFinite(value) &&
       (card.series!.valid?.[index] ?? true);
@@ -228,13 +261,15 @@ export const curveResultToCsv = (card: CurveResultCard, definition: CanonicalCur
 };
 const esc = (value: string): string => value.replace(/[&<>\"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[character]!));
 export const curveResultToSvg = (card: CurveResultCard, definition: CanonicalCurveDefinition): string => {
-  const series = card.series; const pairs = series ? series.parameter
+  const series = qualifyCurveResult(card, definition).canPublish ? card.series : null;
+  const pairs = series ? series.parameter
     .map((x, index) => ({ x, y: series.value[index], valid: series.valid?.[index] ?? true }))
     .filter((point) => point.valid && Number.isFinite(point.x) && Number.isFinite(point.y)) : [];
   const xs = pairs.map((point) => point.x), ys = pairs.map((point) => point.y); const minX = xs.length ? Math.min(...xs) : 0, maxX = xs.length ? Math.max(...xs) : 1, minY = ys.length ? Math.min(...ys) : 0, maxY = ys.length ? Math.max(...ys) : 1;
   const points = pairs.map((point) => `${20 + 600 * (point.x - minX) / Math.max(1e-15, maxX - minX)},${220 - 190 * (point.y - minY) / Math.max(1e-15, maxY - minY)}`).join(" ");
   const manifest = esc(JSON.stringify(stable(createCurveResultExportManifest(card, definition))));
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="240" viewBox="0 0 640 240"><metadata>${manifest}</metadata><rect width="640" height="240" fill="white"/><text x="20" y="18" font-family="sans-serif" font-size="12">${esc(card.label)} (${esc(card.valueUnit)})</text><polyline fill="none" stroke="#2563eb" stroke-width="2" points="${points}"/></svg>`;
+  const publication = curveResultPublication(card, definition);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="240" viewBox="0 0 640 240" data-publication-status="${publication.assessment.status}"><metadata>${manifest}</metadata><desc>${esc(JSON.stringify(stable(publication)))}</desc><rect width="640" height="240" fill="white"/><text x="20" y="18" font-family="sans-serif" font-size="12">${esc(card.label)} (${esc(card.valueUnit)})</text><polyline fill="none" stroke="#2563eb" stroke-width="2" points="${points}"/></svg>`;
 };
 
 const interpolate = (series: CurveLayerSeries, parameter: number): number | null => {
