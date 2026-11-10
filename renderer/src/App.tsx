@@ -785,6 +785,7 @@ import { scientificCursorBus } from "./components/scientificCursor";
 import { VolumeDocumentAdapter, volumeDocumentFromLegacyObject } from "./volume/volumeDocumentAdapter";
 import { VolumeExtractionKernelBridge, locateVolumeExtractionVertex, promoteVolumeExtraction, volumeExtractionStatus, type VolumeExtractionRecord } from "./volume/volumeExtractionKernel";
 import { VolumeIsosurfaceScientificJob } from "./volume/volumeScientificJob";
+import { publishVolumeAnalysisEvidence } from "./volume/analysisPublication";
 import { CurveConstructionRealizer, locateCurveConstructionVertex, type CurveConstructionGeometry } from "./curveAnalysis/curveConstructionGeometry";
 import { curveConstructionSourceStatus, type CurveConstructionRecord } from "./curveAnalysis/curveConstructionKernel";
 import { CurveResultLifecyclePanel } from "./components/CurveResultLifecyclePanel";
@@ -35234,14 +35235,13 @@ const App: React.FC = () => {
       setVolumeAnalysisBusy(false);
     }
   }, [canonicalVolumeObject, volumeAnalysisThreshold, volumeDataset.grid, volumeIsoValue]);
-  const handleExportVolumeAnalysis = useCallback(() => {
-    if (!currentVolumeAnalysisSummary) return;
-    downloadTextFile(JSON.stringify({
-      version: 1,
-      volume: serializeVolumeObject(canonicalVolumeObject),
-      analysis: currentVolumeAnalysisSummary,
-    }, null, 2), `math3d-volume-analysis-r${canonicalVolumeObject.identity.volumeRevision}.json`, "application/json");
-  }, [canonicalVolumeObject, currentVolumeAnalysisSummary]);
+  const handleExportVolumeAnalysis = useCallback((format: "json" | "csv" | "receipt") => {
+    const evidence = publishVolumeAnalysisEvidence(canonicalVolumeObject, volumeAnalysisSnapshot);
+    const body = format === "json" ? evidence.reportJson : format === "csv" ? evidence.csv : evidence.receiptJson;
+    if (!body) return;
+    const extension = format === "csv" ? "csv" : "json";
+    downloadTextFile(body, `math3d-volume-analysis-r${canonicalVolumeObject.identity.volumeRevision}${format === "receipt" ? "-receipt" : ""}.${extension}`, format === "csv" ? "text/csv" : "application/json");
+  }, [canonicalVolumeObject, volumeAnalysisSnapshot]);
   const volumeSegmentationSessionRef = useRef(new VolumeSegmentationSession());
   const [volumeSegmentationVersion, setVolumeSegmentationVersion] = useState(0);
   const [volumeSegmentationThreshold, setVolumeSegmentationThreshold] = useState(0);

@@ -90,7 +90,7 @@ export type VolumeInspectorPanelProps = {
   analysisHistoryCount: number;
   onRunAnalysis: () => void;
   onChangeAnalysisThreshold: (value: number) => void;
-  onExportAnalysis: () => void;
+  onExportAnalysis: (format: "json" | "csv" | "receipt") => void;
   segmentationThreshold: number;
   segmentationLabels: readonly VolumeLabelDefinition[];
   segmentationStats: readonly VolumeLabelStatistics[];
@@ -659,7 +659,9 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
             <button type="button" data-testid="volume-run-analysis" onClick={onRunAnalysis} disabled={analysisBusy}>
               {analysisBusy ? "Analyzing…" : "Run analysis"}
             </button>
-            <button type="button" onClick={onExportAnalysis} disabled={!analysisSummary}>Export report</button>
+            <button type="button" onClick={() => onExportAnalysis("json")} disabled={!analysisSummary}>Export JSON</button>
+            <button type="button" onClick={() => onExportAnalysis("csv")} disabled={!analysisSummary}>Export CSV</button>
+            <button type="button" onClick={() => onExportAnalysis("receipt")}>Receipt</button>
           </div>
           {analysisSummary ? (
             <>
