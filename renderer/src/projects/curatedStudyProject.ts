@@ -38,7 +38,7 @@ export function prepareCuratedStudyProject(project: Math3DProject, id: CuratedSt
   if (layout.resultOnSource) {
     const first = next.workspace.studies![0]!;
     const memberSource = viewerSourceFromDocument({ identity: first.members[0]!.expected });
-    const result = next.workspace.results.findLast(item =>
+    const result = [...next.workspace.results].reverse().find(item =>
       matchesScientificSourceGeneration(item.provenance.source, memberSource));
     if (!result) throw new TypeError(`Guided Study ${id} lacks its recorded source result.`);
     next = upsertProjectStudy(next, { ...first, members: first.members.map((member, index) => index === 0 ?
