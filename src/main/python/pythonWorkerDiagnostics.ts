@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { PythonWorkerBackend, PythonWorkerStartupStatus } from "./pythonWorker";
 import { identifyWorkerArtifact, type WorkerArtifactIdentity } from "./workerArtifactIdentity";
+import { workerRuntimeAvailability, type WorkerRuntimeEvent } from "./workerRuntimeAvailability";
 
 export type PythonWorkerFailureCategory =
   | "worker-missing"
@@ -270,12 +271,17 @@ export async function getPythonWorkerDiagnosticsSnapshot(): Promise<PythonWorker
 }
 
 export function recordPythonWorkerRuntimeEvent(
-  event: "worker-exit" | "startup-rejected" | "restart-blocked" | "admission-rejected" | "job-start" | "job-finish",
+  event: WorkerRuntimeEvent,
   fields: Record<string, unknown>,
   policy?: { failuresInWindow: number; retryAfter: number | null },
   admission?: { active: number; queued: number; queuedBytes: number }
 ): void {
   state.lastCheckAt = Date.now();
+  const unavailable = workerRuntimeAvailability(event);
+  if (unavailable) {
+    state.available = false;
+    state.statusMessage = unavailable.statusMessage;
+  }
   if (policy) {
     state.restartFailuresInWindow = policy.failuresInWindow;
     state.restartRetryAfter = policy.retryAfter;
