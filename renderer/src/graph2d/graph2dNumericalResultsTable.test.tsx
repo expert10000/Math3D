@@ -138,7 +138,8 @@ describe("shared Graphs numerical result browser", () => {
     const preview = renderToStaticMarkup(<Graph2DPhaseEquilibriaTable artifact={artifact}
       document={document} objectId="function_1" readOnlyPreview />);
     expect(preview).toContain("Transient equilibria preview");
-    expect(preview).toContain("transient viewport equilibrium preview");
+    expect(preview).toContain("Transient numerical preview");
+    expect(preview).toContain("preview values are omitted from evidence export");
     expect(preview).not.toContain("Export results");
   });
 });
