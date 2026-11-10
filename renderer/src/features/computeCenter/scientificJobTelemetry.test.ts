@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ScientificBrokerOutcome } from "@math3d/kernel";
-import { getComputeJobs, observeBrokerJob, presentComputeJob, recordScientificJobEvent,
+import { getComputeJobs, linkComputeJobResult, observeBrokerJob, presentComputeJob, recordScientificJobEvent,
   type ComputeJobRecord } from "./scientificJobTelemetry";
 
 const job = (changes: Partial<ComputeJobRecord>): ComputeJobRecord => ({ jobId: "job",
@@ -16,7 +16,8 @@ describe("Compute Center job lifecycle", () => {
     expect(presentComputeJob(job({ status: "failed", failureCode: "stale-source" })).label).toBe("Source changed");
     expect(presentComputeJob(job({ status: "failed", failureCode: "deadline-exceeded" })).label).toBe("Timed out");
     expect(presentComputeJob(job({ status: "cancelled" })).label).toBe("Cancelled");
-    expect(presentComputeJob(job({ status: "complete" })).detail).toContain("Inspect its Result record");
+    expect(presentComputeJob(job({ status: "complete" })).detail).toContain("no saved Result reference");
+    expect(presentComputeJob(job({ status: "complete", resultId: "saved-result" })).detail).toContain("Saved Result saved-result");
   });
   it("records broker admission refusal and cancellation as separate outcomes", async () => {
     for (const [id, code, status] of [["job-admission", "capability-unavailable", "failed"],
@@ -36,5 +37,27 @@ describe("Compute Center job lifecycle", () => {
     expect(getComputeJobs().find(item => item.jobId === id)).toMatchObject({
       status: "failed", failureCode: "stale-source",
     });
+  });
+  it("retains actual fallback attempts, source generation, and only a saved Result link", async () => {
+    const id = "job-fallback-trace";
+    const source = { documentId: "curve-source", revision: 3, generation: 2, structuralHash: "source-hash" };
+    const attempts = [
+      { backendId: "worker-a", backendVersion: "1", transport: "worker", attempt: 1, outcome: "transport-failed", retryable: true },
+      { backendId: "worker-b", backendVersion: "2", transport: "worker", attempt: 1, outcome: "succeeded", retryable: false },
+    ];
+    await observeBrokerJob(id, "curve.analyze", Promise.resolve({ ok: true, jobId: id, schemaVersion: 1,
+      backend: { backendId: "worker-b", backendVersion: "2", transport: "worker" }, attempts,
+      result: { ok: true, jobId: id, schemaVersion: 1, operationType: "curve.analyze", source, output: {}, outputBytes: 2 },
+    } as ScientificBrokerOutcome));
+    expect(getComputeJobs().find(item => item.jobId === id)).toMatchObject({
+      status: "complete", backendId: "worker-b", source, attemptCount: 2, attempts,
+    });
+    expect(getComputeJobs().find(item => item.jobId === id)?.resultId).toBeUndefined();
+    linkComputeJobResult(id, "saved-result-1");
+    expect(getComputeJobs().find(item => item.jobId === id)?.resultId).toBe("saved-result-1");
+    const failedId = "job-no-result";
+    await observeBrokerJob(failedId, "curve.analyze", Promise.resolve(failure(failedId, "scientific-failure")));
+    linkComputeJobResult(failedId, "invalid-result");
+    expect(getComputeJobs().find(item => item.jobId === failedId)?.resultId).toBeUndefined();
   });
 });

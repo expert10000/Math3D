@@ -1,5 +1,5 @@
-import type { ScientificJobEvent } from "@math3d/core";
-import type { ScientificBackendCapabilitySnapshot, ScientificBrokerOutcome } from "@math3d/kernel";
+import type { ScientificJobEvent, ScientificSourceGeneration } from "@math3d/core";
+import type { ScientificBackendCapabilitySnapshot, ScientificBrokerAttempt, ScientificBrokerOutcome } from "@math3d/kernel";
 
 export type ComputeJobStatus = "routing" | "running" | "complete" | "failed" | "cancelled";
 export type ComputeJobRecord = Readonly<{
@@ -12,6 +12,9 @@ export type ComputeJobRecord = Readonly<{
   failure?: string;
   failureCode?: string;
   attemptCount?: number;
+  attempts?: readonly ScientificBrokerAttempt[];
+  source?: ScientificSourceGeneration;
+  resultId?: string;
   updatedAt: number;
 }>;
 
@@ -23,7 +26,9 @@ const admissionFailures = new Set(["invalid-request", "duplicate-job", "capabili
 export function presentComputeJob(job: ComputeJobRecord): ComputeJobPresentation {
   if (job.status === "routing") return { label: "Checking route", detail: "Checking admission and backend capability.", tone: "pending" };
   if (job.status === "running") return { label: "Running", detail: job.phase ?? "The backend is processing this job.", tone: "pending" };
-  if (job.status === "complete") return { label: "Completed", detail: "The backend returned a result. Inspect its Result record for scientific verification.", tone: "current" };
+  if (job.status === "complete") return { label: "Completed", detail: job.resultId ?
+    `The backend returned a result. Saved Result ${job.resultId} is available for scientific verification.` :
+    "The backend returned a result. This job history has no saved Result reference.", tone: "current" };
   if (job.status === "cancelled") return { label: "Cancelled", detail: job.failure ?? "The job was cancelled before completion.", tone: "warning" };
   const code = job.failureCode;
   const label = code && admissionFailures.has(code) ? "Not admitted" : code === "stale-source" ?
@@ -57,6 +62,12 @@ export const subscribeComputeJobs = (listener: () => void) => {
 };
 export const getComputeJobs = () => jobs;
 
+/** Attach an actual saved Result only after its producer has persisted it. */
+export function linkComputeJobResult(jobId: string, resultId: string): void {
+  const existing = jobs.find(item => item.jobId === jobId);
+  if (existing?.status === "complete" && resultId) publish({ ...existing, resultId });
+}
+
 export function recordScientificJobEvent(event: ScientificJobEvent): void {
   if (brokerSettled.has(event.jobId)) return;
   const existing = jobs.find((item) => item.jobId === event.jobId);
@@ -74,6 +85,7 @@ export function recordScientificJobEvent(event: ScientificJobEvent): void {
     phase: event.progress?.message ?? existing.phase,
     failure: event.failureCode ?? existing.failure,
     failureCode: event.failureCode ?? existing.failureCode,
+    source: event.source,
     updatedAt: Date.now(),
   });
 }
@@ -100,6 +112,8 @@ export function observeBrokerJob<T extends ScientificBrokerOutcome>(
       failure: outcome.ok ? undefined : outcome.message,
       failureCode: outcome.ok ? undefined : outcome.code,
       attemptCount: outcome.attempts.length,
+      attempts: [...outcome.attempts],
+      source: outcome.ok ? outcome.result.source : existing?.source ?? outcome.scientificFailure?.source,
       updatedAt: Date.now(),
     });
     return outcome;
@@ -108,6 +122,7 @@ export function observeBrokerJob<T extends ScientificBrokerOutcome>(
     const existing = jobs.find((item) => item.jobId === jobId);
     publish({ jobId, operationType, status: "failed", progress: existing?.progress ?? null,
       backendId: existing?.backendId, failure: error instanceof Error ? error.message : String(error),
+      source: existing?.source,
       updatedAt: Date.now() });
     throw error;
   });

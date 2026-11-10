@@ -146,6 +146,14 @@ export default function ComputeCenterPanel({ onClose, initialTab = "overview" }:
             <span data-tone={presentation.tone} style={{ color: presentation.tone === "error" ? "#b42318" : presentation.tone === "current" ? "#16803e" : "#1d4ed8" }}>{presentation.label}</span>
             <span>{job.progress === null ? "—" : `${Math.round(job.progress * 100)}%`}</span>
             <div style={{ gridColumn: "1 / -1", color: presentation.tone === "error" ? "#b42318" : "#64748b", fontSize: 11 }}>{presentation.detail}</div>
+            {(job.attempts?.length || job.source || job.resultId) && <details style={{ gridColumn: "1 / -1", fontSize: 11 }}>
+              <summary>Route and source trace</summary>
+              {job.attempts?.map((attempt, index) => <div key={`${attempt.backendId}-${index}`} data-testid={`compute-job-attempt-${job.jobId}-${index}`}>
+                Attempt {index + 1}: {attempt.backendId} v{attempt.backendVersion} · {attempt.transport} · {attempt.outcome}{attempt.retryable ? " · retryable" : ""}
+              </div>)}
+              {job.source && <div>Source {job.source.documentId} · revision {job.source.revision} · generation {job.source.generation} · {job.source.structuralHash}</div>}
+              {job.resultId && <div>Saved Result ID: {job.resultId}</div>}
+            </details>}
           </div>;
         })}</div>}
       </section>

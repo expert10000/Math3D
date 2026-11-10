@@ -12,7 +12,7 @@ import type { MeshAnalysisMeshIdentity } from "./analysisResultStore";
 import type { SurfaceMeshData } from "./surfaceMesh";
 import type { MeshAnalysisWorkerMessage, MeshAnalysisWorkerRequest } from "../workers/meshAnalysisWorkerTypes";
 import type { MeshAnalysisKernelBridge } from "./meshAnalysisKernelBridge";
-import { observeBrokerJob, recordScientificJobEvent, registerBrokerDiscovery } from "../features/computeCenter/scientificJobTelemetry";
+import { linkComputeJobResult, observeBrokerJob, recordScientificJobEvent, registerBrokerDiscovery } from "../features/computeCenter/scientificJobTelemetry";
 
 export const MESH_DIFFERENTIAL_OPERATION = "mesh.analyze.differential";
 const BACKEND = "mesh-analysis-worker";
@@ -126,6 +126,7 @@ export class MeshDifferentialScientificJob {
         summary: { vertexCount: identity.vertexCount, faceCount: identity.faceCount }, artifacts: [handle],
       });
       this.#results.set(result.resultId, result);
+      linkComputeJobResult(jobId, result.resultId);
       if (this.#results.size > 24) this.#results.delete(this.#results.keys().next().value!);
       return { ok: true, result, payload, broker };
     } finally {
