@@ -791,6 +791,7 @@ import { qualifyVolumeDerivedResult } from "./volume/derivedQualification";
 import { publishVolumeDerivedEvidence } from "./volume/derivedPublication";
 import { qualifyVolumeSegmentation } from "./volume/segmentationQualification";
 import { publishVolumeSegmentationEvidence } from "./volume/segmentationPublication";
+import { createSdfPreviewPin, qualifySdfPreview, sdfNeedsOperand, type SdfPreviewPin } from "./volume/sdfPreviewPin";
 import { CurveConstructionRealizer, locateCurveConstructionVertex, type CurveConstructionGeometry } from "./curveAnalysis/curveConstructionGeometry";
 import { curveConstructionSourceStatus, type CurveConstructionRecord } from "./curveAnalysis/curveConstructionKernel";
 import { CurveResultLifecyclePanel } from "./components/CurveResultLifecyclePanel";
@@ -34295,6 +34296,7 @@ const App: React.FC = () => {
   const [volumeSdfAmount, setVolumeSdfAmount] = useState(0.15);
   const [volumeSdfSmoothness, setVolumeSdfSmoothness] = useState(0.2);
   const [volumeSdfPreview, setVolumeSdfPreview] = useState<VolumeDataset | null>(null);
+  const [volumeSdfPreviewPin, setVolumeSdfPreviewPin] = useState<SdfPreviewPin | null>(null);
   const [volumeSdfStatus, setVolumeSdfStatus] = useState("Build a signed distance field to enable non-destructive SDF operations.");
   const [volumePresetId, setVolumePresetId] = useState<VolumePresetId>(DEFAULT_VOLUME_PRESET_ID);
   const [volumeParams, setVolumeParams] = useState<VolumePresetParams>(() =>
@@ -34428,8 +34430,13 @@ const App: React.FC = () => {
   );
   const restoredVolumeDataset = useMemo(() => restoredVolumeAdapter ? buildNativeVolumeDataset(restoredVolumeAdapter.document(), restoredProjectRef.current?.resources) : null,
     [restoredVolumeAdapter, restoredVolumeRevision]);
-  const volumeDataset: VolumeDataset = volumeSdfPreview ?? volumeDatasetOverride ?? restoredVolumeDataset ?? volumeDatasetPreset;
-  const nativeVolumeActive = !!restoredVolumeAdapter && !volumeSdfPreview && !volumeDatasetOverride;
+  const sdfPreviewSettings = { operation: volumeSdfOperation, amount: volumeSdfAmount, smoothness: volumeSdfSmoothness, presetId: volumePresetId };
+  const sdfPreviewCheck = useMemo(() => qualifySdfPreview(volumeSdfPreviewPin, volumeDatasetOverride,
+    sdfNeedsOperand(volumeSdfOperation) ? volumeDatasetPreset.grid : null, sdfPreviewSettings),
+  [volumeSdfPreviewPin, volumeDatasetOverride, volumeDatasetPreset.grid, volumeSdfOperation, volumeSdfAmount, volumeSdfSmoothness, volumePresetId]);
+  const qualifiedVolumeSdfPreview = sdfPreviewCheck.current ? volumeSdfPreview : null;
+  const volumeDataset: VolumeDataset = qualifiedVolumeSdfPreview ?? volumeDatasetOverride ?? restoredVolumeDataset ?? volumeDatasetPreset;
+  const nativeVolumeActive = !!restoredVolumeAdapter && !qualifiedVolumeSdfPreview && !volumeDatasetOverride;
   const volumeNonFiniteReport = useMemo(
     () => reportVolumeNonFinite(volumeDataset.grid.scalars, volumeDataset.grid.dims),
     [volumeDataset]
@@ -63761,6 +63768,7 @@ case "mobius":
       setRestoredVolumeAdapter(null);
       setVolumeDatasetOverride(distanceDataset);
       setVolumeSdfPreview(null);
+      setVolumeSdfPreviewPin(null);
       setVolumeSdfStatus(`${volumeDistanceSigned ? "Signed" : "Unsigned"} distance applied · ${signDiagnostics.message}`);
       volumeOriginalDatasetRef.current = distanceDataset;
       volumeOriginalSamplingRef.current = sampling;
@@ -63799,6 +63807,7 @@ case "mobius":
   const handleClearVolumeOverride = useCallback(() => {
     setVolumeDatasetOverride(null);
     setVolumeSdfPreview(null);
+    setVolumeSdfPreviewPin(null);
     setVolumeSdfDiagnostics(null);
     setVolumeSdfStatus("Build a signed distance field to enable non-destructive SDF operations.");
     setVolumeDistanceError(null);
@@ -63815,7 +63824,7 @@ case "mobius":
       return;
     }
     try {
-      const isBinary = ["union", "intersection", "subtraction", "smooth-union"].includes(volumeSdfOperation);
+      const isBinary = sdfNeedsOperand(volumeSdfOperation);
       const values = applySdfOperation(
         source.grid,
         volumeSdfOperation,
@@ -63862,6 +63871,9 @@ case "mobius":
         backendVersion: "1",
         warnings: isBinary ? ["The current analytic preset is sampled as the secondary zero-set operand."] : [],
       });
+      setVolumeSdfPreviewPin(createSdfPreviewPin(source, isBinary ? volumeDatasetPreset.grid : null, {
+        operation: volumeSdfOperation, amount: volumeSdfAmount, smoothness: volumeSdfSmoothness, presetId: volumePresetId,
+      }));
       setVolumeSdfPreview({
         kind: "volume",
         grid,
@@ -63880,8 +63892,10 @@ case "mobius":
   }, [canonicalVolumeObject.identity.volumeRevision, volumeDatasetOverride, volumeDatasetPreset.grid, volumePreset.label, volumePresetId, volumeSdfAmount, volumeSdfDiagnostics, volumeSdfOperation, volumeSdfSmoothness]);
 
   const handleApplyVolumeSdfOperation = useCallback(() => {
-    if (!volumeSdfPreview) {
-      setVolumeSdfStatus("Preview an SDF operation before applying it.");
+    if (!volumeSdfPreview || !volumeDatasetOverride || !qualifySdfPreview(volumeSdfPreviewPin, volumeDatasetOverride,
+      sdfNeedsOperand(volumeSdfOperation) ? volumeDatasetPreset.grid : null,
+      { operation: volumeSdfOperation, amount: volumeSdfAmount, smoothness: volumeSdfSmoothness, presetId: volumePresetId }).current) {
+      setVolumeSdfStatus("SDF preview is unavailable or its source or settings changed; preview again.");
       return;
     }
     const applied = {
@@ -63894,11 +63908,13 @@ case "mobius":
     setVolumeDatasetOverride(applied);
     volumeOriginalDatasetRef.current = applied;
     setVolumeSdfPreview(null);
+    setVolumeSdfPreviewPin(null);
     setVolumeSdfStatus(`Applied ${applied.sdf?.operation ?? "SDF operation"}; previous source remains recorded in provenance.`);
-  }, [volumeSdfPreview]);
+  }, [volumeSdfPreview, volumeSdfPreviewPin, volumeDatasetOverride, volumeDatasetPreset.grid, volumeSdfOperation, volumeSdfAmount, volumeSdfSmoothness, volumePresetId]);
 
   const handleCancelVolumeSdfPreview = useCallback(() => {
     setVolumeSdfPreview(null);
+    setVolumeSdfPreviewPin(null);
     setVolumeSdfStatus("SDF preview discarded; the applied source is unchanged.");
   }, []);
 
@@ -90765,7 +90781,7 @@ case "mobius":
                         sdfOperation={volumeSdfOperation}
                         sdfAmount={volumeSdfAmount}
                         sdfSmoothness={volumeSdfSmoothness}
-                        sdfPreviewActive={!!volumeSdfPreview}
+                        sdfPreviewActive={!!qualifiedVolumeSdfPreview}
                         sdfStatus={volumeSdfStatus}
                         renderMode={volumeRenderMode}
                         transferPresetId={volumeTransferPresetId}
