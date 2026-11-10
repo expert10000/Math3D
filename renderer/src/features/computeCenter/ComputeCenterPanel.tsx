@@ -114,7 +114,7 @@ export default function ComputeCenterPanel({ onClose, initialTab = "overview" }:
   const admissions = inspectedOperation ? runtimeOperationAdmissions(runtimeReport, inspectedOperation) : [];
   const activeBrokerJobs = jobs.filter((job) => job.status === "routing" || job.status === "running").length;
   const exportReceipt = () => {
-    const receipt = createRuntimeCapabilityReceipt(runtimeReport, jobs);
+    const receipt = createRuntimeCapabilityReceipt(runtimeReport, jobs, brokerFailures);
     const url = URL.createObjectURL(new Blob([JSON.stringify(receipt, null, 2)], { type: "application/json" }));
     const link = document.createElement("a");
     link.href = url; link.download = "math3d-runtime-capabilities.json"; link.click();
