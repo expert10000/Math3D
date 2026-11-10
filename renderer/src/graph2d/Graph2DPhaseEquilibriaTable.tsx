@@ -51,7 +51,11 @@ export function Graph2DPhaseEquilibriaTable({ artifact, document, objectId, budg
       document.identity.id, document.identity.revision, document.display.viewport.xMin,
       document.display.viewport.xMax, document.display.viewport.yMin, document.display.viewport.yMax]));
   return <div data-testid="graph2d-phase-equilibria-table">
-    <Graph2DResultEvidence current resultId={resultKey} source={{ documentId: document.identity.id,
+    <Graph2DResultEvidence current preview={readOnlyPreview} resultId={resultKey}
+      summary={{ resolved: artifact.equilibria.length, unresolved: artifact.analysis.unresolved,
+        stable: artifact.equilibria.filter(item => item.linearization.stability === "stable").length,
+        unstable: artifact.equilibria.filter(item => item.linearization.stability === "unstable").length,
+        scanStatus: artifact.analysis.status }} source={{ documentId: document.identity.id,
       revision: document.identity.revision, structuralHash: document.identity.structuralHash,
       generation: document.identity.revision }}
       claim={readOnlyPreview ? "transient viewport equilibrium preview" : "viewport sampled equilibrium candidates"}

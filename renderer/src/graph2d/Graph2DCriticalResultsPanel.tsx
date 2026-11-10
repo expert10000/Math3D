@@ -81,6 +81,8 @@ export function Graph2DCriticalResultsPanel({ analysis, document, analysisBudget
   const batchExtrema = analysis.candidates.filter(item => isExtremum(item) && validForSave(item));
   const batchInflections = analysis.candidates.filter(item => item.kind === "inflection" && validForSave(item));
   const evidence = <Graph2DResultEvidence current={current} resultId={analysis.publication.resultId}
+    preview={readOnlyPreview} summary={{ zeros: counts.zero, extrema: counts.extrema,
+      inflections: counts.inflection, evaluations: analysis.evaluations, scanStatus: analysis.status }}
     source={analysis.publication.provenance.source} claim="bounded critical-point scan"
     method={analysis.publication.provenance.operation.algorithm} units="Graph x and y world units"
     limitation="Refinement and residual tolerance do not certify completeness or uniqueness." />;

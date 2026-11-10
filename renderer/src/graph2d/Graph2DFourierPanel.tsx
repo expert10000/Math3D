@@ -133,6 +133,8 @@ export function Graph2DFourierPanel({ document }: { document: Graph2DDocument })
     {pending && <><button type="button" onClick={() => cancel()}>Cancel spectrum</button><p aria-live="polite">Analyzing checked samples…</p></>}
     {error && <p role="alert">{error}</p>}
     {result && <><Graph2DResultEvidence current={!!current} resultId={result.resultId}
+      summary={{ samples: result.n, sampleInterval: result.sampleInterval, nyquist: result.nyquist,
+        fftLength: result.fftLength, channels: result.channels.length }}
       source={result.source} claim="windowed discrete Fourier spectrum"
       method={result.publication.provenance.operation.algorithm} units={result.frequencyUnit}
       limitation="The periodogram is not a confidence interval; zero padding adds no independent resolution." />

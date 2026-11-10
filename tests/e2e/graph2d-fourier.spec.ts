@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { readFileSync } from "node:fs";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState } from "./helpers/surfaceAppHarness";
 import { graphEditor, openGraphType, saveGraphEditor } from "./helpers/graphAuthoring";
 
@@ -21,12 +22,23 @@ test("GRA-16 desktop shows a checked known-tone spectrum with frequency units", 
     await panel.getByLabel("Fourier analysis row budget").selectOption("2000");
     await panel.getByLabel("Fourier window").selectOption("rectangular");
     await panel.getByRole("button", { name: "Analyze spectrum", exact: true }).click();
-    await expect(panel.getByRole("status")).toHaveText("Current spectrum");
+    await expect(panel.getByTestId("graph2d-result-evidence")).toHaveAttribute("data-qualification", "current");
     await panel.getByLabel("Fourier analysis row budget").selectOption("10000");
     await expect(panel.getByRole("status")).toHaveCount(0);
     await panel.getByRole("button", { name: "Analyze spectrum", exact: true }).click();
-    await expect(panel.getByRole("status")).toHaveText("Current spectrum");
+    await expect(panel.getByTestId("graph2d-result-evidence")).toHaveAttribute("data-qualification", "current");
     await expect(panel.getByTestId("graph2d-fourier-plot")).toBeVisible();
+    const evidencePath = test.info().outputPath("fourier-evidence.json");
+    await app.app.evaluate(({ session }, target) => session.defaultSession.once("will-download",
+      (_event, item) => item.setSavePath(target)), evidencePath);
+    await panel.getByTestId("graph2d-result-export-evidence-json").click();
+    await expect.poll(() => { try { return JSON.parse(readFileSync(evidencePath, "utf8")); }
+      catch { return null; } }).not.toBeNull();
+    const evidence = JSON.parse(readFileSync(evidencePath, "utf8"));
+    expect(evidence.schema).toBe("math3d.graph2d-result-evidence/v1");
+    expect(evidence.assessment.status).toBe("current");
+    expect(evidence.summary.samples).toBe(128);
+    expect(evidence.summary.channels).toBe(1);
     const diagnostics = panel.getByTestId("gf20-spectral-diagnostics");
     await expect(diagnostics.getByRole("img", { name: "Power spectral density" })).toBeVisible();
     await expect(diagnostics.getByRole("img", { name: "Autocorrelation by lag" })).toBeVisible();
@@ -68,7 +80,7 @@ test("Fourier row cap refuses a full source above the limit without changing the
     expect(await markers.count()).toBe(before);
     await panel.getByLabel("Fourier analysis row budget").selectOption("10000");
     await panel.getByRole("button", { name: "Analyze spectrum", exact: true }).click();
-    await expect(panel.getByRole("status")).toHaveText("Current spectrum");
+    await expect(panel.getByTestId("graph2d-result-evidence")).toHaveAttribute("data-qualification", "current");
     await expect(panel).toContainText("2048 samples");
   } finally { await closeSurfaceApp(app); }
 });
@@ -92,7 +104,7 @@ test("GRA-16 desktop compares two checked channels without merging their spectra
     await panel.getByLabel("Fourier window").selectOption("rectangular");
     await panel.getByRole("checkbox").check();
     await panel.getByRole("button", { name: "Analyze spectrum", exact: true }).click();
-    await expect(panel.getByRole("status")).toHaveText("Current spectrum");
+    await expect(panel.getByTestId("graph2d-result-evidence")).toHaveAttribute("data-qualification", "current");
     await expect(panel).toContainText("2 channels");
     await expect(panel.getByRole("heading", { name: /Eight hertz/ })).toBeVisible();
     await expect(panel.getByRole("heading", { name: /Twelve hertz/ })).toBeVisible();
