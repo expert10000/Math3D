@@ -41,7 +41,8 @@ import SageObjectOperations from "./SageObjectOperations";
 import SageRecipes from "./SageRecipes";
 import SageAlgebraEvidenceInspector from "./SageAlgebraEvidenceInspector";
 import { algebraEvidenceInspectorModel } from "./algebraEvidenceInspectorModel";
-import { algebraEvidenceInspectorExportJson } from "./algebraEvidenceInspectorExport";
+import { algebraEvidenceInspectorExportCsv, algebraEvidenceInspectorExportJson,
+  algebraEvidencePublication } from "./algebraEvidenceInspectorExport";
 import { createQuotientStarter, describeStructure, resolveStructureSelection, selectedStructure,
   structureDisplay, structureSelectionKey, type StructureStarterKind } from "./sageStructuresModel";
 
@@ -208,13 +209,15 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
     item.request.target.objectId === chosen?.record.id) ?? null;
   const evidenceModel = project && selectedEvidence ? algebraEvidenceInspectorModel(project, selectedEvidence) : null;
   const canUseSpecializedEvidence = evidenceModel?.qualification.canDerive && evidenceModel.mode !== "FAILED";
-  const exportEvidence = () => {
+  const exportEvidence = (format: "json" | "csv") => {
     if (!project || !selectedEvidence) return;
     try {
-      const content = algebraEvidenceInspectorExportJson(project, selectedEvidence);
-      const url = URL.createObjectURL(new Blob([content], { type: "application/json;charset=utf-8" }));
+      const content = format === "json" ? algebraEvidenceInspectorExportJson(project, selectedEvidence)
+        : algebraEvidenceInspectorExportCsv(project, selectedEvidence);
+      const url = URL.createObjectURL(new Blob([content],
+        { type: format === "json" ? "application/json;charset=utf-8" : "text/csv;charset=utf-8" }));
       const link = document.createElement("a");
-      link.href = url; link.download = `math3d-cas-evidence-${selectedEvidence.id}.json`;
+      link.href = url; link.download = `math3d-cas-evidence-${selectedEvidence.id}.${format}`;
       document.body.appendChild(link); link.click(); link.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
       setEvidenceExportError("");
@@ -612,7 +615,8 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       evidence: evidenceModel && selectedEvidence ? {
         focusKey: `${selectedEvidence.id}:${evidenceFocus}`,
         result: <><SageAlgebraEvidenceInspector model={evidenceModel} section="result"
-          onExport={evidenceModel.qualification.canUseResult ? exportEvidence : undefined} />
+          onExport={evidenceModel.qualification.canUseResult ? exportEvidence : undefined}
+          publication={project && selectedEvidence ? algebraEvidencePublication(project, selectedEvidence) : undefined} />
           {evidenceExportError && <p role="alert">{evidenceExportError}</p>}
           {canUseSpecializedEvidence && selectedEvidence.request.operation === "sage.galois.analyze" &&
             <SageGaloisViewer key={selectedEvidence.id} result={selectedEvidence.result as SageGaloisResult}
