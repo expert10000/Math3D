@@ -2,6 +2,7 @@ import { geometryObjectShape, matchesScientificSourceGeneration, structuralHash,
   type Graph2DDocument, type KernelWorkspaceDocument, type MeshDocument,
   type MixedWorkspaceDocument, type ProjectNoteAnchor, type ProjectNoteAnchorResolver, type StableDocumentId } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
+import { qualifyStudyScientificSelectionPin } from "./projectStudyNoteAnchor";
 
 export type NoteSelectionDescriptor = Readonly<{
   module: "geometry" | "mesh" | "graph2d"; documentId: string; objectId: string;
@@ -70,6 +71,8 @@ export const projectNoteSourceResolver = (projectId: StableDocumentId, workspace
       if (!study || study.projectId !== projectId || !study.pinnedSelectionIds.includes(selectionId)) return null;
       const member = study.members.find(item => item.memberId === memberId);
       if (!member) return null;
+      if (selectionId.startsWith("selection:") &&
+        qualifyStudyScientificSelectionPin(workspace, study, selectionId)?.memberId !== memberId) return null;
       const source = viewerSourceFromDocument({ identity: member.expected });
       let status: "current" | "stale" | "missing" = "current";
       for (const item of study.members) {

@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { createProjectNote, createProjectStudyFromDocuments, inspectProjectNoteAnchor,
-  instantiateMath3DProjectTemplate, normalizeProjectNoteAnchor, parseMath3DProject,
-  renameProjectStudy, serializeMath3DProject, upsertMath3DProjectNote, upsertProjectStudy } from "@math3d/core";
+  instantiateMath3DProjectTemplate, normalizeProjectNoteAnchor, parseMath3DProject, createStableDocumentId,
+  renameProjectStudy, serializeMath3DProject, upsertMath3DProjectNote, upsertProjectStudy,
+  upsertProjectScientificSelection } from "@math3d/core";
 import { projectNoteSourceResolver } from "./projectNoteTargets";
-import { createProjectStudySelectionNoteAnchor } from "./projectStudyNoteAnchor";
+import { createProjectStudySelectionNoteAnchor, pinProjectStudyScientificSelection } from "./projectStudyNoteAnchor";
 
 const fixture = () => {
   let project = instantiateMath3DProjectTemplate("catenary-study", "study-note-anchor");
@@ -44,5 +45,32 @@ describe("exact Study selection Note anchors", () => {
     expect(inspectProjectNoteAnchor(note, projectNoteSourceResolver(
       instantiateMath3DProjectTemplate("catenary-study", "foreign-project").identity.id,
       project.workspace)).status).toBe("different-project");
+  });
+
+  it("pins an authored scientific point and refuses a changed or removed selection", () => {
+    const initial = fixture();
+    const entry = initial.project.workspace.entries[0]!;
+    const selectionId = createStableDocumentId("scientific-selection", "study-point");
+    const selection = { format: "math3d.scientific-selection" as const, schemaVersion: 1 as const,
+      identity: { kind: "authored" as const, id: selectionId }, role: "probe" as const,
+      source: { kind: "document" as const, documentId: entry.expected.id,
+        checkpoint: { revision: entry.expected.revision, structuralHash: entry.expected.structuralHash } },
+      frame: { kind: "cartesian" as const, axes: [{ name: "x", unit: null }, { name: "y", unit: null }] },
+      geometry: { kind: "point" as const, position: [1, 2] } };
+    const withSelection = upsertProjectScientificSelection(initial.project, selection);
+    const pinned = pinProjectStudyScientificSelection(withSelection, initial.study.id, selectionId);
+    const study = pinned.workspace.studies![0]!;
+    const pin = study.pinnedSelectionIds.find(id => id.startsWith("selection:"))!;
+    const anchor = createProjectStudySelectionNoteAnchor(pinned, study.id, study.members[0]!.memberId, pin);
+    const note = createProjectNote({ projectId: pinned.identity.id, stableKey: "point-note", kind: "text",
+      title: "Point", body: "Observation", anchor, createdAt: 2 });
+    const inspect = (project: typeof pinned) => inspectProjectNoteAnchor(note,
+      projectNoteSourceResolver(project.identity.id, project.workspace));
+    expect(inspect(parseMath3DProject(serializeMath3DProject(pinned))).status).toBe("current");
+    const changed = upsertProjectScientificSelection(pinned, { ...selection,
+      geometry: { kind: "point", position: [3, 4] } });
+    expect(inspect(changed).status).toBe("missing");
+    expect(() => createProjectStudySelectionNoteAnchor(changed, study.id, study.members[0]!.memberId, pin))
+      .toThrow(/missing/);
   });
 });

@@ -100,7 +100,7 @@ import { declareLegacyGeometryCoordinateFrame, declareLegacyMeshCoordinateFrame,
   declareLegacySurfaceCoordinateFrame } from "../projects/projectLegacyCoordinateFrame";
 import { bindProjectNoteDrafts, createProjectNoteDraft, type NoteCaptureKind, type ProjectNoteDraft } from "../projects/projectNoteDrafts";
 import { createProjectNoteSelectionAnchor, projectNoteSourceResolver, type NoteSelectionDescriptor } from "../projects/projectNoteTargets";
-import { createProjectStudySelectionNoteAnchor } from "../projects/projectStudyNoteAnchor";
+import { createProjectStudySelectionNoteAnchor, pinProjectStudyScientificSelection } from "../projects/projectStudyNoteAnchor";
 import { resolveProjectNoteValues } from "../projects/projectNoteValues";
 import { projectAnalysisAvailability, type ProjectAnalysisRoute } from "../projects/projectAnalysisAvailability";
 import { verifyProjectQuantumSceneDocuments } from "../projects/quantumSceneAdmission";
@@ -178,7 +178,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [quick, setQuick] = useState(false), [detailView, setDetailView] = useState(false), [viewerCompanion, setViewerCompanion] = useState(false), [collection, setCollection] = useState("All projects");
   const [detailPage, setDetailPage] = useState<"overview" | "documents" | "relations" | "results" | "history" | "settings" | "transfer">("overview");
   const [resultFocus, setResultFocus] = useState<{ id: string; token: number } | null>(null);
-  const [studyFocus, setStudyFocus] = useState<{ id: string; token: number } | null>(null);
+  const [studyFocus, setStudyFocus] = useState<{ id: string; token: number; selectionId?: string } | null>(null);
   const [viewingDocumentId, setViewingDocumentId] = useState<string | null>(null);
   const [preferences, setPreferences] = useState(() => projectUiPreferences(localStorage.getItem(PROJECT_UI_KEY)));
   const [projectPlacement, setProjectPlacement] = useState<ProjectPlacement>(preferences.placement);
@@ -722,7 +722,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       if (!checked || checked.status !== "current") {
         setNotesMessage("The exact Study selection or its source generation is unavailable."); return;
       }
-      setStudyFocus(previous => ({ id: anchor.studyId, token: (previous?.token ?? 0) + 1 }));
+      setStudyFocus(previous => ({ id: anchor.studyId, selectionId: anchor.selectionId,
+        token: (previous?.token ?? 0) + 1 }));
       setQuick(false); setDetailView(true); setDetailPage("overview");
       setNotesOpen(false); onOpenChange(true);
       return;
@@ -747,6 +748,18 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       if (!pair) return;
       setSavedMeshComparison(pair); setMeshTrendComparison(null); setMeshResultComparisonOpen(true); setNotesOpen(false); onOpenChange(true);
       return;
+    }
+    const current = project?.identity.id === note.projectId ? project : notesProject;
+    const qualification = current && inspectProjectNoteAnchor(note, {
+      ...projectNoteSourceResolver(current.identity.id, current.workspace),
+      workbookBlock: (workbookId, blockId) => {
+        const target = noteWorkbooks.find(item => item.workbook.id === workbookId);
+        const block = target?.workbook.stages.flatMap(stage => stage.blocks).find(item => item.id === blockId);
+        return target && block ? { revision: target.revision, hash: structuralHash(block) } : null;
+      },
+    });
+    if (!qualification || qualification.status !== "current") {
+      setNotesMessage("The Note's exact saved target or source generation is unavailable."); return;
     }
     if (anchor.kind === "workbook-block") {
       const target = noteWorkbooks.find((item) => item.workbook.id === anchor.workbookId);
@@ -2046,10 +2059,13 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                 "QWZ k selection pinned in Study.")}
               onUnpinQwz={id => stageStudy(source => unpinProjectQwzSample(source, id),
                 "QWZ k selection removed from Study.")}
+              onPinScientificSelection={(id, selectionId) => stageStudy(source =>
+                pinProjectStudyScientificSelection(source, id, selectionId), "Scientific selection pinned in Study.")}
               onCapturePinnedNote={(studyId, memberId, selectionId) => {
                 try {
                   const anchor = createProjectStudySelectionNoteAnchor(project, studyId, memberId, selectionId);
-                  captureAnchoredNote(anchor, "Pinned k observation", "Add your observation about this saved k selection.");
+                  captureAnchoredNote(anchor, selectionId.startsWith("qwz:") ? "Pinned k observation" : "Scientific selection observation",
+                    "Add your observation about this saved selection.");
                   openProjectNotes();
                 } catch (error) { setNotesMessage(`Study Note capture failed: ${(error as Error).message}`); }
               }}
