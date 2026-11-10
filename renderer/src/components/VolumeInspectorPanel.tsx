@@ -123,6 +123,7 @@ export type VolumeInspectorPanelProps = {
   onCaptureComparisonBaseline: () => void;
   onClearComparisonBaseline: () => void;
   onRunComparison: () => void;
+  onExportComparison: (format: "json" | "csv" | "receipt") => void;
   onChangeComparisonAlignment: (policy: VolumeAlignmentPolicy) => void;
   onChangeComparisonView: (view: VolumeComparisonView) => void;
   onChangeComparisonThreshold: (threshold: number) => void;
@@ -307,6 +308,7 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
   onCaptureComparisonBaseline,
   onClearComparisonBaseline,
   onRunComparison,
+  onExportComparison,
   onChangeComparisonAlignment,
   onChangeComparisonView,
   onChangeComparisonThreshold,
@@ -751,6 +753,9 @@ export const VolumeInspectorPanel: React.FC<VolumeInspectorPanelProps> = ({
             <button type="button" data-testid="volume-compare-capture-a" onClick={onCaptureComparisonBaseline}>Capture A</button>
             <button type="button" onClick={onClearComparisonBaseline} disabled={!comparisonBaselineLabel}>Clear A</button>
             <button type="button" data-testid="volume-compare-run" onClick={onRunComparison} disabled={!comparisonBaselineLabel}>Compare A ↔ B</button>
+            <button type="button" onClick={() => onExportComparison("json")} disabled={!comparisonSummary}>Export JSON</button>
+            <button type="button" onClick={() => onExportComparison("csv")} disabled={!comparisonSummary}>Export CSV</button>
+            <button type="button" onClick={() => onExportComparison("receipt")}>Receipt</button>
           </div>
           <DetailRow label="Volume A" value={comparisonBaselineLabel ?? "Not captured"} />
           <DetailRow label="Volume B" value={volumeObject.identity.label} />

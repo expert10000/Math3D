@@ -786,6 +786,7 @@ import { VolumeDocumentAdapter, volumeDocumentFromLegacyObject } from "./volume/
 import { VolumeExtractionKernelBridge, locateVolumeExtractionVertex, promoteVolumeExtraction, volumeExtractionStatus, type VolumeExtractionRecord } from "./volume/volumeExtractionKernel";
 import { VolumeIsosurfaceScientificJob } from "./volume/volumeScientificJob";
 import { publishVolumeAnalysisEvidence } from "./volume/analysisPublication";
+import { publishVolumeComparisonEvidence } from "./volume/comparisonPublication";
 import { CurveConstructionRealizer, locateCurveConstructionVertex, type CurveConstructionGeometry } from "./curveAnalysis/curveConstructionGeometry";
 import { curveConstructionSourceStatus, type CurveConstructionRecord } from "./curveAnalysis/curveConstructionKernel";
 import { CurveResultLifecyclePanel } from "./components/CurveResultLifecyclePanel";
@@ -35352,9 +35353,12 @@ const App: React.FC = () => {
   const [volumeComparisonThreshold, setVolumeComparisonThreshold] = useState(0);
   const [volumeComparisonError, setVolumeComparisonError] = useState<string | null>(null);
   const [volumeComparisonStore, setVolumeComparisonStore] = useState(createVolumeComparisonResultStore);
-  const [volumeComparisonSnapshot, setVolumeComparisonSnapshot] = useState<{ bKey: string; summary: VolumeComparisonSummary } | null>(null);
+  const [volumeComparisonSnapshot, setVolumeComparisonSnapshot] = useState<{ aKey: string; bKey: string; alignment: VolumeAlignmentPolicy; threshold: number; summary: VolumeComparisonSummary } | null>(null);
   const [volumeComparisonSync, setVolumeComparisonSync] = useState({ camera: true, slices: true, crosshair: true, window: false });
-  const currentVolumeComparisonSummary = volumeComparisonSnapshot?.bKey === canonicalVolumeObject.identity.key
+  const currentVolumeComparisonSummary = volumeComparisonSnapshot?.aKey === volumeComparisonBaselineRef.current?.volume.identity.key &&
+    volumeComparisonSnapshot?.bKey === canonicalVolumeObject.identity.key &&
+    volumeComparisonSnapshot?.alignment === volumeComparisonAlignment &&
+    volumeComparisonSnapshot?.threshold === volumeComparisonThreshold
     ? volumeComparisonSnapshot.summary
     : null;
   const handleCaptureVolumeComparisonBaseline = useCallback(() => {
@@ -35389,7 +35393,7 @@ const App: React.FC = () => {
         changeThreshold: volumeComparisonThreshold,
         store: volumeStorageStoreRef.current,
       });
-      setVolumeComparisonSnapshot({ bKey: canonicalVolumeObject.identity.key, summary });
+      setVolumeComparisonSnapshot({ aKey: baseline.volume.identity.key, bKey: canonicalVolumeObject.identity.key, alignment: volumeComparisonAlignment, threshold: volumeComparisonThreshold, summary });
       setVolumeComparisonStore((previous) => publishVolumeComparison(previous, baseline.volume, canonicalVolumeObject, summary));
       setVolumeComparisonError(null);
     } catch (error) {
@@ -35397,6 +35401,15 @@ const App: React.FC = () => {
       setVolumeComparisonError(error instanceof Error ? error.message : String(error));
     }
   }, [canonicalVolumeObject, volumeComparisonAlignment, volumeComparisonThreshold, volumeDataset.grid]);
+  const handleExportVolumeComparison = useCallback((format: "json" | "csv" | "receipt") => {
+    const snapshot = volumeComparisonSnapshot?.alignment === volumeComparisonAlignment &&
+      volumeComparisonSnapshot.threshold === volumeComparisonThreshold ? volumeComparisonSnapshot : null;
+    const evidence = publishVolumeComparisonEvidence(volumeComparisonBaselineRef.current?.volume ?? null, canonicalVolumeObject, snapshot);
+    const body = format === "json" ? evidence.reportJson : format === "csv" ? evidence.csv : evidence.receiptJson;
+    if (!body) return;
+    const extension = format === "csv" ? "csv" : "json";
+    downloadTextFile(body, `math3d-volume-comparison-r${canonicalVolumeObject.identity.volumeRevision}${format === "receipt" ? "-receipt" : ""}.${extension}`, format === "csv" ? "text/csv" : "application/json");
+  }, [canonicalVolumeObject, volumeComparisonAlignment, volumeComparisonSnapshot, volumeComparisonThreshold]);
   const volumeComputeMemoryPlan = useMemo(
     () => createVolumeMemoryPlan("marchingCubes", canonicalVolumeObject.spatial.dimensions, canonicalVolumeObject.spatial.byteSize),
     [canonicalVolumeObject.spatial.byteSize, canonicalVolumeObject.spatial.dimensions]
@@ -90786,6 +90799,7 @@ case "mobius":
                         onCaptureComparisonBaseline={handleCaptureVolumeComparisonBaseline}
                         onClearComparisonBaseline={handleClearVolumeComparisonBaseline}
                         onRunComparison={handleRunVolumeComparison}
+                        onExportComparison={handleExportVolumeComparison}
                         onChangeComparisonAlignment={setVolumeComparisonAlignment}
                         onChangeComparisonView={setVolumeComparisonView}
                         onChangeComparisonThreshold={setVolumeComparisonThreshold}
