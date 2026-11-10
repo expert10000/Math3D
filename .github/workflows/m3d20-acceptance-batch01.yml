@@ -1,0 +1,114 @@
+name: M3D20 acceptance batch 01 regressions
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/m3d20-acceptance-batch01.yml
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact source commit to test, separate from the workflow commit
+        required: true
+        default: c171d299d2e54aa04fbef54722e37267931f61c1
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m3d20-pinned-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  scoped-integration-unit:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    env:
+      TEST_SOURCE_SHA: ${{ inputs.source_sha || 'c171d299d2e54aa04fbef54722e37267931f61c1' }}
+    steps:
+      - name: Validate the requested source SHA
+        shell: pwsh
+        run: |
+          if ($env:TEST_SOURCE_SHA -notmatch '^[a-fA-F0-9]{40}$') {
+            throw 'source_sha must be a full 40-character commit SHA.'
+          }
+
+      - name: Checkout the tested source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TEST_SOURCE_SHA }}
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+          cache: npm
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Record source, harness and environment identities
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const { execFileSync } = require('node:child_process');
+          const actual = execFileSync('git', ['rev-parse', 'HEAD'], {encoding:'utf8'}).trim();
+          if (actual.toLowerCase() !== process.env.TEST_SOURCE_SHA.toLowerCase()) throw Error('Checkout SHA mismatch');
+          if (process.version !== 'v24.15.0') throw Error('Unexpected Node version');
+          const python = execFileSync('python', ['--version'], {encoding:'utf8'}).trim();
+          if (!python.startsWith('Python 3.11.')) throw Error('Unexpected Python version');
+          fs.mkdirSync('integration-evidence', {recursive:true});
+          fs.writeFileSync('integration-evidence/manifest.json', JSON.stringify({
+            schemaVersion:1, repository:process.env.GITHUB_REPOSITORY, sourceCommit:actual,
+            harnessCommit:process.env.GITHUB_WORKFLOW_SHA, eventCommit:process.env.GITHUB_SHA,
+            workflowRef:process.env.GITHUB_WORKFLOW_REF, runId:process.env.GITHUB_RUN_ID,
+            runAttempt:process.env.GITHUB_RUN_ATTEMPT, job:process.env.GITHUB_JOB,
+            runUrl:`${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`,
+            runner:'windows-2022', runnerOS:process.env.RUNNER_OS, architecture:process.env.RUNNER_ARCH,
+            node:process.version, python, npm:execFileSync('npm.cmd',['--version'],{encoding:'utf8',shell:true}).trim(),
+            startedAt:new Date().toISOString(), scope:'Twelve explicit integration and existing-owner regression files; no end-to-end or full acceptance certification'
+          }, null, 2));
+          NODE
+
+      - name: Install root and renderer dependencies
+        shell: bash
+        run: |
+          npm ci
+          npm --prefix renderer ci
+
+      - name: Run the twelve explicit integration and owner suites
+        shell: bash
+        run: |
+          node renderer/node_modules/vitest/vitest.mjs run --config renderer/vite.config.ts tests/unit/crossModuleAdapterRegistry.test.ts tests/unit/projectOpenIn.test.ts tests/unit/projectOpenInField.test.ts tests/unit/projectMeshGeometry.test.ts tests/unit/projectAlgebraOpenIn.test.ts tests/unit/scientificSelection.test.ts renderer/src/core/analysisResults.test.ts renderer/src/kernel/artifactRegistry.test.ts renderer/src/kernel/scientificJobService.test.ts renderer/src/core/platformCapabilities.test.ts renderer/src/geometry/analysisResultWorkflow.test.ts renderer/src/mesh/analysisResultStore.test.ts --maxWorkers=1 --reporter=default --reporter=json --outputFile=integration-evidence/vitest.json
+
+      - name: Require all twelve suites to have executed
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const report = JSON.parse(fs.readFileSync('integration-evidence/vitest.json','utf8'));
+          const files = ["tests/unit/crossModuleAdapterRegistry.test.ts","tests/unit/projectOpenIn.test.ts","tests/unit/projectOpenInField.test.ts","tests/unit/projectMeshGeometry.test.ts","tests/unit/projectAlgebraOpenIn.test.ts","tests/unit/scientificSelection.test.ts","renderer/src/core/analysisResults.test.ts","renderer/src/kernel/artifactRegistry.test.ts","renderer/src/kernel/scientificJobService.test.ts","renderer/src/core/platformCapabilities.test.ts","renderer/src/geometry/analysisResultWorkflow.test.ts","renderer/src/mesh/analysisResultStore.test.ts"];
+          for (const file of files) {
+            const matches = (report.testResults || []).filter(r => r.name.replaceAll('\\','/').endsWith(`/${file}`));
+            if (matches.length !== 1 || matches[0].status !== 'passed' || !matches[0].assertionResults?.length ||
+                matches[0].assertionResults.some(t => t.status !== 'passed')) throw Error(`Missing, skipped or failing suite: ${file}`);
+          }
+          const manifest = JSON.parse(fs.readFileSync('integration-evidence/manifest.json','utf8'));
+          fs.writeFileSync('integration-evidence/manifest.json',JSON.stringify({...manifest,
+            completedAt:new Date().toISOString(), discoveredSuites:files, unitScopePassed:true,
+            acceptanceCertified:false},null,2));
+          NODE
+
+      - name: Upload source-bound test evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: m3d20-integration-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: integration-evidence/**
