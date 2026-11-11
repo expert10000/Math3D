@@ -1,0 +1,104 @@
+name: Native CGAL Source To Binary Chain
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "native/cgal-worker/**"
+      - "scripts/*cgal*"
+      - "scripts/prepare-public-source-bundle.mjs"
+      - "scripts/generate-release-sbom.mjs"
+      - "scripts/verify-release20-assets.mjs"
+      - "scripts/test-release20-assets.mjs"
+      - "compliance/public-source-manifest.json"
+      - ".github/workflows/release.yml"
+      - ".github/workflows/native-cgal-chain.yml"
+  pull_request:
+    paths:
+      - "native/cgal-worker/**"
+      - "scripts/*cgal*"
+      - "scripts/prepare-public-source-bundle.mjs"
+      - "scripts/generate-release-sbom.mjs"
+      - "scripts/verify-release20-assets.mjs"
+      - "scripts/test-release20-assets.mjs"
+      - "compliance/public-source-manifest.json"
+      - ".github/workflows/release.yml"
+      - ".github/workflows/native-cgal-chain.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pinned-source-build:
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24.19.0"
+          cache: npm
+      - name: Install pinned public build recipes
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path .deps -Force | Out-Null
+          git clone --filter=blob:none https://github.com/microsoft/vcpkg.git .deps/vcpkg
+          if ($LASTEXITCODE -ne 0) { throw "vcpkg clone failed" }
+          git -C .deps/vcpkg checkout --detach 52fd90f2b7798d9fe6fef18fc1787db44574d704
+          if ($LASTEXITCODE -ne 0) { throw "Pinned vcpkg checkout failed" }
+          & .deps/vcpkg/bootstrap-vcpkg.bat -disableMetrics
+          if ($LASTEXITCODE -ne 0) { throw "vcpkg bootstrap failed" }
+          & .deps/vcpkg/vcpkg.exe install cgal:x64-windows --binarysource=clear
+          if ($LASTEXITCODE -ne 0) { throw "Pinned CGAL dependency build failed" }
+      - name: Build native worker and prepare corresponding sources
+        shell: pwsh
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw "npm ci failed" }
+          npm run build:main
+          if ($LASTEXITCODE -ne 0) { throw "Main build failed" }
+          npm run build:cgal-native-worker
+          if ($LASTEXITCODE -ne 0) { throw "Native build failed" }
+          npm run release:source -- --target windows --out release-source --version 2.0.0
+          if ($LASTEXITCODE -ne 0) { throw "Public source preparation failed" }
+          npm run verify:cgal-native-source
+          if ($LASTEXITCODE -ne 0) { throw "Public source verification failed" }
+          node scripts/test-cgal-native-release.mjs
+          if ($LASTEXITCODE -ne 0) { throw "Native worker acceptance failed" }
+          node scripts/write-native-cgal-build-receipt.mjs release-source/SOURCE_MANIFEST-windows.json
+          if ($LASTEXITCODE -ne 0) { throw "Native build receipt failed" }
+      - name: Enforce binary source and SBOM ownership gate
+        shell: pwsh
+        env:
+          MATH3D_BUNDLE_NATIVE_CGAL: "1"
+          MATH3D_NATIVE_CGAL_SOURCE_MANIFEST: ${{ github.workspace }}/release-source/SOURCE_MANIFEST-windows.json
+        run: |
+          node scripts/cgal-native-distribution-gate.cjs
+          if ($LASTEXITCODE -ne 0) { throw "Native distribution gate failed" }
+          node scripts/test-native-cgal-build-receipt.mjs
+          if ($LASTEXITCODE -ne 0) { throw "Native receipt tamper tests failed" }
+          node scripts/test-release-sbom.mjs
+          if ($LASTEXITCODE -ne 0) { throw "SBOM ownership fixtures failed" }
+          node scripts/test-release20-assets.mjs
+          if ($LASTEXITCODE -ne 0) { throw "Native release asset integrity fixtures failed" }
+      - name: Upload source-to-binary evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-cgal-source-binary-chain
+          if-no-files-found: ignore
+          path: |
+            release-source/SOURCE_MANIFEST-windows.json
+            build/native/cgal-worker/NATIVE_BUILD_RECEIPT-windows.json
+            build/native/cgal-worker/Release/math3d-cgal-worker.exe
+            build/native/cgal-worker/Release/gmp-10.dll
+            build/native/cgal-worker/Release/mpfr-6.dll
+            .deps/vcpkg/installed/x64-windows/share/cgal/vcpkg.spdx.json
+            .deps/vcpkg/installed/x64-windows/share/boost-core/vcpkg.spdx.json
+            .deps/vcpkg/installed/x64-windows/share/gmp/vcpkg.spdx.json
+            .deps/vcpkg/installed/x64-windows/share/mpfr/vcpkg.spdx.json
+            .deps/vcpkg/installed/x64-windows/share/cgal/copyright
+            .deps/vcpkg/installed/x64-windows/share/boost-core/copyright
+            .deps/vcpkg/installed/x64-windows/share/gmp/copyright
+            .deps/vcpkg/installed/x64-windows/share/mpfr/copyright

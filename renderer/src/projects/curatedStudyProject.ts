@@ -9,19 +9,19 @@ import { captureProjectResources, type VerifiedProjectResources } from "./projec
 
 const layouts: Partial<Record<CuratedStarterId, Readonly<{
   title: string; modules: readonly ("graph2d" | "curve" | "surface" | "geometry" | "topology" | "mesh")[];
-  resultOnSource?: boolean;
+  resultOnModule?: "graph2d" | "mesh";
 }>>> = {
-  "catenary-study": { title: "Catenary, catenoid and derivative", modules: ["graph2d", "surface"], resultOnSource: true },
-  "derivative-study": { title: "Parabola, Curve and derivative", modules: ["graph2d", "curve"], resultOnSource: true },
+  "catenary-study": { title: "Catenary, catenoid and derivative", modules: ["graph2d", "surface"], resultOnModule: "graph2d" },
+  "derivative-study": { title: "Parabola, Curve and derivative", modules: ["graph2d", "curve"], resultOnModule: "graph2d" },
+  "catenoid-evidence": { title: "Catenoid and recorded Mesh curvature", modules: ["surface", "mesh"], resultOnModule: "mesh" },
   "scene-topology-study": { title: "Geometry constructions and incidence", modules: ["geometry", "topology"] },
   "geometry-note-pins": { title: "Geometry and anchored observations", modules: ["geometry"] },
-  "graph-derivative-notebook": { title: "Graph and Curve with recorded evidence", modules: ["graph2d", "curve"], resultOnSource: true },
+  "graph-derivative-notebook": { title: "Graph and Curve with recorded evidence", modules: ["graph2d", "curve"], resultOnModule: "graph2d" },
   "ripple-wave-study": { title: "Wave profile and constructed representations", modules: ["graph2d", "surface", "geometry"] },
   "surface-geometry-probe": { title: "Source-backed Surface and Geometry", modules: ["surface", "geometry"] },
-  "catenoid-evidence": { title: "Catenoid curvature evidence", modules: ["mesh", "surface"], resultOnSource: true },
-  "edge-path-evidence": { title: "Saved edge path evidence", modules: ["mesh", "surface"], resultOnSource: true },
-  "mesh-comparison-study": { title: "Retained Mesh generations", modules: ["mesh"], resultOnSource: true },
-  "mesh-curvature-study": { title: "Discrete curvature across Mesh scales", modules: ["mesh"], resultOnSource: true },
+  "edge-path-evidence": { title: "Saved edge path evidence", modules: ["mesh", "surface"], resultOnModule: "mesh" },
+  "mesh-comparison-study": { title: "Retained Mesh generations", modules: ["mesh"], resultOnModule: "mesh" },
+  "mesh-curvature-study": { title: "Discrete curvature across Mesh scales", modules: ["mesh"], resultOnModule: "mesh" },
 };
 
 /** Add a saved reference layout only for an explicitly chosen guided Gallery copy. */
@@ -35,14 +35,27 @@ export function prepareCuratedStudyProject(project: Math3DProject, id: CuratedSt
   if (entries.some(entry => !entry)) throw new TypeError(`Guided Study ${id} lacks a required source document.`);
   let next = createProjectStudyFromDocuments(project, ["curated-study", id, instanceKey], layout.title,
     entries.map(entry => entry!.expected.id));
-  if (layout.resultOnSource) {
+  if (layout.resultOnModule) {
     const first = next.workspace.studies![0]!;
-    const memberSource = viewerSourceFromDocument({ identity: first.members[0]!.expected });
-    const result = [...next.workspace.results].reverse().find(item =>
+    const member = first.members.find(item => project.workspace.entries.find(entry =>
+      entry.expected.id === item.documentId)?.module === layout.resultOnModule);
+    const memberSource = member && viewerSourceFromDocument({ identity: member.expected });
+    const result = memberSource && [...next.workspace.results].reverse().find(item =>
       matchesScientificSourceGeneration(item.provenance.source, memberSource));
-    if (!result) throw new TypeError(`Guided Study ${id} lacks its recorded source result.`);
-    next = upsertProjectStudy(next, { ...first, members: first.members.map((member, index) => index === 0 ?
-      { ...member, resultId: result.resultId } : member) });
+    if (!member || !result) throw new TypeError(`Guided Study ${id} lacks its recorded source result.`);
+    next = upsertProjectStudy(next, { ...first, members: first.members.map(item => item.memberId === member.memberId ?
+      { ...item, resultId: result.resultId } : item) });
+  }
+  if (id === "catenoid-evidence") {
+    const first = next.workspace.studies![0]!;
+    const surface = first.members.find(item => next.workspace.entries.find(entry =>
+      entry.expected.id === item.documentId)?.module === "surface");
+    const result = next.workspace.results.find(item =>
+      item.provenance.operation.type === "surface.catenoid-waist-comparison" &&
+      item.provenance.source.documentId === surface?.documentId);
+    if (!surface || !result) throw new TypeError("Guided Catenoid Study lacks its pinned analytic/discrete comparison.");
+    next = upsertProjectStudy(next, { ...first, members: first.members.map(item => item.memberId === surface.memberId ?
+      { ...item, resultId: result.resultId } : item) });
   }
   return updateMath3DProjectMetadata(next, { ...next.metadata,
     tags: [...new Set([...(next.metadata.tags ?? []), "curated-study-v1"])],
@@ -56,7 +69,10 @@ export function prepareCuratedStudyBundle(bundle: { project: Math3DProject; reso
   if (!layouts[id]) return { project, resources: bundle.resources };
   const study = project.workspace.studies?.[0], card = curatedStudy(id);
   if (!study || !card) throw new TypeError("Guided research Study is unavailable.");
-  const member = study.members[0]!, result = member.resultId && project.workspace.results.find(item => item.resultId === member.resultId);
+  const member = (id === "catenoid-evidence" ? study.members.find(item =>
+    project.workspace.entries.find(entry => entry.expected.id === item.documentId)?.module === "mesh") : null)
+    ?? study.members[0]!;
+  const result = member.resultId && project.workspace.results.find(item => item.resultId === member.resultId);
   const anchor = result ? { kind: "result" as const, source: result.provenance.source,
     resultId: result.resultId, resultHash: structuralHash(result) } :
     { kind: "document" as const, source: viewerSourceFromDocument({ identity: member.expected }) };

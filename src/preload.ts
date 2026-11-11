@@ -526,6 +526,22 @@ contextBridge.exposeInMainWorld("appMenu", {
   },
 });
 
+contextBridge.exposeInMainWorld("projectDurability", Object.freeze({
+  write: (snapshot: { id: string; savedAt: number; projectBytes: string; libraryBytes: string; activate: boolean }): void => {
+    const result = ipcRenderer.sendSync("projects:durability:write", snapshot) as { ok: boolean; error?: string };
+    if (!result?.ok) throw new Error(result?.error || "Durable Project checkpoint failed.");
+  },
+  read: (): { id: string; savedAt: number; projectBytes: string; libraryBytes: string; activate: boolean }[] => {
+    const result = ipcRenderer.sendSync("projects:durability:read") as { ok: boolean; error?: string; snapshots?: unknown[] };
+    if (!result?.ok || !Array.isArray(result.snapshots)) throw new Error(result?.error || "Durable Project recovery failed.");
+    return result.snapshots as { id: string; savedAt: number; projectBytes: string; libraryBytes: string; activate: boolean }[];
+  },
+  ...(e2eRuntimeEnabled ? { clearForTest: (): void => {
+    const result = ipcRenderer.sendSync("projects:durability:clear-for-test") as { ok: boolean; error?: string };
+    if (!result?.ok) throw new Error(result?.error || "Durable Project test reset failed.");
+  } } : {}),
+}));
+
 contextBridge.exposeInMainWorld("appCapture", {
   captureProjectThumbnail: (rect: { x: number; y: number; width: number; height: number }): Promise<{ ok: true; dataUrl: string } | { ok: false; error: string }> =>
     ipcRenderer.invoke("app:capture-project-thumbnail", rect),

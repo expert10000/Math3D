@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createEmptyGraph2DDocument, createGraph2DWorkspaceProject, createMath3DProject, serializeMath3DProject, updateMath3DProjectMetadata } from "@math3d/core";
 import { loadLibraryProject, orderProjectLibrary, parseProjectLibrary, PROJECT_LIBRARY_KEY, PROJECT_STORAGE_KEY, projectPayloadKey,
-  projectThumbnailKey, readProjectThumbnail, isAutomaticProjectThumbnail, saveLibraryProject, updateLibraryActivity, validateProjectThumbnail } from "./projectLibrary";
+  projectThumbnailKey, readProjectThumbnail, isAutomaticProjectThumbnail, saveLibraryProject, updateLibraryActivity, validateProjectThumbnail,
+  recoverDurableProjectLibrary } from "./projectLibrary";
 
 const project = (key = "study") => createMath3DProject(createGraph2DWorkspaceProject(createEmptyGraph2DDocument("source")), { stableKey: key, title: key });
 const thumbnail = "data:image/png;base64,aGVsbG8=";
@@ -10,6 +11,33 @@ const store = () => {
   return { values, getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); }, removeItem: (key: string) => { values.delete(key); } };
 };
 describe("PRJ03 local project library", () => {
+  it("restores a disk checkpoint after localStorage loses the acknowledged save", () => {
+    const storage = store(), original = project("hard-exit"), savedAt = 1234;
+    saveLibraryProject(storage, original, savedAt);
+    const snapshot = { id: original.identity.id, savedAt, projectBytes: storage.getItem(projectPayloadKey(original.identity.id))!,
+      libraryBytes: storage.getItem(PROJECT_LIBRARY_KEY)!, activate: true };
+    storage.values.clear();
+    expect(recoverDurableProjectLibrary(storage, [snapshot])).toEqual({ restored: 2 });
+    expect(loadLibraryProject(storage, original.identity.id)).toEqual(original);
+    expect(storage.getItem(PROJECT_STORAGE_KEY)).toBe(serializeMath3DProject(original));
+    expect(recoverDurableProjectLibrary(storage, [snapshot])).toEqual({ restored: 0 });
+    storage.removeItem(PROJECT_STORAGE_KEY);
+    expect(recoverDurableProjectLibrary(storage, [snapshot])).toEqual({ restored: 1 });
+    expect(storage.getItem(PROJECT_STORAGE_KEY)).toBe(snapshot.projectBytes);
+    storage.setItem(PROJECT_LIBRARY_KEY, "{corrupt");
+    expect(recoverDurableProjectLibrary(storage, [snapshot])).toMatchObject({ restored: 0, error: expect.any(String) });
+    expect(storage.getItem(PROJECT_LIBRARY_KEY)).toBe("{corrupt");
+  });
+  it("rolls back a Save when the desktop disk checkpoint fails", () => {
+    const storage = store(), original = project("durability-failure");
+    if (typeof window === "undefined") return;
+    const previous = window.projectDurability;
+    window.projectDurability = { write: vi.fn(() => { throw new Error("Disk full"); }), read: () => [] };
+    try {
+      expect(() => saveLibraryProject(storage, original, 1234)).toThrow("Disk full");
+      expect(storage.values.size).toBe(0);
+    } finally { window.projectDurability = previous; }
+  });
   it("refreshes automatic sidecars without changing scientific bytes and preserves explicit uploaded mode", () => {
     const storage = store(), original = project(), first = saveLibraryProject(storage, original, 100, thumbnail, { thumbnailMode: "automatic" });
     expect(isAutomaticProjectThumbnail(storage, first.entries[0])).toBe(true);

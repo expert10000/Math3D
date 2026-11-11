@@ -2,30 +2,48 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const { spawnSync } = require("node:child_process");
+const { verifyNativeCgalSourceBundle } = require("./native-cgal-source-contract.cjs");
+const { verifyNativeCgalBuildReceipt, receiptName } = require("./native-cgal-build-receipt.cjs");
 
 const root = path.resolve(__dirname, "..");
 const manifest = require("../native/cgal-worker/dependency-manifest.json");
 const nativePattern = /(?:native-cgal|cgal-worker|build[\\/]native)/i;
 
 function assertNativeCgalPackagingPolicy(config) {
-  if (manifest.distributionStatus !== "blocked-pending-public-source-bundle-integration") {
+  if (manifest.distributionStatus !== "source-bundle-integrated-not-bundled") {
     throw new Error("Native CGAL distribution policy changed without an approved release gate.");
   }
-  if (process.env.MATH3D_BUNDLE_NATIVE_CGAL === "1") {
-    throw new Error("Native CGAL installer bundling is blocked pending source-bundle and SBOM integration.");
-  }
+  const requested = process.env.MATH3D_BUNDLE_NATIVE_CGAL === "1";
   const inclusions = [
     ...(config.files ?? []),
     ...(config.extraResources ?? []),
     ...(config.extraFiles ?? []),
   ];
+  const native = [];
   for (const entry of inclusions) {
     const from = typeof entry === "string" ? entry : String(entry?.from ?? "");
     const to = typeof entry === "string" ? "" : String(entry?.to ?? "");
     if (nativePattern.test(from) || nativePattern.test(to)) {
-      throw new Error(`Native CGAL installer bundling is blocked pending public source assets: ${from} -> ${to}`);
+      native.push({ from, to });
     }
   }
+  if (!requested && native.length) throw new Error("Native CGAL bundling is blocked without an explicit source-qualified build.");
+  if (!requested) return;
+  if (native.length !== 1 || native[0].from !== "build/native/cgal-worker/Release" || native[0].to !== "native-cgal")
+    throw new Error("Native CGAL bundling is blocked without the reviewed worker resource path.");
+  const receiptPath = process.env.MATH3D_NATIVE_CGAL_SOURCE_MANIFEST;
+  if (!receiptPath || path.basename(receiptPath) !== "SOURCE_MANIFEST-windows.json")
+    throw new Error("Native CGAL bundling is blocked without a Windows corresponding-source receipt.");
+  const directory = path.dirname(path.resolve(receiptPath));
+  const commit = spawnSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" });
+  if (commit.status !== 0) throw new Error("Native CGAL source commit could not be verified.");
+  verifyNativeCgalSourceBundle(directory, JSON.parse(fs.readFileSync(receiptPath, "utf8")),
+    JSON.parse(fs.readFileSync(path.join(root, "compliance/public-source-manifest.json"), "utf8")),
+    fs.readFileSync(path.join(root, "native/cgal-worker/dependency-manifest.json")), commit.stdout.trim());
+  verifyLocalReferenceBuild();
+  verifyNativeCgalBuildReceipt(process.env.MATH3D_NATIVE_CGAL_BUILD_RECEIPT ??
+    path.join(root, "build/native/cgal-worker", receiptName), { sourceManifestPath: receiptPath });
 }
 
 function installedVersion(status, name) {
@@ -52,6 +70,7 @@ function verifyLocalReferenceBuild() {
     throw new Error("Installed CGAL corefinement license does not match reviewed package metadata.");
   }
   const build = path.join(root, "build/native/cgal-worker/Release");
+  if (!fs.existsSync(path.join(build, "math3d-cgal-worker.exe"))) throw new Error("Native CGAL worker executable is missing.");
   for (const dll of manifest.windowsReferenceBuild.runtimeDlls) {
     if (!fs.existsSync(path.join(build, dll))) throw new Error(`Native release dependency missing: ${dll}`);
   }
@@ -63,5 +82,5 @@ if (require.main === module) {
   const config = require("../electron-builder.config.cjs");
   assertNativeCgalPackagingPolicy(config);
   if (process.argv.includes("--local")) verifyLocalReferenceBuild();
-  console.log("Native CGAL distribution remains gated on public source assets; installers retain the Python fallback.");
+  console.log("Native CGAL distribution source gate passed; default installers retain the Python fallback.");
 }

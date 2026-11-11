@@ -92,3 +92,24 @@ it("opens the cursor inspector for a replay-backed Graph Project without materia
   const current = createMath3DProject(workspace, { stableKey: "replay-cursor-inspector" });
   expect(renderToStaticMarkup(<ProjectCursorInspector project={current} />)).toContain('data-testid="project-cursor-inspector"');
 });
+
+it("publishes only source-pinned Graph and Curve points with their native axes", () => {
+  const starter = instantiateMath3DProjectTemplate("derivative-study", "native-point-inspector");
+  for (const module of ["graph2d", "curve"] as const) {
+    const document = starter.workspace.entries.find(item => item.module === module)!.checkpoint;
+    const names = module === "graph2d" ? ["x", "y"] : ["x", "y", "z"];
+    const selection: ScientificSelection = { format: "math3d.scientific-selection", schemaVersion: 1,
+      identity: { kind: "authored", id: createStableDocumentId("scientific-selection", [document.identity.id, "native-point"]) },
+      role: "probe", source: { kind: "document", documentId: document.identity.id,
+        checkpoint: { revision: document.identity.revision, structuralHash: document.identity.structuralHash } },
+      frame: { kind: "cartesian", axes: names.map(name => ({ name, unit: "1" })) },
+      geometry: { kind: "point", position: names.map(() => 0.5) } };
+    const current = upsertProjectScientificSelection(starter, selection);
+    const qualified = projectPointCursorFrame(current, selection);
+    expect(qualified.reason).toBeNull();
+    if (!qualified.frame || selection.identity.kind !== "authored") continue;
+    expect(projectCursorFromSavedPoint(current, selection.identity.id, qualified.frame, "project-inspector").ok).toBe(true);
+    expect(projectPointCursorFrame(current, { ...selection, frame: { ...selection.frame,
+      axes: selection.frame.axes.map(axis => ({ ...axis, name: "other" })) } }).reason).toMatch(/axes or units/);
+  }
+});

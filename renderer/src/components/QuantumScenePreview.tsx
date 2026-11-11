@@ -290,15 +290,26 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
     let active = true;
     const originViewId = opened.reference.sceneFingerprint;
     const unsubscribe = scientificCursorBus.subscribe(cursor => {
-      if (!active || cursor.kind !== "quantum" || !cursor.reciprocalPoint || cursor.originViewId === originViewId ||
-          cursor.runId !== scene.provenance.runId || cursor.resultSha256 !== scene.provenance.resultSha256) return;
+      if (!active || cursor.kind !== "quantum" || !cursor.reciprocalPoint || cursor.originViewId === originViewId) return;
+      const reciprocalPoint = cursor.reciprocalPoint;
+      if (cursor.runId !== scene.provenance.runId || cursor.resultSha256 !== scene.provenance.resultSha256) {
+        setPickedBandSample(null); setPickedTopologySample(null);
+        setCursorStatus("Cursor withheld: linked run or source revision differs from this scene.");
+        return;
+      }
       const quantity = scene.topology?.quantities.find(item => item.object === "berry-curvature");
-      if (!window.quantumScenes?.projectQwzCursor || qwzRole === "curvature" && !quantity) return;
+      if (!window.quantumScenes?.projectQwzCursor || !window.quantumScenes.verifyActive ||
+          qwzRole === "curvature" && !quantity) {
+        setCursorStatus("Cursor withheld: source verification or target quantity is unavailable."); return;
+      }
       setPickedBandSample(null); setPickedTopologySample(null);
       setCursorStatus("Verifying linked reciprocal-space sample…");
-      void window.quantumScenes.projectQwzCursor({ fingerprint: originViewId, runId: cursor.runId,
-        resultSha256: cursor.resultSha256, k: cursor.reciprocalPoint.k,
-        basisId: cursor.reciprocalPoint.basisId }).then(async projection => {
+      void window.quantumScenes.verifyActive(originViewId).then(verified => {
+        if (!verified) throw new TypeError("Quantum source bundle changed or is unavailable.");
+        return window.quantumScenes!.projectQwzCursor({ fingerprint: originViewId, runId: cursor.runId,
+        resultSha256: cursor.resultSha256, k: reciprocalPoint.k,
+        basisId: reciprocalPoint.basisId });
+      }).then(async projection => {
         if (!active || scientificCursorBus.snapshot()?.sequence !== cursor.sequence) return;
         if (projection.target !== qwzRole) throw new TypeError("Cursor target changed during projection.");
         const sample = qwzRole === "bands" ? await window.quantumScenes!.bandSample({ fingerprint: originViewId,
@@ -307,6 +318,8 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
             quantityId: quantity!.id, sampleIndex: projection.sampleIndex });
         if (!active || scientificCursorBus.snapshot()?.sequence !== cursor.sequence) return;
         const k = "k" in sample ? sample.k : sample.position;
+        if (sample.runId !== cursor.runId || sample.resultSha256 !== cursor.resultSha256)
+          throw new TypeError("Target sample source revision differs from the linked selection.");
         if (Math.abs(k[0] - projection.k[0]) > 1e-8 || Math.abs(k[1] - projection.k[1]) > 1e-8)
           throw new TypeError("Projected k-point differs from the exact target sample.");
         if ("k" in sample) setPickedBandSample(sample); else setPickedTopologySample(sample);

@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { readFile, writeFile } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { verifyRelease20Freeze } from './verify-release20-freeze.mjs';
 
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const requireValue = (condition, message) => { if (!condition) throw new Error(message); };
@@ -41,7 +42,8 @@ export async function inspectRelease20CandidateInputs(root, sourceCommit, clean,
 
 /** Record only independently verified signatures and the extracted installer System.dll. */
 export async function recordRelease20Candidate({ root, sourceCommit, installerPath, unpackedRoot, signaturesPath,
-  nsisPath, outputPath, preflight }) {
+  nsisPath, freezePath, outputPath, preflight }) {
+  await verifyRelease20Freeze({ root, manifestPath: freezePath, expectedCommit: sourceCommit });
   const [signatures, nsis, identity] = await Promise.all([readJson(signaturesPath), readJson(nsisPath),
     readJson(join(root, 'dist/build-identity.json'))]);
   requireValue(identity.version === '2.0.0' && identity.commit === sourceCommit && identity.dirty === false,
@@ -64,6 +66,7 @@ export async function recordRelease20Candidate({ root, sourceCommit, installerPa
     version: '2.0.0', channel: 'stable', commit: sourceCommit, installerName, installerSha256: actual[0],
     executableSha256: actual[1], workerSha256: actual[2], signerThumbprint: signatures.thumbprint.toLowerCase(),
     nsisSystemDllSha256: nsis.systemDllSha256, buildIdentitySha256: sha(await readFile(join(root, 'dist/build-identity.json'))),
+    freezeManifestSha256: sha(await readFile(freezePath)),
   }, inputs: preflight.inputSha256, dependencies: preflight.dependencies };
   await writeFile(outputPath, JSON.stringify(manifest, null, 2) + '\n', { flag: 'wx' });
   return manifest;
@@ -77,11 +80,11 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
       process.env.MATH3D_WINDOWS_TIMESTAMP_URL && /^[0-9a-f]{40}$/i.test(process.env.MATH3D_WINDOWS_SIGNER_THUMBPRINT ?? ''));
     const preflight = await inspectRelease20CandidateInputs(root, sourceCommit, clean, signingPresent);
     if (process.argv[2] === '--preflight') console.log(JSON.stringify(preflight));
-    else if (process.argv[2] === '--record' && process.argv.length === 8) {
+    else if (process.argv[2] === '--record' && process.argv.length === 9) {
       const result = await recordRelease20Candidate({ root, sourceCommit, preflight, installerPath: resolve(process.argv[3]),
         unpackedRoot: resolve(process.argv[4]), signaturesPath: resolve(process.argv[5]), nsisPath: resolve(process.argv[6]),
-        outputPath: resolve(process.argv[7]) });
+        freezePath: resolve(process.argv[7]), outputPath: resolve(process.argv[8]) });
       console.log(JSON.stringify(result));
-    } else throw new Error('Use --preflight or --record <installer> <unpacked> <signatures.json> <nsis.json> <output.json>.');
+    } else throw new Error('Use --preflight or --record <installer> <unpacked> <signatures.json> <nsis.json> <freeze.json> <output.json>.');
   } catch (error) { console.error(error.message); process.exitCode = 1; }
 }

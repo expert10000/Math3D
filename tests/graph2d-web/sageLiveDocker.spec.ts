@@ -1,6 +1,33 @@
 import { expect, test } from "@playwright/test";
 import { openGeometryServices } from "./sageGeometryServices";
 
+test("live Docker Sage certifies a two-generator ideal singularity against the cusp oracle", async ({ request }) => {
+  test.setTimeout(180_000);
+  const health = await request.get("http://127.0.0.1:8767/health");
+  expect(health.ok()).toBe(true);
+  expect((await health.json()).operations).toContain("sage.symbolic.singularities");
+  const run = async (equations: string[]) => {
+    const response = await request.post("http://127.0.0.1:8767/run", { data: {
+      operation: "sage.symbolic.singularities", backend: "docker",
+      jobId: `ideal-oracle-${equations[0] === "y^2-x^3" ? "cusp" : "smooth"}`,
+      params: { equations, variables: ["x", "y", "z"] },
+    } });
+    expect(response.ok()).toBe(true);
+    return response.json() as Promise<{ success: boolean; error?: string; result: {
+      points: { x: string; y: string; z: string }[]; dimension: number; codimension: number;
+      field: string; jacobianMinors: string[] } }>;
+  };
+  const cusp = await run(["y^2-x^3", "z"]);
+  expect(cusp.success, cusp.error).toBe(true);
+  expect(cusp.result).toMatchObject({ dimension: 1, codimension: 2,
+    points: [{ x: "0", y: "0", z: "0" }] });
+  expect(cusp.result.field).toContain("QQ rational points");
+  expect(cusp.result.jacobianMinors.length).toBeGreaterThan(0);
+  const smooth = await run(["y-x", "z"]);
+  expect(smooth.success, smooth.error).toBe(true);
+  expect(smooth.result.points).toEqual([]);
+});
+
 test("web Number Theory runs GCD and modular inverse through live Docker", async ({ page, request }) => {
   const healthResponse = await request.get("http://127.0.0.1:8767/health");
   expect(healthResponse.ok(), "Start the SageMath Docker service before this opt-in test.").toBe(true);

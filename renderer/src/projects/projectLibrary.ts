@@ -80,6 +80,17 @@ const write = (store: Store, changes: readonly (readonly [string, string])[], af
     throw error;
   }
 };
+let deferredDurability: Array<() => void> | null = null;
+/** Resource commits defer disk checkpoints until their strict IDB transaction completes. */
+export const runWithDeferredProjectDurability = <T>(commit: () => T): { result: T; flush: () => void } => {
+  const prior = deferredDurability;
+  const pending: Array<() => void> = [];
+  deferredDurability = pending;
+  try {
+    const result = commit();
+    return { result, flush: () => { for (const persist of pending) persist(); } };
+  } finally { deferredDurability = prior; }
+};
 export const saveLibraryProject = (store: Store, project: Math3DProject, now: number, thumbnail?: string,
   options: { activate?: boolean; expectedBytes?: string; afterWrite?: () => void; backup?: string; thumbnailMode?: "automatic" | "manual" } = {}): ProjectLibrary => {
   const bytes = serializeMath3DProject(project), library = parseProjectLibrary(store.getItem(PROJECT_LIBRARY_KEY));
@@ -94,6 +105,7 @@ export const saveLibraryProject = (store: Store, project: Math3DProject, now: nu
     favorite: old?.favorite ?? false, savedAt: now, viewedAt: old?.viewedAt ?? 0,
     ...(thumbnail ? { thumbnailKey: projectThumbnailKey(project.identity.id) } : old?.thumbnailKey ? { thumbnailKey: old.thumbnailKey } : {}) };
   const next = parseProjectLibrary(canonicalJsonStringify({ ...library, entries: [...library.entries.filter((item) => item.id !== entry.id), entry] }));
+  const libraryBytes = canonicalJsonStringify(next);
   const changes: [string, string][] = [];
   if (options.backup !== undefined) changes.push([`${PROJECT_STORAGE_KEY}.before-open`, serializeMath3DProject(parseMath3DProject(options.backup))]);
   changes.push([payloadKey, bytes]);
@@ -102,8 +114,14 @@ export const saveLibraryProject = (store: Store, project: Math3DProject, now: nu
     changes.push([projectThumbnailKey(entry.id), validateProjectThumbnail(thumbnail)]);
     changes.push([`${projectThumbnailKey(entry.id)}.automatic`, options.thumbnailMode === "automatic" ? structuralHash(thumbnail) : "manual"]);
   }
-  changes.push([PROJECT_LIBRARY_KEY, canonicalJsonStringify(next)]);
-  try { write(store, changes, options.afterWrite); }
+  changes.push([PROJECT_LIBRARY_KEY, libraryBytes]);
+  try { write(store, changes, () => {
+    options.afterWrite?.();
+    const persist = () => { if (typeof window !== "undefined") window.projectDurability?.write({ id: entry.id, savedAt: now,
+      projectBytes: bytes, libraryBytes, activate: options.activate !== false }); };
+    if (deferredDurability) deferredDurability.push(persist);
+    else persist();
+  }); }
   catch (error) {
     // Automatic previews are optional: quota exhaustion must not prevent a
     // valid project/resource save. Manual uploads retain normal atomic failure.
@@ -132,4 +150,51 @@ export const updateLibraryActivity = (store: Store, id: string, change: { favori
   const next = parseProjectLibrary(canonicalJsonStringify({ ...library, entries: library.entries.map((entry) => entry.id === id ? { ...entry, ...change } : entry) }));
   store.setItem(PROJECT_LIBRARY_KEY, canonicalJsonStringify(next));
   return next;
+};
+
+/** Reconcile fsync'd desktop checkpoints before the first Project UI read.
+ * Existing newer library revisions and corrupt local state are never replaced. */
+export const recoverDurableProjectLibrary = (store: Store, snapshots: readonly Readonly<{
+  id: string; savedAt: number; projectBytes: string; libraryBytes: string; activate: boolean;
+}>[]): { restored: number; error?: string } => {
+  if (!snapshots.length) return { restored: 0 };
+  try {
+    if (snapshots.length > 64) throw new Error("Too many durable Project checkpoints.");
+    const rawIndex = store.getItem(PROJECT_LIBRARY_KEY);
+    const current = parseProjectLibrary(rawIndex);
+    const entries = [...current.entries];
+    const changes: [string, string][] = [];
+    const accepted: typeof snapshots[number][] = [];
+    const eligibleActive: typeof snapshots[number][] = [];
+    for (const snapshot of snapshots) {
+      const project = parseMath3DProject(snapshot.projectBytes);
+      const recordedLibrary = parseProjectLibrary(snapshot.libraryBytes);
+      const recordedEntry = recordedLibrary.entries.find(item => item.id === snapshot.id);
+      if (!recordedEntry || project.identity.id !== snapshot.id || recordedEntry.savedAt !== snapshot.savedAt)
+        throw new Error("Durable Project checkpoint identity differs from its library entry.");
+      const existingIndex = entries.findIndex(item => item.id === snapshot.id);
+      const existing = existingIndex >= 0 ? entries[existingIndex] : null;
+      const payloadKey = projectPayloadKey(snapshot.id), localBytes = store.getItem(payloadKey);
+      const localProject = localBytes ? parseMath3DProject(localBytes) : null;
+      if (localProject && localProject.identity.id !== snapshot.id) throw new Error("Saved Project payload identity differs from its library entry.");
+      if (existing && localBytes && (existing.savedAt > snapshot.savedAt ||
+          existing.savedAt === snapshot.savedAt && localProject!.identity.revision > project.identity.revision)) continue;
+      if (snapshot.activate) eligibleActive.push(snapshot);
+      if (existing && localBytes && existing.savedAt === snapshot.savedAt &&
+          localProject!.identity.revision === project.identity.revision) continue;
+      if (existingIndex >= 0) entries[existingIndex] = recordedEntry;
+      else entries.push(recordedEntry);
+      changes.push([payloadKey, snapshot.projectBytes]); accepted.push(snapshot);
+    }
+    const next = parseProjectLibrary(canonicalJsonStringify({ ...current, entries }));
+    const active = store.getItem(PROJECT_STORAGE_KEY);
+    const activeProject = active ? parseMath3DProject(active) : null;
+    const activeSavedAt = current.entries.find(item => item.id === activeProject?.identity.id)?.savedAt ?? -1;
+    const latest = eligibleActive.sort((a, b) => b.savedAt - a.savedAt)[0];
+    if (latest && (!activeProject || activeSavedAt >= 0 && latest.savedAt > activeSavedAt)) changes.push([PROJECT_STORAGE_KEY, latest.projectBytes]);
+    if (accepted.length) changes.push([PROJECT_LIBRARY_KEY, canonicalJsonStringify(next)]);
+    if (!changes.length) return { restored: 0 };
+    write(store, changes);
+    return { restored: accepted.length + (changes.some(([key]) => key === PROJECT_STORAGE_KEY) ? 1 : 0) };
+  } catch (error) { return { restored: 0, error: (error as Error).message }; }
 };
