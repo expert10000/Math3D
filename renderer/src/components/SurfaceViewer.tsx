@@ -39,6 +39,7 @@ import {
 import { debugLog } from "../utils/debugLog";
 import { configureOrbitControlsForTouch, installViewerTouchGestures } from "../utils/viewerTouchGestures";
 import { readFullMeshPreviewBuffer, type FullMeshPreviewBufferPayload } from "../mesh/fullMeshPreviewBufferStore";
+import { acquireViewerRenderer, releaseViewerRenderer } from "./viewerRendererPool";
 
 export type ColorMode = CoreColorMode;
 
@@ -3923,7 +3924,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     const { width, height } = getSize();
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    const renderer = acquireViewerRenderer();
     const heavySurface = surfaceId === "surface_mesh" || surfaceId === "torus_implicit";
     const maxPixelRatio =
       renderQuality === "performance"
@@ -6348,11 +6349,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         }
       });
 
-      renderer.setAnimationLoop(null);
-      renderer.renderLists.dispose();
-      renderer.dispose();
-      (renderer as { forceContextLoss?: () => void }).forceContextLoss?.();
-      if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement);
+      releaseViewerRenderer(renderer);
       rendererRef.current = null;
       applyProbeFromDomainRef.current = null;
 
