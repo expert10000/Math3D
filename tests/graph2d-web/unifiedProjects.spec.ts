@@ -6,6 +6,7 @@ import { expect, test, type Locator } from "@playwright/test";
 import { runNamedProjectRoundTrip } from "../e2e/helpers/namedProjectRoundTrip";
 import { inspectMeshPackage, meshResourceFixture, pointResourceFixture, scalarVolumeResourceFixture, inspectScalarVolumePackage } from "../e2e/helpers/meshProjectResources";
 import { projectFreezeFixture, inspectFreezePackage, editFreezeProject, freezeControls, checkFreezeHistory, checkFreezeResources } from "../e2e/helpers/projectFreeze";
+import { parseMath3DProject } from "@math3d/core";
 
 const showProjectTransfer = async (panel: Locator) => {
   const more = panel.locator("details.project-header-more");
@@ -13,6 +14,24 @@ const showProjectTransfer = async (panel: Locator) => {
   await more.getByRole("button", { name: "Import / export" }).click();
   await expect(panel.getByTestId("project-export-resources")).toBeVisible();
 };
+
+test("M3D20-11 browser saved payload parses as tagged 1.7 Project after reload", async ({ page }) => {
+  const raw = readFileSync("docs/evidence/projects-local-share-2026-10-03/received.math3d.project.json", "utf8");
+  const original = parseMath3DProject(raw);
+  await page.goto("/");
+  await page.evaluate(() => { localStorage.clear(); localStorage.setItem("math3d.computeEngines.firstLaunchSeen", "1"); });
+  await page.reload();
+  await page.getByTestId("projects-toggle").click();
+  const panel = page.getByTestId("project-explorer-panel");
+  await panel.getByTestId("project-import-file").setInputFiles({ name: "tagged-1.7.json", mimeType: "application/json", buffer: Buffer.from(raw) });
+  await expect(panel.getByTestId("project-migration-review")).toContainText("math3d.project version 1");
+  await panel.getByTestId("project-import-save").click();
+  await expect(panel.getByTestId("project-message")).toContainText("Imported into the library");
+  await page.reload();
+  const returned = await page.evaluate(id => localStorage.getItem(`math3d.project.v1.payload.${id}`), original.identity.id);
+  expect(returned).toBeTruthy();
+  expect(parseMath3DProject(returned!)).toEqual(original);
+});
 
 test("M3D20-12 local browser reopens a verified Project package", async ({ page }) => {
   const raw = readFileSync("tests/fixtures/project-workbook-note-journey.json", "utf8");

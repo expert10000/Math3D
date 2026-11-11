@@ -1070,7 +1070,9 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 - `M3D20-11c test(migrate): old-version golden corpus including corrupt/missing inputs`.
 - `M3D20-11d test(portability): desktop/browser/mobile supported-subset round trips`.
 
-**Exit:** old Projects cannot be silently corrupted; unsupported/future data receives safe refusal.
+**Source-checkout status (2026-11-11):** deterministic plans and an import review preserve exact original bytes and revisions. Tagged v1.6.0 handoff and v1.7.0 named Project specimens have SHA-256 and Git blob pins. Desktop restart, local-browser save/reload/desktop parse, and mobile-model byte-exact preview/return tests cover the available subset. Future formats and unknown fields refuse import before writing; missing sidecars remain visible and block full open. See [migration guide](MIGRATION_1X_TO_2X.md) and [corpus limitations](../../../tests/fixtures/migration-1x/README.md). The v1.4.x/v1.5.0 saved Project corpus, physical Android round trip, and installed-candidate upgrade are unverified. M3D20-10 hard-exit recovery, longer memory soak, and installed-candidate measurements remain release blockers.
+
+**Exit:** old Projects cannot be silently corrupted; unsupported/future data receives safe refusal. Full release qualification awaits the missing historical and installed/device evidence above.
 
 ### M3D20-12 — Platform-capability matrix (P0)
 
