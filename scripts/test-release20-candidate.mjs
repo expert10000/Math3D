@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { inspectRelease20CandidateInputs, recordRelease20Candidate } from './release20-candidate.mjs';
 import { verifyRelease20Candidate } from './verify-release20-candidate.mjs';
+import { freezeContracts } from './verify-release20-freeze.mjs';
+import { prepareRelease20Freeze } from './prepare-release20-freeze.mjs';
 
 const root = await mkdtemp(join(tmpdir(), 'math3d-release20-candidate-test-'));
 const commit = 'a'.repeat(40), thumbprint = 'b'.repeat(40);
@@ -14,12 +16,23 @@ try {
   const dependencies = { electron: '38.5.0', 'electron-builder': '26.0.12', 'better-sqlite3': '12.4.1' };
   const app = { version: '2.0.0', devDependencies: dependencies };
   await put('package.json', JSON.stringify(app));
+  await put('apps/desktop/package.json', JSON.stringify({ version: '2.0.0' }));
   await put('renderer/package.json', JSON.stringify({ version: '2.0.0' }));
   await put('package-lock.json', JSON.stringify({ version: '2.0.0', packages: { '': { version: '2.0.0' },
+    'apps/desktop': { version: '2.0.0' },
     ...Object.fromEntries(Object.entries(dependencies).map(([name, version]) => [`node_modules/${name}`, { version }])) } }));
   await put('renderer/package-lock.json', JSON.stringify({ version: '2.0.0', packages: { '': { version: '2.0.0' } } }));
   await put('python/worker/requirements.freeze.txt', 'vtk==9.7.0\n');
   await put('python/worker/build-requirements.freeze.txt', 'pyinstaller==6.19.0\n');
+  await put('native/cgal-worker/dependency-manifest.json', JSON.stringify({
+    distributionStatus: 'blocked-pending-public-source-bundle-integration', windowsReferenceBuild: { cgal: '6.2.1' } }));
+  await put('compliance/public-source-manifest.json', JSON.stringify({ sources: [
+    { name: 'CGAL', version: '6.2.1', sha256: 'c'.repeat(64), targets: ['windows', 'native-cgal'] },
+    ...['GMP', 'MPFR'].map(name => ({ name, targets: ['windows', 'native-cgal'] }))] }));
+  for (const [path, expected] of Object.entries(freezeContracts)) await put(path,
+    `${expected.format ? `export const ${expected.format[0]} = "${expected.format[1]}" as const;` : ''}\n` +
+    `export const ${expected.version[0]} = ${expected.version[1]} as const;`);
+  const freezePath = await put('candidate/freeze-manifest.json', JSON.stringify(await prepareRelease20Freeze(root, commit)));
   const preflight = await inspectRelease20CandidateInputs(root, commit, true, true);
   assert.equal(preflight.dependencies.electron, dependencies.electron);
   await assert.rejects(inspectRelease20CandidateInputs(root, commit, true, false), /signer/);
@@ -38,7 +51,7 @@ try {
     installerSha256: sha(await readFile(installer)), systemDllSha256: '1556ee1bf1cb477124e1269b534ed81653ba71994dab7903ee3782b75acc2810', systemDllBytes: 30208 }));
   const output = join(root, 'candidate/candidate-manifest.json');
   const options = { root, sourceCommit: commit, installerPath: installer, unpackedRoot: unpacked,
-    signaturesPath: signatures, nsisPath: nsis, outputPath: output, preflight };
+    signaturesPath: signatures, nsisPath: nsis, freezePath, outputPath: output, preflight };
   const manifest = await recordRelease20Candidate(options);
   assert.equal(manifest.math3d.installerSha256, sha(await readFile(installer)));
   assert.equal((await verifyRelease20Candidate(output, installer)).signerThumbprint, thumbprint);

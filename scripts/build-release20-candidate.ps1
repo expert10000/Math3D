@@ -1,4 +1,4 @@
-param([string]$OutputRoot = '')
+param([string]$OutputRoot = '', [Parameter(Mandatory = $true)][string]$FreezeManifest)
 
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
@@ -14,6 +14,8 @@ Push-Location $repo
 try {
   node scripts/release20-candidate.mjs --preflight
   if ($LASTEXITCODE -ne 0) { throw '2.0 candidate preflight refused this checkout or signer.' }
+  node scripts/verify-release20-freeze.mjs $FreezeManifest
+  if ($LASTEXITCODE -ne 0) { throw 'Reviewed 2.0 freeze manifest does not match this checkout.' }
   $nsisRoot = Join-Path $env:RUNNER_TEMP ('math3d-release20-nsis-' + [guid]::NewGuid().ToString('N'))
   & scripts/prepare-qi40-nsis313.ps1 -OutputRoot $nsisRoot
   $env:CSC_LINK = $env:MATH3D_WINDOWS_CSC_LINK
@@ -27,19 +29,23 @@ try {
   New-Item -ItemType Directory -Path $output | Out-Null
   $staged = Join-Path $output 'Math3D-Setup-2.0.0.exe'
   Copy-Item -LiteralPath $installer -Destination $staged
+  Copy-Item -LiteralPath $FreezeManifest -Destination (Join-Path $output 'freeze-manifest.json')
   $signatureReport = Join-Path $output 'signatures.json'
   & scripts/verify-release20-signatures.ps1 -AssetsRoot $output -UnpackedRoot (Join-Path $repo 'release/win-unpacked') `
     -ExpectedThumbprint $env:MATH3D_WINDOWS_SIGNER_THUMBPRINT | Set-Content -LiteralPath $signatureReport -Encoding UTF8
   $nsisReport = Join-Path $output 'nsis.json'
   & scripts/verify-release20-nsis.ps1 -InstallerPath $staged | Set-Content -LiteralPath $nsisReport -Encoding UTF8
   node scripts/release20-candidate.mjs --record $staged (Join-Path $repo 'release/win-unpacked') `
-    $signatureReport $nsisReport (Join-Path $output 'candidate-manifest.json')
+    $signatureReport $nsisReport (Join-Path $output 'freeze-manifest.json') (Join-Path $output 'candidate-manifest.json')
   if ($LASTEXITCODE -ne 0) { throw 'Candidate manifest generation failed.' }
   $sbom = Join-Path $output 'sbom'
   node scripts/generate-release-sbom.mjs --target windows --app-dir (Join-Path $repo 'release/win-unpacked') `
     --out $sbom --version 2.0.0
   if ($LASTEXITCODE -ne 0) { throw 'Candidate SBOM generation failed.' }
-  node scripts/stage-release20-candidate-assets.mjs $repo $output $sbom (Join-Path $output 'assets')
+  $source = Join-Path $output 'source'
+  node scripts/prepare-public-source-bundle.mjs --target windows --out $source --version 2.0.0
+  if ($LASTEXITCODE -ne 0) { throw 'Candidate corresponding-source bundle failed.' }
+  node scripts/stage-release20-candidate-assets.mjs $repo $output $sbom $source (Join-Path $output 'assets')
   if ($LASTEXITCODE -ne 0) { throw 'Candidate asset integrity verification failed.' }
   Write-Host "Exact 2.0 candidate and verification receipts: $output"
 } finally {

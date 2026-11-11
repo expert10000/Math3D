@@ -625,6 +625,11 @@ declare global {
   };
 
   interface Window {
+    projectDurability?: {
+      write: (snapshot: { id: string; savedAt: number; projectBytes: string; libraryBytes: string; activate: boolean }) => void;
+      read: () => { id: string; savedAt: number; projectBytes: string; libraryBytes: string; activate: boolean }[];
+      clearForTest?: () => void;
+    };
     scientificScenes?: {
       openGraphDataset: () => Promise<{ ok: true; source: { manifestJson: string; fingerprint: string;
           locator: import("@math3d/core").Graph2DFieldLocator;

@@ -16,7 +16,7 @@ export async function verifyRelease20Candidate(manifestPath, installerPath) {
     m.channel === 'stable' && /^[0-9a-f]{40}$/.test(m.commit ?? ''), 'Exact stable 2.0 candidate identity is missing.');
   assert(m.installerName === 'Math3D-Setup-2.0.0.exe' && basename(installerPath) === m.installerName,
     'Installer filename differs from the 2.0 candidate.');
-  for (const key of ['installerSha256', 'executableSha256', 'workerSha256', 'buildIdentitySha256']) {
+  for (const key of ['installerSha256', 'executableSha256', 'workerSha256', 'buildIdentitySha256', 'freezeManifestSha256']) {
     assert(hex64(m[key]), `Candidate ${key} is absent or invalid.`);
   }
   assert(m.nsisSystemDllSha256 === nsisHash && /^[0-9a-f]{40}$/.test(m.signerThumbprint ?? ''),
@@ -27,7 +27,8 @@ export async function verifyRelease20Candidate(manifestPath, installerPath) {
   assert(installerSha256 === m.installerSha256, 'Installer bytes differ from candidate manifest.');
   return { commit: m.commit, installerSha256, signerThumbprint: m.signerThumbprint,
     executableSha256: m.executableSha256, workerSha256: m.workerSha256,
-    buildIdentitySha256: m.buildIdentitySha256, nsisSystemDllSha256: nsisHash };
+    buildIdentitySha256: m.buildIdentitySha256, freezeManifestSha256: m.freezeManifestSha256,
+    nsisSystemDllSha256: nsisHash };
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {

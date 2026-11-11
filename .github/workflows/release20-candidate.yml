@@ -2,6 +2,11 @@ name: Build signed 2.0 Windows candidate
 
 on:
   workflow_dispatch:
+    inputs:
+      approved_freeze_sha256:
+        description: SHA-256 of the independently reviewed 2.0 freeze manifest
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -28,7 +33,15 @@ jobs:
           MATH3D_WINDOWS_CSC_KEY_PASSWORD: ${{ secrets.MATH3D_WINDOWS_CSC_KEY_PASSWORD }}
           MATH3D_WINDOWS_SIGNER_THUMBPRINT: ${{ secrets.MATH3D_WINDOWS_SIGNER_THUMBPRINT }}
           MATH3D_WINDOWS_TIMESTAMP_URL: ${{ vars.MATH3D_WINDOWS_TIMESTAMP_URL }}
-        run: node scripts/release20-candidate.mjs --preflight
+        run: |
+          node scripts/release20-candidate.mjs --preflight
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate inputs or signer are unavailable.' }
+          node scripts/prepare-release20-freeze.mjs (Join-Path $env:RUNNER_TEMP 'release20-freeze.json')
+          if ($LASTEXITCODE -ne 0) { throw '2.0 freeze preparation failed.' }
+          $actual = (Get-FileHash -LiteralPath (Join-Path $env:RUNNER_TEMP 'release20-freeze.json') -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne '${{ inputs.approved_freeze_sha256 }}'.ToLowerInvariant()) {
+            throw 'Generated freeze manifest differs from the approved SHA-256.'
+          }
       - name: Install exact npm locks
         shell: pwsh
         run: |
@@ -53,7 +66,8 @@ jobs:
           MATH3D_WINDOWS_CSC_KEY_PASSWORD: ${{ secrets.MATH3D_WINDOWS_CSC_KEY_PASSWORD }}
           MATH3D_WINDOWS_SIGNER_THUMBPRINT: ${{ secrets.MATH3D_WINDOWS_SIGNER_THUMBPRINT }}
           MATH3D_WINDOWS_TIMESTAMP_URL: ${{ vars.MATH3D_WINDOWS_TIMESTAMP_URL }}
-        run: ./scripts/build-release20-candidate.ps1 -OutputRoot (Join-Path $env:RUNNER_TEMP 'math3d-release20-candidate')
+        run: ./scripts/build-release20-candidate.ps1 -OutputRoot (Join-Path $env:RUNNER_TEMP 'math3d-release20-candidate') `
+          -FreezeManifest (Join-Path $env:RUNNER_TEMP 'release20-freeze.json')
       - uses: actions/upload-artifact@v7
         with:
           name: math3d-2.0-windows-candidate-${{ github.sha }}
