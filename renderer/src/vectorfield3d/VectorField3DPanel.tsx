@@ -2109,7 +2109,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
           '[data-testid="gf18-field-comparison"]')?.scrollIntoView({ block: "nearest" }));
       } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } }}>
       Pin current as baseline B</button>
-    {" "}<button type="button" onClick={() => {
+    {" "}<button type="button" disabled={!!fieldLayer} onClick={() => {
       setInspectorSection("analyze");
       requestAnimationFrame(() => dialogRef.current?.querySelector<HTMLElement>(
         '[data-testid="gf18-field-comparison"]')?.scrollIntoView({ block: "nearest" }));
