@@ -26,6 +26,8 @@ describe("active-host Gallery qualification", () => {
       .toBe("open");
     expect(qualifyCuratedStudy(curatedStudy("cas-structures")!, host(false), { casAvailable: true }).mode)
       .toBe("open");
+    expect(qualifyCuratedStudy(curatedStudy("catenary-study")!, host(true),
+      { savedCopyLimit: "Required source sidecar is missing." })).toMatchObject({ mode: "preview", reason: "Required source sidecar is missing." });
   });
 
   it("quotes only measured Project and resource bytes", () => {

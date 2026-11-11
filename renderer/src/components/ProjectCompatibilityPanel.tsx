@@ -1,21 +1,25 @@
 import React, { useState } from "react";
-import type { PlatformFacilityStatus } from "@math3d/core";
+import type { PlatformCapabilitySnapshot } from "@math3d/core";
 import type { ProjectCompatibility } from "../projects/projectTransfer";
 import type { ProjectMigrationPlan } from "../projects/projectMigrationPlan";
 import { probeRendererPlatformCapabilities } from "../kernel/rendererPlatformCapabilities";
+import { resolveProjectJourneys } from "../projects/projectJourneyCapabilities";
 
-export const projectImportControls = (preview: Pick<ProjectCompatibility, "canOpenWorkspace" | "reasons">,
-  storage: PlatformFacilityStatus, canRestore: boolean, busy: boolean) => ({
-    canSave: storage.available && !busy,
-    canOpen: storage.available && canRestore && preview.canOpenWorkspace && !busy,
-    reason: !storage.available ? storage.reason ?? "Persistent Project storage is unavailable on this host." :
+export const projectImportControls = (preview: ProjectCompatibility,
+  host: PlatformCapabilitySnapshot, canRestore: boolean, busy: boolean) => {
+  const journeys = resolveProjectJourneys(host, preview);
+  return {
+    canSave: journeys.projectSave.mode === "open" && !busy,
+    canOpen: journeys.projectSave.mode === "open" && journeys.project.mode === "open" && canRestore && !busy,
+    reason: journeys.projectSave.mode !== "open" ? journeys.projectSave.reason :
       !canRestore ? "This host cannot restore a Project workspace." :
-      !preview.canOpenWorkspace ? preview.reasons.join(" ") || "This Project is preview-only on this host." : null,
-  });
+        journeys.project.mode !== "open" ? journeys.project.reason : null,
+  };
+};
 export const ProjectCompatibilityPanel: React.FC<{ preview: ProjectCompatibility & { inputKind: string; migration?: ProjectMigrationPlan }; onCancel: () => void; onImport: () => void; onOpen: () => void; onDownloadOriginal?: () => void; canOpen: boolean; openLimit?: string | null; busy?: boolean }> =
   ({ preview, onCancel, onImport, onOpen, onDownloadOriginal, canOpen, openLimit, busy = false }) => {
-    const [storage] = useState(() => probeRendererPlatformCapabilities().facilities.persistentStorage);
-    const controls = projectImportControls(preview, storage, canOpen, busy);
+    const [host] = useState(probeRendererPlatformCapabilities);
+    const controls = projectImportControls(preview, host, canOpen, busy);
     return <section data-testid="project-import-preview" style={{ marginTop: 12, padding: 8, border: "1px solid #64748b", borderRadius: 6, overflowWrap: "anywhere" }}>
     <strong>{preview.inputKind === "Independent starter project" ? "Starter project ready" : "Import preview"}: {preview.project.metadata.title}</strong>
     <p>{preview.inputKind} · project revision {preview.project.identity.revision}. Nothing has been opened or saved yet. Open project saves it and switches the workspace; saving to the library keeps the current workspace open.</p>
@@ -31,7 +35,7 @@ export const ProjectCompatibilityPanel: React.FC<{ preview: ProjectCompatibility
       <button type="button" data-testid="project-import-save" disabled={!controls.canSave} onClick={onImport}>Save to library</button>
       <button type="button" data-testid="project-import-cancel" disabled={busy} onClick={onCancel}>Cancel</button>
     </div>
-    {(openLimit || controls.reason) && <p role="status" data-testid="project-import-limit" style={{ color: "#9a3412" }}>{openLimit || controls.reason}</p>}
+    {(controls.reason || openLimit) && <p role="status" data-testid="project-import-limit" style={{ color: "#9a3412" }}>{host.facilities.persistentStorage.available ? openLimit || controls.reason : controls.reason}</p>}
     <strong>Document compatibility</strong>
     {preview.documents.map((document) => <div key={document.id}>{document.module} · revision {document.revision} · replay verified · {document.readOnly ? "read-only document; external source re-verified before open" : document.editable ? "editor supported" : "preview only"}</div>)}
     <strong style={{ display: "block", marginTop: 8 }}>Required Graph capabilities</strong>

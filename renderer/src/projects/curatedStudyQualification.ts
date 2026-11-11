@@ -1,4 +1,4 @@
-import { serializeMath3DProject, type Math3DProject, type PlatformCapabilitySnapshot } from "@math3d/core";
+import { resolvePlatformJourneys, serializeMath3DProject, type Math3DProject, type PlatformCapabilitySnapshot } from "@math3d/core";
 import type { CuratedStudy } from "./curatedStudyCatalog";
 import { projectResourceInventory, type VerifiedProjectResources } from "./projectResources";
 
@@ -20,10 +20,11 @@ export function measureCuratedStudyAssets(project: Math3DProject, resources?: Ve
 
 export function qualifyCuratedStudy(item: CuratedStudy, host: PlatformCapabilitySnapshot,
   options: { quantumChooser?: boolean; casAvailable?: boolean; measuredBytes?: number | null;
-    source?: CuratedStudyQualification["source"] } = {}): CuratedStudyQualification {
+    source?: CuratedStudyQualification["source"]; savedCopyLimit?: string | null } = {}): CuratedStudyQualification {
   const measuredBytes = options.measuredBytes ?? null, source = options.source ?? "unmeasured";
   const base = { measuredBytes, source };
   const storage = host.facilities.persistentStorage;
+  const gallery = resolvePlatformJourneys(host).gallery;
   if (item.route.kind === "verified-quantum-import") return {
     ...base, mode: host.runtime === "desktop" && options.quantumChooser && storage.available ? "open" : "unavailable",
     reason: host.runtime !== "desktop" ? "Verified scene import requires the desktop app." :
@@ -38,10 +39,8 @@ export function qualifyCuratedStudy(item: CuratedStudy, host: PlatformCapability
   };
   const desktopOnly = item.platforms.length === 1 && item.platforms[0] === "desktop";
   const unsupportedHost = host.runtime === "mobile" || desktopOnly && host.runtime !== "desktop";
-  const webgl = host.facilities.webgl2;
   const reason = unsupportedHost ? desktopOnly ? "This Study opens fully on desktop; inspect its saved Project preview here." :
-    "This mobile host can inspect a saved Project preview; full Study editing is unavailable." :
-    !storage.available ? storage.reason : !webgl.available ? webgl.reason : null;
+    "This mobile host can inspect a saved Project preview; full Study editing is unavailable." : gallery.reason ?? options.savedCopyLimit ?? null;
   return { ...base, mode: reason ? "preview" : "open", reason,
     offline: "Bundled Project and retained local resources open without a network connection." };
 }

@@ -150,6 +150,7 @@ export * from "./projectOperations";
 export * from "./projectExplorer";
 export * from "./projectTemplates";
 export * from "./platformCapabilities";
+export * from "./platformJourneys";
 export * from "./workerPlatformCapabilities";
 export * from "./meshCommands";
 export * from "./sceneDocument";

@@ -48,6 +48,27 @@ const qualification = (overrides: Partial<Parameters<typeof qualifyCrossModuleAd
 };
 
 describe("M3D20-01 cross-module adapter compatibility", () => {
+  it("retains nullable legacy selection sources through repeated Project save/reopen without enabling unpinned navigation", () => {
+    const legacy = parseMath3DProject(legacyRaw);
+    const migrated = migrateProjectScientificSelections(legacy);
+    const before = listProjectScientificSelections(migrated);
+    expect(before.some(selection => selection.source === null)).toBe(true);
+    expect(before.some(selection => selection.source?.kind === "document" && selection.source.checkpoint === null)).toBe(true);
+    let reopened = migrated;
+    for (let cycle = 0; cycle < 2; cycle++) {
+      reopened = parseMath3DProject(serializeMath3DProject(reopened));
+      expect(reopened.identity).toEqual(migrated.identity);
+      const selections = listProjectScientificSelections(reopened);
+      expect(selections).toEqual(before);
+      const { source } = boundSelection();
+      for (const selection of selections.filter(item => item.source === null ||
+        item.source.kind === "document" && item.source.checkpoint === null)) {
+        expect(referenceFromScientificSelection(selection, source, "vector3d",
+          currentAdapter.sourceFrame, "point").ok).toBe(false);
+      }
+    }
+  });
+
   it("accepts the v1 descriptor and rejects future, duplicate, and undeclared definitions", () => {
     expect(normalizeCrossModuleAdapter(currentAdapter).ok).toBe(true);
     expect(normalizeCrossModuleAdapter(loadJson("../../packages/core/fixtures/cross-module/invalid-future-version.json")).ok).toBe(false);

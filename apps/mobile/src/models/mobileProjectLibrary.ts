@@ -1,9 +1,10 @@
-import { deserializeSceneProject } from "@math3d/core";
+import { deserializeSceneProject, type PlatformCapabilitySnapshot } from "@math3d/core";
 import type { MobileStoredSceneProject } from "./mobileScene";
 import type { MobileComputeJob } from "./mobileComputeJobs";
 import type { SceneSortMode } from "./useMobileProjectState";
 import { readMobileGraph, mobileGraphCapabilities } from "./mobileGraphProject";
 import { readMobilePreviewProject } from "./mobileProjectPreview";
+import { resolveMobileProjectJourneys } from "./mobileProjectJourneys";
 
 export const MOBILE_PROJECT_LIBRARY_SECTIONS = ["all", "my", "imported", "shared", "files"] as const;
 export type MobileProjectLibrarySection = (typeof MOBILE_PROJECT_LIBRARY_SECTIONS)[number];
@@ -46,6 +47,7 @@ export const buildMobileProjectLibraryCards = (
     sort: SceneSortMode;
     jobs?: readonly MobileComputeJob[];
     readyResultProjectId?: string | null;
+    host?: PlatformCapabilitySnapshot;
   }>
 ): MobileProjectLibraryCard[] => {
   const query = options.query.trim().toLocaleLowerCase();
@@ -67,6 +69,7 @@ export const buildMobileProjectLibraryCards = (
     let graph = null;
     let preview = null;
     try { if (project.projectType === "project-preview") preview = readMobilePreviewProject(project); } catch { /* incompatible card */ }
+    const previewReason = preview && options.host ? resolveMobileProjectJourneys(project, options.host).project.reason : null;
     try { if (project.projectType === "graph2d") graph = readMobileGraph(project); } catch { /* incompatible card */ }
     const parsed = deserializeSceneProject(project.serializedProject);
     const compatible = !!preview || !!graph || parsed.ok && parsed.value.scene.id === project.id && parsed.value.scene.title === project.title;
@@ -81,7 +84,7 @@ export const buildMobileProjectLibraryCards = (
       origin,
       sourceName,
       compatible,
-      compatibilityMessage: preview ? "Mixed project · documents and relations · choose an available Graph, Curve or Surface to edit" : graph ? mobileGraphCapabilities(graph) : compatible ? "Compatible" : parsed.ok ? "Identity mismatch" : `Needs attention: ${parsed.errors[0]}`,
+      compatibilityMessage: preview ? previewReason ?? "Saved Project preview · choose an available Graph, Curve or Surface to edit" : graph ? mobileGraphCapabilities(graph) : compatible ? "Compatible" : parsed.ok ? "Identity mismatch" : `Needs attention: ${parsed.errors[0]}`,
       workerStatus: job?.status ?? null,
       resultStatus: options.readyResultProjectId === project.id ? "Preview ready" : job?.status === "succeeded" ? "Recheck on open" : null,
     });
