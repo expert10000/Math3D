@@ -8,13 +8,14 @@ import { nativeDocumentEditable } from "./nativeProjectRestore";
 import { scientificDocumentEditable } from "./nativeScientificRestore";
 import { volumeDocumentEditable, volumePayloadRequired, validateNativeVolumeReplay } from "./nativeVolumeRestore";
 import type { VolumeReplayBundle } from "../volume/volumeDocumentAdapter";
-import { adoptMixedWorkspaceProject, canonicalJsonStringify, createMixedWorkspaceDocument, matchesScientificSourceGeneration, viewerSourceFromDocument, MAX_MATH3D_PROJECT_BYTES, parseMath3DProject,
-  parseMixedWorkspaceDocument, parseWorkspaceProjectHandoff, serializeMath3DProject, replaceMath3DProjectWorkspace, type Graph2DPointTableReference,
+import { canonicalJsonStringify, createMixedWorkspaceDocument, matchesScientificSourceGeneration, viewerSourceFromDocument, MAX_MATH3D_PROJECT_BYTES, parseMath3DProject,
+  serializeMath3DProject, replaceMath3DProjectWorkspace, type Graph2DPointTableReference,
   mergeGraph2DHandoffCheckpoint,
   PROJECT_SCIENTIFIC_SELECTIONS_CAPABILITY,
   PROJECT_DERIVED_FIELDS_CAPABILITY,
   type Math3DProject, type MixedWorkspaceDocument } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
+import { planProjectMigration, type ProjectMigrationPlan } from "./projectMigrationPlan";
 
 export const MAX_PROJECT_IMPORT_BYTES = MAX_MATH3D_PROJECT_BYTES + 64 * 1024;
 export type ProjectCompatibilityOptions = {
@@ -100,8 +101,15 @@ export const inspectProjectCompatibility = (project: Math3DProject, options: Pro
 };
 export type ProjectCompatibility = ReturnType<typeof inspectProjectCompatibility>;
 
-export const previewProjectImport = (raw: string, options: ProjectCompatibilityOptions = {}) => {
-  if (new TextEncoder().encode(raw).length > MAX_PROJECT_PACKAGE_BYTES) throw new TypeError("Project import exceeds its size limit.");
+export type ProjectImportPreview = ProjectCompatibility & {
+  resources: VerifiedProjectResources | undefined;
+  inputKind: string;
+  migration?: ProjectMigrationPlan;
+};
+export const previewProjectImport = (input: string | Uint8Array, options: ProjectCompatibilityOptions = {}): ProjectImportPreview => {
+  const bytes = typeof input === "string" ? new TextEncoder().encode(input) : input;
+  if (bytes.byteLength > MAX_PROJECT_PACKAGE_BYTES) throw new TypeError("Project import exceeds its size limit.");
+  const raw = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   const value = JSON.parse(raw);
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new TypeError("Unsupported project file.");
   if (value.format === "math3d-project" || value.format === "math3d-bundle")
@@ -110,17 +118,16 @@ export const previewProjectImport = (raw: string, options: ProjectCompatibilityO
     const { project, resources } = parseProjectPackage(raw);
     return { ...inspectProjectCompatibility(project, { ...options, resources }), resources, inputKind: "Project with verified source resources" };
   }
-  if (new TextEncoder().encode(raw).length > MAX_PROJECT_IMPORT_BYTES) throw new TypeError("Project import exceeds its size limit.");
-  let project: Math3DProject, inputKind: string;
-  if (value.format === "math3d.project") { project = parseMath3DProject(raw); inputKind = "Named project"; }
-  else if (value.format === "math3d.mixed-workspace") { project = adoptMixedWorkspaceProject(parseMixedWorkspaceDocument(raw), "Imported workspace"); inputKind = "Legacy mixed workspace (explicit adoption)"; }
-  else if (value.format === "math3d.project-handoff" && value.version === 2) {
-    const handoff = parseWorkspaceProjectHandoff(raw); project = adoptMixedWorkspaceProject(handoff.project, "Imported Graph workspace"); inputKind = "Graph workspace handoff (explicit adoption)";
-  } else throw new TypeError("Unsupported project format or future version.");
+  if (bytes.byteLength > MAX_PROJECT_IMPORT_BYTES) throw new TypeError("Project import exceeds its size limit.");
+  const migration = planProjectMigration(bytes);
+  const project = migration.project;
+  const inputKind = migration.source.format === "math3d.project" ? "Named project" :
+    migration.source.format === "math3d.mixed-workspace" ? "Legacy mixed workspace (explicit adoption)" :
+      "Graph workspace handoff (explicit adoption)";
   // Host caches may belong to another project. Rebuild only this project's
   // descriptors/owners; unrelated source bytes never enter its staged archive.
   const resources = options.resources ? captureProjectResources(project, (item) => options.resources!.bytes(item), true) : undefined;
-  return { ...inspectProjectCompatibility(project, { ...options, resources }), resources, inputKind };
+  return { ...inspectProjectCompatibility(project, { ...options, resources }), resources, inputKind, migration };
 };
 export const exportProjectFile = (project: Math3DProject): string => {
   const bytes = serializeMath3DProject(project); verifyMixedWorkspaceReplay(project.workspace); return bytes;
