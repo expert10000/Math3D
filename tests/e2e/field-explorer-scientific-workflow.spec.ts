@@ -115,6 +115,7 @@ test("scientific Field Explorer transfers a Project package to a fresh profile a
     const profile = ctx.profileDir;
     await ctx.app.close(); ctx = await launchSurfaceApp({}, profile);
     await openLastSavedProject(ctx.page);
+    await expect(ctx.page.getByTestId("project-explorer-panel").getByTestId("project-message")).toContainText("Opened");
     explorer = await openExplorer(ctx.page);
     let reopenedPair = explorer.getByRole("region", { name: "Linked A/B field views" });
     await expect(reopenedPair).toContainText("Both scientific sources verified");
@@ -144,6 +145,8 @@ test("scientific Field Explorer transfers a Project package to a fresh profile a
     await expect(projects.getByTestId("project-message")).toContainText(/ENOENT|missing|not found/i);
     await writeFile(componentPath, correct);
     await projects.getByTestId(`project-open-saved-${saved.identity.id}`).click();
+    // Opening re-verifies native sources asynchronously; navigate after activation commits.
+    await expect(projects.getByTestId("project-message")).toContainText("Opened");
     explorer = await openExplorer(ctx.page);
     reopenedPair = explorer.getByRole("region", { name: "Linked A/B field views" });
     await expect(reopenedPair).toContainText("Both scientific sources verified");
