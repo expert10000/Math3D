@@ -51379,8 +51379,7 @@ case "mobius":
         surfaceDerivedMeshPublishedRef.current.candidate === surfaceDerivedMeshCandidate &&
         activeDerivedSurfaceMeshResult?.payload?.data.kind === "derived-mesh" &&
         activeDerivedSurfaceMeshResult.payload.data.meshId === surfaceDerivedMeshPublishedRef.current.meshId) {
-      const meshId = surfaceDerivedMeshPublishedRef.current.meshId;
-      if (surfaceDerivedMeshSelectedId !== meshId) setSurfaceDerivedMeshSelectedId(meshId);
+      // Reusing the live publication must preserve an explicitly selected snapshot.
       return;
     }
     const payload = buildDerivedSurfaceMeshPayload();
@@ -51410,7 +51409,7 @@ case "mobius":
       return changed ? { ...document, derivedMeshes: records.slice(-64) } : document;
     });
     setSurfaceDerivedMeshSelectedId(payload.meshId);
-  }, [activeCanonicalSurfaceDefinition, activeDerivedSurfaceMeshResult, buildDerivedSurfaceMeshPayload, publishDerivedSurfaceMeshPayload, surfaceDerivedCandidateKey, surfaceDerivedMeshCandidate, surfaceDerivedMeshSelectedId, surfaceMeshAnalysisHandoff]);
+  }, [activeCanonicalSurfaceDefinition, activeDerivedSurfaceMeshResult, buildDerivedSurfaceMeshPayload, publishDerivedSurfaceMeshPayload, surfaceDerivedCandidateKey, surfaceDerivedMeshCandidate, surfaceMeshAnalysisHandoff]);
   const activeDerivedSurfaceMeshPayload = activeDerivedSurfaceMeshResult?.state === "ready" && activeDerivedSurfaceMeshResult.payload?.data.kind === "derived-mesh"
     ? activeDerivedSurfaceMeshResult.payload.data
     : null;
