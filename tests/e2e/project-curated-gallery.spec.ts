@@ -77,6 +77,14 @@ test("Algebra Gallery route saves a validated structure into the active Project"
     await expect(algebra.getByTestId("cas-gallery-status")).toContainText("Saved Five-element field in Project", { timeout: 60_000 });
     await expect.poll(() => page.evaluate(id => JSON.parse(localStorage.getItem(`math3d.project.v1.payload.${id}`)!)
       .algebraObjects?.length ?? 0, projectId)).toBeGreaterThan(0);
+    await page.getByTestId("sage-workspace-open-projects").click();
+    await expect(algebra).toHaveCount(0);
+    await expect(panel).toBeVisible();
+    await panel.getByRole("button", { name: "Starter projects", exact: true }).click();
+    await panel.getByTestId("project-gallery-guided").click();
+    await panel.getByTestId("project-library-module").selectOption("Algebra");
+    await expect(panel.getByTestId("curated-study-cas-provenance")).toContainText("Gallery GF(5)");
+    await expect(panel.getByTestId("curated-study-cas-provenance")).toContainText("revision 1");
   } finally { await closeSurfaceApp(ctx); }
 });
 
@@ -99,6 +107,13 @@ test("guided Catenary Project keeps its exact two-pane Study through a desktop r
     await expect(studies.getByTestId("project-study-panes")).toHaveAttribute("data-layout", "split-2");
     await studies.getByTestId("project-study-preview-toggle-pane-1").click();
     await expect(studies.getByTestId("project-study-pane-preview")).toHaveAttribute("data-kind", "graph");
+    await studies.getByTestId("project-study-back").click();
+    await expect(studies.getByTestId(`project-study-open-${first.workspace.studies[0].id}`)).toBeFocused();
+    await panel.getByTestId("project-research-nav-results").click();
+    await expect(panel.getByTestId("project-detail-tab-results")).toHaveAttribute("aria-current", "page");
+    await panel.getByTestId("project-research-nav-studies").click();
+    await expect(studies).toBeVisible();
+    await studies.getByTestId(`project-study-open-${first.workspace.studies[0].id}`).click();
     await panel.getByTestId("project-save").click();
     await expect(panel.getByTestId("project-message")).toContainText("Saved", { timeout: 60_000 });
     const profile = ctx.profileDir;

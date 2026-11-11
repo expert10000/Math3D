@@ -94,6 +94,11 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
       }}>{study.title}</button> · {study.layout.mode} · {study.members.length} members
     </li>)}</ul>
     {open && <div ref={viewRef} data-testid="project-study-view" data-study-id={open.id}>
+      <button type="button" data-testid="project-study-back" onClick={() => {
+        const id = open.id;
+        setOpenId(null); setVisiblePaneId(null);
+        window.requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-testid="project-study-open-${CSS.escape(id)}"]`)?.focus());
+      }}>Back to Studies</button>
       <h5>{open.title}</h5>
       {focusStudy?.id === open.id && focusStudy.selectionId &&
         <p role="status" data-testid="project-study-focused-selection">

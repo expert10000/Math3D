@@ -26,6 +26,7 @@ export type SageServicesWorkspaceProps = {
   onSaveWorkbook: (record: SymbolicResultRecord) => void;
   onOpenWorkbook: () => void;
   onOpenComputeRuntimes: () => void;
+  onOpenProjects?: () => void;
   onClose: () => void;
   structures?: SageStructuresSlot;
 };
@@ -45,7 +46,7 @@ const button = { border: "1px solid #b9cce3", borderRadius: 7, background: "#fff
 
 /** Shared workspace surface over the Sage catalog, result cards, and runtime registry. */
 export default function SageServicesWorkspace({ context, title, description, testId, record, onResult,
-  onSaveWorkbook, onOpenWorkbook, onOpenConsole, onOpenComputeRuntimes, onClose, structures, topPanel,
+  onSaveWorkbook, onOpenWorkbook, onOpenConsole, onOpenComputeRuntimes, onOpenProjects, onClose, structures, topPanel,
   requestedLeftTab, requestedRightTab }: Props) {
   const [leftTab, setLeftTab] = useState<"structures" | "operations" | "recipes">(structures?.projectId ? "structures" : "operations");
   const [rightTab, setRightTab] = useState<"results" | "structure" | "verification" | "execution" | "compare" | "runtimes">(structures?.projectId ? "structure" : "results");
@@ -70,6 +71,7 @@ export default function SageServicesWorkspace({ context, title, description, tes
         {structures?.projectTitle && <div style={{ fontSize: 12, color: "#183b70", marginTop: 4 }}>Project: {structures.projectTitle}</div>}
       </div>
       <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+        {onOpenProjects && <button type="button" data-testid="sage-workspace-open-projects" style={button} onClick={onOpenProjects}>Open Projects</button>}
         {onOpenConsole && <button type="button" style={button} onClick={onOpenConsole}>Open trusted Sage Console</button>}
         <button type="button" style={button} onClick={onOpenWorkbook}>Open Workbook</button>
         <button type="button" style={button} onClick={onClose}>Back to workspace</button>

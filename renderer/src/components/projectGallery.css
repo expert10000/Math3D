@@ -28,6 +28,9 @@ body:has(#project-gallery-host:not(:empty)) :is([data-testid="projects-quick-tog
 .project-gallery-statusline { display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px; }
 .project-gallery-statusline p { flex:1;margin:0;padding:7px 10px;border-radius:7px;background:#eff6ff;color:#214363; }
 .project-gallery-saved-badge { display:inline-block;margin-left:10px;padding:2px 8px;border-radius:100px;background:#dcfce7;color:#166534;font-size:11px; }
+.project-research-navigation { display:flex;gap:6px;overflow-x:auto;padding:8px 0 2px;scrollbar-width:thin; }
+.project-research-navigation button { flex:0 0 auto; }
+.project-research-navigation button[aria-current="page"] { border-color:#2563eb;background:#eaf3ff;color:#124d91; }
 .project-gallery-layout { display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:24px;padding:20px 22px;align-items:start;flex:1;min-height:0; }
 .project-gallery-layout-detail { grid-template-columns:minmax(0,1fr); }
 .project-gallery-layout-detail .project-gallery-library { display:none; }

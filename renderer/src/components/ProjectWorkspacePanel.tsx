@@ -1878,6 +1878,30 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     onUpdateDraft={(id, patch) => setNoteDrafts((current) => current.map((draft) => draft.id === id ? { ...draft, ...patch } : draft))}
     onDiscardDraft={(id) => setNoteDrafts((current) => current.filter((draft) => draft.id !== id))}
     onSaveDrafts={saveNoteDrafts} onSaveNote={saveEditedNote} onChangeValues={changeNoteValues} onSendToWorkbook={sendNoteToWorkbook} />;
+  const closeExplorer = () => {
+    onOpenChange(false);
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+      const source = document.querySelector<HTMLElement>('[data-testid="module-workspace"]');
+      if (source && source.getClientRects().length) {
+        if (source.tabIndex < 0) source.tabIndex = -1;
+        source.focus({ preventScroll: true });
+      } else document.querySelector<HTMLElement>('[data-testid="projects-toggle"]')?.focus({ preventScroll: true });
+    }));
+  };
+  const openResearchSection = (section: "gallery" | "studies" | "results" | "workbooks" | "notes") => {
+    setNotesOpen(false); setQuick(false); setViewerCompanion(false);
+    if (section === "gallery") { setDetailView(false); setCollection("Starter projects"); return; }
+    setDetailView(true);
+    if (section === "notes") { openProjectNotes(); return; }
+    openDetailPage(section === "results" ? "results" : section === "workbooks" ? "documents" : "overview",
+      section === "workbooks" ? contentsSection : undefined);
+  };
+  const returnToSource = () => {
+    const entry = project?.workspace.entries.find(item => item.expected.id === viewingDocumentId);
+    if (entry && canNavigateDocument?.(entry.expected.id, entry.module))
+      onNavigateDocument?.(entry.expected.id, entry.module);
+    closeExplorer();
+  };
   const fullDetails = !quick && detailView;
   useEffect(() => {
     if (!hasOpenProject || busy || preview || managed || !project?.metadata.tags?.includes("ripple-wave-study") ||
@@ -1904,7 +1928,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         } else setQuick(true);
         onOpenChange(true);
       }} className="project-context-toggle">{hasOpenProject ? "Project" : "Quick projects"}</button>, document.body)}
-    {open && <ProjectGalleryFrame quick={quick} viewerCompanion={viewerCompanion} placement={projectPlacement} onClose={() => onOpenChange(false)}>
+    {open && <ProjectGalleryFrame quick={quick} viewerCompanion={viewerCompanion} placement={projectPlacement} onClose={closeExplorer}>
       <header data-testid="project-explorer-header" className={`project-gallery-header${viewerCompanion && quick ? " project-companion-header" : ""}`}>
         <div className="project-gallery-heading"><div><p>{viewerCompanion && quick ? "PROJECT" : "MATH3D · PROJECTS"}</p><h2>{quick && !viewerCompanion ? "Quick Projects" : detailView ? project?.metadata.title ?? "Project" : "Projects Gallery"}</h2></div><div className="project-gallery-heading-actions" style={{ display:"flex",gap:8 }}>
           {fullDetails ? <>
@@ -1919,9 +1943,18 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
             {!quick && <button type="button" data-testid="project-detail-toggle" aria-pressed={detailView} onClick={() => { setNotesOpen(false); workspacePanel.current?.scrollTo({ top: 0 }); setDetailView(value => !value); }}>{detailView ? "Browse projects" : "View current project"}</button>}
             <button data-testid="project-gallery-layout-toggle" aria-label={viewerCompanion && quick ? "Project details" : undefined} title={viewerCompanion && quick ? "Project details" : undefined} onClick={() => { if (!viewerCompanion) setNotesOpen(false); if (viewerCompanion) setDetailPage("overview"); setQuick(value => !value); setViewerCompanion(false); }}>{quick ? viewerCompanion ? "⋯" : "Full gallery" : "Quick panel"}</button>
           </>}
-          <button type="button" aria-label="Close project explorer" title="Close Project panel" onClick={() => onOpenChange(false)}>{(viewerCompanion && quick) || fullDetails ? "×" : "Close"}</button></div></div>
+          <button type="button" aria-label="Close project explorer" title="Close Project panel" onClick={closeExplorer}>{(viewerCompanion && quick) || fullDetails ? "×" : "Close"}</button></div></div>
         <div className="project-gallery-statusline"><p data-testid="project-view-mode" role="status">{managed ? "Managing saved project" : preview ? "Saved project preview" : "Current workspace"}{!fullDetails && ` · ${project?.metadata.title ?? "Untitled project"}`}{project && library.entries.some((entry) => entry.id === project.identity.id) && <strong className="project-gallery-saved-badge">Saved in Your saved projects</strong>}</p>
           {!fullDetails && <button type="button" data-testid="project-restore-saved" disabled={busy || !!managed || !project || !library.entries.some((entry) => entry.id === project.identity.id)} onClick={previewSavedOpen}>{preview ? "Open saved project" : "Review saved version"}</button>}</div>
+      {hasOpenProject && !quick && <nav className="project-research-navigation" aria-label="Research navigation" data-testid="project-research-navigation">
+        {(["gallery", "studies", "results", "workbooks", "notes"] as const).map(section =>
+          <button key={section} type="button" data-testid={`project-research-nav-${section}`}
+            aria-current={section === "gallery" ? !detailView ? "page" : undefined : detailView &&
+              ((section === "studies" && detailPage === "overview") || (section === "results" && detailPage === "results") ||
+                (section === "workbooks" && detailPage === "documents") || (section === "notes" && notesOpen)) ? "page" : undefined}
+            onClick={() => openResearchSection(section)}>{section[0].toUpperCase() + section.slice(1)}</button>)}
+        <button type="button" data-testid="project-research-nav-source" disabled={!viewingDocumentId} onClick={returnToSource}>Back to source</button>
+      </nav>}
       {hasOpenProject && !preview && viewingDocumentId && !fullDetails && <nav className="project-context-breadcrumb" data-testid="project-breadcrumb" aria-label="Project breadcrumb">
         {!viewerCompanion && <><button type="button" data-testid="project-breadcrumb-root" onClick={() => { setQuick(true); setViewerCompanion(true); onViewProjectDetail?.(); }}>{project?.metadata.title ?? "Project"}</button><span aria-hidden="true">›</span></>}
         <span className="project-breadcrumb-module">{project?.workspace.entries.find(entry => entry.expected.id === viewingDocumentId)?.module ?? activeModule ?? "Document"}</span>

@@ -594,7 +594,8 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       <dt>Cardinality</dt><dd>{summary.cardinality ?? "Infinite"}</dd><dt>Zero divisors</dt><dd>{summary.zeroDivisors}</dd></>}
   </dl> : <div role="status" style={{ fontSize: 12 }}>Select a structure in the Project explorer.</div>;
 
-  return <SageServicesWorkspace {...props} onResult={(record) => { setSelectedEvidenceId(null); props.onResult(record); }}
+  return <SageServicesWorkspace {...props} onOpenProjects={onOpenProjects}
+    onResult={(record) => { setSelectedEvidenceId(null); props.onResult(record); }}
     requestedLeftTab={commandLeftTab} requestedRightTab={commandRightTab}
     topPanel={<><SageCommandPalette project={project} target={chosen ? { objectId: chosen.record.id,
       revision: chosen.record.revision } : null}
