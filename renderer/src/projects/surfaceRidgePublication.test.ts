@@ -41,7 +41,13 @@ describe("general sampled Surface ridge publication", () => {
       id => made.adapter.resources.bytes(made.adapter.document().source.resource));
     expect(checked.status).toBe("current");
     if (checked.status !== "current") return;
-    expect((checked.result.summary as Record<string, number>).absoluteDifference).toBeGreaterThanOrEqual(0);
+    const summary = checked.result.summary as Record<string, number>;
+    // Independent revolution formula: K = -r'' / (r(1+r'^2)^2), r=cosh(u)+0.5.
+    const c = Math.cosh(summary.ridgeParameter);
+    expect(summary.analyticGaussian).toBeCloseTo(-1 / ((c + 0.5) * c ** 3), 2);
+    expect(summary.absoluteDifference).toBeCloseTo(
+      Math.abs(summary.discreteGaussian - summary.analyticGaussian), 10);
+    expect(summary.spatialOffset).toBeGreaterThanOrEqual(0);
     expect(prepared.workbookBytes.byteLength).toBeGreaterThan(0);
     expect(reopened.workbooks).toHaveLength(1);
     expect(reopened.workspace.entries.some(entry => entry.module === "curve" &&

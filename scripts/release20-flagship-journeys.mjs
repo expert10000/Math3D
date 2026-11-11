@@ -11,14 +11,15 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const cases = [
   { id: "surface", tests: [
     { file: "tests/e2e/project-curated-gallery.spec.ts", grep: "guided Catenoid Study" },
-    { file: "tests/e2e/project-catenoid-flow.spec.ts", grep: "Catenoid Surface" },
-  ], claim: "Saved Surface and Mesh evidence, Study and Workbook survive a cold desktop restart." },
+    { file: "tests/e2e/project-surface-ridge-publication.spec.ts" },
+  ], claim: "Saved Surface and Mesh curvature error, promoted ridge Curve and Workbook survive restart and source change." },
   { id: "quantum", tests: [
     { file: "tests/e2e/quantum-qi08-study-handoff.spec.ts", grep: "Lab QWZ study handoff" },
-  ], claim: "Verified QWZ scenes enter a Project Study with qualified k selection and evidence." },
+  ], claim: "Verified producer QWZ samples match the authored Graph path and survive Project package transfer." },
   { id: "algebra", tests: [
-    { file: "tests/e2e/sage-algebraic-locus-scene-desktop.spec.ts" },
-  ], claim: "Algebraic locus Geometry and Curve records retain exact source and reopen read-only." },
+    { file: "tests/e2e/sage-algebraic-locus-scene-desktop.spec.ts", grep: "SAGE-F01/F02 saves exact-source contract" },
+    { file: "tests/e2e/sage-ideal-locus-publication.spec.ts" },
+  ], claim: "Single-polynomial and two-generator locus evidence retain exact source and reopen offline." },
 ];
 const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
 const git = (...args) => {

@@ -24,6 +24,14 @@ test("selected Surface ridge publishes Mesh error and Workbook evidence across r
     await expect(ridge.getByTestId("project-surface-ridge-status")).toContainText("Workbook staged");
     await panel.getByTestId("project-save").click();
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const comparison = saved.workspace.results.find((item: { provenance: { operation: { type: string } } }) =>
+      item.provenance.operation.type === "surface.revolution-ridge-comparison");
+    expect(comparison).toBeTruthy();
+    const numbers = comparison.summary;
+    expect(numbers.absoluteDifference).toBeCloseTo(
+      Math.abs(numbers.discreteGaussian - numbers.analyticGaussian), 10);
+    expect(numbers.analyticGaussian).toBeCloseTo(-1, 2);
+    expect(numbers.spatialOffset).toBeGreaterThanOrEqual(0);
     expect(saved.workbooks.some((book: { title: string }) => book.title ===
       "Surface ridge and discrete curvature comparison")).toBe(true);
     expect(saved.workspace.entries.some((entry: { module: string; checkpoint: { source?: { definition?: { familyId?: string } } } }) =>

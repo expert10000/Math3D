@@ -121,6 +121,19 @@ test("Lab QWZ study handoff stages both exact scenes in a new Math3D Project", a
       Object.keys(localStorage).filter(key => key.startsWith("math3d.graph2d.table."))
         .map(key => [key.slice("math3d.graph2d.table.".length), localStorage.getItem(key)])));
     expect(tableContents[tableId]).toBeTruthy();
+    const producer = join(fixtures, names[1]);
+    const kBytes = await readFile(join(producer, "band-k.f64"));
+    const energyBytes = await readFile(join(producer, "band-energy-0.f64"));
+    const rows = JSON.parse(tableContents[tableId]!);
+    expect(rows).toHaveLength(3);
+    let distance = 0;
+    for (let index = 0; index < 3; index++) {
+      if (index) distance += Math.hypot(kBytes.readDoubleLE(index * 24) -
+        kBytes.readDoubleLE((index - 1) * 24),
+      kBytes.readDoubleLE(index * 24 + 8) - kBytes.readDoubleLE((index - 1) * 24 + 8));
+      expect(rows[index].x).toBeCloseTo(distance, 12);
+      expect(rows[index].y).toBeCloseTo(energyBytes.readDoubleLE(index * 8), 12);
+    }
     const portable = require(resolve("renderer/src/projects/projectResources.ts"));
     const verifiedResources = portable.captureProjectResources(project, (item: { kind: string; id: string }) =>
       item.kind === "graph-point-table" && tableContents[item.id] ? Buffer.from(tableContents[item.id]!) : null, true);

@@ -51,6 +51,8 @@ The gate scripts and source tests are **preparation**, not evidence that a 2.0 i
 
 **Bounded ideal-locus Sage publication (2026-11-11):** A current two-generator ideal in three ambient variables can publish a supported real plane-section sample and Docker Sage singularities response atomically. The worker computes Jacobian minors at the ideal codimension and accepts at most 64 isolated real singular points when all coordinates are rational. Project stores the exact equations, algebra revision, sampled Geometry hash, engine response, and result relation; CAS shows saved values only while the algebra and sampled Geometry match. Cancellation, offline reopen, source revision, and JSON reimport have focused acceptance. Nonrational real points, higher-dimensional and positive-dimensional singular sets, installed-candidate runtime evidence, and independent symbolic validation remain open.
 
+**Flagship scientific audit (2026-11-11):** The shifted revolution comparison is checked against an independent analytic curvature formula, and the QWZ Graph path is checked against fixture producer float arrays for both reciprocal distance and energy. The live Docker Sage CI suite now asks the actual worker for a singular cusp and a smooth two-generator ideal, with opposite expected singular sets. The source-checkout flagship runner groups the current desktop Surface, QWZ and algebra journeys under one commit-pinned receipt. A local simulated Sage service validates desktop cancellation and Project persistence; live Docker and installed-candidate results must be attached separately before release claims are promoted.
+
 ---
 
 ## 0. Executive decision
