@@ -44,6 +44,7 @@ export const probeRendererPlatformCapabilities = (): PlatformCapabilitySnapshot 
     hostFileSystem: typeof window.meshFiles?.open === "function" && typeof window.volumeFiles?.save === "function",
     nativeDialog: typeof window.meshFiles?.open === "function",
     webgl2, backgroundWorker: typeof Worker !== "undefined", persistentStorage,
-    network: typeof window.fetch === "function", touchInput: (window.navigator?.maxTouchPoints ?? 0) > 0,
+    network: typeof window.fetch === "function" && window.navigator?.onLine !== false,
+    touchInput: (window.navigator?.maxTouchPoints ?? 0) > 0,
     mobileViewport: typeof window.matchMedia === "function" && window.matchMedia("(max-width: 700px)").matches });
 };

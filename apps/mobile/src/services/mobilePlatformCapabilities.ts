@@ -22,6 +22,6 @@ export const snapshotFromMobileProbe = (probe: MobilePlatformProbe): PlatformCap
 
 export const probeMobilePlatformCapabilities = (): PlatformCapabilitySnapshot => snapshotFromMobileProbe({
   persistentStorage: !!Paths.document,
-  network: typeof fetch === "function",
+  network: typeof fetch === "function" && (typeof navigator === "undefined" || navigator.onLine !== false),
   touchInput: true,
 });

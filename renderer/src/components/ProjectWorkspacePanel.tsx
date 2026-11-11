@@ -51,6 +51,7 @@ import { addQualifiedStudyGraphCurveLink } from "../projects/studyGraphCurveLink
 import { prepareCuratedStudyBundle } from "../projects/curatedStudyProject";
 import { curatedStudy } from "../projects/curatedStudyCatalog";
 import { qualifyCuratedStudy } from "../projects/curatedStudyQualification";
+import { resolveProjectJourneys } from "../projects/projectJourneyCapabilities";
 import { CuratedStudyResearchPreview } from "./CuratedStudyResearchPreview";
 import { projectOpenBackup } from "../projects/projectOpenBackup";
 import { measureCuratedStudyAssets } from "../projects/curatedStudyQualification";
@@ -470,7 +471,15 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [incomingNarrative, setIncomingNarrative] = useState<ReturnType<typeof createPortableResearchNarrative> | null>(null);
   const [incomingHostLimit, setIncomingHostLimit] = useState<string | null>(null);
   const [galleryAssetBytes, setGalleryAssetBytes] = useState<Record<string, number>>({});
-  const galleryHost = useMemo(() => probeRendererPlatformCapabilities(), []);
+  const [guidedLimits, setGuidedLimits] = useState<Record<string, string | null>>({});
+  const [galleryHost, setGalleryHost] = useState(probeRendererPlatformCapabilities);
+  useEffect(() => {
+    const refresh = () => setGalleryHost(probeRendererPlatformCapabilities());
+    window.addEventListener("online", refresh);
+    window.addEventListener("offline", refresh);
+    window.addEventListener("focus", refresh);
+    return () => { window.removeEventListener("online", refresh); window.removeEventListener("offline", refresh); window.removeEventListener("focus", refresh); };
+  }, []);
   const importSequence = useRef(0);
   useEffect(() => {
     if (!highlightedSavedId) return;
@@ -594,6 +603,21 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       return copy ? [[item.id, copy]] : [];
     }));
   }, [library, project]);
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setGuidedLimits({});
+    void Promise.all(Object.entries(guidedCopies).map(async ([id, entry]) => {
+      if (!entry) return [id, "Saved Project copy is unavailable."] as const;
+      try {
+        const saved = loadLibraryProject(localStorage, entry.id);
+        const resources = await loadProjectResources(saved);
+        const compatibility = inspectProjectCompatibility(saved, { resources });
+        return [id, resolveProjectJourneys(galleryHost, compatibility).project.reason] as const;
+      } catch (error) { return [id, `Saved Project cannot be validated: ${(error as Error).message}`] as const; }
+    })).then(entries => { if (!cancelled) setGuidedLimits(Object.fromEntries(entries)); });
+    return () => { cancelled = true; };
+  }, [guidedCopies, galleryHost, open]);
   const display = (next: Math3DProject, savedPreview: boolean, keepManagement = false, resolved?: ReturnType<typeof verifyMixedWorkspaceReplay>) => {
     if (!keepManagement) workspacePanel.current?.scrollTo({ top: 0 });
     const tree = buildProjectExplorer(next, resolved ?? verifyMixedWorkspaceReplay(next.workspace));
@@ -1450,6 +1474,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       // Immediate Open already inspected these exact bytes in its click handler.
       // File previews still recheck when the user later commits their import.
       const prepared = inspectedForThisOpen ? candidate : inspectProjectCompatibility(candidate.project, transferOptions(candidate.resources));
+      const storage = probeRendererPlatformCapabilities().facilities.persistentStorage;
+      if (!storage.available) throw new Error(storage.reason ?? "Persistent Project storage is unavailable on this host.");
       if (incomingNarrative && candidate === incoming) assertIndependentNarrativeImport(prepared.project,
         parseProjectLibrary(localStorage.getItem(PROJECT_LIBRARY_KEY)).entries.map(entry => entry.id),
         localStorage.getItem(projectPayloadKey(prepared.project.identity.id)) !== null ? prepared.project.identity.id : project?.identity.id);
@@ -2032,7 +2058,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
             {(query || moduleFilter !== "All modules") && <button type="button" onClick={() => { setQuery(""); setModuleFilter("All modules"); }}>Clear filters</button>}
           </div>
         </div>
-        {(collection === "All projects" || collection === "Starter projects") && <ProjectTemplatesPanel query={query} moduleFilter={moduleFilter} copies={starterCopies} guidedCopies={guidedCopies} host={galleryHost} assetBytes={galleryAssetBytes} onPreview={id => { void previewTemplate(id); }} onOpen={(id) => { void openTemplate(id); }} onNewCopy={id => { void openTemplate(id, true); }}
+        {(collection === "All projects" || collection === "Starter projects") && <ProjectTemplatesPanel query={query} moduleFilter={moduleFilter} copies={starterCopies} guidedCopies={guidedCopies} host={galleryHost} assetBytes={galleryAssetBytes} guidedLimits={guidedLimits} onPreview={id => { void previewTemplate(id); }} onOpen={(id) => { void openTemplate(id); }} onNewCopy={id => { void openTemplate(id, true); }}
           onPreviewCurated={id => { void previewTemplate(id, true); }} onOpenCurated={id => { void openTemplate(id, false, true); }}
           onNewCuratedCopy={id => { void openTemplate(id, true, true); }}
           onImportQuantumScene={onImportQuantumScene} quantumImportAvailable={!!window.quantumScenes?.open}
