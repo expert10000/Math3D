@@ -1904,7 +1904,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     } catch (error) { setMessage(`QWZ Study refused: ${(error as Error).message}`); }
     finally { setBusy(false); }
   };
-  const stageQwzBandProfile = async (studyId: string) => {
+  const stageQwzBandProfile = async (studyId: string, pathIndices?: readonly number[]) => {
     const source = projectStateRef.current;
     if (!source || busy || preview || managed) throw new TypeError("Project is not editable.");
     const study = source.workspace.studies?.find(item => item.id === studyId);
@@ -1913,7 +1913,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     const before = serializeMath3DProject(source);
     setBusy(true);
     try {
-      const derived = await deriveQwzBandProfile(source, study, pair, pointTableStore);
+      const derived = await deriveQwzBandProfile(source, study, pair, pointTableStore,
+        window.quantumScenes?.bandSample, pathIndices);
       if (!projectStateRef.current || serializeMath3DProject(projectStateRef.current) !== before)
         throw new TypeError("Project changed during QWZ profile verification.");
       setProject(derived.project);

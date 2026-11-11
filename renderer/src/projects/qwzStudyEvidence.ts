@@ -68,7 +68,7 @@ export async function buildQwzStudyEvidence(project: Math3DProject, study: Study
     curvature: { documentId: pair.curvature.identity.id, revision: pair.curvature.identity.revision,
       sceneFingerprint: pair.curvature.source.sceneFingerprint },
   };
-  const profileResult = project.workspace.results.find(item =>
+  const profileResult = [...project.workspace.results].reverse().find(item =>
     item.provenance.operation.type === QWZ_BAND_PROFILE_OPERATION &&
     (item.provenance.operation.parameters as Record<string, unknown>).studyId === study.id);
   const profileParameters = profileResult?.provenance.operation.parameters as Record<string, unknown> | undefined;

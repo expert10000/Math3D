@@ -71,6 +71,12 @@ test("Lab QWZ study handoff stages both exact scenes in a new Math3D Project", a
       .toContainText("Saved band profile in Graph", { timeout: 60_000 });
     await expect(studies.getByTestId("project-study-qwz-saved-profile"))
       .toContainText("producer samples");
+    await studies.getByTestId("project-study-qwz-path-indices").fill("0,1,2");
+    await studies.getByTestId("project-study-publish-qwz-path").click();
+    await expect(studies.getByTestId("project-study-qwz-profile-status"))
+      .toContainText("Authored reciprocal path saved in Graph", { timeout: 60_000 });
+    await expect(studies.getByTestId("project-study-qwz-saved-profile"))
+      .toContainText("authored-sample-path");
     await studies.getByTestId("project-study-preview-toggle-inspector").click();
     await expect(studies.getByTestId("project-study-qwz-inspector")).toContainText("Chern number: -1", { timeout: 60_000 });
     await expect(studies.getByTestId("project-study-quantum-linked-k")).toContainText("Linked k=");
@@ -104,10 +110,28 @@ test("Lab QWZ study handoff stages both exact scenes in a new Math3D Project", a
       studyId: project.workspace.studies[0].id, memberId: "bands" });
     expect(project.workspace.entries.filter((entry: { module: string }) => entry.module === "quantum")
       .every((entry: { checkpoint: { linkedViews?: unknown[] } }) => entry.checkpoint.linkedViews?.length === 1)).toBe(true);
-    const profile = project.workspace.results.find((result: { provenance: { operation: { type: string } } }) =>
+    const profile = [...project.workspace.results].reverse().find((result: { provenance: { operation: { type: string } } }) =>
       result.provenance.operation.type === "quantum.qwz-band-profile");
     expect(profile).toBeTruthy();
     expect(profile.summary.rowCount).toBeGreaterThan(1);
+    expect(profile.summary.pathType).toBe("authored-sample-path");
+    expect(profile.provenance.operation.parameters.pathIndices).toEqual([0, 1, 2]);
+    const tableId = profile.provenance.operation.parameters.tableId;
+    const tableContents = await page.evaluate(() => Object.fromEntries(
+      Object.keys(localStorage).filter(key => key.startsWith("math3d.graph2d.table."))
+        .map(key => [key.slice("math3d.graph2d.table.".length), localStorage.getItem(key)])));
+    expect(tableContents[tableId]).toBeTruthy();
+    const portable = require(resolve("renderer/src/projects/projectResources.ts"));
+    const verifiedResources = portable.captureProjectResources(project, (item: { kind: string; id: string }) =>
+      item.kind === "graph-point-table" && tableContents[item.id] ? Buffer.from(tableContents[item.id]!) : null, true);
+    const packageJson = portable.exportProjectPackage(project, verifiedResources);
+    const imported = portable.parseProjectPackage(packageJson);
+    expect(imported.project.workspace.results.some((item: { resultId: string }) => item.resultId === profile.resultId)).toBe(true);
+    expect(imported.resources.bytes({ kind: "graph-point-table", id: tableId })).toBeTruthy();
+    const missingSidecar = JSON.parse(packageJson);
+    missingSidecar.resources = missingSidecar.resources.filter((item: { id: string }) => item.id !== tableId);
+    expect(portable.parseProjectPackage(JSON.stringify(missingSidecar)).resources
+      .bytes({ kind: "graph-point-table", id: tableId })).toBeNull();
     expect(project.workspace.entries.some((entry: { module: string; expected: { id: string } }) =>
       entry.module === "graph2d" && entry.expected.id === profile.provenance.operation.parameters.graphDocumentId)).toBe(true);
     await app.close();

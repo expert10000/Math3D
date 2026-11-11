@@ -14,11 +14,11 @@ export function StudyQwzCursorControl({ project, pair, study, editable, onPin, o
   editable: boolean;
   onPin: (studyId: string, sampleIndex: number) => void;
   onUnpin: (studyId: string) => void;
-  onDeriveProfile?: (studyId: string) => Promise<{ graphId: string; resultId: string }>;
+  onDeriveProfile?: (studyId: string, pathIndices?: readonly number[]) => Promise<{ graphId: string; resultId: string }>;
   onOpenGraphProfile?: (graphId: string) => void;
 }) {
   const pin = inspectProjectQwzPinnedSample(study, pair);
-  const profileResult = project.workspace.results.find(item =>
+  const profileResult = [...project.workspace.results].reverse().find(item =>
     item.provenance.operation.type === QWZ_BAND_PROFILE_OPERATION &&
     (item.provenance.operation.parameters as Record<string, unknown>).studyId === study.id);
   const profileGraphId = (profileResult?.provenance.operation.parameters as
@@ -33,6 +33,7 @@ export function StudyQwzCursorControl({ project, pair, study, editable, onPin, o
   const [exportMessage, setExportMessage] = useState("");
   const [profileMessage, setProfileMessage] = useState("");
   const [profileBusy, setProfileBusy] = useState(false);
+  const [pathText, setPathText] = useState("");
   const generation = useRef(0);
   const restoredPin = useRef<string | null>(null);
   useEffect(() => () => { generation.current++; }, [project, pair.curvature.identity.id, pair.bands.identity.id]);
@@ -105,9 +106,28 @@ export function StudyQwzCursorControl({ project, pair, study, editable, onPin, o
           setProfileMessage(`Saved band profile in Graph ${graphId}. Save Project to retain it.`))
           .catch(error => setProfileMessage(`QWZ profile withheld: ${(error as Error).message}`))
           .finally(() => setProfileBusy(false)); }}>Derive reciprocal band profile in Graph</button>}
+    {editable && pin.status === "current" && onDeriveProfile && <div>
+      <label>Authored producer sample path (comma-separated indices)
+        <input data-testid="project-study-qwz-path-indices" value={pathText}
+          placeholder={`${pin.sampleIndex}, ${pin.sampleIndex + 1}`}
+          onChange={event => setPathText(event.target.value)} /></label>
+      <button type="button" data-testid="project-study-publish-qwz-path" disabled={profileBusy || !pathText.trim()}
+        onClick={() => {
+          const tokens = pathText.split(",").map(value => value.trim());
+          if (tokens.length < 2 || tokens.length > 65 || tokens.some(value => !/^\d+$/.test(value))) {
+            setProfileMessage("Choose 2–65 comma-separated nonnegative producer sample indices."); return;
+          }
+          const indices = tokens.map(Number);
+          setProfileBusy(true); setProfileMessage("Verifying every authored producer sample and both source bundles…");
+          void onDeriveProfile(study.id, indices).then(({ graphId }) =>
+            setProfileMessage(`Authored reciprocal path saved in Graph ${graphId}. Save Project to retain its sidecar.`))
+            .catch(error => setProfileMessage(`QWZ path withheld: ${(error as Error).message}`))
+            .finally(() => setProfileBusy(false));
+        }}>Publish authored reciprocal path in Graph</button>
+    </div>}
     {profileMessage && <p role="status" data-testid="project-study-qwz-profile-status">{profileMessage}</p>}
     {profileResult && profileGraph && <div data-testid="project-study-qwz-saved-profile">
-      <span>Saved reciprocal band profile · {String((profileResult.summary as Record<string, unknown>).rowCount)} producer samples</span>
+      <span>Saved reciprocal band profile · {String((profileResult.summary as Record<string, unknown>).rowCount)} producer samples · {String((profileResult.summary as Record<string, unknown>).pathType ?? "section")}</span>
       {onOpenGraphProfile && <button type="button" data-testid="project-study-open-qwz-graph"
         onClick={() => onOpenGraphProfile(profileGraph.expected.id)}>Open profile in Graph</button>}
     </div>}
