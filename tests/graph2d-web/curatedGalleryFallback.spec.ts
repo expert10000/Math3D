@@ -37,3 +37,22 @@ test("browser Gallery previews a desktop Study with exact research status", asyn
   await page.getByTestId("project-import-save").click();
   await expect(panel.getByTestId("project-message")).toContainText("Imported into the library");
 });
+
+test("narrow browser keeps guided source and citation preview readable", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 780 });
+  await page.goto("/");
+  await page.evaluate(() => { localStorage.clear(); localStorage.setItem("math3d.computeEngines.firstLaunchSeen", "1"); });
+  await page.reload();
+  await page.getByTestId("projects-toggle").click();
+  const panel = page.getByTestId("project-explorer-panel");
+  await panel.getByRole("button", { name: "Starter projects", exact: true }).click();
+  await panel.getByTestId("project-gallery-guided").click();
+  await panel.getByTestId("curated-study-preview-edge-path-evidence").click();
+  const evidence = page.getByTestId("curated-study-research-preview");
+  await expect(evidence).toContainText("Workbook citations", { timeout: 60_000 });
+  await expect(evidence).toContainText("Study sources");
+  await expect(evidence).toContainText("current");
+  const box = await evidence.boundingBox();
+  expect(box && box.x >= 0 && box.x + box.width <= 392).toBeTruthy();
+  await expect(page.getByTestId("project-import-limit")).toContainText("desktop");
+});
