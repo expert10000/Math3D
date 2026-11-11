@@ -113,6 +113,11 @@ describe("native Field Explorer workflow", () => {
     const qSlices = fieldExplorerBaselineSlices(qField, pin.baseline);
     expect(qSlices.a.channel).toBe("q"); expect(qSlices.b.channel).toBe("q");
     expect(qSlices.b.source.structuralHash).toBe(pin.baseline.identity.structuralHash);
+    const mixedUnits = reviseVectorField3DDocument(pin.baseline, { ...pin.baseline.source,
+      axes: pin.baseline.source.axes.map((axis, i) => ({ ...axis, unit: i === 1 ? "km" : "m" })) as never,
+      field: { kind: "expressions", components: [vectorField3DExpression("-y", "m/s"),
+        vectorField3DExpression("x", "km/s"), vectorField3DExpression("0", "m/s")] } });
+    expect(() => fieldExplorerBaselineSlices(mixedUnits, mixedUnits)).toThrow(/homogeneous component units/);
     const incompatible = reviseVectorField3DDocument(pin.baseline, { ...pin.baseline.source,
       axes: pin.baseline.source.axes.map(a => ({ ...a, max: a.max + 1 })) as never });
     expect(() => fieldExplorerBaselineSlices(document, incompatible)).toThrow(/identical Cartesian/);

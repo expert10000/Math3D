@@ -62,3 +62,12 @@
 .field-explorer-baseline-grid h4 { margin: 0 0 5px; }
 .field-explorer-baseline-grid small { overflow-wrap: anywhere; }
 @media (max-width: 1100px) { .field-explorer-baseline-grid { grid-template-columns: 1fr; } }
+
+.field-explorer-baseline-views { color: #d6e2ed; }
+.field-explorer-baseline-views > header strong,
+.field-explorer-baseline-grid > section > h4 { color: #e2e8f0; }
+.field-explorer-baseline-views > header p,
+.field-explorer-baseline-grid > section > small { color: #9eb2c4; }
+.field-explorer-baseline-grid > section { border-color: #40546b; }
+
+.scientific-field-explorer-inspector [data-testid="gf18-field-comparison"] { overflow-wrap: anywhere; }

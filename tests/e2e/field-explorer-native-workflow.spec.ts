@@ -61,6 +61,8 @@ test("native Field Explorer configures, probes, pins, compares and cold-reopens 
     await explorer.getByRole("button", { name: "Save field to Project", exact: true }).click();
     await page.getByTestId("projects-toggle").click();
     projects = page.getByTestId("project-explorer-panel");
+    // The opening refresh owns the displayed Project until it has settled.
+    await expect(projects.getByTestId("project-message")).toContainText("Current workspace documents.");
     await projects.getByTestId("project-save").click();
     await expect(projects.getByTestId("project-message")).toContainText("Saved");
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));

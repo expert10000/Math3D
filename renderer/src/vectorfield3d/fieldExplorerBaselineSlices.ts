@@ -6,12 +6,13 @@ export function fieldExplorerBaselineSlices(document: VectorField3DDocument,
   baseline: VectorField3DDocument) {
   if (document.source.field.kind !== "expressions" || baseline.source.field.kind !== "expressions")
     throw new TypeError("Linked A/B slice views currently require analytic fields. Use verified field comparison for scientific bundles.");
-  if (document.source.axes.some((axis, i) => axis.min !== baseline.source.axes[i]!.min ||
+  if (new Set(document.source.field.components.map(component => component.unit)).size !== 1 ||
+      document.source.axes.some((axis, i) => axis.min !== baseline.source.axes[i]!.min ||
       axis.max !== baseline.source.axes[i]!.max || axis.unit !== baseline.source.axes[i]!.unit ||
       axis.label !== baseline.source.axes[i]!.label) ||
       document.source.field.components.some((component, i) =>
         component.unit !== (baseline.source.field as typeof document.source.field).components[i]!.unit))
-    throw new TypeError("Linked A/B views require identical Cartesian domains and component units.");
+    throw new TypeError("Linked A/B views require identical Cartesian domains and homogeneous component units.");
   const view = document.workspace ?? defaultVectorField3DWorkspace(document.source);
   const normal = view.selectedLayer === "xz" ? 1 : view.selectedLayer === "yz" ? 0 : 2;
   const coordinate = view.sliceCoordinates[normal];

@@ -2097,7 +2097,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
         equilibriaButtonRef.current?.focus({ preventScroll: true });
       });
     }}>Equilibria</button>
-    {" "}<button type="button" disabled={busy || lineBusy} onClick={save}>Save field to Project</button>
+    {" "}<button type="button" disabled={busy || lineBusy || !!fieldLayer || !project} onClick={save}>Save field to Project</button>
     {" "}<button type="button" disabled={busy || lineBusy || !onPinBaseline || !!fieldLayer || !project}
       onClick={() => { try {
         const current = currentDocument();
@@ -2105,6 +2105,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
           throw new Error("Preview the current expressions before pinning a baseline.");
         setDocument(onPinBaseline!(current)); setError("");
         setSaveStatus("Baseline B pinned in the Project workspace. Save the Project to retain A and B.");
+        requestAnimationFrame(() => dialogRef.current?.querySelector<HTMLElement>(
+          '[data-testid="gf18-field-comparison"]')?.scrollIntoView({ block: "nearest" }));
       } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } }}>
       Pin current as baseline B</button>
     {" "}<button type="button" onClick={() => {

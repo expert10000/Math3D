@@ -178,6 +178,9 @@ export function VectorField3DComparisonPanel({ document, project, onSave, onOpen
           `Mean vector difference ${String((currentResult.summary.vectorDifference as { mean: number }).mean)}; ` +
           `mean magnitude difference ${String((currentResult.summary.scalarMagnitudeDifference as { mean: number }).mean)}; ` +
           `mean angular error ${String((currentResult.summary.angularError as { meanRadians: number }).meanRadians)} rad.`}</p>
+      {status?.status === "current" && <p>RMS vector difference {String((currentResult.summary.vectorDifference as
+        { rms: number }).rms)}; maximum vector difference {String((currentResult.summary.vectorDifference as
+        { max: number }).max)} {String((currentResult.summary.vectorDifference as { unit: string }).unit)}.</p>}
       <p>Alignment {String(currentResult.provenance.operation.parameters.frame)} ·
         {" "}{String(currentResult.provenance.operation.parameters.resampling ?? "identical-grid")} ·
         {" "}{String(currentResult.provenance.operation.parameters.interpolation)} ·
