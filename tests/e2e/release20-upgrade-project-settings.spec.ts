@@ -11,13 +11,13 @@ const checkpointKey = "math3d.mixed-workspace.v1";
 test("M3D20-13c published 1.7 Project and setting survive the exact 2.0 upgrade", async () => {
   const phase = process.env.MATH3D_RELEASE20_UPGRADE_PHASE;
   test.skip(process.platform !== "win32" || !process.env.MATH3D_PACKAGED_APP_EXE ||
-    !process.env.MATH3D_RELEASE20_UPGRADE_PROFILE || !["seed", "verify"].includes(phase ?? ""),
+    !process.env.MATH3D_RELEASE20_UPGRADE_PROFILE || !["seed", "verify", "rollback"].includes(phase ?? ""),
   "Run through scripts/release20-upgrade.ps1 with two exact installed artifacts");
   test.setTimeout(120_000);
   const executable = resolve(process.env.MATH3D_PACKAGED_APP_EXE!);
   const profile = resolve(process.env.MATH3D_RELEASE20_UPGRADE_PROFILE!);
   const userData = join(profile, "user-data");
-  const expectedVersion = phase === "seed" ? "1.7.0" : "2.0.0";
+  const expectedVersion = phase === "verify" ? "2.0.0" : "1.7.0";
   const app = await electron.launch({ executablePath: executable, cwd: dirname(executable),
     args: [`--user-data-dir=${userData}`],
     env: definedEnvironment({ ...process.env, MATH3D_E2E: "1", MATH3D_E2E_PROFILE_ROOT: profile,
@@ -48,7 +48,7 @@ test("M3D20-13c published 1.7 Project and setting survive the exact 2.0 upgrade"
     const checkpointBytes = await page.evaluate(key => localStorage.getItem(key), checkpointKey);
     expect(checkpointBytes).not.toBeNull();
     expect(checkpointBytes).toContain(projectTitle);
-    if (phase === "verify") {
+    if (phase !== "seed") {
       const seed = JSON.parse(readFileSync(resolve(process.env.MATH3D_RELEASE20_UPGRADE_SEED!), "utf8"));
       expect(checkpointBytes).toBe(seed.checkpointBytes);
       await savedButton.click();
