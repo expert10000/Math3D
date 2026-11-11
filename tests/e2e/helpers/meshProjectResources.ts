@@ -11,3 +11,7 @@ export const inspectMeshPackage: (raw: string) => { document: any; selection: st
 export const pointResourceFixture: () => { project: any; raw: string } = compiled.exports.pointResourceFixture;
 export const scalarVolumeResourceFixture: () => { project: any; docs: any[]; result: any; raw: string } = compiled.exports.scalarVolumeResourceFixture;
 export const inspectScalarVolumePackage: (raw: string) => { document: any; values: number[]; bytes: number[] }[] = compiled.exports.inspectScalarVolumePackage;
+
+export const mixedLegacyResourceFixture: () => { project: any; raw: string } = compiled.exports.mixedLegacyResourceFixture;
+
+export const readMixedProjectSelections: (project: any) => any = compiled.exports.readMixedProjectSelections;
