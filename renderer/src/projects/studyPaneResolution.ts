@@ -1,6 +1,8 @@
-import { matchesScientificSourceGeneration, viewerSourceFromDocument,
+import { inspectResearchReference, matchesScientificSourceGeneration,
+  migrateLegacyStudyPaneResearchReference, viewerSourceFromDocument,
   type KernelWorkspaceDocument, type Math3DProject, type StudyRecordV1 } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
+import type { VerifiedProjectResources } from "./projectResources";
 
 export type StudyPaneResolution = Readonly<{ status: "ready"; document: KernelWorkspaceDocument;
   documents: ReadonlyMap<string, KernelWorkspaceDocument> } | {
@@ -8,7 +10,7 @@ export type StudyPaneResolution = Readonly<{ status: "ready"; document: KernelWo
 
 /** Resolve a pane only on demand; Study references never substitute a newer source generation. */
 export function resolveStudyPane(project: Math3DProject, study: StudyRecordV1,
-  paneId: string): StudyPaneResolution {
+  paneId: string, resources?: VerifiedProjectResources): StudyPaneResolution {
   if (study.projectId !== project.identity.id || !project.workspace.studies?.some(item => item.id === study.id))
     return { status: "withheld", reason: "Study is outside the current Project." };
   const pane = study.layout.panes.find(item => item.paneId === paneId);
@@ -19,6 +21,12 @@ export function resolveStudyPane(project: Math3DProject, study: StudyRecordV1,
   if (!matchesScientificSourceGeneration(viewerSourceFromDocument({ identity: member.expected }),
       viewerSourceFromDocument({ identity: entry.expected })))
     return { status: "withheld", reason: "Member source changed since this Study was saved." };
+  if (resources) {
+    const inspection = inspectResearchReference(project,
+      study.paneReferences?.find(item => item.paneId === paneId)?.reference ??
+        migrateLegacyStudyPaneResearchReference(study, paneId), item => resources.bytes(item));
+    if (inspection.status !== "current") return { status: "withheld", reason: inspection.reason };
+  }
   try {
     const documents = verifyMixedWorkspaceReplay(project.workspace);
     const document = documents.get(member.documentId);

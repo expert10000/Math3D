@@ -339,6 +339,7 @@ import TheoryLabInstallationPanel from "./components/TheoryLabInstallationPanel"
 import ComputeCenterPanel from "./features/computeCenter/ComputeCenterPanel";
 import SageConsoleDock from "./features/sageLab/SageConsoleDock";
 import CASAlgebraWorkspace from "./features/sageLab/CASAlgebraWorkspace";
+import { saveSageLocusSingularities } from "./projects/sageLocusJourney";
 import NumberTheoryWorkspace from "./features/sageLab/NumberTheoryWorkspace";
 import { graphSageSource } from "./features/sageLab/graphSageSource";
 import { useResponsiveLayout } from "./hooks/useResponsiveLayout";
@@ -675,7 +676,7 @@ import {
 } from "./geometry/picking";
 
 import type { GaussPoint, GaussColorMode } from "./components/gaussMapUtils";
-import type { SurfaceSampleSet } from "./math/sampling/surfaceSampling";
+import { sameSurfaceSampleSet, type SurfaceSampleSet } from "./math/sampling/surfaceSampling";
 import {
   computeSelectionMask,
   type GaussCapSelection,
@@ -784,6 +785,7 @@ import { CurveDocumentAdapter, curveDocumentFromLegacyDefinition, splineDefiniti
 import { curveParameterCursorDraft, projectCurveParameterCursor, projectRestoredCurveParameterCursor,
   restoredCurveParameterCursorDraft } from "./curveAnalysis/curveCursor";
 import { scientificCursorBus } from "./components/scientificCursor";
+import { NativeProjectCursorInspector } from "./components/NativeProjectCursorInspector";
 import { VolumeDocumentAdapter, volumeDocumentFromLegacyObject } from "./volume/volumeDocumentAdapter";
 import { VolumeExtractionKernelBridge, locateVolumeExtractionVertex, promoteVolumeExtraction, volumeExtractionStatus, type VolumeExtractionRecord } from "./volume/volumeExtractionKernel";
 import { VolumeIsosurfaceScientificJob } from "./volume/volumeScientificJob";
@@ -41497,6 +41499,7 @@ const App: React.FC = () => {
   }, [datasetKind]);
   const [gaussHoverIndex, setGaussHoverIndex] = useState<number | null>(null);
   const [surfaceSampleSet, setSurfaceSampleSet] = useState<SurfaceSampleSet | null>(null);
+  const lastSurfaceSampleSetRef = useRef<{ sourceKey: string; set: SurfaceSampleSet } | null>(null);
   const [deferredSurfaceSampleSetInfo, setDeferredSurfaceSampleSetInfo] = useState<DeferredSurfaceSampleSetInfo | null>(null);
   const deferredSurfaceSampleSetRef = useRef<SurfaceSampleSet | null>(null);
   const surfaceSampleSetMeshDataBytesRef = useRef<number | null>(null);
@@ -43908,6 +43911,9 @@ const App: React.FC = () => {
         event: nextEvent,
       });
     }
+    // The full trace remains bounded in its ref. Avoid pinning routine preview
+    // events in React state when the debug UI is absent from production builds.
+    if (!isDev && nextEvent.kind !== "full" && nextEvent.kind !== "stall") return;
     setMeshDebugMonitor((current) => {
       if (!current.enabled) return current;
       const events = [...current.events, nextEvent].slice(-MESH_DEBUG_EVENT_LIMIT);
@@ -43921,7 +43927,7 @@ const App: React.FC = () => {
             : current.worstStallMs,
       };
     });
-  }, []);
+  }, [isDev]);
   const handleChangeMeshFastPreviewAlgorithm = useCallback(
     (algorithm: FastPreviewProxyAlgorithm) => {
       setMeshFastPreviewAlgorithm(algorithm);
@@ -45083,6 +45089,18 @@ const App: React.FC = () => {
   const [surfaceInspectDerivedMesh, setSurfaceInspectDerivedMesh] = useState(false);
   const surfaceDerivedMeshPayloadCacheRef = useRef(new Map<string, SurfaceDerivedMeshPayload>());
   const surfaceDerivedMeshGeometryCacheRef = useRef(new Map<string, SurfaceMeshGeometry>());
+  type DerivedMeshCandidate = {
+    key: string; positions: Float32Array; indices: ArrayLike<number> | null;
+    vertexCount: number; faceCount: number;
+    settings: Record<string, number | string | boolean | null>;
+    method: "explicit-grid" | "parameter-grid" | "marching-cubes" | "existing-mesh";
+    sourceSampleIndices?: Uint32Array; parameterCoordinates?: Float64Array; confidence?: Float32Array;
+  };
+  const surfaceDerivedMeshCandidateCacheRef = useRef<{
+    sourceKey: string; samples: SurfaceSampleSet["samples"] | undefined;
+    settingsKey: string; candidate: DerivedMeshCandidate;
+  } | null>(null);
+  const surfaceDerivedMeshPublishedRef = useRef<{ key: string; meshId: string; candidate: DerivedMeshCandidate } | null>(null);
   const [surfaceMeshAnalysisHandoff, setSurfaceMeshAnalysisHandoff] = useState<SurfaceMeshAnalysisHandoff | null>(null);
   const [volumeMeshAnalysisHandoff, setVolumeMeshAnalysisHandoff] = useState<VolumeMeshAnalysisHandoff | null>(null);
   const handleSelectSurfaceComputation = useCallback((computation: SurfaceComputationId) => {
@@ -51095,9 +51113,18 @@ case "mobius":
     }
   }, [activeCanonicalSurfaceDefinition, activeSurfaceLayerPayload, activeSurfaceLayerQualification, activeSurfaceLayerResult, handleCollectSurfaceCurveLayers, handleCollectSurfaceFeatureLayers, publishSurfaceLayerResult, surfaceSampleSet?.samples]);
 
+  const surfaceChartSamplesCacheRef = useRef<{
+    sourceKey: string;
+    samples: SurfaceSampleSet["samples"] | undefined;
+    chart: SurfaceChartSample[];
+  } | null>(null);
   const surfaceChartSamples = useMemo<SurfaceChartSample[]>(() => {
     const definition = activeCanonicalSurfaceDefinition;
-    return (surfaceSampleSet?.samples ?? []).flatMap((sample) => {
+    const samples = surfaceSampleSet?.samples;
+    if (!samples?.length) return [];
+    const cached = surfaceChartSamplesCacheRef.current;
+    if (cached && cached.sourceKey === definition.identity.key && cached.samples === samples) return cached.chart;
+    const chart = samples.flatMap((sample) => {
       if (!sample.uv) return [];
       let u = sample.uv.u; let v = sample.uv.v;
       if (definition.domain.kind === "graph" && u >= -1e-7 && u <= 1 + 1e-7 && v >= -1e-7 && v <= 1 + 1e-7) {
@@ -51111,6 +51138,8 @@ case "mobius":
       };
       return [chartSample];
     });
+    surfaceChartSamplesCacheRef.current = { sourceKey: definition.identity.key, samples, chart };
+    return chart;
   }, [activeCanonicalSurfaceDefinition, surfaceSampleSet?.samples]);
   const publishSurfaceChart = useCallback((visibility = surfaceChartOverlayVisibility) => {
     if (!surfaceChartSamples.length) return;
@@ -51256,8 +51285,6 @@ case "mobius":
       ? { key: activeCanonicalSurfaceDefinition.identity.surfaceId, positions: surfaceMeshData.positions, indices: surfaceMeshData.indices }
       : surfaceSampleSet?.meshData?.[0];
     if (!chunk?.positions.length) return null;
-    const vertexCount = Math.floor(chunk.positions.length / 3);
-    const faceCount = chunk.indices ? Math.floor(chunk.indices.length / 3) : Math.floor(vertexCount / 3);
     const settings = Object.fromEntries(Object.entries({
       ...activeCanonicalSurfaceDefinition.sampling,
       graphResolution: surfaceViewerKind === "graph" ? graphResolution : undefined,
@@ -51265,6 +51292,21 @@ case "mobius":
       implicitResolution: surfaceViewerKind === "implicit" ? implicitResolution : undefined,
       weierstrassResolution: surfaceViewerKind === "weierstrass" ? weierstrassResolution : undefined,
     }).filter(([, value]) => value !== undefined)) as Record<string, number | string | boolean | null>;
+    const settingsKey = JSON.stringify(settings);
+    const cached = surfaceDerivedMeshCandidateCacheRef.current;
+    const sameNumbers = (left: ArrayLike<number> | null, right: ArrayLike<number> | null) => {
+      if (left === right) return true;
+      if (!left || !right || left.length !== right.length) return false;
+      for (let index = 0; index < left.length; index++) if (left[index] !== right[index]) return false;
+      return true;
+    };
+    if (cached?.sourceKey === activeCanonicalSurfaceDefinition.identity.key &&
+        cached.samples === surfaceSampleSet?.samples && cached.settingsKey === settingsKey &&
+        cached.candidate.key === chunk.key &&
+        sameNumbers(cached.candidate.positions, chunk.positions) &&
+        sameNumbers(cached.candidate.indices, chunk.indices)) return cached.candidate;
+    const vertexCount = Math.floor(chunk.positions.length / 3);
+    const faceCount = chunk.indices ? Math.floor(chunk.indices.length / 3) : Math.floor(vertexCount / 3);
     const method = surfaceViewerKind === "graph" ? "explicit-grid"
       : surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass" ? "parameter-grid"
         : surfaceViewerKind === "implicit" ? "marching-cubes"
@@ -51286,7 +51328,14 @@ case "mobius":
       mapped += 1;
     });
     const confidence = mapped ? Float32Array.from(sourceSampleIndices, (value) => value === 0xffffffff ? 0 : 1) : undefined;
-    return { key: chunk.key, positions: chunk.positions, indices: chunk.indices, vertexCount, faceCount, settings, method, sourceSampleIndices: mapped ? sourceSampleIndices : undefined, parameterCoordinates: mapped ? parameterCoordinates : undefined, confidence };
+    const candidate: DerivedMeshCandidate = { key: chunk.key, positions: chunk.positions,
+      indices: chunk.indices, vertexCount, faceCount, settings, method,
+      sourceSampleIndices: mapped ? sourceSampleIndices : undefined,
+      parameterCoordinates: mapped ? parameterCoordinates : undefined, confidence };
+    surfaceDerivedMeshCandidateCacheRef.current = {
+      sourceKey: activeCanonicalSurfaceDefinition.identity.key,
+      samples: surfaceSampleSet?.samples, settingsKey, candidate };
+    return candidate;
   }, [activeCanonicalSurfaceDefinition, graphResolution, implicitResolution, paramResolution, surfaceMeshData, surfaceSampleSet?.meshData, surfaceSampleSet?.samples, surfaceViewerKind, weierstrassResolution]);
   const buildDerivedSurfaceMeshPayload = useCallback((options?: { state?: "live-current" | "frozen-snapshot" | "robust-variant" | "detached" | "stale"; meshRevision?: number; meshId?: string; createdAt?: number }): SurfaceDerivedMeshPayload | null => {
     if (!surfaceDerivedMeshCandidate) return null;
@@ -51325,8 +51374,18 @@ case "mobius":
   useEffect(() => {
     if (surfaceMeshAnalysisHandoff) return;
     if (!surfaceDerivedCandidateKey) return;
+    if (surfaceDerivedMeshPublishedRef.current?.key === surfaceDerivedCandidateKey &&
+        surfaceDerivedMeshPublishedRef.current.candidate === surfaceDerivedMeshCandidate &&
+        activeDerivedSurfaceMeshResult?.payload?.data.kind === "derived-mesh" &&
+        activeDerivedSurfaceMeshResult.payload.data.meshId === surfaceDerivedMeshPublishedRef.current.meshId) {
+      const meshId = surfaceDerivedMeshPublishedRef.current.meshId;
+      if (surfaceDerivedMeshSelectedId !== meshId) setSurfaceDerivedMeshSelectedId(meshId);
+      return;
+    }
     const payload = buildDerivedSurfaceMeshPayload();
     if (!payload) return;
+    surfaceDerivedMeshPublishedRef.current = { key: surfaceDerivedCandidateKey, meshId: payload.meshId,
+      candidate: surfaceDerivedMeshCandidate! };
     surfaceDerivedMeshPayloadCacheRef.current.set(payload.meshId, payload);
     surfaceDerivedMeshGeometryCacheRef.current.set(payload.meshId, {
       positions: surfaceDerivedMeshCandidate!.positions,
@@ -51350,7 +51409,7 @@ case "mobius":
       return changed ? { ...document, derivedMeshes: records.slice(-64) } : document;
     });
     setSurfaceDerivedMeshSelectedId(payload.meshId);
-  }, [activeCanonicalSurfaceDefinition, buildDerivedSurfaceMeshPayload, publishDerivedSurfaceMeshPayload, surfaceDerivedCandidateKey, surfaceDerivedMeshCandidate, surfaceMeshAnalysisHandoff]);
+  }, [activeCanonicalSurfaceDefinition, activeDerivedSurfaceMeshResult, buildDerivedSurfaceMeshPayload, publishDerivedSurfaceMeshPayload, surfaceDerivedCandidateKey, surfaceDerivedMeshCandidate, surfaceDerivedMeshSelectedId, surfaceMeshAnalysisHandoff]);
   const activeDerivedSurfaceMeshPayload = activeDerivedSurfaceMeshResult?.state === "ready" && activeDerivedSurfaceMeshResult.payload?.data.kind === "derived-mesh"
     ? activeDerivedSurfaceMeshResult.payload.data
     : null;
@@ -56384,7 +56443,12 @@ case "mobius":
             },
           });
         }
-        setSurfaceSampleSet(set);
+        const previous = lastSurfaceSampleSetRef.current;
+        const retained = set && previous?.sourceKey === activeCanonicalSurfaceDefinition.identity.key &&
+          sameSurfaceSampleSet(previous.set, set) ? previous.set : set;
+        if (retained) lastSurfaceSampleSetRef.current = {
+          sourceKey: activeCanonicalSurfaceDefinition.identity.key, set: retained };
+        setSurfaceSampleSet(retained);
         if (shouldTraceSampleSet && typeof window !== "undefined") {
           window.setTimeout(() => {
             recordMeshDebugEvent({
@@ -56456,7 +56520,7 @@ case "mobius":
       setDeferredSurfaceSampleSetInfo(null);
       publishSampleSet();
     },
-    [meshInteractionQualityMode, recordMeshDebugEvent, surfaceMeshData, surfaceViewerKind]
+    [activeCanonicalSurfaceDefinition.identity.key, meshInteractionQualityMode, recordMeshDebugEvent, surfaceMeshData, surfaceViewerKind]
   );
 
   const handlePrepareDeferredSurfaceAnalysisData = useCallback(() => {
@@ -80277,6 +80341,12 @@ case "mobius":
     setSymbolicActionStatus("Saved Sage result and provenance to the Workbook Explain stage.");
   };
   const renderNativeSurfaceInspector = () => (<>
+                    {savedMeshModuleActive && meshDocumentAdapterRef.current &&
+                      <NativeProjectCursorInspector project={projectForNotePins}
+                        document={meshDocumentAdapterRef.current.document()} module="mesh" />}
+                    {activeSavedSurfaceDocument?.format === "math3d.surface-document" &&
+                      <NativeProjectCursorInspector project={projectForNotePins}
+                        document={activeSavedSurfaceDocument} module="surface" />}
                     {surfaceViewerKind === "implicit" && symbolicAnalysisRecord && <SageSymbolicAnalysisCard
                       record={symbolicAnalysisRecord}
                       sourceStatus={sageInspectorSourceStatus(symbolicAnalysisRecord)}
@@ -82884,7 +82954,9 @@ case "mobius":
         source={<MeshProjectEditor adapter={meshDocumentAdapterRef.current!} onRestore={() => navigateRestoredDocument(meshDocumentAdapterRef.current!.document().identity.id, "mesh")} />}
         tools={<p>Mesh tools and studies are available in Inspector.</p>}
         viewport={view ? <MeshDocumentViewport projectId={activeNotebookProjectRef.current?.identity.id} documentId={meshDocumentAdapterRef.current!.document().identity.id} revision={meshDocumentAdapterRef.current!.document().identity.revision} hash={meshDocumentAdapterRef.current!.document().identity.structuralHash} view={view} /> : <div role="alert">Saved Mesh buffer unavailable.</div>}
-        inspector={controls} display={<p>Choose Gaussian K, Mean H or Solid in Inspector. The legend identifies the displayed Mesh generation.</p>}
+        inspector={<><NativeProjectCursorInspector project={projectForNotePins}
+          document={meshDocumentAdapterRef.current!.document()} module="mesh" />{controls}</>}
+        display={<p>Choose Gaussian K, Mean H or Solid in Inspector. The legend identifies the displayed Mesh generation.</p>}
         results={<p>Saved measurements in Inspector retain their exact Mesh revision and hash. Historical measurements remain qualified there.</p>} />}
         readMesh={readSavedStudyMesh} onNameStudy={renameSavedStudy} onOpenSource={openSavedStudySurface}
         sourceInfo={savedMeshParent} meshes={[{
@@ -92289,6 +92361,8 @@ case "mobius":
                           <button type="button" onClick={() => downloadCurveProbeText("curve-probes.csv", curvePickToCsv(curveAnalysisWorkspaceDocument.savedProbes), "text/csv")}>CSV</button>
                         </div>
                         {curveCursorStatus && <p data-testid="curve-cursor-status" role="status">{curveCursorStatus}</p>}
+                        <NativeProjectCursorInspector project={projectForNotePins}
+                          document={activeCurveCursorSource} module="curve" />
                         <div data-testid="curve-pinned-probes" style={{ marginTop: 6, display: "grid", gap: 4 }}>
                           <strong>Pinned probes ({curveAnalysisWorkspaceDocument.savedProbes.length})</strong>
                           {curveAnalysisWorkspaceDocument.savedProbes.slice(0, 6).map((pick) => {
@@ -112247,6 +112321,19 @@ case "mobius":
             window.dispatchEvent(new Event("math3d:project-saved-externally"));
           }
           return installed.primary;
+        }}
+        onSaveLocusSageEvidence={(scene, response, backend, sample) => {
+          const current = projectForNotePins;
+          if (!current || current.identity.id !== scene.source.projectId)
+            throw new TypeError("Open the matching Project before saving Sage locus evidence.");
+          const savedBytes = localStorage.getItem(projectPayloadKey(current.identity.id));
+          if (!savedBytes || parseMath3DProject(savedBytes).identity.structuralHash !== current.identity.structuralHash)
+            throw new TypeError("The saved Project changed. Reopen it before saving Sage evidence.");
+          const next = saveSageLocusSingularities(current, scene, response, backend, sample);
+          saveLibraryProject(localStorage, next, Date.now(), undefined, { expectedBytes: savedBytes });
+          activeNotebookProjectRef.current = next;
+          setNotebookProjectVersion((version) => version + 1);
+          window.dispatchEvent(new Event("math3d:project-saved-externally"));
         }}
         onSaveLocusSingularity={(analysis) => {
           const current = projectForNotePins;

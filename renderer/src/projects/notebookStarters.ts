@@ -6,6 +6,7 @@ import { analyzeSavedMesh, appendSavedMeshAnalysis } from "./savedMeshAnalysis";
 import { captureProjectResources } from "./projectResources";
 import { prepareProjectWorkbook } from "./projectWorkbookBinding";
 import { instantiateMeshComparisonStarter } from "./meshComparisonStarter";
+import { CATENOID_WAIST_OPERATION, recordCatenoidWaistComparison } from "./catenoidCurvatureJourney";
 
 export const NOTEBOOK_STARTERS = [
   { id: "catenoid-evidence", title: "Catenoid Evidence Notebook", description: "A saved catenoid Mesh, computed curvature, live Note values and a bounded scalar claim." },
@@ -176,6 +177,7 @@ export function instantiateNotebookStarter(id: NotebookStarterId, token: string)
   const result = analyzeSavedMesh(made.adapter, id === "catenoid-evidence" ? "curvature" : "edge-path", { start: 0, end: 32 });
   measurePhase("analysis");
   project = replaceMath3DProjectWorkspace(project, appendSavedMeshAnalysis(made.workspace, result));
+  if (id === "catenoid-evidence") project = recordCatenoidWaistComparison(project, made.adapter);
   measurePhase("project-update");
   project = updateMath3DProjectMetadata(project, { ...project.metadata, title: recipe.title, description: recipe.description, tags: ["starter", id, "workbook", "notes", "evidence"] });
   const field = id === "catenoid-evidence" ? "mean.avg" : "length";
@@ -188,6 +190,10 @@ export function instantiateNotebookStarter(id: NotebookStarterId, token: string)
   workbook.stages[0]!.blocks[0]!.text = "Open Projects → Workbooks → this Workbook, then choose Document. Open Notes for the measured value. Change Grid resolution and use Preview affected work / Run affected. The grid operation is independent of the retained saved Mesh: recomputing a grid does not replace its evidence.";
   workbook.stages[0]!.blocks[1]!.formula = "x=v,\\quad y=\\cosh(v)\\cos(u),\\quad z=\\cosh(v)\\sin(u)";
   workbook.stages[1]!.blocks = [{ id: `${id}-result`, type: "reference", title: "Recorded numerical analysis", notebookReference: createNotebookReference(project, "result", result.resultId) },
+    ...(id === "catenoid-evidence" ? [{ id: `${id}-waist-comparison`, type: "reference" as const,
+      title: "Pinned analytic waist and discrete Mesh comparison",
+      notebookReference: createNotebookReference(project, "result", project.workspace.results.find(item =>
+        item.provenance.operation.type === CATENOID_WAIST_OPERATION)!.resultId) }] : []),
     { id: `${id}-grid`, type: "compute", title: "Independent chart grid", compute: { operatorId: "chart_grid" } }];
   workbook.namedParameters = [{ schemaVersion: 1, id: "resolution", label: "Grid resolution", unit: "samples", min: 17, max: 65, step: 1, value: 33 }];
   workbook = bindWorkbookNamedParameter(workbook, "resolution", `${id}-grid`, { id: "paramResolution", label: "Resolution", kind: "number", min: 3, max: 129, step: 1, defaultValue: 33 }, `${id}-binding`);

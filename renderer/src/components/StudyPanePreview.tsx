@@ -30,7 +30,7 @@ export function StudyPanePreview({ project, study, paneId, resources }: {
     });
   }, [project, study, paneId]);
   const preview = useMemo(() => {
-    const resolved = resolveStudyPane(project, study, paneId);
+    const resolved = resolveStudyPane(project, study, paneId, resources);
     if (resolved.status !== "ready") return { kind: "withheld" as const, reason: resolved.reason };
     const document = resolved.document;
     try {
