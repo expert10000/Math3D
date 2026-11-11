@@ -1,0 +1,76 @@
+name: Build signed 2.0 Windows candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      approved_freeze_sha256:
+        description: SHA-256 of the independently reviewed 2.0 freeze manifest
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  candidate:
+    runs-on: windows-2022
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - name: Refuse an unreviewed version or absent signer
+        shell: pwsh
+        env:
+          MATH3D_WINDOWS_CSC_LINK: ${{ secrets.MATH3D_WINDOWS_CSC_LINK }}
+          MATH3D_WINDOWS_CSC_KEY_PASSWORD: ${{ secrets.MATH3D_WINDOWS_CSC_KEY_PASSWORD }}
+          MATH3D_WINDOWS_SIGNER_THUMBPRINT: ${{ secrets.MATH3D_WINDOWS_SIGNER_THUMBPRINT }}
+          MATH3D_WINDOWS_TIMESTAMP_URL: ${{ vars.MATH3D_WINDOWS_TIMESTAMP_URL }}
+        run: |
+          node scripts/release20-candidate.mjs --preflight
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate inputs or signer are unavailable.' }
+          node scripts/prepare-release20-freeze.mjs (Join-Path $env:RUNNER_TEMP 'release20-freeze.json')
+          if ($LASTEXITCODE -ne 0) { throw '2.0 freeze preparation failed.' }
+          $actual = (Get-FileHash -LiteralPath (Join-Path $env:RUNNER_TEMP 'release20-freeze.json') -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne '${{ inputs.approved_freeze_sha256 }}'.ToLowerInvariant()) {
+            throw 'Generated freeze manifest differs from the approved SHA-256.'
+          }
+      - name: Install exact npm locks
+        shell: pwsh
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw 'Root lockfile install failed.' }
+          npm --prefix renderer ci
+          if ($LASTEXITCODE -ne 0) { throw 'Renderer lockfile install failed.' }
+      - name: Install frozen worker dependencies
+        shell: pwsh
+        run: |
+          ./scripts/setup-cgal-python-worker.ps1 -Python (Get-Command python).Source -VcpkgCommit 52fd90f2b7798d9fe6fef18fc1787db44574d704 -FrozenRequirements
+          $workerPython = Join-Path $PWD '.venv-worker/Scripts/python.exe'
+          & $workerPython -m pip install -r python/worker/build-requirements.freeze.txt -r python/worker/requirements.freeze.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Frozen worker dependencies failed.' }
+          "MATH3D_PYTHON=$workerPython" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          (Join-Path $PWD '.venv-worker/Scripts') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          (Join-Path $PWD '.deps/vcpkg/installed/x64-windows/bin') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Build and verify one signed candidate
+        shell: pwsh
+        env:
+          MATH3D_WINDOWS_CSC_LINK: ${{ secrets.MATH3D_WINDOWS_CSC_LINK }}
+          MATH3D_WINDOWS_CSC_KEY_PASSWORD: ${{ secrets.MATH3D_WINDOWS_CSC_KEY_PASSWORD }}
+          MATH3D_WINDOWS_SIGNER_THUMBPRINT: ${{ secrets.MATH3D_WINDOWS_SIGNER_THUMBPRINT }}
+          MATH3D_WINDOWS_TIMESTAMP_URL: ${{ vars.MATH3D_WINDOWS_TIMESTAMP_URL }}
+        run: ./scripts/build-release20-candidate.ps1 -OutputRoot (Join-Path $env:RUNNER_TEMP 'math3d-release20-candidate') `
+          -FreezeManifest (Join-Path $env:RUNNER_TEMP 'release20-freeze.json')
+      - uses: actions/upload-artifact@v7
+        with:
+          name: math3d-2.0-windows-candidate-${{ github.sha }}
+          path: ${{ runner.temp }}/math3d-release20-candidate/**
+          if-no-files-found: error
+          retention-days: 14
