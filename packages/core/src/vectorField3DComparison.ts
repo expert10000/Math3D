@@ -85,7 +85,8 @@ export function compareVectorField3D(a: VectorField3DDocument, b: VectorField3DD
             size !== bField.references[0].shape[i]) ||
             aField.references[0].axes.some((axis, i) =>
               JSON.stringify(axis) !== JSON.stringify(bField.references[0].axes[i]))) : true))
-    throw new TypeError("Both fields require aligned Cartesian axes and identical component units.");
+    throw new TypeError("Both fields require aligned Cartesian axes and identical component units." +
+      (overlap ? "" : " This policy requires identical Cartesian bounds."));
   const samplerA = bundled ? verifiedVectorFieldSampler(a, transfers.a!) : null;
   const samplerB = bundled ? verifiedVectorFieldSampler(b, transfers.b!) : null;
   const unit = aField.kind === "expressions" ? aField.components[0].unit : aField.componentUnits[0];

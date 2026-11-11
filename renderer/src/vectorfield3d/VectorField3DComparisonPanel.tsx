@@ -1,20 +1,30 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { compareVectorField3D, createVectorField3DComparisonResult,
   projectVectorField3DComparisonStatus, VECTOR_FIELD3D_COMPARISON_RESULT_TYPE,
-  vectorField3DComparisonTransferKey,
+  vectorField3DComparisonTransferKey, fieldExplorerWorkflow, resolveFieldExplorerBaseline,
+  type FieldExplorerWorkflow,
   type AnalysisResultEnvelope, type Math3DProject, type VectorField3DDocument,
   type VectorField3DComparisonTransfers } from "@math3d/core";
 import { loadVerifiedVectorFieldTransfer } from "./loadVerifiedVectorFieldTransfer";
 
-export function VectorField3DComparisonPanel({ document, project, onSave, onOpenProfile }: {
+export function VectorField3DComparisonPanel({ document, project, onSave, onOpenProfile, onWorkflowChange }: {
   document: VectorField3DDocument; project: Math3DProject | null | undefined;
+  onWorkflowChange?: (changes: Partial<FieldExplorerWorkflow>) => void;
   onSave?: (result: AnalysisResultEnvelope, transfers: VectorField3DComparisonTransfers) => void;
   onOpenProfile?: (result: AnalysisResultEnvelope) => void;
 }) {
   const sources = project?.workspace.entries.filter(entry => entry.module === "vector3d" &&
     entry.expected.id !== document.identity.id).map(entry => entry.checkpoint as VectorField3DDocument) ?? [];
-  const [secondId, setSecondId] = useState("");
-  const [resolution, setResolution] = useState(9);
+  const workflow = fieldExplorerWorkflow(document);
+  const [secondId, setSecondId] = useState(workflow.comparisonSource?.id ?? "");
+  const [resolution, setResolution] = useState<number>(workflow.comparisonResolution);
+  const epoch = useRef(0);
+  const pin = workflow.comparisonSource;
+  const selectedSource = sources.find(source => source.identity.id === secondId);
+  const pinnedSource = resolveFieldExplorerBaseline(project, document);
+  useEffect(() => { setSecondId(pin?.id ?? "");
+    setResolution(workflow.comparisonResolution); },
+    [document.identity.id, pin?.id, workflow.comparisonResolution]);
   const [alignment, setAlignment] = useState<"cartesian-identical" |
     "cartesian-aligned-overlap">("cartesian-identical");
   const [overlapBounds, setOverlapBounds] = useState<[
@@ -26,6 +36,11 @@ export function VectorField3DComparisonPanel({ document, project, onSave, onOpen
   const [busy, setBusy] = useState(false);
   const [transfers, setTransfers] = useState<VectorField3DComparisonTransfers>({});
   const [verified, setVerified] = useState<Record<string, string>>({});
+  useEffect(() => { epoch.current++; setResult(null); setError(""); setBusy(false);
+    return () => { epoch.current++; };
+  }, [document.identity.id, document.identity.revision, document.identity.structuralHash,
+    selectedSource?.identity.revision, selectedSource?.identity.structuralHash,
+    secondId, resolution, alignment, JSON.stringify(overlapBounds)]);
   const load = loadVerifiedVectorFieldTransfer;
   const key = (source: VectorField3DDocument) =>
     `${source.identity.id}:${source.identity.revision}:${source.identity.structuralHash}`;
@@ -50,16 +65,20 @@ export function VectorField3DComparisonPanel({ document, project, onSave, onOpen
     return () => { active = false; window.removeEventListener("focus", refresh); };
   }, [project?.identity.structuralHash]);
   const compare = async () => {
+    const run = ++epoch.current;
     setResult(null); setError("");
     setBusy(true);
     try {
       const second = sources.find(source => source.identity.id === secondId);
       if (!second) throw new TypeError("Choose a second saved Project field.");
+      if (pin?.id === secondId && !pinnedSource)
+        throw new TypeError("The pinned baseline is missing or changed. Pin or select a source explicitly.");
       const bundles = document.source.field.kind === "scientific-bundle" &&
         second.source.field.kind === "scientific-bundle";
       if (alignment === "cartesian-aligned-overlap" && !bundles)
         throw new TypeError("Cross-grid resampling requires two verified scientific bundles.");
       const nextTransfers = bundles ? { a: await load(document), b: await load(second) } : {};
+      if (run !== epoch.current) return;
       setTransfers(nextTransfers);
       if (bundles) setVerified(previous => ({ ...previous,
         [key(document)]: vectorField3DComparisonTransferKey(nextTransfers.a!),
@@ -71,11 +90,20 @@ export function VectorField3DComparisonPanel({ document, project, onSave, onOpen
         ...(alignment === "cartesian-aligned-overlap" ? {
           resampling: "physical-overlap-grid" as const,
           domain: overlapBounds } : {}) }, nextTransfers)));
-    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
-    finally { setBusy(false); }
+    } catch (cause) { if (run === epoch.current)
+      setError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { if (run === epoch.current) setBusy(false); }
   };
-  const status = result && project ? projectVectorField3DComparisonStatus(project,
-    result, verifiedTransfer) : null;
+  const resultPin = result?.provenance.operation.parameters.secondSource as
+    { documentId: string; revision: number; structuralHash: string } | undefined;
+  const currentResult = result && result.provenance.source.documentId === document.identity.id &&
+    result.provenance.source.revision === document.identity.revision &&
+    result.provenance.source.structuralHash === document.identity.structuralHash &&
+    resultPin?.documentId === selectedSource?.identity.id &&
+    resultPin?.revision === selectedSource?.identity.revision &&
+    resultPin?.structuralHash === selectedSource?.identity.structuralHash ? result : null;
+  const status = currentResult && project ? projectVectorField3DComparisonStatus(project,
+    currentResult, verifiedTransfer) : null;
   const saved = project?.workspace.results.filter(item =>
     item.provenance.operation.type === VECTOR_FIELD3D_COMPARISON_RESULT_TYPE &&
     item.provenance.source.documentId === document.identity.id) ?? [];
@@ -87,14 +115,23 @@ export function VectorField3DComparisonPanel({ document, project, onSave, onOpen
     <label>Second saved field <select value={secondId} onChange={event => {
       const next = sources.find(item => item.identity.id === event.target.value);
       setSecondId(event.target.value); setResult(null);
+      onWorkflowChange?.({ comparisonSource: next?.identity ?? null,
+        comparisonVisible: false });
       if (next) setOverlapBounds(document.source.axes.map((axis, index) => [
         Math.max(axis.min, next.source.axes[index]!.min),
         Math.min(axis.max, next.source.axes[index]!.max)]) as
         [[number, number], [number, number], [number, number]]); }}>
       <option value="">Choose source</option>
+      {pin && !selectedSource && <option value={pin.id}>Unavailable pinned baseline</option>}
       {sources.map(source => <option key={source.identity.id} value={source.identity.id}>
         {source.metadata.title} · revision {source.identity.revision}</option>)}
     </select></label>
+    {pin && !pinnedSource && <p role="alert">Pinned baseline missing or changed.
+      Values and linked views are withheld until a source is explicitly pinned or selected.</p>}
+    <button type="button" disabled={!pinnedSource || !onWorkflowChange}
+      aria-pressed={workflow.comparisonVisible} onClick={() =>
+        onWorkflowChange?.({ comparisonVisible: !workflow.comparisonVisible })}>
+      {workflow.comparisonVisible ? "Hide linked A/B views" : "Show linked A/B views"}</button>
     <label>Frame and grid alignment <select data-testid="gf34-alignment" value={alignment}
       onChange={event => { setAlignment(event.target.value as typeof alignment);
         setResult(null); }}>
@@ -119,38 +156,39 @@ export function VectorField3DComparisonPanel({ document, project, onSave, onOpen
         identical units; complete-or-withhold coverage.</p>
     </fieldset>}
     <label>Points per axis <select value={resolution} onChange={event => {
-      setResolution(Number(event.target.value)); setResult(null); }}>
+      const value = Number(event.target.value) as FieldExplorerWorkflow["comparisonResolution"];
+      setResolution(value); setResult(null); onWorkflowChange?.({ comparisonResolution: value }); }}>
       {[5, 9, 13, 16].map(n => <option key={n} value={n}>{n}</option>)}
     </select></label>
     <button type="button" disabled={!secondId || busy} onClick={() => void compare()}>
       {busy ? "Verifying sources…" : "Compare fields"}</button>
     {error && <p role="alert">{error}</p>}
-    {result && <div role="status">
-      <p>Source A {result.provenance.source.documentId} · revision {result.provenance.source.revision}
-        {" "}· {result.provenance.source.structuralHash}</p>
-      <p>Source B {String((result.provenance.operation.parameters.secondSource as
+    {currentResult && <div role="status">
+      <p>Source A {currentResult.provenance.source.documentId} · revision {currentResult.provenance.source.revision}
+        {" "}· {currentResult.provenance.source.structuralHash}</p>
+      <p>Source B {String((currentResult.provenance.operation.parameters.secondSource as
         { documentId: string }).documentId)} ·
-        {" "}{String((result.provenance.operation.parameters.secondSource as
+        {" "}{String((currentResult.provenance.operation.parameters.secondSource as
           { revision: number }).revision)} ·
-        {" "}{String((result.provenance.operation.parameters.secondSource as
+        {" "}{String((currentResult.provenance.operation.parameters.secondSource as
           { structuralHash: string }).structuralHash)}</p>
-      <p>Coverage {String(result.summary.valid)}/{String(result.summary.sampled)};
-        {" "}angular undefined {String(result.summary.angularUndefined)}.
+      <p>Coverage {String(currentResult.summary.valid)}/{String(currentResult.summary.sampled)};
+        {" "}angular undefined {String(currentResult.summary.angularUndefined)}.
         {" "}{status?.status === "withheld" ? `Values withheld: ${status.reason}.` :
-          `Mean vector difference ${String((result.summary.vectorDifference as { mean: number }).mean)}; ` +
-          `mean magnitude difference ${String((result.summary.scalarMagnitudeDifference as { mean: number }).mean)}; ` +
-          `mean angular error ${String((result.summary.angularError as { meanRadians: number }).meanRadians)} rad.`}</p>
-      <p>Alignment {String(result.provenance.operation.parameters.frame)} ·
-        {" "}{String(result.provenance.operation.parameters.resampling ?? "identical-grid")} ·
-        {" "}{String(result.provenance.operation.parameters.interpolation)} ·
-        {" "}{String(result.provenance.operation.parameters.coverage)}.</p>
+          `Mean vector difference ${String((currentResult.summary.vectorDifference as { mean: number }).mean)}; ` +
+          `mean magnitude difference ${String((currentResult.summary.scalarMagnitudeDifference as { mean: number }).mean)}; ` +
+          `mean angular error ${String((currentResult.summary.angularError as { meanRadians: number }).meanRadians)} rad.`}</p>
+      <p>Alignment {String(currentResult.provenance.operation.parameters.frame)} ·
+        {" "}{String(currentResult.provenance.operation.parameters.resampling ?? "identical-grid")} ·
+        {" "}{String(currentResult.provenance.operation.parameters.interpolation)} ·
+        {" "}{String(currentResult.provenance.operation.parameters.coverage)}.</p>
       <button type="button" disabled={!onSave || status?.status !== "current"}
-        onClick={() => { try { onSave?.(result, transfers); setError(""); }
+        onClick={() => { try { onSave?.(currentResult, transfers); setError(""); }
           catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } }}>
         Save comparison in Project</button>
       <button type="button" disabled={!onOpenProfile || status?.status !== "current" ||
-        !saved.some(item => item.resultId === result.resultId)}
-        onClick={() => onOpenProfile?.(result)}>Open comparison profile in Graphs</button>
+        !saved.some(item => item.resultId === currentResult.resultId)}
+        onClick={() => onOpenProfile?.(currentResult)}>Open comparison profile in Graphs</button>
     </div>}
     {saved.length > 0 && <details><summary>Saved comparisons ({saved.length})</summary>
       <ul>{saved.map(item => {

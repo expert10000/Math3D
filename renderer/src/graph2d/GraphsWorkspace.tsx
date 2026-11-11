@@ -260,6 +260,7 @@ type Props = {
   savedVectorField3D?: VectorField3DDocument | null;
   openVectorField3DRequest?: { document: VectorField3DDocument; token: number } | null;
   onSaveVectorField3D?: (document: VectorField3DDocument) => void;
+  onPinVectorField3DBaseline?: (document: VectorField3DDocument) => VectorField3DDocument;
   savedVectorField3DPointResults?: readonly import("@math3d/core").AnalysisResultEnvelope[];
   onSaveVectorField3DPointResult?: (document: VectorField3DDocument,
     result: import("@math3d/core").AnalysisResultEnvelope) => void;
@@ -341,7 +342,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   onGridModeCommit, onAxesCommit, onProbesCommit, onAuthoringCommit, onConstructionCommit, onConstructionBatchCommit, onSelectionCommit, onUndo, onRedo, promotions = [],
   onPromotionCreate, onPromotionLocate, onPromotionRegenerate, onComplexContourPlace, onOpenPreset, onResumeCheckpoint, onCopyProject,
   onExportPersonalProject, onCopyGraphDefinition, onPreviewPersonalImport, onImportPersonalProject,
-  savedVectorField3D, openVectorField3DRequest, onSaveVectorField3D,
+  savedVectorField3D, openVectorField3DRequest, onSaveVectorField3D, onPinVectorField3DBaseline,
   savedVectorField3DPointResults, onSaveVectorField3DPointResult,
   savedVectorField3DRegionResults, vectorField3DRegionStatuses,
   onSaveVectorField3DRegionResult, onOpenVectorField3DProjectResults,
@@ -4639,6 +4640,9 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           onOpenFieldDetails={() => { if (explorerFieldLayer) {
             setScientificFieldDocument(explorerFieldLayer); setScientificFieldOpen(true);
           } }}
+          onPinBaseline={onPinVectorField3DBaseline ? field => {
+            const next = onPinVectorField3DBaseline(field); setVectorField3DDocument(next); return next;
+          } : undefined}
           onSaveDocument={field => { setVectorField3DDocument(field); onSaveVectorField3D?.(field); }}
           onClose={() => { window.sessionStorage.removeItem(fieldExplorerSessionKey);
             setVectorField3DOpen(false); setLinkedRegionFocus(null);
