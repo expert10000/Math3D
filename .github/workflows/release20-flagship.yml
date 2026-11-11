@@ -1,0 +1,135 @@
+name: Release 2.0 Flagship Source Evidence
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "renderer/**"
+      - "packages/**"
+      - "tests/**"
+      - "services/sage-worker/**"
+      - "scripts/release20-flagship-journeys.mjs"
+      - "scripts/verify-release20-flagship-ci.mjs"
+      - ".github/workflows/release20-flagship.yml"
+  pull_request:
+    paths:
+      - "renderer/**"
+      - "packages/**"
+      - "tests/**"
+      - "services/sage-worker/**"
+      - "scripts/release20-flagship-journeys.mjs"
+      - "scripts/verify-release20-flagship-ci.mjs"
+      - ".github/workflows/release20-flagship.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  desktop-journeys:
+    runs-on: windows-2022
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24.19.0"
+          cache: npm
+      - run: npm ci
+      - run: npm --prefix renderer ci
+      - run: npm run typecheck:noemit
+      - run: npm run build:core
+      - name: Run Surface, QWZ, and algebra source journeys
+        run: node scripts/release20-flagship-journeys.mjs --run scope-evidence/desktop.json
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: release20-flagship-desktop
+          if-no-files-found: ignore
+          path: |
+            scope-evidence/**
+            test-results/**
+
+  sage-live:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+      PLAYWRIGHT_JSON_OUTPUT_NAME: scope-evidence/sage-live.json
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24.19.0"
+          cache: npm
+      - name: Record exact tested source
+        run: mkdir -p scope-evidence && git rev-parse HEAD > scope-evidence/source.txt
+      - run: npm ci && npm --prefix renderer ci
+      - name: Install Chromium and host dependencies with mirror retry
+        run: |
+          for attempt in 1 2 3; do
+            if npx playwright install --with-deps chromium; then exit 0; fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep 20
+          done
+      - name: Start real Sage Docker and retain health evidence
+        run: |
+          docker compose -f services/sage-worker/docker-compose.yml up -d --build
+          for attempt in $(seq 1 90); do
+            if curl --fail --silent http://127.0.0.1:8767/health > scope-evidence/sage-health.json; then exit 0; fi
+            sleep 2
+          done
+          docker compose -f services/sage-worker/docker-compose.yml logs
+          exit 1
+      - name: Run real algebra and cancellation acceptance
+        run: npx playwright test --config playwright.sage-live-docker.config.ts --retries=0 --reporter=list,json
+      - name: Preserve Sage service logs
+        if: always()
+        run: docker compose -f services/sage-worker/docker-compose.yml logs > scope-evidence/sage-docker.log
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: release20-flagship-sage
+          if-no-files-found: ignore
+          path: |
+            scope-evidence/**
+            test-results/**
+      - name: Stop Sage service
+        if: always()
+        run: docker compose -f services/sage-worker/docker-compose.yml down
+
+  source-evidence:
+    needs: [desktop-journeys, sage-live]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24.19.0"
+      - run: node scripts/test-release20-flagship-ci.mjs
+      - uses: actions/download-artifact@v7
+        continue-on-error: true
+        with:
+          pattern: release20-flagship-*
+          path: scope-evidence/downloaded
+      - name: Verify one-commit flagship receipt
+        env:
+          DESKTOP_RESULT: ${{ needs.desktop-journeys.result }}
+          SAGE_RESULT: ${{ needs.sage-live.result }}
+        run: node scripts/verify-release20-flagship-ci.mjs scope-evidence/downloaded scope-evidence/flagship-ci.json
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: release20-flagship-review
+          if-no-files-found: ignore
+          path: scope-evidence/flagship-ci.json
