@@ -37,6 +37,14 @@ describe("mobile Project Note capture and editing", () => {
     const note = buildMobileProjectExplorer(saved.serializedProject, saved.projectResources).notes.find(item => item.title === "Definition")!;
     expect(note.status).toBe("current");
     expect(note.anchor).toMatchObject({ kind: "workbook-block", workbookId: workbook.id, blockId: block.id });
+    expect(note.anchor!.researchReference).toMatchObject({ kind: "selection", targetId: workbook.id,
+      selectionId: block.id, resources: [{ kind: "workbook-payload", id: workbook.id }] });
+    const edited = saveMobileProjectNote(saved, { noteId: note.id, title: note.title, body: "Updated explanation." }, 6);
+    const reopened = importMobileProjectPreview(serializeMobileProjectPackage(edited), [], "anchored-note.json", "imported", 7);
+    const restored = buildMobileProjectExplorer(reopened.serializedProject, reopened.projectResources).notes.find(item => item.id === note.id)!;
+    expect(restored.status).toBe("current");
+    expect(restored.anchor).toEqual(note.anchor);
+    expect(buildMobileProjectExplorer(saved.serializedProject, []).notes.find(item => item.id === note.id)!.status).toBe("missing");
     expect(() => saveMobileProjectNote({ ...original, projectResources: [] }, input, 5)).toThrow(/Import the Workbook resource/);
     expect(() => saveMobileProjectNote(original, { title: " ", body: "text" }, 6)).toThrow(/title and body/);
   });

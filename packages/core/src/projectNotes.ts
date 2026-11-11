@@ -96,7 +96,14 @@ export const normalizeProjectNoteAnchor = (value: unknown): ProjectNoteAnchor | 
   if (!record(value)) return null;
   if ("researchReference" in value) {
     const reference = normalizeResearchReference(value.researchReference);
-    if (!reference || !isScientificSourceGeneration(value.source) ||
+    if (value.kind === "workbook-block") {
+      if (!reference || reference.kind !== "selection" || reference.targetId !== value.workbookId ||
+        reference.selectionId !== value.blockId || reference.targetHash !== value.blockHash ||
+        reference.source.documentId !== value.workbookId || reference.source.revision !== value.workbookRevision ||
+        reference.source.generation !== value.workbookRevision || reference.resources.length !== 1 ||
+        reference.resources[0]!.kind !== "workbook-payload" || reference.resources[0]!.id !== value.workbookId ||
+        reference.resources[0]!.checksum !== reference.source.structuralHash) return null;
+    } else if (!reference || !isScientificSourceGeneration(value.source) ||
       !matchesScientificSourceGeneration(reference.source, value.source) ||
       reference.kind !== (value.kind === "result" ? "result" : value.kind === "document" ? "document" : "selection") ||
       reference.targetHash !== (value.kind === "result" ? value.resultHash : value.kind === "study-selection" ? value.studyHash :
