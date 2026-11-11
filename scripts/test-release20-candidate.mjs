@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { inspectRelease20CandidateInputs, recordRelease20Candidate } from './release20-candidate.mjs';
+import { verifyRelease20Candidate } from './verify-release20-candidate.mjs';
 
 const root = await mkdtemp(join(tmpdir(), 'math3d-release20-candidate-test-'));
 const commit = 'a'.repeat(40), thumbprint = 'b'.repeat(40);
@@ -39,6 +40,10 @@ try {
     signaturesPath: signatures, nsisPath: nsis, outputPath: output, preflight };
   const manifest = await recordRelease20Candidate(options);
   assert.equal(manifest.math3d.installerSha256, sha(await readFile(installer)));
+  assert.equal((await verifyRelease20Candidate(output, installer)).signerThumbprint, thumbprint);
+  await put('candidate/Math3D-Setup-2.0.0.exe', 'changed installer');
+  await assert.rejects(verifyRelease20Candidate(output, installer), /bytes differ/);
+  await put('candidate/Math3D-Setup-2.0.0.exe', 'signed installer');
   await assert.rejects(recordRelease20Candidate(options), /EEXIST/);
   await put('release/win-unpacked/resources/python-worker/worker.exe', 'tampered worker');
   await assert.rejects(recordRelease20Candidate({ ...options, outputPath: join(root, 'candidate/second.json') }), /Signature receipt/);

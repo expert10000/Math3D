@@ -22,24 +22,26 @@ $registered = @(Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\U
   Where-Object { $_.DisplayName -eq 'Math3D' })
 if ($registered.Count) { throw "A stable Math3D installation is registered; use a clean Windows VM." }
 
-$candidate = Get-Content -LiteralPath $CandidateManifest -Raw | ConvertFrom-Json
-if ($candidate.schema -notin @('math3d/two-app-candidate/v1', 'math3d/release20-candidate/v1') -or
-    $candidate.math3d.version -ne '2.0.0' -or $candidate.math3d.channel -ne 'stable' -or
-    $candidate.math3d.commit -notmatch '^[0-9a-f]{40}$' -or
-    $candidate.math3d.installerSha256 -notmatch '^[0-9a-f]{64}$') {
-  throw "Candidate manifest must identify an exact stable 2.0.0 installer and source commit."
-}
 $installer = (Resolve-Path -LiteralPath $InstallerPath).Path
-if ([IO.Path]::GetFileName($installer) -ne $candidate.math3d.installerName) { throw "Installer name differs from candidate manifest." }
-$hash = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
-if ($hash -ne $candidate.math3d.installerSha256) { throw "Installer bytes differ from candidate manifest." }
+$candidateCheck = & node (Join-Path $repo 'scripts/verify-release20-candidate.mjs') $CandidateManifest $installer
+if ($LASTEXITCODE -ne 0) { throw 'Exact 2.0 candidate verification failed.' }
+$candidate = Get-Content -LiteralPath $CandidateManifest -Raw | ConvertFrom-Json
+$identity = $candidateCheck | ConvertFrom-Json
+$hash = $identity.installerSha256
 $signature = Get-AuthenticodeSignature -LiteralPath $installer
-if ($signature.Status -ne 'Valid') { throw "Installer signature is not valid: $($signature.Status)" }
+if ($signature.Status -ne 'Valid' -or -not $signature.SignerCertificate -or
+    $signature.SignerCertificate.Thumbprint.ToLowerInvariant() -ne $identity.signerThumbprint) {
+  throw "Installer signature or signer differs from candidate: $($signature.Status)"
+}
+$nsisCheck = & (Join-Path $repo 'scripts/verify-release20-nsis.ps1') -InstallerPath $installer | ConvertFrom-Json
+if ($nsisCheck.installerSha256 -ne $hash -or $nsisCheck.systemDllSha256 -ne $identity.nsisSystemDllSha256) {
+  throw 'Embedded NSIS component differs from candidate.'
+}
 $evidence = [ordered]@{
   schema = 'math3d/release20-fresh-install/v1'; status = 'started'; checkedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
   sourceCommit = $candidate.math3d.commit; version = '2.0.0'; installerSha256 = $hash
   signerThumbprint = $signature.SignerCertificate.Thumbprint; checks = [ordered]@{
-    exactBytes = 'passed'; signature = 'passed'; cleanInstall = 'pending'; installedResources = 'pending'
+    exactBytes = 'passed'; signature = 'passed'; pinnedNsis = 'passed'; cleanInstall = 'pending'; installedResources = 'pending'
     workerWithoutPython = 'pending'; firstUseStudy = 'pending'
   }; failure = $null
 }
@@ -53,6 +55,16 @@ try {
   $web = Join-Path $install 'resources/web-app/index.html'
   foreach ($file in @($app, $worker, $web)) {
     if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw "Installed resource missing: $file" }
+  }
+  foreach ($signed in @(@{ path = $app; digest = $identity.executableSha256 }, @{ path = $worker; digest = $identity.workerSha256 })) {
+    if ((Get-FileHash -LiteralPath $signed.path -Algorithm SHA256).Hash.ToLowerInvariant() -ne $signed.digest) {
+      throw "Installed executable bytes differ from candidate: $($signed.path)"
+    }
+    $installedSignature = Get-AuthenticodeSignature -LiteralPath $signed.path
+    if ($installedSignature.Status -ne 'Valid' -or -not $installedSignature.SignerCertificate -or
+        $installedSignature.SignerCertificate.Thumbprint.ToLowerInvariant() -ne $identity.signerThumbprint) {
+      throw "Installed executable signature differs from candidate: $($signed.path)"
+    }
   }
   $evidence.checks.installedResources = 'passed'
   $pathBefore = $env:PATH
