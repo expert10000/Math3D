@@ -1,0 +1,601 @@
+{
+  "schema": "math3d.release20.performance.v1",
+  "recordedAt": "2026-11-11T11:14:20.759Z",
+  "build": {
+    "version": "1.7.0",
+    "commit": "92c7e063b1f1d1ffb734da7e2e840dc85bedc4b8",
+    "dirty": false,
+    "builtAt": "2026-11-11T11:12:12.335Z",
+    "rendererHash": "807c0fa5e9c356b25ea775f7dea812c9132d12095ca61fdc555a17e6e7218941"
+  },
+  "hardware": {
+    "os": "win32 10.0.26200",
+    "arch": "x64",
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900K",
+    "logicalCpus": 24,
+    "ramGiB": 127.7
+  },
+  "method": {
+    "host": "Windows Electron source checkout",
+    "samplesPerProfile": 3,
+    "start": "action invocation",
+    "stop": "visible target or completed worker result",
+    "memory": "sampled process-tree RSS; not GPU allocation",
+    "samplePeriodMs": 750,
+    "firstRouteSample": "fresh UI route; later Gallery and Project samples are warm copies",
+    "quantiles": "nearest rank; p95 of three observations is the maximum, not a release budget"
+  },
+  "datasets": {
+    "mesh": {
+      "path": "tests/assets/meshes/stress/12_dragon_medium.obj",
+      "bytes": 12192750,
+      "sha256": "69f109fb8ae354684d63a1604ced08a94382aa9a130119fa6fafbdf1e23ad33c",
+      "summary": "Source: 12_dragon_medium.obj 1531 vertices / 3237 faces + Add"
+    },
+    "volume": {
+      "dimensions": [
+        128,
+        128,
+        128
+      ],
+      "cells": 2097152,
+      "operation": "full isosurface"
+    },
+    "project": {
+      "starterId": "mesh-comparison-study",
+      "savedResultCount": 3
+    }
+  },
+  "profiles": {
+    "coldStart": {
+      "samplesMs": [
+        1629,
+        1636.4,
+        1631.7
+      ],
+      "p50Ms": 1631.7,
+      "p95Ms": 1636.4
+    },
+    "warmStart": {
+      "samplesMs": [
+        1825.8,
+        1647.3,
+        1629.8
+      ],
+      "p50Ms": 1647.3,
+      "p95Ms": 1825.8
+    },
+    "gallery": {
+      "samplesMs": [
+        5040.5,
+        674.8,
+        546.2
+      ],
+      "p50Ms": 674.8,
+      "p95Ms": 5040.5,
+      "peakRssMiB": 897.2,
+      "sampleCount": 10,
+      "freshFirstMs": 5040.5,
+      "warmCopyMs": [
+        674.8,
+        546.2
+      ]
+    },
+    "mesh": {
+      "samplesMs": [
+        7805.3,
+        7451.1,
+        7382.1
+      ],
+      "p50Ms": 7451.1,
+      "p95Ms": 7805.3,
+      "peakRssMiB": 998,
+      "sampleCount": 23
+    },
+    "volume": {
+      "samplesMs": [
+        14068.3,
+        14372.4,
+        14454.6
+      ],
+      "p50Ms": 14372.4,
+      "p95Ms": 14454.6,
+      "peakRssMiB": 1195.7,
+      "sampleCount": 44
+    },
+    "project": {
+      "samplesMs": [
+        16607.5,
+        600.9,
+        620.6
+      ],
+      "p50Ms": 620.6,
+      "p95Ms": 16607.5,
+      "peakRssMiB": 1141.5,
+      "sampleCount": 17,
+      "freshFirstMs": 16607.5,
+      "warmCopyMs": [
+        600.9,
+        620.6
+      ]
+    }
+  },
+  "peakProcessTreeRssMiB": 1195.7,
+  "memorySamples": [
+    {
+      "phase": "idle",
+      "atMs": 0,
+      "rssMiB": 790.3
+    },
+    {
+      "phase": "gallery",
+      "atMs": 1313,
+      "rssMiB": 794.6
+    },
+    {
+      "phase": "gallery",
+      "atMs": 2508,
+      "rssMiB": 841.8
+    },
+    {
+      "phase": "gallery",
+      "atMs": 3781,
+      "rssMiB": 851.9
+    },
+    {
+      "phase": "gallery",
+      "atMs": 4993,
+      "rssMiB": 889.6
+    },
+    {
+      "phase": "gallery",
+      "atMs": 5063,
+      "rssMiB": 890.6
+    },
+    {
+      "phase": "gallery",
+      "atMs": 6262,
+      "rssMiB": 894
+    },
+    {
+      "phase": "gallery",
+      "atMs": 6279,
+      "rssMiB": 894
+    },
+    {
+      "phase": "gallery",
+      "atMs": 7311,
+      "rssMiB": 896
+    },
+    {
+      "phase": "gallery",
+      "atMs": 7504,
+      "rssMiB": 896.2
+    },
+    {
+      "phase": "gallery",
+      "atMs": 8794,
+      "rssMiB": 897.2
+    },
+    {
+      "phase": "mesh",
+      "atMs": 10051,
+      "rssMiB": 991.6
+    },
+    {
+      "phase": "mesh",
+      "atMs": 11328,
+      "rssMiB": 992.2
+    },
+    {
+      "phase": "mesh",
+      "atMs": 12573,
+      "rssMiB": 957.4
+    },
+    {
+      "phase": "mesh",
+      "atMs": 13820,
+      "rssMiB": 950.2
+    },
+    {
+      "phase": "mesh",
+      "atMs": 15076,
+      "rssMiB": 903.8
+    },
+    {
+      "phase": "mesh",
+      "atMs": 16376,
+      "rssMiB": 935.1
+    },
+    {
+      "phase": "mesh",
+      "atMs": 16937,
+      "rssMiB": 932.4
+    },
+    {
+      "phase": "mesh",
+      "atMs": 17690,
+      "rssMiB": 971.7
+    },
+    {
+      "phase": "mesh",
+      "atMs": 18960,
+      "rssMiB": 993.5
+    },
+    {
+      "phase": "mesh",
+      "atMs": 20156,
+      "rssMiB": 994
+    },
+    {
+      "phase": "mesh",
+      "atMs": 21384,
+      "rssMiB": 960.1
+    },
+    {
+      "phase": "mesh",
+      "atMs": 22644,
+      "rssMiB": 944.2
+    },
+    {
+      "phase": "mesh",
+      "atMs": 23823,
+      "rssMiB": 951.4
+    },
+    {
+      "phase": "mesh",
+      "atMs": 25008,
+      "rssMiB": 938.7
+    },
+    {
+      "phase": "mesh",
+      "atMs": 25065,
+      "rssMiB": 938.7
+    },
+    {
+      "phase": "mesh",
+      "atMs": 26290,
+      "rssMiB": 998
+    },
+    {
+      "phase": "mesh",
+      "atMs": 27515,
+      "rssMiB": 995.8
+    },
+    {
+      "phase": "mesh",
+      "atMs": 28713,
+      "rssMiB": 963.5
+    },
+    {
+      "phase": "mesh",
+      "atMs": 29896,
+      "rssMiB": 963.5
+    },
+    {
+      "phase": "mesh",
+      "atMs": 31154,
+      "rssMiB": 932.2
+    },
+    {
+      "phase": "mesh",
+      "atMs": 32386,
+      "rssMiB": 943.8
+    },
+    {
+      "phase": "mesh",
+      "atMs": 32845,
+      "rssMiB": 935.7
+    },
+    {
+      "phase": "mesh",
+      "atMs": 33660,
+      "rssMiB": 982.2
+    },
+    {
+      "phase": "volume",
+      "atMs": 34916,
+      "rssMiB": 998.8
+    },
+    {
+      "phase": "volume",
+      "atMs": 36193,
+      "rssMiB": 1113.1
+    },
+    {
+      "phase": "volume",
+      "atMs": 37485,
+      "rssMiB": 1090.7
+    },
+    {
+      "phase": "volume",
+      "atMs": 38820,
+      "rssMiB": 1075.5
+    },
+    {
+      "phase": "volume",
+      "atMs": 40065,
+      "rssMiB": 1066.6
+    },
+    {
+      "phase": "volume",
+      "atMs": 41309,
+      "rssMiB": 1067.1
+    },
+    {
+      "phase": "volume",
+      "atMs": 42534,
+      "rssMiB": 1071.3
+    },
+    {
+      "phase": "volume",
+      "atMs": 43785,
+      "rssMiB": 1068.3
+    },
+    {
+      "phase": "volume",
+      "atMs": 45077,
+      "rssMiB": 1068.4
+    },
+    {
+      "phase": "volume",
+      "atMs": 46480,
+      "rssMiB": 1068.4
+    },
+    {
+      "phase": "volume",
+      "atMs": 47710,
+      "rssMiB": 1063.4
+    },
+    {
+      "phase": "volume",
+      "atMs": 47962,
+      "rssMiB": 1058.1
+    },
+    {
+      "phase": "volume",
+      "atMs": 48956,
+      "rssMiB": 1070.3
+    },
+    {
+      "phase": "volume",
+      "atMs": 50216,
+      "rssMiB": 1143.8
+    },
+    {
+      "phase": "volume",
+      "atMs": 51570,
+      "rssMiB": 1029.3
+    },
+    {
+      "phase": "volume",
+      "atMs": 53047,
+      "rssMiB": 1036.6
+    },
+    {
+      "phase": "volume",
+      "atMs": 54306,
+      "rssMiB": 1120.3
+    },
+    {
+      "phase": "volume",
+      "atMs": 55642,
+      "rssMiB": 1101.5
+    },
+    {
+      "phase": "volume",
+      "atMs": 56986,
+      "rssMiB": 1090.8
+    },
+    {
+      "phase": "volume",
+      "atMs": 58211,
+      "rssMiB": 1092.2
+    },
+    {
+      "phase": "volume",
+      "atMs": 59436,
+      "rssMiB": 1088.3
+    },
+    {
+      "phase": "volume",
+      "atMs": 60664,
+      "rssMiB": 1091.4
+    },
+    {
+      "phase": "volume",
+      "atMs": 61861,
+      "rssMiB": 1078.2
+    },
+    {
+      "phase": "volume",
+      "atMs": 63054,
+      "rssMiB": 1078.2
+    },
+    {
+      "phase": "volume",
+      "atMs": 64264,
+      "rssMiB": 1078.2
+    },
+    {
+      "phase": "volume",
+      "atMs": 65391,
+      "rssMiB": 1110.4
+    },
+    {
+      "phase": "volume",
+      "atMs": 65511,
+      "rssMiB": 1114.4
+    },
+    {
+      "phase": "volume",
+      "atMs": 66819,
+      "rssMiB": 1103.1
+    },
+    {
+      "phase": "volume",
+      "atMs": 68015,
+      "rssMiB": 1162.8
+    },
+    {
+      "phase": "volume",
+      "atMs": 69244,
+      "rssMiB": 1097.6
+    },
+    {
+      "phase": "volume",
+      "atMs": 70482,
+      "rssMiB": 1095.4
+    },
+    {
+      "phase": "volume",
+      "atMs": 71802,
+      "rssMiB": 1079.4
+    },
+    {
+      "phase": "volume",
+      "atMs": 73153,
+      "rssMiB": 1077.9
+    },
+    {
+      "phase": "volume",
+      "atMs": 74364,
+      "rssMiB": 1076.7
+    },
+    {
+      "phase": "volume",
+      "atMs": 75574,
+      "rssMiB": 1077.5
+    },
+    {
+      "phase": "volume",
+      "atMs": 76755,
+      "rssMiB": 1060.6
+    },
+    {
+      "phase": "volume",
+      "atMs": 77934,
+      "rssMiB": 1060
+    },
+    {
+      "phase": "volume",
+      "atMs": 79157,
+      "rssMiB": 1060
+    },
+    {
+      "phase": "volume",
+      "atMs": 80307,
+      "rssMiB": 1060
+    },
+    {
+      "phase": "volume",
+      "atMs": 81597,
+      "rssMiB": 1078.9
+    },
+    {
+      "phase": "volume",
+      "atMs": 82735,
+      "rssMiB": 1079.6
+    },
+    {
+      "phase": "volume",
+      "atMs": 82902,
+      "rssMiB": 1079.5
+    },
+    {
+      "phase": "volume",
+      "atMs": 84333,
+      "rssMiB": 1072.8
+    },
+    {
+      "phase": "volume",
+      "atMs": 85560,
+      "rssMiB": 1195.7
+    },
+    {
+      "phase": "project",
+      "atMs": 86817,
+      "rssMiB": 1141.4
+    },
+    {
+      "phase": "project",
+      "atMs": 88060,
+      "rssMiB": 1141.5
+    },
+    {
+      "phase": "project",
+      "atMs": 89306,
+      "rssMiB": 1140
+    },
+    {
+      "phase": "project",
+      "atMs": 90771,
+      "rssMiB": 1136.8
+    },
+    {
+      "phase": "project",
+      "atMs": 92181,
+      "rssMiB": 1087
+    },
+    {
+      "phase": "project",
+      "atMs": 93676,
+      "rssMiB": 1102.9
+    },
+    {
+      "phase": "project",
+      "atMs": 95203,
+      "rssMiB": 1103
+    },
+    {
+      "phase": "project",
+      "atMs": 96624,
+      "rssMiB": 1103.1
+    },
+    {
+      "phase": "project",
+      "atMs": 97876,
+      "rssMiB": 1103.2
+    },
+    {
+      "phase": "project",
+      "atMs": 99240,
+      "rssMiB": 1099.5
+    },
+    {
+      "phase": "project",
+      "atMs": 100624,
+      "rssMiB": 1111.2
+    },
+    {
+      "phase": "project",
+      "atMs": 101834,
+      "rssMiB": 1098.2
+    },
+    {
+      "phase": "project",
+      "atMs": 102461,
+      "rssMiB": 1057.9
+    },
+    {
+      "phase": "project",
+      "atMs": 103053,
+      "rssMiB": 1062.5
+    },
+    {
+      "phase": "project",
+      "atMs": 103511,
+      "rssMiB": 1054.1
+    },
+    {
+      "phase": "project",
+      "atMs": 104345,
+      "rssMiB": 1063.3
+    },
+    {
+      "phase": "project",
+      "atMs": 104610,
+      "rssMiB": 1063.3
+    }
+  ]
+}

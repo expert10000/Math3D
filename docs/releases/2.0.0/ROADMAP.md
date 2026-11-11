@@ -747,6 +747,8 @@ Define reproducible profiles for:
 
 **Do not invent arbitrary performance claims:** set budgets after collecting clean baseline measurements on supported reference devices and recording hardware/OS, dataset size, build SHA, cache state, cold/warm distinctions, p50/p95 and peak memory.
 
+**M3D20-10 source receipt (2026-11-11):** [Performance and resilience gate](PERFORMANCE_RESILIENCE_GATE.md) records three reproducible source-checkout runs on the i9-12900K Windows reference host, exact Mesh/Volume/Project datasets, p50/p95, process-tree RSS, and a [machine-readable pass/fail report](evidence/m3d20-10-source-gate.json). The final clean source build passed the derived source limits and five desktop stress cases. The installed 2.0 candidate, long-duration memory plateau, browser/mobile coverage, and hard-exit Project persistence are still open; source data does not sign off an installed release.
+
 ### 14.2 Required stress tests
 
 - 100× navigation between Surface/Mesh/Graph/Field/Project (or equivalent bounded soak), verifying resource disposal.
@@ -1054,12 +1056,12 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 ### M3D20-10 — Performance and resilience gate (P0)
 
-- `M3D20-10a test(perf): capture reference cold/warm and large-data baselines`.
-- `M3D20-10b fix(runtime): resource disposal, cache and worker-race regressions`.
-- `M3D20-10c test(stress): GPU loss, cancellation, repeated viewer switching and soak`.
-- `M3D20-10d docs(perf): release budgets, hardware and reproducible measurements`.
+- `M3D20-10a test(perf): capture reference cold/warm and large-data baselines` — source profiles and exact datasets recorded.
+- `M3D20-10b fix(runtime): resource disposal, cache and worker-race regressions` — bounded artifact cache, worker idle teardown/crash retry, GPU cleanup and newest-request lifecycle.
+- `M3D20-10c test(stress): GPU loss, cancellation, repeated viewer switching and soak` — 100-switch, GPU/context recovery, cancellation, worker storm, autosave prompt and four-pane restart exercised; longer soak pending.
+- `M3D20-10d docs(perf): release budgets, hardware and reproducible measurements` — [source budgets](PERFORMANCE_BUDGETS.json), [commands and limitations](PERFORMANCE_RESILIENCE_GATE.md), and [source pass report](evidence/m3d20-10-source-gate.json) recorded.
 
-**Exit:** release budgets pass on defined reference hardware; severe resource leaks, unbounded memory or stale results block release.
+**Exit status:** source-host gate passed on the defined hardware; installed candidate budget and receipts, a longer memory plateau run, and hard-exit Project recovery remain open. Severe resource leaks, unbounded memory or stale results block release.
 
 ### M3D20-11 — 1.x migration and format gate (P0)
 

@@ -1,0 +1,23 @@
+{
+  "schema": "math3d.release20.resilience.v1",
+  "recordedAt": "2026-11-11T11:17:21.702Z",
+  "build": {
+    "version": "1.7.0",
+    "commit": "92c7e063b1f1d1ffb734da7e2e840dc85bedc4b8",
+    "dirty": false,
+    "builtAt": "2026-11-11T11:12:12.335Z",
+    "rendererHash": "807c0fa5e9c356b25ea775f7dea812c9132d12095ca61fdc555a17e6e7218941"
+  },
+  "host": {
+    "os": "win32 10.0.26200",
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900K",
+    "logicalCpus": 24
+  },
+  "projectId": "math3d:project:6bc6d357695e93b329df087bbe9b898d",
+  "studyId": "math3d:study:9e4252bf423e72b4c7159b60a608e969",
+  "panes": 4,
+  "geometryPreview": "explicitly withheld",
+  "lazyPreviewAfterRestart": true,
+  "restart": "graceful desktop close and relaunch",
+  "savedProjectReopened": true
+}

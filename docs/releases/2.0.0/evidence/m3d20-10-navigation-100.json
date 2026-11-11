@@ -1,0 +1,89 @@
+{
+  "schema": "math3d.release20.resilience.v1",
+  "recordedAt": "2026-11-11T11:16:42.446Z",
+  "build": {
+    "version": "1.7.0",
+    "commit": "92c7e063b1f1d1ffb734da7e2e840dc85bedc4b8",
+    "dirty": false,
+    "builtAt": "2026-11-11T11:12:12.335Z",
+    "rendererHash": "807c0fa5e9c356b25ea775f7dea812c9132d12095ca61fdc555a17e6e7218941"
+  },
+  "host": {
+    "os": "win32 10.0.26200",
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900K",
+    "logicalCpus": 24
+  },
+  "routeSequence": [
+    "graphs",
+    "surfaces",
+    "mesh",
+    "volume",
+    "projects"
+  ],
+  "actionCount": 100,
+  "checkpoints": [
+    {
+      "action": 0,
+      "route": "source",
+      "rssMiB": 880.8
+    },
+    {
+      "action": 10,
+      "route": "projects",
+      "rssMiB": 971.9
+    },
+    {
+      "action": 20,
+      "route": "projects",
+      "rssMiB": 989.5
+    },
+    {
+      "action": 30,
+      "route": "projects",
+      "rssMiB": 1007.3
+    },
+    {
+      "action": 40,
+      "route": "projects",
+      "rssMiB": 1036.9
+    },
+    {
+      "action": 50,
+      "route": "projects",
+      "rssMiB": 1079.9
+    },
+    {
+      "action": 60,
+      "route": "projects",
+      "rssMiB": 1112.8
+    },
+    {
+      "action": 70,
+      "route": "projects",
+      "rssMiB": 1119
+    },
+    {
+      "action": 80,
+      "route": "projects",
+      "rssMiB": 1140.4
+    },
+    {
+      "action": 90,
+      "route": "projects",
+      "rssMiB": 1168.8
+    },
+    {
+      "action": 100,
+      "route": "projects",
+      "rssMiB": 1186.6
+    },
+    {
+      "action": 100,
+      "route": "idle-after-5s",
+      "rssMiB": 1131.6
+    }
+  ],
+  "peakSampledRssMiB": 1186.6,
+  "pageErrors": [],
+  "whiteScreensObserved": 0
+}

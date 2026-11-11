@@ -1,0 +1,38 @@
+{
+  "schema": "math3d.release20.performance-budgets.v1",
+  "source": {
+    "qualified": true,
+    "reference": "Windows Electron source checkout; M3D20-10 observed runs on 2026-11-11",
+    "derivation": "Ceiling of the highest observed p95 or sampled RSS across baseline, after-worker and final source profiles, plus 20%, rounded up to a practical 50 or 100 unit boundary. These are regression thresholds, not installed release claims.",
+    "minSamples": 3,
+    "hardware": {
+      "os": "win32 10.0.26200",
+      "arch": "x64",
+      "cpu": "12th Gen Intel(R) Core(TM) i9-12900K",
+      "logicalCpus": 24,
+      "ramGiB": 127.7
+    },
+    "datasets": {
+      "mesh": {
+        "bytes": 12192750,
+        "sha256": "69f109fb8ae354684d63a1604ced08a94382aa9a130119fa6fafbdf1e23ad33c"
+      },
+      "volume": { "dimensions": [128, 128, 128] },
+      "project": { "starterId": "mesh-comparison-study", "savedResultCount": 3 }
+    },
+    "profiles": {
+      "coldStart": { "p95Ms": 2000 },
+      "warmStart": { "p95Ms": 2200 },
+      "gallery": { "p95Ms": 6100, "warmCopyMaxMs": 850, "peakRssMiB": 1150 },
+      "mesh": { "p95Ms": 9400, "peakRssMiB": 1250 },
+      "volume": { "p95Ms": 18100, "peakRssMiB": 1500 },
+      "project": { "p95Ms": 20000, "warmCopyMaxMs": 800, "peakRssMiB": 1500 }
+    },
+    "peakProcessTreeRssMiB": 1500,
+    "navigationPeakRssMiB": 1450
+  },
+  "installed": {
+    "qualified": false,
+    "reason": "No clean installed 2.0 candidate has been measured on this reference device. Require a package hash, installed-host receipt, repeat runs and a separately frozen budget."
+  }
+}
