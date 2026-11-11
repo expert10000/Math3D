@@ -784,6 +784,7 @@ import { CurveDocumentAdapter, curveDocumentFromLegacyDefinition, splineDefiniti
 import { curveParameterCursorDraft, projectCurveParameterCursor, projectRestoredCurveParameterCursor,
   restoredCurveParameterCursorDraft } from "./curveAnalysis/curveCursor";
 import { scientificCursorBus } from "./components/scientificCursor";
+import { NativeProjectCursorInspector } from "./components/NativeProjectCursorInspector";
 import { VolumeDocumentAdapter, volumeDocumentFromLegacyObject } from "./volume/volumeDocumentAdapter";
 import { VolumeExtractionKernelBridge, locateVolumeExtractionVertex, promoteVolumeExtraction, volumeExtractionStatus, type VolumeExtractionRecord } from "./volume/volumeExtractionKernel";
 import { VolumeIsosurfaceScientificJob } from "./volume/volumeScientificJob";
@@ -80245,6 +80246,12 @@ case "mobius":
     setSymbolicActionStatus("Saved Sage result and provenance to the Workbook Explain stage.");
   };
   const renderNativeSurfaceInspector = () => (<>
+                    {savedMeshModuleActive && meshDocumentAdapterRef.current &&
+                      <NativeProjectCursorInspector project={projectForNotePins}
+                        document={meshDocumentAdapterRef.current.document()} module="mesh" />}
+                    {activeSavedSurfaceDocument?.format === "math3d.surface-document" &&
+                      <NativeProjectCursorInspector project={projectForNotePins}
+                        document={activeSavedSurfaceDocument} module="surface" />}
                     {surfaceViewerKind === "implicit" && symbolicAnalysisRecord && <SageSymbolicAnalysisCard
                       record={symbolicAnalysisRecord}
                       sourceStatus={sageInspectorSourceStatus(symbolicAnalysisRecord)}
@@ -82852,7 +82859,9 @@ case "mobius":
         source={<MeshProjectEditor adapter={meshDocumentAdapterRef.current!} onRestore={() => navigateRestoredDocument(meshDocumentAdapterRef.current!.document().identity.id, "mesh")} />}
         tools={<p>Mesh tools and studies are available in Inspector.</p>}
         viewport={view ? <MeshDocumentViewport projectId={activeNotebookProjectRef.current?.identity.id} documentId={meshDocumentAdapterRef.current!.document().identity.id} revision={meshDocumentAdapterRef.current!.document().identity.revision} hash={meshDocumentAdapterRef.current!.document().identity.structuralHash} view={view} /> : <div role="alert">Saved Mesh buffer unavailable.</div>}
-        inspector={controls} display={<p>Choose Gaussian K, Mean H or Solid in Inspector. The legend identifies the displayed Mesh generation.</p>}
+        inspector={<><NativeProjectCursorInspector project={projectForNotePins}
+          document={meshDocumentAdapterRef.current!.document()} module="mesh" />{controls}</>}
+        display={<p>Choose Gaussian K, Mean H or Solid in Inspector. The legend identifies the displayed Mesh generation.</p>}
         results={<p>Saved measurements in Inspector retain their exact Mesh revision and hash. Historical measurements remain qualified there.</p>} />}
         readMesh={readSavedStudyMesh} onNameStudy={renameSavedStudy} onOpenSource={openSavedStudySurface}
         sourceInfo={savedMeshParent} meshes={[{
@@ -92257,6 +92266,8 @@ case "mobius":
                           <button type="button" onClick={() => downloadCurveProbeText("curve-probes.csv", curvePickToCsv(curveAnalysisWorkspaceDocument.savedProbes), "text/csv")}>CSV</button>
                         </div>
                         {curveCursorStatus && <p data-testid="curve-cursor-status" role="status">{curveCursorStatus}</p>}
+                        <NativeProjectCursorInspector project={projectForNotePins}
+                          document={activeCurveCursorSource} module="curve" />
                         <div data-testid="curve-pinned-probes" style={{ marginTop: 6, display: "grid", gap: 4 }}>
                           <strong>Pinned probes ({curveAnalysisWorkspaceDocument.savedProbes.length})</strong>
                           {curveAnalysisWorkspaceDocument.savedProbes.slice(0, 6).map((pick) => {

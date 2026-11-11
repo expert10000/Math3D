@@ -43,5 +43,14 @@ test("Study shares only a source-qualified Surface–Mesh physical marker after 
     await studies.locator("[data-testid^='project-study-open-']").click();
     await expect(studies.getByTestId("project-study-surface-mesh-control")).toBeVisible();
     await expect(studies.getByTestId("project-study-link-surface-mesh")).toHaveCount(0);
+    const reopenedControl = studies.getByTestId("project-study-surface-mesh-control");
+    await reopenedControl.getByLabel("x (m)").fill("0.25");
+    await reopenedControl.getByLabel("y (m)").fill("0.5");
+    await reopenedControl.getByLabel("z (m)").fill("0.75");
+    await reopenedControl.getByTestId("project-study-share-surface-mesh-coordinate").click();
+    await studies.getByTestId("project-study-pane-pane-2")
+      .getByRole("button", { name: "Open source document" }).click();
+    await expect(page.getByTestId("native-cursor-mesh")).toContainText("x=0.25, y=0.5, z=0.75", { timeout: 60_000 });
+    await expect(page.getByTestId("native-cursor-mesh")).toContainText("no element correspondence");
   } finally { await closeSurfaceApp(app); }
 });
