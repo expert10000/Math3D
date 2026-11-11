@@ -136,6 +136,7 @@
     "test:app:e2e:functional": "playwright test tests/e2e/surface-functional.spec.ts",
     "test:app:e2e:memory-profile": "playwright test tests/e2e/memory-profile.spec.ts --reporter=list",
     "test:release20:perf": "playwright test tests/e2e/release20-performance.spec.ts --reporter=list",
+    "test:release20:stress": "playwright test tests/e2e/release20-resilience.spec.ts tests/e2e/project-startup-resume.spec.ts --reporter=list",
     "test:app:e2e:memory-profile:compare": "powershell -ExecutionPolicy Bypass -File scripts/run-memory-profile-comparison.ps1",
     "test:app:e2e:memory-profile:module-clicks": "powershell -ExecutionPolicy Bypass -File scripts/run-memory-profile-module-clicks.ps1",
     "test:app:e2e:memory-profile:module-chain": "powershell -ExecutionPolicy Bypass -File scripts/run-memory-profile-module-chain.ps1",
