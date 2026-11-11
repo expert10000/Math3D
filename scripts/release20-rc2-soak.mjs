@@ -70,10 +70,11 @@ async function main() {
             throw new Error('Same-process memory receipt is incomplete or differs from the frozen source.');
           const reviewed = spawnSync('node', ['scripts/check-release20-long-memory.mjs', memoryReceipt, 'source', memoryReview],
             { cwd: root, stdio: 'inherit', shell: process.platform === 'win32' });
-          if (reviewed.status !== 0) throw new Error('Same-process memory observation is incomplete or invalid.');
+          if (reviewed.status !== 0) throw new Error('Same-process memory plateau failed its source budget or receipt checks.');
+          const review = JSON.parse(await readFile(memoryReview, 'utf8'));
           cycle.memory = { receipt: memoryReceipt, cycles: memory.cycles.length,
             peakSampledRssMiB: memory.peakSampledRssMiB, elapsedMs: memory.elapsedMs,
-            review: memoryReview, plateauQualified: false };
+            review: memoryReview, plateauQualified: review.plateauQualified === true };
           await save();
         }
       }

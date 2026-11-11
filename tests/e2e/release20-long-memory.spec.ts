@@ -32,11 +32,13 @@ test("one Electron process retains responsive navigation and records long-run me
     method: { host: process.env.MATH3D_PACKAGED_APP_EXE ? "installed candidate" : "source checkout",
       packageSha256: process.env.MATH3D_CANDIDATE_INSTALLER_SHA256 || null,
       routeSequence: routes,
-      measurement: "same-process sampled process-tree RSS; GPU allocation and forced-GC heap are not measured" },
+      measurement: "same-process process-tree RSS, Electron private bytes, GPU-process RSS and context-loss events; GPU allocations are not measured" },
     requestedMinutes: smoke ? 0 : minutes, startedAtUtc: new Date(started).toISOString(), elapsedMs: 0,
     pid: 0, cycles: [] as Array<{ startedAtMs: number; finishedAtMs?: number; actions: number;
       samples: Array<{ action: number; elapsedMs: number; rssMiB: number; processCount: number;
-        byRoleMiB: Record<string, number>; jsHeapMiB: number | null; domNodes: number }> }>, pageErrors: [] as string[],
+        byRoleMiB: Record<string, number>; electronPrivateMiB: number; rendererPrivateMiB: number;
+        gpuPrivateMiB: number; gpuPid: number | null; contextLosses: number;
+        jsHeapMiB: number | null; domNodes: number }> }>, pageErrors: [] as string[],
     peakSampledRssMiB: 0, failure: null as string | null,
   };
   const save = () => { mkdirSync(path.dirname(reportPath), { recursive: true });
@@ -50,25 +52,40 @@ test("one Electron process retains responsive navigation and records long-run me
     if (!pid) throw new Error("Electron PID unavailable.");
     report.pid = pid;
     page.on("pageerror", error => { report.pageErrors.push(error.message); save(); });
+    await page.evaluate(() => {
+      const state = window as Window & { __release20ContextLosses?: number };
+      state.__release20ContextLosses = 0;
+      document.addEventListener("webglcontextlost", () => { state.__release20ContextLosses!++; }, true);
+    });
     const sample = async (action: number) => {
       const value = await sampleProcessTreeSafely(pid, Date.now() - started);
       if (value.error || value.rssBytes <= 0) throw new Error(value.error || "Process-tree RSS sample unavailable.");
       const rssMiB = Number(bytesToMiB(value.rssBytes).toFixed(1));
+      const appMetrics = await ctx!.app.evaluate(({ app }) => app.getAppMetrics());
+      const privateMiB = (type: string) => Number((appMetrics.filter(metric => metric.type === type)
+        .reduce((sum, metric) => sum + Number(metric.memory?.privateBytes ?? 0), 0) / 1024).toFixed(1));
       const renderer = await page.evaluate(() => ({
         jsHeapBytes: (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize ?? null,
         domNodes: document.getElementsByTagName("*").length,
+        contextLosses: (window as Window & { __release20ContextLosses?: number }).__release20ContextLosses ?? 0,
       }));
       report.peakSampledRssMiB = Math.max(report.peakSampledRssMiB, rssMiB);
       return { action, elapsedMs: Date.now() - started, rssMiB, processCount: value.processCount,
         byRoleMiB: Object.fromEntries(Object.entries(value.byRole).map(([role, bytes]) =>
           [role, Number(bytesToMiB(bytes).toFixed(1))])),
+        electronPrivateMiB: Number((appMetrics.reduce((sum, metric) => sum + Number(metric.memory?.privateBytes ?? 0), 0) / 1024).toFixed(1)),
+        rendererPrivateMiB: privateMiB("Tab"), gpuPrivateMiB: privateMiB("GPU"),
+        gpuPid: value.processes.find(entry => entry.role === "gpu-process")?.pid ?? null,
+        contextLosses: renderer.contextLosses,
         jsHeapMiB: renderer.jsHeapBytes === null ? null : Number(bytesToMiB(renderer.jsHeapBytes).toFixed(1)),
         domNodes: renderer.domNodes };
     };
     do {
       const cycle = { startedAtMs: Date.now() - started, actions: 0,
         samples: [] as Array<{ action: number; elapsedMs: number; rssMiB: number; processCount: number;
-          byRoleMiB: Record<string, number>; jsHeapMiB: number | null; domNodes: number }>, finishedAtMs: undefined as number | undefined };
+          byRoleMiB: Record<string, number>; electronPrivateMiB: number; rendererPrivateMiB: number;
+          gpuPrivateMiB: number; gpuPid: number | null; contextLosses: number;
+          jsHeapMiB: number | null; domNodes: number }>, finishedAtMs: undefined as number | undefined };
       report.cycles.push(cycle);
       cycle.samples.push(await sample(0)); save();
       for (let action = 1; action <= 100; action++) {

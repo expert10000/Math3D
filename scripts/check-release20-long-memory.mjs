@@ -22,15 +22,43 @@ check('one app process and completed cycles', Number.isInteger(receipt.pid) && r
 check('no page errors', receipt.pageErrors?.length === 0, receipt.pageErrors);
 const samples = receipt.cycles?.flatMap(cycle => cycle.samples.map(sample => sample.rssMiB)) ?? [];
 const peak = samples.length ? Math.max(...samples) : null;
-const late = samples.slice(Math.floor(samples.length * 0.8));
-const preceding = samples.slice(Math.floor(samples.length * 0.6), Math.floor(samples.length * 0.8));
 const mean = values => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
-const lateGrowthMiB = late.length && preceding.length ? Number((mean(late) - mean(preceding)).toFixed(1)) : null;
+const lateGrowth = values => {
+  if (values.length < 10 || values.some(value => !Number.isFinite(value))) return null;
+  const late = values.slice(Math.floor(values.length * 0.8));
+  const preceding = values.slice(Math.floor(values.length * 0.6), Math.floor(values.length * 0.8));
+  return late.length && preceding.length ? Number((mean(late) - mean(preceding)).toFixed(1)) : null;
+};
+const lateGrowthMiB = lateGrowth(samples);
+const rendererPrivate = receipt.cycles?.flatMap(cycle => cycle.samples.map(sample => sample.rendererPrivateMiB)) ?? [];
+const gpuPrivate = receipt.cycles?.flatMap(cycle => cycle.samples.map(sample => sample.gpuPrivateMiB)) ?? [];
+const peakRendererPrivateMiB = rendererPrivate.length && rendererPrivate.every(Number.isFinite) ? Math.max(...rendererPrivate) : null;
+const peakGpuPrivateMiB = gpuPrivate.length && gpuPrivate.every(Number.isFinite) ? Math.max(...gpuPrivate) : null;
+const rendererPrivateLateGrowthMiB = lateGrowth(rendererPrivate);
+const gpuPrivateLateGrowthMiB = lateGrowth(gpuPrivate);
+const contextLosses = receipt.cycles?.at(-1)?.samples?.at(-1)?.contextLosses;
+const gpuPids = receipt.cycles?.flatMap(cycle => cycle.samples.map(sample => sample.gpuPid)) ?? [];
 check('sampled peak agrees', peak !== null && peak === receipt.peakSampledRssMiB, { peak, reported: receipt.peakSampledRssMiB });
 check('host class', receipt.method?.host === (modeArg === 'installed' ? 'installed candidate' : 'source checkout'), receipt.method?.host);
+check('GPU process and context health', gpuPids.length === samples.length && gpuPids.every(pid => Number.isInteger(pid) && pid > 0) &&
+  new Set(gpuPids).size === 1 && contextLosses === 0, { gpuPids: [...new Set(gpuPids)], contextLosses });
 if (modeArg === 'source') {
-  check('source memory observation', peak !== null && peak > 0,
-    { peak, shortRunCeilingNotApplied: budgets.source.navigationPeakRssMiB });
+  const limits = budget?.longMemory;
+  check('predeclared source long-run budget', !!limits && Object.values(limits).filter(value => typeof value === 'number').length === 6,
+    limits ?? null);
+  check('source peak RSS ceiling', peak !== null && peak <= limits?.peakRssMiB, { peak, limit: limits?.peakRssMiB });
+  check('source late RSS plateau', lateGrowthMiB !== null && lateGrowthMiB <= limits?.lateGrowthMiB,
+    { lateGrowthMiB, limit: limits?.lateGrowthMiB });
+  check('source renderer private ceiling', peakRendererPrivateMiB !== null && peakRendererPrivateMiB <= limits?.peakRendererPrivateMiB,
+    { peakRendererPrivateMiB, limit: limits?.peakRendererPrivateMiB });
+  check('source renderer private plateau', rendererPrivateLateGrowthMiB !== null &&
+    rendererPrivateLateGrowthMiB <= limits?.rendererPrivateLateGrowthMiB,
+  { rendererPrivateLateGrowthMiB, limit: limits?.rendererPrivateLateGrowthMiB });
+  check('source GPU private ceiling', peakGpuPrivateMiB !== null && peakGpuPrivateMiB <= limits?.peakGpuPrivateMiB,
+    { peakGpuPrivateMiB, limit: limits?.peakGpuPrivateMiB });
+  check('source GPU private plateau', gpuPrivateLateGrowthMiB !== null &&
+    gpuPrivateLateGrowthMiB <= limits?.gpuPrivateLateGrowthMiB,
+  { gpuPrivateLateGrowthMiB, limit: limits?.gpuPrivateLateGrowthMiB });
 } else {
   check('qualified installed budget', budget?.qualified === true, budget?.reason ?? budget?.qualified);
   check('reviewed installed late-growth budget', budget?.reviewed === true, budget?.reviewed);
@@ -43,10 +71,11 @@ if (modeArg === 'source') {
   { lateGrowthMiB, limit: budget?.longMemoryLateGrowthMiB });
 }
 const result = { schema: 'math3d.release20.long-memory-review.v1', mode: modeArg,
-  status: checks.every(item => item.pass) ? modeArg === 'installed' ? 'passed' : 'observed' : 'failed',
-  plateauQualified: modeArg === 'installed' && checks.every(item => item.pass),
-  peakSampledRssMiB: peak, lateGrowthMiB, checks };
+  status: checks.every(item => item.pass) ? 'passed' : 'failed',
+  plateauQualified: checks.every(item => item.pass),
+  peakSampledRssMiB: peak, lateGrowthMiB, peakRendererPrivateMiB, rendererPrivateLateGrowthMiB,
+  peakGpuPrivateMiB, gpuPrivateLateGrowthMiB, checks };
 mkdirSync(dirname(resolve(outputArg)), { recursive: true });
 writeFileSync(resolve(outputArg), JSON.stringify(result, null, 2) + '\n');
-console.log(`${result.status}: peak ${peak} MiB, late growth ${lateGrowthMiB} MiB; plateau qualification pending review.`);
+console.log(`${result.status}: peak ${peak} MiB, late growth ${lateGrowthMiB} MiB; renderer private peak ${peakRendererPrivateMiB} MiB.`);
 if (result.status === 'failed') process.exitCode = 1;

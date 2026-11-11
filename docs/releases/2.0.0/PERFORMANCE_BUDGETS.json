@@ -29,7 +29,17 @@
       "project": { "p95Ms": 20000, "warmCopyMaxMs": 800, "peakRssMiB": 1500 }
     },
     "peakProcessTreeRssMiB": 1500,
-    "navigationPeakRssMiB": 1450
+    "navigationPeakRssMiB": 1450,
+    "longMemory": {
+      "reference": "Windows i9-12900K source build, continuous 100-action cycles for at least two hours",
+      "derivation": "The short-run 1500 MiB ceiling plus 548 MiB headroom, with at most 64 MiB late-window growth; GPU and renderer-private ceilings are separate native-memory safeguards. This is a predeclared acceptance target, not a measurement or installed budget.",
+      "peakRssMiB": 2048,
+      "lateGrowthMiB": 64,
+      "peakRendererPrivateMiB": 1024,
+      "rendererPrivateLateGrowthMiB": 32,
+      "peakGpuPrivateMiB": 512,
+      "gpuPrivateLateGrowthMiB": 32
+    }
   },
   "installed": {
     "qualified": false,
