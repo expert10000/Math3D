@@ -34,7 +34,7 @@ jobs:
         shell: bash
         run: npm ci && npm --prefix renderer ci
       - name: Targeted scientific and workflow regressions
-        run: node renderer/node_modules/vitest/vitest.mjs run --config renderer/vite.config.ts renderer/src/vectorfield3d/fieldExplorerWorkflow.test.tsx renderer/src/vectorfield3d/FieldExplorerProjectHierarchy.test.tsx renderer/src/vectorfield3d/vectorField3DGolden.test.ts renderer/src/vectorfield3d/vectorField3DSlices.test.ts tests/unit/vectorField3DLocalComparison.test.ts tests/unit/gf24ScientificComparison.test.ts --maxWorkers=2
+        run: node renderer/node_modules/vitest/vitest.mjs run --config renderer/vite.config.ts renderer/src/vectorfield3d/fieldExplorerWorkflow.test.tsx renderer/src/vectorfield3d/FieldExplorerProjectHierarchy.test.tsx renderer/src/vectorfield3d/vectorField3DGolden.test.ts renderer/src/vectorfield3d/vectorField3DSlices.test.ts tests/unit/vectorField3DLocalComparison.test.ts tests/unit/gf24ScientificComparison.test.ts renderer/src/projects/projectJourneyCapabilities.test.ts --maxWorkers=2
       - name: Type check and build
         shell: bash
         run: npm run typecheck:noemit && npm run build:core

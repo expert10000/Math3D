@@ -164,6 +164,7 @@ export function VectorField3DComparisonPanel({ document, project, onSave, onOpen
       {busy ? "Verifying sources…" : "Compare fields"}</button>
     {error && <p role="alert">{error}</p>}
     {currentResult && <div role="status">
+      <details><summary>Comparison source pins</summary>
       <p>Source A {currentResult.provenance.source.documentId} · revision {currentResult.provenance.source.revision}
         {" "}· {currentResult.provenance.source.structuralHash}</p>
       <p>Source B {String((currentResult.provenance.operation.parameters.secondSource as
@@ -172,6 +173,7 @@ export function VectorField3DComparisonPanel({ document, project, onSave, onOpen
           { revision: number }).revision)} ·
         {" "}{String((currentResult.provenance.operation.parameters.secondSource as
           { structuralHash: string }).structuralHash)}</p>
+      </details>
       <p>Coverage {String(currentResult.summary.valid)}/{String(currentResult.summary.sampled)};
         {" "}angular undefined {String(currentResult.summary.angularUndefined)}.
         {" "}{status?.status === "withheld" ? `Values withheld: ${status.reason}.` :

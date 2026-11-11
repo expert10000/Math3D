@@ -34,6 +34,6 @@ describe("Project journey decisions", () => {
     expect(resolveProjectJourneys(host(true, true, true), compatible,
       { route: "remote", verified: true, reason: null }).compute.mode).toBe("open");
     expect(resolveProjectJourneys(host(true, true, false, false), compatible,
-      { route: "local-worker", verified: true, reason: null }).compute.reason).toMatch(/worker/);
+      { route: "local-worker", verified: true, reason: null }).compute.reason).toBe("Web Worker is unavailable.");
   });
 });

@@ -2457,6 +2457,11 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
     <h5 className="field-explorer-inspector-title" aria-live="polite">
       {inspectorSection === "all" ? "Overview" :
         inspectorSection[0]!.toUpperCase() + inspectorSection.slice(1)}</h5>
+    {!fieldLayer && <div data-gf06-section="analyze" className="field-explorer-compare-inspector">
+      <VectorField3DComparisonPanel document={document} project={project}
+        onWorkflowChange={changes => setDocument(current => reviseFieldExplorerWorkflow(current, changes))}
+        onSave={onSaveComparisonResult} onOpenProfile={onOpenComparisonProfile} />
+    </div>}
     {fieldLayer && <section className="scientific-explorer-field-inspector" data-gf06-section="layer">
       <h4>{fieldLayer.metadata.title}</h4>
       <p>{fieldLayer.source.paired ? "Complex pair" : "Scalar field"} ·
@@ -2921,9 +2926,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
         onValidateAtlasCoverage={onValidateAtlasCoverage}
         onValidateAtlasSeams={onValidateAtlasSeams}
         onValidateAtlasRefinement={onValidateAtlasRefinement} />
-      <VectorField3DComparisonPanel document={document} project={project}
-        onWorkflowChange={changes => setDocument(current => reviseFieldExplorerWorkflow(current, changes))}
-        onSave={onSaveComparisonResult} onOpenProfile={onOpenComparisonProfile} />
+
       <VectorField3DFrameUnitPanel document={document} />
       <VectorField3DTimeSourcePanel document={document} project={project}
         onSave={onSaveTemporalSource} onSavePathline={onSaveTemporalPathline}
