@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { MATH3D_PROJECT_TEMPLATES, type Math3DProjectTemplateId, type PlatformCapabilitySnapshot } from "@math3d/core";
+import { MATH3D_PROJECT_TEMPLATES, resolvePlatformJourneys, type Math3DProjectTemplateId, type PlatformCapabilitySnapshot } from "@math3d/core";
 
 import { NOTEBOOK_STARTERS, type NotebookStarterId } from "../projects/notebookStarters";
 import { CURATED_STUDIES, type CuratedStudy } from "../projects/curatedStudyCatalog";
@@ -81,9 +81,9 @@ export const ProjectTemplatesPanel: React.FC<{ onPreview: (id: ProjectStarterId)
   casProvenance?: Readonly<{ projectTitle: string; definitions: readonly Readonly<{ label: string; revision: number }>[]; results: number }> | null;
   copies: Partial<Record<ProjectStarterId, ProjectLibraryEntry>>; guidedCopies: Partial<Record<ProjectStarterId, ProjectLibraryEntry>>;
   busy: boolean; query?: string; moduleFilter?: string; host?: PlatformCapabilitySnapshot;
-  assetBytes?: Readonly<Record<string, number>> }> = ({ onPreview, onOpen, onNewCopy,
+  assetBytes?: Readonly<Record<string, number>>; guidedLimits?: Readonly<Record<string, string | null>> }> = ({ onPreview, onOpen, onNewCopy,
     onPreviewCurated, onOpenCurated, onNewCuratedCopy, onImportQuantumScene, quantumImportAvailable = false,
-    onOpenCasGallery, casProvenance, copies, guidedCopies, busy, query = "", moduleFilter = "All modules", host, assetBytes = {} }) => {
+    onOpenCasGallery, casProvenance, copies, guidedCopies, busy, query = "", moduleFilter = "All modules", host, assetBytes = {}, guidedLimits = {} }) => {
   const [id, setId] = useState<ProjectStarterId>("catenary-study");
   const [view, setView] = useState<"starters" | "studies">("starters");
   const matches = starters.filter(item => (moduleFilter === "All modules" || PROJECT_STARTER_MODULES[item.id].includes(moduleFilter)) &&
@@ -97,6 +97,8 @@ export const ProjectTemplatesPanel: React.FC<{ onPreview: (id: ProjectStarterId)
       haystack.includes(query.trim().toLowerCase());
   });
   const selected = matches.find(item => item.id === id) ?? matches[0];
+  const galleryJourney = host ? resolvePlatformJourneys(host).gallery : null;
+  const canCreateCopy = !galleryJourney || galleryJourney.mode === "open";
   return <section data-testid="project-templates" className="project-starters">
     <div className="curated-study-switch" role="group" aria-label="Gallery view">
       <button type="button" data-testid="project-gallery-guided" aria-pressed={view === "studies"} onClick={() => setView("studies")}>Guided Studies ({guided.length})</button>
@@ -110,6 +112,8 @@ export const ProjectTemplatesPanel: React.FC<{ onPreview: (id: ProjectStarterId)
         hasCopy={!!(curatedStarterId(item) && guidedCopies[curatedStarterId(item)!])} busy={busy}
         qualification={host ? qualifyCuratedStudy(item, host, { quantumChooser: quantumImportAvailable,
           casAvailable: !!onOpenCasGallery, measuredBytes: assetBytes[item.id],
+          savedCopyLimit: item.route.kind === "project" && guidedCopies[item.route.starterId] ?
+            guidedLimits[item.route.starterId] === undefined ? "Checking saved Project compatibility…" : guidedLimits[item.route.starterId] : null,
           source: assetBytes[item.id] === undefined ? "unmeasured" : item.route.kind === "project" && guidedCopies[item.route.starterId] ? "saved-copy" : "prepared-copy" }) : undefined}
         quantumImportAvailable={quantumImportAvailable} onImportQuantumScene={onImportQuantumScene} onOpenCasGallery={onOpenCasGallery}
         casProvenance={casProvenance}
@@ -125,14 +129,15 @@ export const ProjectTemplatesPanel: React.FC<{ onPreview: (id: ProjectStarterId)
       </div>
     </div>
     {!matches.length && <p className="project-gallery-empty">No starters match. Try another search or module.</p>}
+    {galleryJourney?.reason && <p role="status" data-testid="project-starter-host-limit">{galleryJourney.reason} Saved starters remain available for preview when their sources verify.</p>}
     <div className="project-starter-grid">{matches.map((item) => <article key={item.id} className="project-starter-card" data-testid={`project-template-card-${item.id}`}>
       <div className="project-starter-art"><StarterArtwork id={item.id} /></div>
       <div className="project-starter-body"><div className="project-starter-modules">{PROJECT_STARTER_MODULES[item.id].map((module) => <span key={module}>{module}</span>)}</div>
         <h4>{item.title}</h4><p>{item.description}</p><small>{item.steps[0]}</small>
         <small data-testid={`project-template-copy-${item.id}`}>{copies[item.id] ? `Open resumes “${copies[item.id]!.title}”.` : "Open creates your first saved copy."}</small>
-        <div className="project-starter-actions"><button type="button" data-testid={`project-template-open-${item.id}`} disabled={busy} onClick={() => onOpen(item.id)}>Open</button>
+        <div className="project-starter-actions"><button type="button" data-testid={`project-template-open-${item.id}`} disabled={busy || !canCreateCopy} onClick={() => onOpen(item.id)}>Open</button>
           <button type="button" data-testid={`project-template-card-preview-${item.id}`} disabled={busy} onClick={() => { setId(item.id); onPreview(item.id); }}>Preview</button>
-          {copies[item.id] && <button type="button" data-testid={`project-template-new-copy-${item.id}`} disabled={busy} onClick={() => onNewCopy(item.id)}>New copy</button>}</div>
+          {copies[item.id] && <button type="button" data-testid={`project-template-new-copy-${item.id}`} disabled={busy || !canCreateCopy} onClick={() => onNewCopy(item.id)}>New copy</button>}</div>
       </div>
     </article>)}</div>
     </>}
@@ -164,6 +169,7 @@ export const CuratedStudyCard: React.FC<{ item: CuratedStudy; starterTitle?: str
             <li key={`${record.label}:${index}`}>{record.label} · revision {record.revision}</li>)}</ul>
           <button type="button" disabled={busy || !onOpenCasGallery} onClick={onOpenCasGallery}>Review saved provenance in CAS</button>
         </div>}
+        {item.route.kind === "cas-gallery" && <p data-testid="curated-study-cas-compute-limit">Bundled definitions and saved evidence can be reviewed offline. Live calculations require a separately verified Compute route.</p>}
         <dl><div><dt>Objects</dt><dd>{item.objects}</dd></div><div><dt>Do</dt><dd>{item.operations}</dd></div>
           <div><dt>Learn</dt><dd>{item.insight}</dd></div></dl>
         <details><summary>Requirements and limits</summary>

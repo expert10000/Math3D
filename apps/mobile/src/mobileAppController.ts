@@ -633,6 +633,7 @@ export const useMobileAppController = () => {
   }, [sceneSearchQuery, sceneSortMode, sceneSummaries, storedProjects]);
 
   const projectLibraryCards = useMemo(() => buildMobileProjectLibraryCards(storedProjects, {
+    host: probeMobilePlatformCapabilities(),
     section: librarySection,
     query: sceneSearchQuery,
     sort: sceneSortMode,
@@ -1767,14 +1768,14 @@ export const useMobileAppController = () => {
         if (format === "math3d.project") { try { graphEditable = readMobileNamedGraphProject(picked.serializedProject) !== null; } catch { /* validated preview path below */ } }
         if (!graphEditable && format === "math3d.project") {
           const preserved = preserveMobilePersonalGraphWork(storedProjects, currentGraphWork());
-          const project = importMobileProjectPreview(picked.serializedProject, preserved, picked.sourceName, source === "import" ? "imported" : source);
+          const project = importMobileProjectPreview(picked.serializedProject, preserved, picked.sourceName, source === "import" ? "imported" : source, Date.now(), probeMobilePlatformCapabilities());
           const saved = await persistProjectMutation([project, ...preserved], `Imported ${project.title} as a saved preview. Explore its Workbooks, Notes and documents; current editors were kept.`, "Could not import project preview");
           if (saved) { setSceneSearchQuery(project.title); setLibrarySection("all"); setTab("projects"); }
           return saved;
         }
         if (format !== "math3d.project") {
           const preserved = preserveMobilePersonalGraphWork(storedProjects, currentGraphWork());
-          const project = importMobileProjectPreview(picked.serializedProject, preserved, picked.sourceName, source === "import" ? "imported" : source);
+          const project = importMobileProjectPreview(picked.serializedProject, preserved, picked.sourceName, source === "import" ? "imported" : source, Date.now(), probeMobilePlatformCapabilities());
           const saved = await persistProjectMutation([project, ...preserved], `Imported ${project.title} as a saved preview. Explore its Workbooks, Notes and documents; current editors were kept.`, "Could not import project preview");
           if (saved) { setSceneSearchQuery(project.title); setLibrarySection("all"); setTab("projects"); }
           return saved;

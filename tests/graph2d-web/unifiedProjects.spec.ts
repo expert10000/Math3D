@@ -6,6 +6,8 @@ import { expect, test, type Locator } from "@playwright/test";
 import { runNamedProjectRoundTrip } from "../e2e/helpers/namedProjectRoundTrip";
 import { inspectMeshPackage, meshResourceFixture, pointResourceFixture, scalarVolumeResourceFixture, inspectScalarVolumePackage } from "../e2e/helpers/meshProjectResources";
 import { projectFreezeFixture, inspectFreezePackage, editFreezeProject, freezeControls, checkFreezeHistory, checkFreezeResources } from "../e2e/helpers/projectFreeze";
+import { createGraph2DWorkspaceProject, createMath3DProject, getGraph2DPresetCatalog,
+  instantiateGraph2DPreset, parseMath3DProject, serializeMath3DProject } from "@math3d/core";
 
 const showProjectTransfer = async (panel: Locator) => {
   const more = panel.locator("details.project-header-more");
@@ -13,6 +15,24 @@ const showProjectTransfer = async (panel: Locator) => {
   await more.getByRole("button", { name: "Import / export" }).click();
   await expect(panel.getByTestId("project-export-resources")).toBeVisible();
 };
+
+test("M3D20-11 browser saved payload parses as tagged 1.7 Project after reload", async ({ page }) => {
+  const raw = readFileSync("docs/evidence/projects-local-share-2026-10-03/received.math3d.project.json", "utf8");
+  const original = parseMath3DProject(raw);
+  await page.goto("/");
+  await page.evaluate(() => { localStorage.clear(); localStorage.setItem("math3d.computeEngines.firstLaunchSeen", "1"); });
+  await page.reload();
+  await page.getByTestId("projects-toggle").click();
+  const panel = page.getByTestId("project-explorer-panel");
+  await panel.getByTestId("project-import-file").setInputFiles({ name: "tagged-1.7.json", mimeType: "application/json", buffer: Buffer.from(raw) });
+  await expect(panel.getByTestId("project-migration-review")).toContainText("math3d.project version 1");
+  await panel.getByTestId("project-import-save").click();
+  await expect(panel.getByTestId("project-message")).toContainText("Imported into the library");
+  await page.reload();
+  const returned = await page.evaluate(id => localStorage.getItem(`math3d.project.v1.payload.${id}`), original.identity.id);
+  expect(returned).toBeTruthy();
+  expect(parseMath3DProject(returned!)).toEqual(original);
+});
 
 test("M3D20-12 local browser reopens a verified Project package", async ({ page }) => {
   const raw = readFileSync("tests/fixtures/project-workbook-note-journey.json", "utf8");
@@ -45,10 +65,45 @@ test("M3D20-12 unavailable browser storage disables Project import actions", asy
   await page.goto("/");
   await page.getByTestId("projects-toggle").click();
   const panel = page.getByTestId("project-explorer-panel");
+  await panel.getByRole("button", { name: "Starter projects", exact: true }).click();
+  await expect(panel.getByTestId("project-template-open-catenary-study")).toBeDisabled();
+  await expect(panel.getByTestId("project-template-card-preview-catenary-study")).toBeEnabled();
+  await expect(panel.getByTestId("project-starter-host-limit")).toContainText("storage");
   await panel.getByTestId("project-import-file").setInputFiles({ name: "project.resources.json", mimeType: "application/json", buffer: Buffer.from(raw) });
   await expect(panel.getByTestId("project-import-open")).toBeDisabled();
   await expect(panel.getByTestId("project-import-save")).toBeDisabled();
   await expect(panel.getByTestId("project-import-limit")).toContainText("Local persistent storage is blocked");
+});
+
+test("M3D20-12 local browser keeps missing sources in preview and saved research visible offline", async ({ page }) => {
+  const graph = instantiateGraph2DPreset(getGraph2DPresetCatalog().get("piecewise-data-gaps")!, "platform-browser").document;
+  const missing = createMath3DProject(createGraph2DWorkspaceProject(graph), { stableKey: "platform-browser-missing" });
+  const packageRaw = readFileSync("tests/fixtures/project-workbook-note-journey.json", "utf8");
+  const research = JSON.parse(packageRaw).project;
+  await page.goto("/");
+  await page.evaluate(() => { localStorage.clear(); localStorage.setItem("math3d.computeEngines.firstLaunchSeen", "1"); });
+  await page.reload();
+  await page.getByTestId("projects-toggle").click();
+  const panel = page.getByTestId("project-explorer-panel");
+  await panel.getByTestId("project-import-file").setInputFiles({ name: "missing.json", mimeType: "application/json",
+    buffer: Buffer.from(serializeMath3DProject(missing)) });
+  await expect(panel.getByTestId("project-import-preview")).toContainText("missing or unverified");
+  await expect(panel.getByTestId("project-import-open")).toBeDisabled();
+  await expect(panel.getByTestId("project-import-save")).toBeEnabled();
+  await panel.getByTestId("project-import-cancel").click();
+  await panel.getByTestId("project-import-file").setInputFiles({ name: "research-package.json", mimeType: "application/json", buffer: Buffer.from(packageRaw) });
+  await expect(panel.getByTestId("project-import-open")).toBeEnabled();
+  await panel.getByTestId("project-import-open").click();
+  await expect(panel.getByTestId("project-workbooks")).toContainText("Graph Derivative Investigation");
+  await page.context().setOffline(true);
+  await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(false);
+  await expect(panel.getByTestId("project-workbooks")).toContainText("Graph Derivative Investigation");
+  expect(await page.evaluate(id => JSON.parse(localStorage.getItem(`math3d.project.v1.payload.${id}`)!).notes.length, research.identity.id))
+    .toBe(research.notes.length);
+  await page.context().setOffline(false);
+  await page.reload();
+  expect(await page.evaluate(id => JSON.parse(localStorage.getItem(`math3d.project.v1.payload.${id}`)!).identity.id, research.identity.id))
+    .toBe(research.identity.id);
 });
 
 test("Project → Workbook → Note opens from the main web workspace", async ({ page }) => {

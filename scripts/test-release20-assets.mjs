@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtemp, mkdir, writeFile, readFile, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm, readdir, copyFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { verifyRelease20Assets } from './verify-release20-assets.mjs';
+import { stageRelease20CandidateAssets } from './stage-release20-candidate-assets.mjs';
 
 const root = await mkdtemp(join(tmpdir(), 'math3d-release20-assets-'));
 const assets = join(root, 'release-assets');
@@ -22,22 +23,48 @@ try {
     await write(`release-assets/Math3D-2.0.0-${name}`, `${name} text\n`);
   }
   await write('release/win-unpacked/Math3D.exe', 'app binary');
+  await write('release/win-unpacked/resources/python-worker/worker.exe', 'worker binary');
   await write('release-assets/Math3D-Setup-2.0.0.exe', 'installer binary');
+  const commit = 'a'.repeat(40), thumbprint = 'b'.repeat(40);
+  const identityBytes = JSON.stringify({ version: '2.0.0', commit, dirty: false });
+  await write('dist/build-identity.json', identityBytes);
+  const candidate = { schema: 'math3d/release20-candidate/v1', math3d: { version: '2.0.0', channel: 'stable',
+    commit, installerName: 'Math3D-Setup-2.0.0.exe', installerSha256: sha('installer binary'),
+    executableSha256: sha('app binary'), workerSha256: sha('worker binary'),
+    buildIdentitySha256: sha(identityBytes), signerThumbprint: thumbprint,
+    nsisSystemDllSha256: '1556ee1bf1cb477124e1269b534ed81653ba71994dab7903ee3782b75acc2810' },
+    inputs: Object.fromEntries(['package-lock.json', 'renderer/package-lock.json',
+      'python/worker/requirements.freeze.txt', 'python/worker/build-requirements.freeze.txt'].map(name => [name, sha(name)])) };
+  await write('release-assets/candidate-manifest.json', JSON.stringify(candidate));
+  await write('release-assets/signatures.json', '\uFEFF' + JSON.stringify({ schema: 'math3d/release20-signatures/v1',
+    thumbprint, files: [sha('installer binary'), sha('app binary'), sha('worker binary')].map(sha256 => ({ sha256 })) }));
+  await write('release-assets/nsis.json', '\uFEFF' + JSON.stringify({ schema: 'math3d/release20-nsis/v1',
+    installerSha256: sha('installer binary'), systemDllSha256: candidate.math3d.nsisSystemDllSha256, systemDllBytes: 30208 }));
   await write('release-assets/Math3D-2.0.0-windows-licenses.md', '# Math3D 2.0.0 windows release inventory\n## Declared package licenses\n');
   const components = [
     ['Math3D.exe', 'app binary'],
+    ['resources/python-worker/worker.exe', 'worker binary'],
     ...['LICENSE', 'THIRD_PARTY_NOTICES.md', 'SOURCE_OFFER.md'].map(name => [`resources/${name}`, `${name} text\n`]),
   ].map(([name, bytes]) => ({ type: 'file', name, hashes: [{ alg: 'SHA-256', content: sha(bytes) }],
     properties: [{ name: 'math3d:owner', value: 'Math3D' }] }));
-  const bom = { bomFormat: 'CycloneDX', specVersion: '1.6', metadata: { component: { name: 'Math3D', version: '2.0.0' } }, components };
+  const bom = { bomFormat: 'CycloneDX', specVersion: '1.6', metadata: { component: { name: 'Math3D', version: '2.0.0' } },
+    components: [{ type: 'application', name: 'Math3D', properties: [{ name: 'math3d:sourceCommit', value: commit }] }, ...components] };
   await write('release-assets/Math3D-2.0.0-windows.cdx.json', JSON.stringify(bom));
   await sums();
-  assert.equal((await verifyRelease20Assets(root)).unpackedFileCount, 4);
+  assert.equal((await verifyRelease20Assets(root)).unpackedFileCount, 5);
+  const candidateDir = join(root, 'candidate'), sbomDir = join(root, 'sbom');
+  await mkdir(candidateDir); await mkdir(sbomDir);
+  for (const name of ['Math3D-Setup-2.0.0.exe', 'candidate-manifest.json', 'signatures.json', 'nsis.json'])
+    await copyFile(join(assets, name), join(candidateDir, name));
+  for (const name of ['Math3D-2.0.0-windows.cdx.json', 'Math3D-2.0.0-windows-licenses.md'])
+    await copyFile(join(assets, name), join(sbomDir, name));
+  assert.equal((await stageRelease20CandidateAssets(root, candidateDir, sbomDir, join(root, 'staged'))).unpackedFileCount, 5);
+  await assert.rejects(stageRelease20CandidateAssets(root, candidateDir, sbomDir, join(root, 'staged')), /empty/);
   await write('release-assets/Math3D-Setup-2.0.0.exe', 'tampered');
   await assert.rejects(verifyRelease20Assets(root), /Checksum mismatch/);
   await write('release-assets/Math3D-Setup-2.0.0.exe', 'installer binary');
   await write('release/win-unpacked/Math3D.exe', 'tampered');
-  await assert.rejects(verifyRelease20Assets(root), /SBOM file mismatch/);
+  await assert.rejects(verifyRelease20Assets(root), /Unpacked executable bytes/);
   await write('release/win-unpacked/Math3D.exe', 'app binary');
   await write('release-assets/Math3D-2.0.0-THIRD_PARTY_NOTICES.md', 'wrong');
   await sums();
@@ -78,7 +105,7 @@ try {
   await write('release-assets/NATIVE_BUILD_RECEIPT-windows.json', JSON.stringify(receipt));
   await write('release-assets/Math3D-2.0.0-windows.cdx.json', JSON.stringify(bom));
   await sums();
-  assert.equal((await verifyRelease20Assets(root)).unpackedFileCount, 7);
+  assert.equal((await verifyRelease20Assets(root)).unpackedFileCount, 8);
   receipt.licenseEvidence.copyrightSha256.gmp = '';
   await write('release-assets/NATIVE_BUILD_RECEIPT-windows.json', JSON.stringify(receipt));
   await sums();

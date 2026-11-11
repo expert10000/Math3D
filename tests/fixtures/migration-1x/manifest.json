@@ -1,0 +1,34 @@
+{
+  "schema": "math3d.migration-corpus.v1",
+  "specimens": [
+    {
+      "release": "v1.6.0",
+      "path": "docs/evidence/mobile-gallery-2026-09-29/desktop-return.handoff.json",
+      "sha256": "947d550ad3a9d7989438a90294f89e329cfebbfd451879d722a0d740eb67348e",
+      "tagBlob": "2211659dd22658ddec918dc0dbcbb72811631d0c",
+      "kind": "Graph handoff v2; producer declares 1.5.0",
+      "expected": "adopt-handoff"
+    },
+    {
+      "release": "v1.7.0",
+      "path": "docs/evidence/projects-prj21-samsung-2026-10-03/input.math3d.project.json",
+      "sha256": "c25181e90626ce0eaa97c32c6d615ab1beedb9776a050dd1caf146e06c65fa3b",
+      "tagBlob": "091dac012cd8bd8282f8f8ff6de71bd505971bc1",
+      "kind": "named multi-document Project with saved results",
+      "expected": "preserve"
+    },
+    {
+      "release": "v1.7.0",
+      "path": "docs/evidence/projects-local-share-2026-10-03/received.math3d.project.json",
+      "sha256": "8938b0bfc2c2653b7ddc38f5991c42548cfed40449688e777d3f58c5ef35c2fc",
+      "tagBlob": "20f18a1d606644049584f0e144566ae62377be88",
+      "kind": "named cross-host Project with saved result",
+      "expected": "preserve"
+    }
+  ],
+  "gaps": [
+    "No saved Project export from v1.4.x or v1.5.0 exists in the checked-in release trees; later platform fixtures do not qualify as release exports.",
+    "The v1.6.0 handoff carries a 1.5.0 producer string; neither is evidence of a 1.6 named Project export.",
+    "The v1.7.0 named Projects do not contain saved Notes or Workbooks; later schema regressions cover those fields separately."
+  ]
+}

@@ -1,0 +1,214 @@
+{
+  "schema": "math3d.release20.performance-gate.v1",
+  "mode": "source",
+  "checkedAt": "2026-11-11T11:18:46.869Z",
+  "policy": "docs\\releases\\2.0.0\\PERFORMANCE_BUDGETS.json",
+  "report": "docs\\releases\\2.0.0\\evidence\\m3d20-10-source-final.json",
+  "status": "pass",
+  "checks": [
+    {
+      "name": "receipt schema",
+      "actual": "math3d.release20.performance.v1",
+      "limit": "math3d.release20.performance.v1",
+      "pass": true
+    },
+    {
+      "name": "host",
+      "actual": "win32 10.0.26200 | x64 | 12th Gen Intel(R) Core(TM) i9-12900K",
+      "limit": "win32 10.0.26200 | x64 | 12th Gen Intel(R) Core(TM) i9-12900K",
+      "pass": true
+    },
+    {
+      "name": "logical CPUs",
+      "actual": 24,
+      "limit": 24,
+      "pass": true
+    },
+    {
+      "name": "RAM GiB",
+      "actual": 127.7,
+      "limit": 127.7,
+      "pass": true
+    },
+    {
+      "name": "build identity",
+      "actual": "92c7e063b1f1d1ffb734da7e2e840dc85bedc4b8 / dirty=false",
+      "limit": "commit + renderer hash + clean build",
+      "pass": true
+    },
+    {
+      "name": "source host",
+      "actual": "Windows Electron source checkout",
+      "limit": "Windows Electron source checkout",
+      "pass": true
+    },
+    {
+      "name": "mesh dataset",
+      "actual": "12192750 / 69f109fb8ae354684d63a1604ced08a94382aa9a130119fa6fafbdf1e23ad33c",
+      "limit": "12192750 / 69f109fb8ae354684d63a1604ced08a94382aa9a130119fa6fafbdf1e23ad33c",
+      "pass": true
+    },
+    {
+      "name": "volume dataset",
+      "actual": "128×128×128",
+      "limit": "128×128×128",
+      "pass": true
+    },
+    {
+      "name": "Project dataset",
+      "actual": "mesh-comparison-study / 3",
+      "limit": "mesh-comparison-study / 3",
+      "pass": true
+    },
+    {
+      "name": "coldStart samples",
+      "actual": 3,
+      "limit": "at least 3",
+      "pass": true
+    },
+    {
+      "name": "coldStart p95 ms",
+      "actual": 1636.4,
+      "limit": 2000,
+      "pass": true
+    },
+    {
+      "name": "warmStart samples",
+      "actual": 3,
+      "limit": "at least 3",
+      "pass": true
+    },
+    {
+      "name": "warmStart p95 ms",
+      "actual": 1825.8,
+      "limit": 2200,
+      "pass": true
+    },
+    {
+      "name": "gallery samples",
+      "actual": 3,
+      "limit": "at least 3",
+      "pass": true
+    },
+    {
+      "name": "gallery p95 ms",
+      "actual": 5040.5,
+      "limit": 6100,
+      "pass": true
+    },
+    {
+      "name": "gallery peak RSS MiB",
+      "actual": 897.2,
+      "limit": 1150,
+      "pass": true
+    },
+    {
+      "name": "gallery warm copy max ms",
+      "actual": 674.8,
+      "limit": 850,
+      "pass": true
+    },
+    {
+      "name": "mesh samples",
+      "actual": 3,
+      "limit": "at least 3",
+      "pass": true
+    },
+    {
+      "name": "mesh p95 ms",
+      "actual": 7805.3,
+      "limit": 9400,
+      "pass": true
+    },
+    {
+      "name": "mesh peak RSS MiB",
+      "actual": 998,
+      "limit": 1250,
+      "pass": true
+    },
+    {
+      "name": "volume samples",
+      "actual": 3,
+      "limit": "at least 3",
+      "pass": true
+    },
+    {
+      "name": "volume p95 ms",
+      "actual": 14454.6,
+      "limit": 18100,
+      "pass": true
+    },
+    {
+      "name": "volume peak RSS MiB",
+      "actual": 1195.7,
+      "limit": 1500,
+      "pass": true
+    },
+    {
+      "name": "project samples",
+      "actual": 3,
+      "limit": "at least 3",
+      "pass": true
+    },
+    {
+      "name": "project p95 ms",
+      "actual": 16607.5,
+      "limit": 20000,
+      "pass": true
+    },
+    {
+      "name": "project peak RSS MiB",
+      "actual": 1141.5,
+      "limit": 1500,
+      "pass": true
+    },
+    {
+      "name": "project warm copy max ms",
+      "actual": 620.6,
+      "limit": 800,
+      "pass": true
+    },
+    {
+      "name": "whole profile peak RSS MiB",
+      "actual": 1195.7,
+      "limit": 1500,
+      "pass": true
+    },
+    {
+      "name": "m3d20-10-navigation-100 build",
+      "actual": "807c0fa5e9c356b25ea775f7dea812c9132d12095ca61fdc555a17e6e7218941",
+      "limit": "807c0fa5e9c356b25ea775f7dea812c9132d12095ca61fdc555a17e6e7218941",
+      "pass": true
+    },
+    {
+      "name": "m3d20-10-navigation-100",
+      "actual": true,
+      "limit": true,
+      "pass": true
+    },
+    {
+      "name": "m3d20-10-volume-failures build",
+      "actual": "807c0fa5e9c356b25ea775f7dea812c9132d12095ca61fdc555a17e6e7218941",
+      "limit": "807c0fa5e9c356b25ea775f7dea812c9132d12095ca61fdc555a17e6e7218941",
+      "pass": true
+    },
+    {
+      "name": "m3d20-10-volume-failures",
+      "actual": true,
+      "limit": true,
+      "pass": true
+    },
+    {
+      "name": "m3d20-10-quad-restart build",
+      "actual": "807c0fa5e9c356b25ea775f7dea812c9132d12095ca61fdc555a17e6e7218941",
+      "limit": "807c0fa5e9c356b25ea775f7dea812c9132d12095ca61fdc555a17e6e7218941",
+      "pass": true
+    },
+    {
+      "name": "m3d20-10-quad-restart",
+      "actual": true,
+      "limit": true,
+      "pass": true
+    }
+  ]
+}

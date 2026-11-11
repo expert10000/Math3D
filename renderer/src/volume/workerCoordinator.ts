@@ -16,6 +16,8 @@ export type VolumeWorkerLike = {
   postMessage: (message: VolumeWorkerInbound, transfer?: Transferable[]) => void;
   addEventListener: (type: "message", listener: (event: MessageEvent<VolumeWorkerOutbound>) => void) => void;
   removeEventListener: (type: "message", listener: (event: MessageEvent<VolumeWorkerOutbound>) => void) => void;
+  onerror?: ((event: ErrorEvent) => void) | null;
+  onmessageerror?: ((event: MessageEvent) => void) | null;
   terminate: () => void;
 };
 
@@ -47,29 +49,43 @@ export class VolumeWorkerCoordinator {
   private worker: VolumeWorkerLike | null = null;
   private readonly pending = new Map<string, Pending>();
   private readonly latestByOperation = new Map<string, string>();
-  private readonly lastValidByOperation = new Map<string, VolumeJobArtifact>();
+  // Keep cache keys, not a second set of potentially large output arrays.
+  private readonly lastValidByOperation = new Map<string, string>();
   private readonly listener = (event: MessageEvent<VolumeWorkerOutbound>) => this.receive(event.data);
+  private readonly workerError = (event: ErrorEvent) => {
+    event.preventDefault?.();
+    this.failWorker(event.message || "Volume worker exited unexpectedly.");
+  };
+  private readonly workerMessageError = () => this.failWorker("Volume worker response could not be read.");
   private readonly workerFactory: () => VolumeWorkerLike;
   readonly cache: VolumeJobCache;
   private readonly currentRevision: (volumeId: string) => VolumeRevisionSnapshot | null;
+  private readonly idleTimeoutMs: number;
+  private idleTimer: ReturnType<typeof setTimeout> | null = null;
+  private disposed = false;
 
   constructor(
     workerFactory: () => VolumeWorkerLike,
     cache = new VolumeJobCache(),
     currentRevision: (volumeId: string) => VolumeRevisionSnapshot | null = () => null,
+    idleTimeoutMs = 15_000,
   ) {
     this.workerFactory = workerFactory;
     this.cache = cache;
     this.currentRevision = currentRevision;
+    this.idleTimeoutMs = idleTimeoutMs;
   }
 
   submit(request: VolumeJobRequest, options: VolumeWorkerSubmitOptions = {}): VolumeWorkerHandle {
+    if (this.disposed) throw new Error("Volume worker coordinator is disposed.");
+    if (this.pending.has(request.requestId)) throw new Error(`Volume worker request ${request.requestId} is already active.`);
     const { requestId: _requestId, scalars: _scalars, meshPositions: _meshPositions, meshIndices: _meshIndices, ...cacheInput } = request;
     const cacheKey = volumeJobCacheKey(cacheInput);
-    const cached = this.cache.get(cacheKey);
-    if (cached) {
-      options.onLifecycle?.("complete");
-      return { requestId: request.requestId, promise: Promise.resolve(cached), cancel: () => undefined };
+    const revision = this.currentRevision(request.volumeId);
+    if (revision && (revision.volumeRevision !== request.volumeRevision || revision.sampledGridRevision !== request.sampledGridRevision)) {
+      options.onLifecycle?.("stale");
+      return { requestId: request.requestId, promise: Promise.resolve(failureArtifact(request, cacheKey, "stale",
+        { code: "STALE_REVISION", message: "Volume source changed before this worker request was admitted.", retryable: true })), cancel: () => undefined };
     }
     const memory = createVolumeMemoryPlan(request.operation, request.dimensions, request.scalars.byteLength);
     if (memory.level === "rejected") {
@@ -81,31 +97,49 @@ export class VolumeWorkerCoordinator {
       };
     }
     const operationKey = `${request.volumeId}:${request.operation}`;
+    for (const [id, active] of this.pending) {
+      if (`${active.request.volumeId}:${active.request.operation}` === operationKey) this.cancel(id);
+    }
     this.latestByOperation.set(operationKey, request.requestId);
+    const cached = this.cache.get(cacheKey);
+    if (cached) {
+      this.lastValidByOperation.set(operationKey, cacheKey);
+      options.onLifecycle?.("complete");
+      return { requestId: request.requestId, promise: Promise.resolve(cached), cancel: () => undefined };
+    }
+    this.clearIdleTimer();
     options.onLifecycle?.("queued");
     let cancel: () => void = () => undefined;
     const promise = new Promise<VolumeJobArtifact>((resolve) => {
       const timer = setTimeout(() => {
         const active = this.pending.get(request.requestId);
         if (!active) return;
-        this.worker?.postMessage({ type: "cancel", requestId: request.requestId });
         this.pending.delete(request.requestId);
+        try { this.worker?.postMessage({ type: "cancel", requestId: request.requestId }); }
+        catch { this.failWorker("Volume worker failed while cancelling a timed-out request."); }
         active.options.onLifecycle?.("failed");
         resolve(failureArtifact(request, cacheKey, "failed", { code: "TIMEOUT", message: `Volume worker timed out after ${options.timeoutMs ?? VOLUME_MEMORY_LIMITS.defaultTimeoutMs} ms.`, retryable: true }));
+        this.scheduleIdleTermination();
       }, options.timeoutMs ?? VOLUME_MEMORY_LIMITS.defaultTimeoutMs);
       this.pending.set(request.requestId, { request, cacheKey, resolve, timer, options });
-      if (!this.worker) {
-        this.worker = this.workerFactory();
-        this.worker.addEventListener("message", this.listener);
+      try {
+        if (!this.worker) {
+          this.worker = this.workerFactory();
+          this.worker.addEventListener("message", this.listener);
+          this.worker.onerror = this.workerError;
+          this.worker.onmessageerror = this.workerMessageError;
+        }
+        const scalars = new Float32Array(request.scalars);
+        const meshPositions = request.meshPositions ? new Float32Array(request.meshPositions) : undefined;
+        const meshIndices = request.meshIndices ? new Uint32Array(request.meshIndices) : undefined;
+        const transfer: Transferable[] = [scalars.buffer];
+        if (meshPositions) transfer.push(meshPositions.buffer);
+        if (meshIndices) transfer.push(meshIndices.buffer);
+        this.worker.postMessage({ type: "run", request: { ...request, scalars, meshPositions, meshIndices } }, transfer);
+        options.onLifecycle?.("running");
+      } catch (error) {
+        this.failWorker(error instanceof Error ? error.message : String(error));
       }
-      const scalars = new Float32Array(request.scalars);
-      const meshPositions = request.meshPositions ? new Float32Array(request.meshPositions) : undefined;
-      const meshIndices = request.meshIndices ? new Uint32Array(request.meshIndices) : undefined;
-      const transfer: Transferable[] = [scalars.buffer];
-      if (meshPositions) transfer.push(meshPositions.buffer);
-      if (meshIndices) transfer.push(meshIndices.buffer);
-      this.worker.postMessage({ type: "run", request: { ...request, scalars, meshPositions, meshIndices } }, transfer);
-      options.onLifecycle?.("running");
       cancel = () => this.cancel(request.requestId);
     });
     return { requestId: request.requestId, promise, cancel };
@@ -116,13 +150,16 @@ export class VolumeWorkerCoordinator {
     if (!active) return;
     clearTimeout(active.timer);
     this.pending.delete(requestId);
-    this.worker?.postMessage({ type: "cancel", requestId });
+    try { this.worker?.postMessage({ type: "cancel", requestId }); }
+    catch { this.failWorker("Volume worker failed during cancellation."); }
     active.options.onLifecycle?.("cancelled");
     active.resolve(failureArtifact(active.request, active.cacheKey, "cancelled", { code: "CANCELLED", message: "Volume worker request cancelled.", retryable: true }));
+    this.scheduleIdleTermination();
   }
 
   getLastValid(volumeId: string, operation: VolumeJobRequest["operation"]): VolumeJobArtifact | null {
-    return this.lastValidByOperation.get(`${volumeId}:${operation}`) ?? null;
+    const key = this.lastValidByOperation.get(`${volumeId}:${operation}`);
+    return key ? this.cache.peek(key) : null;
   }
 
   diagnostics() {
@@ -130,12 +167,44 @@ export class VolumeWorkerCoordinator {
   }
 
   dispose(): void {
+    this.disposed = true;
     for (const requestId of [...this.pending.keys()]) this.cancel(requestId);
-    if (this.worker) {
-      this.worker.removeEventListener("message", this.listener);
-      this.worker.terminate();
-      this.worker = null;
+    this.terminateWorker();
+    this.cache.clear();
+    this.latestByOperation.clear();
+    this.lastValidByOperation.clear();
+  }
+
+  private clearIdleTimer(): void {
+    if (this.idleTimer) clearTimeout(this.idleTimer);
+    this.idleTimer = null;
+  }
+
+  private scheduleIdleTermination(): void {
+    if (this.pending.size || !this.worker || this.disposed) return;
+    this.clearIdleTimer();
+    this.idleTimer = setTimeout(() => this.terminateWorker(), this.idleTimeoutMs);
+  }
+
+  private terminateWorker(): void {
+    this.clearIdleTimer();
+    if (!this.worker) return;
+    this.worker.removeEventListener("message", this.listener);
+    this.worker.onerror = null;
+    this.worker.onmessageerror = null;
+    this.worker.terminate();
+    this.worker = null;
+  }
+
+  private failWorker(message: string): void {
+    for (const active of this.pending.values()) {
+      clearTimeout(active.timer);
+      active.options.onLifecycle?.("failed");
+      active.resolve(failureArtifact(active.request, active.cacheKey, "failed",
+        { code: "WORKER_FAILURE", message, retryable: true }));
     }
+    this.pending.clear();
+    this.terminateWorker();
   }
 
   private receive(message: VolumeWorkerOutbound): void {
@@ -153,6 +222,7 @@ export class VolumeWorkerCoordinator {
     }
     clearTimeout(active.timer);
     this.pending.delete(message.requestId);
+    this.scheduleIdleTermination();
     if (stale) {
       active.options.onLifecycle?.("stale");
       active.resolve(failureArtifact(active.request, active.cacheKey, "stale", { code: "STALE_REVISION", message: "A newer Volume revision or request superseded this worker result.", retryable: true }));
@@ -184,7 +254,8 @@ export class VolumeWorkerCoordinator {
       createdAt: Date.now(),
     };
     this.cache.set(active.cacheKey, artifact);
-    this.lastValidByOperation.set(operationKey, artifact);
+    if (this.cache.peek(active.cacheKey)) this.lastValidByOperation.set(operationKey, active.cacheKey);
+    else this.lastValidByOperation.delete(operationKey);
     active.options.onLifecycle?.("complete");
     active.resolve(artifact);
   }

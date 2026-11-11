@@ -775,6 +775,8 @@ Define reproducible profiles for:
 
 **Do not invent arbitrary performance claims:** set budgets after collecting clean baseline measurements on supported reference devices and recording hardware/OS, dataset size, build SHA, cache state, cold/warm distinctions, p50/p95 and peak memory.
 
+**M3D20-10 source receipt (2026-11-11):** [Performance and resilience gate](PERFORMANCE_RESILIENCE_GATE.md) records three reproducible source-checkout runs on the i9-12900K Windows reference host, exact Mesh/Volume/Project datasets, p50/p95, process-tree RSS, and a [machine-readable pass/fail report](evidence/m3d20-10-source-gate.json). The final clean source build passed the derived source limits and five desktop stress cases. The installed 2.0 candidate, long-duration memory plateau, browser/mobile coverage, and hard-exit Project persistence are still open; source data does not sign off an installed release.
+
 ### 14.2 Required stress tests
 
 - 100× navigation between Surface/Mesh/Graph/Field/Project (or equivalent bounded soak), verifying resource disposal.
@@ -1086,12 +1088,12 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 ### M3D20-10 — Performance and resilience gate (P0)
 
-- `M3D20-10a test(perf): capture reference cold/warm and large-data baselines`.
-- `M3D20-10b fix(runtime): resource disposal, cache and worker-race regressions`.
-- `M3D20-10c test(stress): GPU loss, cancellation, repeated viewer switching and soak`.
-- `M3D20-10d docs(perf): release budgets, hardware and reproducible measurements`.
+- `M3D20-10a test(perf): capture reference cold/warm and large-data baselines` — source profiles and exact datasets recorded.
+- `M3D20-10b fix(runtime): resource disposal, cache and worker-race regressions` — bounded artifact cache, worker idle teardown/crash retry, GPU cleanup and newest-request lifecycle.
+- `M3D20-10c test(stress): GPU loss, cancellation, repeated viewer switching and soak` — 100-switch, GPU/context recovery, cancellation, worker storm, autosave prompt and four-pane restart exercised; longer soak pending.
+- `M3D20-10d docs(perf): release budgets, hardware and reproducible measurements` — [source budgets](PERFORMANCE_BUDGETS.json), [commands and limitations](PERFORMANCE_RESILIENCE_GATE.md), and [source pass report](evidence/m3d20-10-source-gate.json) recorded.
 
-**Exit:** release budgets pass on defined reference hardware; severe resource leaks, unbounded memory or stale results block release.
+**Exit status:** source-host gate passed on the defined hardware; installed candidate budget and receipts, a longer memory plateau run, and hard-exit Project recovery remain open. Severe resource leaks, unbounded memory or stale results block release.
 
 ### M3D20-11 — 1.x migration and format gate (P0)
 
@@ -1100,7 +1102,9 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 - `M3D20-11c test(migrate): old-version golden corpus including corrupt/missing inputs`.
 - `M3D20-11d test(portability): desktop/browser/mobile supported-subset round trips`.
 
-**Exit:** old Projects cannot be silently corrupted; unsupported/future data receives safe refusal.
+**Source-checkout status (2026-11-11):** deterministic plans and an import review preserve exact original bytes and revisions. Tagged v1.6.0 handoff and v1.7.0 named Project specimens have SHA-256 and Git blob pins. Desktop restart, local-browser save/reload/desktop parse, and mobile-model byte-exact preview/return tests cover the available subset. Future formats and unknown fields refuse import before writing; missing sidecars remain visible and block full open. See [migration guide](MIGRATION_1X_TO_2X.md) and [corpus limitations](../../../tests/fixtures/migration-1x/README.md). The v1.4.x/v1.5.0 saved Project corpus, physical Android round trip, and installed-candidate upgrade are unverified. M3D20-10 hard-exit recovery, longer memory soak, and installed-candidate measurements remain release blockers.
+
+**Exit:** old Projects cannot be silently corrupted; unsupported/future data receives safe refusal. Full release qualification awaits the missing historical and installed/device evidence above.
 
 ### M3D20-12 — Platform-capability matrix (P0)
 
@@ -1110,7 +1114,7 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **12a matrix drafted:** [Platform capabilities](PLATFORM_CAPABILITIES.md) records journey-level support and explicit unverified deployment/device/package gates. Subsequent 12b–c work must attach representative evidence before promoting a claim.
 
-**12b–c prepared for review:** source-build Windows and local-browser Project package reopen tests, mobile model preview tests, and a browser blocked-storage control test are present. Hosted deployment, physical Android and installed Linux evidence remain open; the matrix does not claim those gates passed.
+**12b–c source-host acceptance (2026-11-11):** [source-host receipt](PLATFORM_SOURCE_ACCEPTANCE.md) records a Windows Electron Project/research restart and six local Chromium cases across two locales: verified package reopen, blocked storage, missing-source preview and already-loaded offline research. A shared journey decision now combines host facilities with verified Project compatibility; Gallery saved copies inspect their actual sidecars before enabling Open. Mobile model tests cover package/sidecar return, preview-only editors, missing-source reasons, storage refusal and future-field refusal. The [capability matrix](PLATFORM_CAPABILITIES.md) keeps hosted deployment, physical Android and installed Linux as unverified. M3D20-10 hard-exit recovery, longer memory soak and installed-candidate measurements remain separate release blockers.
 
 **Exit:** advertised parity exactly matches tested capabilities, including view-only fallbacks.
 
@@ -1130,6 +1134,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 **13c test prepared:** The [upgrade gate](INSTALL_UPGRADE_GATE.md) pins the published 1.7.0 installer by digest, seeds a Graph Project and setting in 1.7, backs up the profile, and checks exact saved bytes and reopen behavior in 2.0. Execution awaits a signed 2.0 candidate.
 
 **13d build gate prepared:** The [release integrity gate](RELEASE_INTEGRITY_GATE.md) signs the frozen worker before packaging and rejects a 2.0 Windows release with unexpected signer, incomplete attribution, mismatched asset checksums or SBOM file coverage. Exact candidate signoff awaits a 2.0 build and signing identity.
+
+**M3D20-13 tooling update (2026-11-11):** A dedicated, manually dispatched Windows candidate workflow now requires a clean version-2.0 root/renderer/two-lock checkout and signing configuration before building. It binds the pinned NSIS component, signed installer/app/worker, build identity, SBOM, attributions and SHA-256 manifest to one candidate receipt. The fresh-install and 1.7-upgrade runners reverify candidate bytes and signer; upgrade inventories the complete 1.7 backup and rehearses rollback from a copy. Fixture tests and script syntax checks pass. This checkout is still version 1.7.0, no Windows signing inputs or signed 2.0 artifact were available, and no clean-VM fresh-install, upgrade, rollback or final integrity receipt has been run. M3D20-10 hard-exit recovery, longer memory soak and installed-candidate measurements remain release blockers.
 
 **Exit:** distributable tested without source checkout; all required resource identities recorded for exact release assets.
 

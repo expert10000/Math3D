@@ -12,7 +12,7 @@
 
 ## What the compatibility review means
 
-The current canonical named Project uses `math3d.project` schema version 1; a 2.0 application version does not automatically imply a new Project envelope. The importer also recognizes supported older mixed-workspace and Graph handoff forms through explicit adapters. Validation checks document replay, identities, required capabilities, source sidecars, and host editor support. Unsupported or future envelopes are refused rather than silently reinterpreted. An older unversioned analysis summary can remain limited evidence; it must not be promoted to an exact or certified result.
+The current canonical named Project uses `math3d.project` schema version 1; a 2.0 application version does not automatically imply a new Project envelope. The importer also recognizes version 1 mixed-workspace and version 2 Graph handoff forms through explicit adapters. Its migration review shows the source format, version, byte count, SHA-256, change steps and target identity, and offers the exact original bytes for download. A legacy container gets a new Project identity on each accepted import; a named Project keeps its saved identity. Validation checks document replay, identities, required capabilities, source sidecars, and host editor support. Unsupported or future envelopes and unknown extension fields are refused rather than silently reinterpreted. An older unversioned analysis summary can remain limited evidence; it must not be promoted to an exact or certified result.
 
 | Review result | Action |
 | --- | --- |
@@ -25,8 +25,8 @@ The current canonical named Project uses `math3d.project` schema version 1; a 2.
 
 ## Current limits and pending qualification
 
-- **Version coverage:** a focused 1.7→2.0 installed upgrade script exists, but no 2.0 candidate has executed it. The broader 1.4/1.5/1.6/1.7 corpus named in the [roadmap](ROADMAP.md) needs exact artifact and format evidence before universal migration claims.
-- **Host coverage:** Windows desktop and local browser have source-build Project tests. Hosted browser storage/deployment, Android device round trips, and installed Linux package journeys remain limited in the [capability matrix](PLATFORM_CAPABILITIES.md). A mobile preview may preserve a Project subset without editing desktop-only documents.
+- **Version coverage:** a focused 1.7→2.0 installed upgrade script exists, but no 2.0 candidate has executed it. The [hashed release-tree corpus](../../../tests/fixtures/migration-1x/README.md) includes a handoff in the v1.6.0 tree and two named Projects in the v1.7.0 tree. No genuine saved Project export was found in the v1.4.x or v1.5.0 trees; the historical Projects contain no Notes or Workbooks.
+- **Host coverage:** Windows desktop and local browser have source-build Project tests. The mobile model preserves supported named Project bytes and marks unsupported editors as saved previews; this is not a physical Android round trip. Hosted browser storage/deployment, Android device round trips, and installed Linux package journeys remain limited in the [capability matrix](PLATFORM_CAPABILITIES.md).
 - **Resource coverage:** source sidecars and Workbook bytes can travel in a verified Project package; external quantum/scientific scene folders remain separate. Optional analysis artifacts and thumbnails may stay local.
 - **Scientific meaning:** old results keep their recorded source and method. A changed convention or algorithm in a newer app does not silently recalculate or upgrade historical values. See [scientific conventions](SCIENCE_CONVENTIONS.md).
 - **Recovery:** the installed upgrade test retains an unmodified profile copy in its clean VM work root. Ordinary imports have a compatibility review and transactional backup/rollback paths, but users should keep their own export and profile backup until the exact candidate passes release qualification.

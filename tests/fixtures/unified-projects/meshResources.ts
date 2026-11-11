@@ -52,3 +52,21 @@ export const inspectScalarVolumePackage = (raw: string) => {
     return { document, values: [...dataset.grid.scalars], bytes: [...resources.bytes({ kind: "volume-payload", id: document.source.payload!.handle })!] };
   });
 };
+
+import { createGf01LegacyProject } from "../scientific-selection/gf01LegacyProject";
+export const mixedLegacyResourceFixture = () => {
+  const store = new Graph2DPointTableStore();
+  const project = createGf01LegacyProject(store);
+  const resources = captureProjectResources(project, item => {
+    if (item.kind !== "graph-point-table") throw new Error("Unexpected fixture resource: " + item.kind);
+    const rows = store.resolve(item.reference as never);
+    if (!rows) throw new Error("Fixture source rows missing: " + item.id);
+    return new TextEncoder().encode(canonicalJsonStringify(rows));
+  });
+  return { project, raw: exportProjectPackage(project, resources) };
+};
+
+import { verifyMixedWorkspaceReplay } from "../../../renderer/src/kernel/mixedWorkspaceReplay";
+import { readScientificSelectionsFromProject, type Math3DProject } from "../../../packages/core/src/index";
+export const readMixedProjectSelections = (project: Math3DProject) =>
+  readScientificSelectionsFromProject(project, verifyMixedWorkspaceReplay(project.workspace));
