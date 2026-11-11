@@ -88,8 +88,11 @@ test("scientific Field Explorer transfers a Project package to a fresh profile a
     await ctx.app.evaluate(({ session }, target) => session.defaultSession.once("will-download",
       (_event, item) => item.setSavePath(target)), exportedPath);
     const header = projects.getByTestId("project-explorer-header");
-    if (!await header.getByText("More", { exact: true }).isVisible())
-      await header.getByTestId("project-gallery-layout-toggle").click();
+    if (!await header.getByText("More", { exact: true }).isVisible()) {
+      const details = header.getByTestId("project-detail-toggle");
+      if (!await details.isVisible()) await header.getByTestId("project-gallery-layout-toggle").click();
+      if (!await header.getByText("More", { exact: true }).isVisible()) await details.click();
+    }
     await header.getByText("More", { exact: true }).click();
     await projects.getByTestId("project-explorer-header").getByRole("button", { name: "Import / export" }).click();
     await projects.getByTestId("project-export-resources").click();
