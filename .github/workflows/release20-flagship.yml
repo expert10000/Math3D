@@ -42,6 +42,18 @@ jobs:
       - run: npm --prefix renderer ci
       - run: npm run typecheck:noemit
       - run: npm run build:core
+      - name: Restore only Yarn locks touched by npm setup
+        shell: pwsh
+        run: |
+          $changed = @(git diff --name-only)
+          $unexpected = @($changed | Where-Object { $_ -notin @("yarn.lock", "renderer/yarn.lock") })
+          if ($unexpected.Count -gt 0) { throw "Unexpected tracked source drift: $($unexpected -join ', ')" }
+          if ($changed.Count -gt 0) {
+            Write-Host "Restoring npm setup drift in: $($changed -join ', ')"
+            git restore -- yarn.lock renderer/yarn.lock
+            if ($LASTEXITCODE -ne 0) { throw "Yarn lock restoration failed" }
+          }
+          if (git status --porcelain --untracked-files=no) { throw "Tracked source remains changed after npm setup" }
       - name: Run Surface, QWZ, and algebra source journeys
         run: node scripts/release20-flagship-journeys.mjs --run scope-evidence/desktop.json
       - uses: actions/upload-artifact@v7

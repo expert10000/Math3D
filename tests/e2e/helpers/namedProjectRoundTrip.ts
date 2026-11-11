@@ -32,7 +32,13 @@ export async function runNamedProjectRoundTrip(page: Page, exportJson: (checkpoi
   expect(await projectStorage()).toEqual(before);
 
   // Independent destination-host storage; the source library above was protected.
-  await page.evaluate(() => { localStorage.clear(); localStorage.setItem("math3d.computeEngines.firstLaunchSeen", "1"); });
+  await page.evaluate(() => {
+    // Electron restores a disk-synced Project checkpoint as well as localStorage.
+    (window as Window & { projectDurability?: { clearForTest?: () => void } })
+      .projectDurability?.clearForTest?.();
+    localStorage.clear();
+    localStorage.setItem("math3d.computeEngines.firstLaunchSeen", "1");
+  });
   await page.reload(); await page.getByTestId("projects-toggle").click();
   await panel.getByTestId("project-import-file").setInputFiles(upload);
   await panel.getByTestId("project-import-save").click();

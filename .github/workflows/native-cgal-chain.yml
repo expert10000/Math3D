@@ -78,6 +78,8 @@ jobs:
         run: |
           npm ci
           if ($LASTEXITCODE -ne 0) { throw "npm ci failed" }
+          npm --prefix renderer ci
+          if ($LASTEXITCODE -ne 0) { throw "Renderer npm ci failed" }
           npm run build:main
           if ($LASTEXITCODE -ne 0) { throw "Main build failed" }
           npm run build:cgal-native-worker
@@ -100,6 +102,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Native distribution gate failed" }
           node scripts/test-native-cgal-build-receipt.mjs
           if ($LASTEXITCODE -ne 0) { throw "Native receipt tamper tests failed" }
+      - name: Exercise SBOM and release asset fixtures
+        shell: pwsh
+        run: |
           node scripts/test-release-sbom.mjs
           if ($LASTEXITCODE -ne 0) { throw "SBOM ownership fixtures failed" }
           node scripts/test-release20-assets.mjs

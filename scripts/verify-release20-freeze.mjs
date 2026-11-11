@@ -69,7 +69,7 @@ export async function verifyRelease20Freeze({ root, manifestPath, expectedCommit
   const publicSources = JSON.parse(publicBytes.toString('utf8'));
   const cgal = publicSources.sources?.find(item => item.name === 'CGAL' &&
     item.version === native.windowsReferenceBuild?.cgal && item.targets?.includes('windows'));
-  requireValue(native.distributionStatus === 'blocked-pending-public-source-bundle-integration' &&
+  requireValue(native.distributionStatus === 'source-bundle-integrated-not-bundled' &&
     cgal?.targets?.includes('native-cgal') && /^[0-9a-f]{64}$/.test(cgal.sha256 ?? '') &&
     ['GMP', 'MPFR'].every(name => publicSources.sources?.some(item => item.name === name &&
       item.targets?.includes('windows') && item.targets?.includes('native-cgal'))),

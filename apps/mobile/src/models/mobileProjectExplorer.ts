@@ -90,11 +90,13 @@ export const buildMobileProjectExplorer = (raw: string, sidecars: readonly Proje
     });
     const pin = note.anchor?.researchReference;
     const checked = pin ? inspectResearchReference(project, pin, item => resources.bytes(item)) : null;
-    const status = anchor.status !== "current" ? anchor.status : checked?.status === "current" ? "current" :
+    const workbookPayloadVerified = note.anchor?.kind === "workbook-block" && anchor.status === "current";
+    const status = anchor.status !== "current" ? anchor.status :
+      (checked?.status === "current" || (!pin && workbookPayloadVerified)) ? "current" :
       checked?.status === "missing" ? "unavailable" : checked ? "stale" : "unverified";
     return { id: note.identity.id, title: note.title, body: note.body, kind: note.kind,
       anchor: note.anchor, status, reason: anchor.status !== "current" ? anchor.reason :
-        checked?.reason ?? "Note has no saved resource pin." };
+        checked?.reason ?? (workbookPayloadVerified ? anchor.reason : "Note has no saved resource pin.") };
   });
   const rank = { current: 0, stale: 1, unavailable: 2, broken: 3 } as const;
   const merge = (left: keyof typeof rank, right: keyof typeof rank) => rank[left] >= rank[right] ? left : right;

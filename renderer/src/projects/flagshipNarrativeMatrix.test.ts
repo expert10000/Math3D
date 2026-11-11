@@ -15,8 +15,8 @@ import { createPortableResearchNarrative, inspectPortableResearchNarrative } fro
 const templateIds = new Set(MATH3D_PROJECT_TEMPLATES.map(item => item.id));
 const builtInJourneys = CURATED_STUDIES.filter(card => card.route.kind === "project");
 
-const editFirstStudySource = (project: Math3DProject): Math3DProject => {
-  const documentId = project.workspace.studies![0]!.members[0]!.documentId;
+const editStudySource = (project: Math3DProject, documentId =
+  project.workspace.studies![0]!.members[0]!.documentId): Math3DProject => {
   const entries = project.workspace.entries.map(entry => {
     if (entry.expected.id !== documentId) return entry;
     const old = entry.checkpoint;
@@ -76,10 +76,20 @@ describe("M3D20-07 built-in flagship narrative matrix", () => {
     expect(independent.preview.project.identity.id).toBe(project.identity.id);
     expect(inspectPortableResearchNarrative(narrative).project.identity.id).toBe(project.identity.id);
 
-    const edited = editFirstStudySource(project);
+    const edited = editStudySource(project);
     const historical = createPortableResearchNarrative(edited, [book], restarted.resources);
     expect(historical.evidence.citations.some(item => item.status === "historical")).toBe(true);
-    expect(historical.evidence.notes.find(item => item.noteId === note.identity.id)?.status).not.toBe("current");
+    const noteSourceId = note.anchor && "source" in note.anchor ? note.anchor.source.documentId : null;
+    expect(noteSourceId).toBeTruthy();
+    const noteStatus = historical.evidence.notes.find(item => item.noteId === note.identity.id)?.status;
+    if (noteSourceId === study.members[0]!.documentId) expect(noteStatus).not.toBe("current");
+    else {
+      // Catenoid's Note is anchored to Mesh evidence, so editing its Surface must not stale it.
+      expect(noteStatus).toBe("current");
+      const noteEdited = editStudySource(project, noteSourceId!);
+      const staleNote = createPortableResearchNarrative(noteEdited, [book], restarted.resources);
+      expect(staleNote.evidence.notes.find(item => item.noteId === note.identity.id)?.status).not.toBe("current");
+    }
     expect(inspectPortableResearchNarrative(historical).project.identity.id).toBe(project.identity.id);
 
     const packageValue = JSON.parse(narrative.packageJson) as { resources: { kind: string }[] };
