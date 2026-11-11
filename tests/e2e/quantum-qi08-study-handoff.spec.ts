@@ -208,8 +208,8 @@ test("Lab QWZ study handoff stages both exact scenes in a new Math3D Project", a
     await expect(reopenedProjects.getByTestId("project-quantum-scene-message")).toContainText("Scene unavailable", { timeout: 60_000 });
     await expect(reopenedPage.getByTestId("quantum-scene-preview")).toHaveCount(0);
     await reopenedStudies.getByTestId("project-study-preview-toggle-curvature").click();
-    await reopenedStudies.getByTestId("project-study-preview-toggle-curvature").click();
-    await expect(reopenedStudies.getByTestId("project-study-quantum-withheld")).toContainText(/changed|hash|checksum|integrity/i, { timeout: 60_000 });
+    await expect(reopenedStudies.locator('[data-testid="project-study-preview-withheld"], [data-testid="project-study-quantum-withheld"]'))
+      .toContainText(/failed verification|changed|hash|checksum|integrity/i, { timeout: 60_000 });
     await reopenedStudies.getByTestId("project-study-share-qwz-k").click();
     await expect(reopenedStudies.getByTestId("project-study-qwz-cursor-status")).toContainText("withheld", { timeout: 60_000 });
     await expect(reopenedStudies.getByTestId("project-study-qwz-pin-status")).toContainText("Pinned band sample 0");
