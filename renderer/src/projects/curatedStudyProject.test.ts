@@ -4,6 +4,8 @@ import { inspectProjectStudyMembers, instantiateMath3DProjectTemplate,
 import { instantiateNotebookStarter } from "./notebookStarters";
 import { curatedStudyHasLayout, prepareCuratedStudyBundle, prepareCuratedStudyProject } from "./curatedStudyProject";
 import { exportProjectPackage, parseProjectPackage } from "./projectResources";
+import { VerifiedProjectResources } from "./projectResources";
+import { resolveStudyPane } from "./studyPaneResolution";
 import { readProjectWorkbook } from "./projectWorkbookBinding";
 
 describe("guided Gallery Project Study copies", () => {
@@ -81,4 +83,28 @@ describe("guided Gallery Project Study copies", () => {
       expect(book.dependencies?.some(item => item.source.kind === "note" && item.source.noteId === note.identity.id)).toBe(true);
       expect(ordinary.project.workspace.studies).toBeUndefined();
     });
+
+  it("qualifies every saved pane after package transfer and withholds a missing Mesh sidecar", () => {
+    for (const id of ["catenary-study", "derivative-study", "scene-topology-study"] as const) {
+      const ordinary = instantiateMath3DProjectTemplate(id, `pane-transfer-${id}`);
+      const guided = prepareCuratedStudyProject(ordinary, id, `pane-transfer-${id}`);
+      const transferred = parseProjectPackage(exportProjectPackage(guided,
+        new VerifiedProjectResources(guided)));
+      for (const pane of transferred.project.workspace.studies![0]!.layout.panes)
+        expect(resolveStudyPane(transferred.project, transferred.project.workspace.studies![0]!,
+          pane.paneId, transferred.resources).status).toBe("ready");
+    }
+    const source = instantiateNotebookStarter("catenoid-evidence", "mesh-pane-transfer");
+    const guided = prepareCuratedStudyBundle(source, "catenoid-evidence", "mesh-pane-transfer");
+    const transferred = parseProjectPackage(exportProjectPackage(guided.project, guided.resources!));
+    const study = transferred.project.workspace.studies![0]!;
+    for (const pane of study.layout.panes)
+      expect(resolveStudyPane(transferred.project, study, pane.paneId, transferred.resources).status).toBe("ready");
+    const meshPane = study.layout.panes.find(pane => study.members.find(member =>
+      member.memberId === pane.memberId)?.documentId === transferred.project.workspace.entries.find(entry =>
+        entry.module === "mesh")?.expected.id)!;
+    expect(resolveStudyPane(transferred.project, study, meshPane.paneId,
+      new VerifiedProjectResources(transferred.project))).toMatchObject({ status: "withheld",
+        reason: expect.stringContaining("resource") });
+  });
 });

@@ -275,10 +275,14 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
               {paneEvidence.resourceStatus === "missing" ? " · source bytes unavailable" : ""} · saved r{member.expected.revision}</p>
             <p role="status" data-testid={`project-study-source-status-${pane.paneId}`} title={paneEvidence.reason}>
               Saved source pin: {paneEvidence.status} · resource {paneEvidence.resourceStatus}</p>
+            {!sourceCurrent && <p role="status" data-testid={`project-study-source-reason-${pane.paneId}`}>
+              {paneEvidence.reason}</p>}
             {quantumDocument ? <button type="button" data-testid={`project-study-open-source-${pane.paneId}`}
               disabled={!quantumReference || !onOpenQuantumSource || !sourceCurrent}
+              title={!sourceCurrent ? paneEvidence.reason : !quantumReference ? "Saved Quantum source scene is unavailable." : undefined}
               onClick={() => { if (quantumReference && sourceCurrent) void onOpenQuantumSource?.(quantumReference); }}>
-              Verify and view source scene</button> : <button type="button" disabled={!workspaceEntry || !sourceCurrent}
+              Verify and view source scene</button> : <button type="button" data-testid={`project-study-open-source-${pane.paneId}`}
+              disabled={!workspaceEntry || !sourceCurrent} title={!sourceCurrent ? paneEvidence.reason : undefined}
               onClick={() => { if (workspaceEntry && sourceCurrent) onOpenDocument(member.documentId, workspaceEntry.module); }}>Open source document</button>}
             {member.resultId && <button type="button" data-testid={`project-study-open-result-${pane.paneId}`}
               disabled={!sourceCurrent || !onInspectResult}
