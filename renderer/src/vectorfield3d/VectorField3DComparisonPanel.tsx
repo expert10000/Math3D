@@ -47,9 +47,9 @@ export function VectorField3DComparisonPanel({ document, project, onSave, onOpen
   const verifiedTransfer = (source: VectorField3DDocument) => verified[key(source)] ?? null;
   useEffect(() => {
     let active = true, verificationEpoch = 0;
-    const refresh = async () => {
+    const refresh = async (event?: Event) => {
       const run = ++verificationEpoch;
-      if (active) { setVerified({}); setResult(null); }
+      if (active) { setVerified({}); if (event) setResult(null); }
       const sourcesToCheck = project?.workspace.entries.filter(item => item.module === "vector3d" &&
         item.checkpoint.format === "math3d.vector-field3d-document" &&
         item.checkpoint.source.field.kind === "scientific-bundle").map(item =>
