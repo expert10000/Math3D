@@ -206,7 +206,7 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
       {qwzPair && <StudyQwzCursorControl project={project} pair={qwzPair} study={open}
         editable={editable} onPin={onPinQwz} onUnpin={onUnpinQwz}
         onDeriveProfile={onDeriveQwzProfile}
-        onOpenGraphProfile={id => onOpenDocument(id, "graph2d")} />}
+        onOpenGraphProfile={id => { setVisiblePaneId(null); onOpenDocument(id, "graph2d"); }} />}
       {project.metadata.tags?.includes("catenoid-evidence") && open.members.some(member =>
         project.workspace.entries.find(entry => entry.expected.id === member.documentId)?.module === "surface") &&
         <CatenoidWaistEvidencePanel project={project} resources={resources} />}
@@ -239,7 +239,7 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
           return <li key={note.identity.id}>{note.title} · {inspected?.status ?? "unavailable"}
             {inspected?.status === "current" && note.anchor?.kind === "study-selection" && note.anchor.selectionId.startsWith("qwz:") ?
               " (scene bytes require verification)" : ""}{" "}
-            <button type="button" disabled={!onOpenNote} onClick={() => onOpenNote?.(note.identity.id)}>Open Note</button>
+            <button type="button" disabled={!onOpenNote} onClick={() => { setVisiblePaneId(null); onOpenNote?.(note.identity.id); }}>Open Note</button>
           </li>;
         })}</ul> : <p>No Note is anchored to a saved Study selection.</p>}
       </section>
@@ -250,7 +250,7 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
             {reference.title} · <span title={reference.reason}>{reference.status === "current" ?
               "Exact citation" : "Historical citation"}</span>{" "}
             <button type="button" disabled={!onOpenWorkbookBlock}
-              onClick={() => onOpenWorkbookBlock?.(reference.workbookId, reference.stageId, reference.blockId)}>
+              onClick={() => { setVisiblePaneId(null); onOpenWorkbookBlock?.(reference.workbookId, reference.stageId, reference.blockId); }}>
               Open cited block</button>
           </li>)}</ul> : <p>No checked Workbook citation is recorded for this Study.</p>}
       </section>
@@ -280,13 +280,13 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
             {quantumDocument ? <button type="button" data-testid={`project-study-open-source-${pane.paneId}`}
               disabled={!quantumReference || !onOpenQuantumSource || !sourceCurrent}
               title={!sourceCurrent ? paneEvidence.reason : !quantumReference ? "Saved Quantum source scene is unavailable." : undefined}
-              onClick={() => { if (quantumReference && sourceCurrent) void onOpenQuantumSource?.(quantumReference); }}>
+              onClick={() => { if (quantumReference && sourceCurrent) { setVisiblePaneId(null); void onOpenQuantumSource?.(quantumReference); } }}>
               Verify and view source scene</button> : <button type="button" data-testid={`project-study-open-source-${pane.paneId}`}
               disabled={!workspaceEntry || !sourceCurrent} title={!sourceCurrent ? paneEvidence.reason : undefined}
-              onClick={() => { if (workspaceEntry && sourceCurrent) onOpenDocument(member.documentId, workspaceEntry.module); }}>Open source document</button>}
+              onClick={() => { if (workspaceEntry && sourceCurrent) { setVisiblePaneId(null); onOpenDocument(member.documentId, workspaceEntry.module); } }}>Open source document</button>}
             {member.resultId && <button type="button" data-testid={`project-study-open-result-${pane.paneId}`}
               disabled={!sourceCurrent || !onInspectResult}
-              onClick={() => onInspectResult?.(member.resultId!)}>Inspect saved result</button>}
+              onClick={() => { setVisiblePaneId(null); onInspectResult?.(member.resultId!); }}>Inspect saved result</button>}
             <button type="button" data-testid={`project-study-preview-toggle-${pane.paneId}`}
               onClick={() => setVisiblePaneId(current => current === pane.paneId ? null : pane.paneId)}>
               {visiblePaneId === pane.paneId ? "Hide preview" : "Show preview"}</button>

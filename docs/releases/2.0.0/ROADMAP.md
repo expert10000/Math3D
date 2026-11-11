@@ -53,6 +53,8 @@ The gate scripts and source tests are **preparation**, not evidence that a 2.0 i
 
 **Flagship scientific audit (2026-11-11):** The shifted revolution comparison is checked against an independent analytic curvature formula, and the QWZ Graph path is checked against fixture producer float arrays for both reciprocal distance and energy. The live Docker Sage CI suite now asks the actual worker for a singular cusp and a smooth two-generator ideal, with opposite expected singular sets. The source-checkout flagship runner groups the current desktop Surface, QWZ and algebra journeys under one commit-pinned receipt. A local simulated Sage service validates desktop cancellation and Project persistence; live Docker and installed-candidate results must be attached separately before release claims are promoted.
 
+**Project/Study source memory gate (2026-11-11):** Study source, result, Note, Workbook and QWZ navigation now unmounts the active read-only pane before leaving it, releasing geometry previews and their WebGL contexts from the still-open Project dock. Reopening an unchanged Surface reuses its exact sampled point set and derived mesh candidate, and skips duplicate result publication; changed chart coordinates, mesh bytes, and curvature still refresh. A separate Windows source-build CI job repeats Catenoid Study preview and owning-Surface navigation for 80 cycles, removes test-only App hooks absent from production, records closed canvas counts and forced-GC renderer heap every tenth cycle, and requires no more than 2 MiB growth from cycle 20 to 80. This does not replace the installed-candidate QI-40 measurement at final qualification.
+
 ---
 
 ## 0. Executive decision
