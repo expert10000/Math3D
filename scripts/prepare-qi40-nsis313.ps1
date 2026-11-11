@@ -2,7 +2,8 @@ param([Parameter(Mandatory = $true)][string]$OutputRoot)
 
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath($OutputRoot)
-$temporaryBase = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+$tempBase = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { $env:TEMP }
+$temporaryBase = [IO.Path]::GetFullPath($tempBase).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
 if (-not $root.StartsWith($temporaryBase, [StringComparison]::OrdinalIgnoreCase)) {
   throw 'OutputRoot must be a child of RUNNER_TEMP'
 }
@@ -30,7 +31,7 @@ foreach ($required in @($compilerSource, $system, $elevate)) {
 Copy-Item -LiteralPath $compilerSource -Destination $compiler
 Copy-Item -LiteralPath $elevate -Destination (Join-Path $windows 'elevate.exe')
 $env:ELECTRON_BUILDER_NSIS_DIR = $windows
-"ELECTRON_BUILDER_NSIS_DIR=$windows" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+if ($env:GITHUB_ENV) { "ELECTRON_BUILDER_NSIS_DIR=$windows" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append }
 [ordered]@{
   schema = 'math3d/qi40-nsis-toolchain/v1'
   source = $url
