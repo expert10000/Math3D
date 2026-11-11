@@ -6335,24 +6335,14 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
       sliceGroupRef.current = null;
 
-      scene.traverse((obj) => {
-        const anyO = obj as any;
-        if (anyO?.isMesh) {
-          const mesh = obj as THREE.Mesh;
-          if (mesh.geometry) mesh.geometry.dispose();
-          const matAny = (mesh as any).material as THREE.Material | THREE.Material[] | undefined;
-          if (matAny) {
-            if (Array.isArray(matAny)) matAny.forEach((m) => m.dispose());
-            else matAny.dispose();
-          }
-        }
-      });
+      // Scene overlays include Lines and texture-backed Sprites as well as Meshes.
+      scene.traverse(disposeObject3D);
 
       renderer.setAnimationLoop(null);
       renderer.renderLists.dispose();
       renderer.dispose();
-      (renderer as { forceContextLoss?: () => void }).forceContextLoss?.();
-      if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement);
+      renderer.forceContextLoss();
+      renderer.domElement.remove();
       rendererRef.current = null;
       applyProbeFromDomainRef.current = null;
 

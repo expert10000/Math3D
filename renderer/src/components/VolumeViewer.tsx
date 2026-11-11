@@ -123,24 +123,26 @@ const disposeMesh = (mesh: THREE.Mesh) => {
   }
 };
 
+const disposeSceneObject = (object: THREE.Object3D) => {
+  const drawable = object as THREE.Object3D & {
+    geometry?: THREE.BufferGeometry;
+    material?: THREE.Material | THREE.Material[];
+  };
+  drawable.geometry?.dispose();
+  const materials = drawable.material
+    ? Array.isArray(drawable.material) ? drawable.material : [drawable.material]
+    : [];
+  for (const material of materials) {
+    (material as THREE.Material & { map?: THREE.Texture }).map?.dispose();
+    material.dispose();
+  }
+};
+
 const clearGroup = (group: THREE.Group) => {
   const children = [...group.children];
   for (const child of children) {
     group.remove(child);
-    const anyChild = child as any;
-    if (anyChild.geometry) {
-      anyChild.geometry.dispose?.();
-    }
-    if (anyChild.material) {
-      const mat = anyChild.material as THREE.Material | THREE.Material[];
-      const disposeMaterial = (material: THREE.Material) => {
-        const map = (material as THREE.MeshBasicMaterial).map;
-        map?.dispose();
-        material.dispose();
-      };
-      if (Array.isArray(mat)) mat.forEach(disposeMaterial);
-      else disposeMaterial(mat);
-    }
+    child.traverse(disposeSceneObject);
   }
 };
 
@@ -1129,6 +1131,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
         sliceTextureRef.current.dispose();
         sliceTextureRef.current = null;
       }
+      scene.traverse(disposeSceneObject);
       renderer.dispose();
       renderer.forceContextLoss();
       renderer.domElement.remove();
