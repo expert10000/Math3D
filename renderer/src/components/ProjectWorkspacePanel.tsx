@@ -74,6 +74,7 @@ import { createProjectCoordinateObservationReviewSnapshot, projectCoordinateObse
 import { ProjectResearchLinks } from "./ProjectResearchLinks";
 import { ProjectActivityTimeline } from "./ProjectActivityTimeline";
 import { exportProjectFile, exportProjectCheckpointFile, inspectProjectCompatibility, MAX_PROJECT_IMPORT_BYTES, mergeProjectLiveWorkspace, previewProjectImport, projectCheckpoint, type ProjectCompatibility } from "../projects/projectTransfer";
+import { independentMigrationCopy } from "../projects/projectMigrationPlan";
 import { ProjectCompatibilityPanel } from "./ProjectCompatibilityPanel";
 import { assertIndependentNarrativeImport, previewResearchNarrativeImport } from "../projects/projectResearchNarrativeImport";
 import { MAX_RESEARCH_NARRATIVE_FILE_BYTES, RESEARCH_NARRATIVE_FORMAT,
@@ -1334,11 +1335,20 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     setIncomingHostLimit(null);
     try {
       if (file.size > MAX_RESEARCH_NARRATIVE_FILE_BYTES) throw new Error("Import exceeds its size limit.");
-      const raw = await file.text();
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const raw = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
       const header = JSON.parse(raw) as { format?: string };
       const research = header?.format === RESEARCH_NARRATIVE_FORMAT ?
         previewResearchNarrativeImport(raw, transferOptions()) : null;
-      const prepared = research?.preview ?? previewProjectImport(raw, transferOptions());
+      const inspected = research?.preview ?? previewProjectImport(bytes, transferOptions());
+      let prepared = inspected;
+      if ("migration" in inspected && inspected.migration?.requiresCopy) {
+        const copy = independentMigrationCopy(inspected.migration, crypto.randomUUID());
+        if (localStorage.getItem(projectPayloadKey(copy.identity.id)) !== null)
+          throw new Error("An independent migration ID already exists. Retry the import without replacing saved work.");
+        prepared = { ...inspectProjectCompatibility(copy, transferOptions(inspected.resources)),
+          resources: inspected.resources, inputKind: "Independent legacy Project copy", migration: inspected.migration };
+      }
       if (sequence !== importSequence.current) return;
       if (research) {
         assertIndependentNarrativeImport(prepared.project,
@@ -2738,7 +2748,11 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           {!incomingNarrative.evidence.omissions.length && <p>No evidence omitted.</p>}
         </section>}
         {incoming.project.metadata.tags?.includes("curated-study-v1") && <CuratedStudyResearchPreview project={incoming.project} resources={incoming.resources} />}
-        <ProjectCompatibilityPanel busy={busy} preview={incoming} canOpen={!!onRestoreWorkspace && !incomingHostLimit} openLimit={incomingHostLimit} onCancel={() => { importSequence.current++; setIncoming(null); setIncomingNarrative(null); setIncomingHostLimit(null); setMessage("Import cancelled. Current workspace and library unchanged."); }} onImport={() => { void importPreview(false); }} onOpen={() => { void importPreview(true); }} /></div></div>}
+        <ProjectCompatibilityPanel busy={busy} preview={incoming} canOpen={!!onRestoreWorkspace && !incomingHostLimit} openLimit={incomingHostLimit} onDownloadOriginal={() => {
+          if ("migration" in incoming && incoming.migration)
+            downloadStudyBlob(new Blob([new Uint8Array(incoming.migration.originalBytes)], { type: "application/octet-stream" }),
+              `math3d-original-${incoming.migration.source.sha256.slice(7, 19)}.json`);
+        }} onCancel={() => { importSequence.current++; setIncoming(null); setIncomingNarrative(null); setIncomingHostLimit(null); setMessage("Import cancelled. Current workspace and library unchanged."); }} onImport={() => { void importPreview(false); }} onOpen={() => { void importPreview(true); }} /></div></div>}
       {quantumOverlay && project && <React.Suspense fallback={<p role="status">Opening quantum overlay…</p>}>
         <QuantumNativeOverlayView project={project} reference={quantumOverlay} readResource={comparisonResource}
           onClose={() => setQuantumOverlay(null)} onOpenQuantum={() => { setQuantumOverlay(null); void openLinkedQuantumScene(quantumOverlay); }}

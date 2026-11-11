@@ -1,4 +1,4 @@
-import { adoptMixedWorkspaceProject, canonicalJsonStringify, parseMath3DProject,
+import { adoptMixedWorkspaceProject, canonicalJsonStringify, createMath3DProject, parseMath3DProject,
   parseMixedWorkspaceDocument, parseWorkspaceProjectHandoff, sha256Checksum,
   type Math3DProject, type MixedWorkspaceDocument } from "@math3d/core";
 
@@ -52,4 +52,15 @@ export const planProjectMigration = (input: Uint8Array | string): ProjectMigrati
   } else throw new TypeError("Unsupported Project format or future version.");
   return { source: { format, version, byteLength: bytes.byteLength, sha256: sha256Checksum(bytes) },
     project, steps, originalBytes: bytes, requiresCopy: steps[0]!.code !== "preserve" };
+};
+
+/** Legacy containers have no named Project identity; each accepted import gets a distinct owner. */
+export const independentMigrationCopy = (plan: ProjectMigrationPlan, token: string): Math3DProject => {
+  if (!plan.requiresCopy) throw new TypeError("A named Project retains its saved identity; use its existing conflict review.");
+  if (!/^[a-zA-Z0-9_-]{8,128}$/.test(token)) throw new TypeError("Invalid independent import token.");
+  const project = createMath3DProject(plan.project.workspace, {
+    stableKey: { migrationSourceSha256: plan.source.sha256, token }, title: plan.project.metadata.title,
+  });
+  if (project.identity.id === plan.project.identity.id) throw new TypeError("Independent import identity was not renewed.");
+  return sameWorkspace(project, plan.project.workspace);
 };

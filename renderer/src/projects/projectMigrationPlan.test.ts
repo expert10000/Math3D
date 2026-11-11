@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { canonicalJsonStringify, createGraph2DWorkspaceProject, createWorkspaceProjectHandoff,
   getGraph2DPresetCatalog, instantiateGraph2DPreset, parseMath3DProject,
   serializeMixedWorkspaceDocument, sha256Checksum } from "@math3d/core";
-import { planProjectMigration } from "./projectMigrationPlan";
+import { independentMigrationCopy, planProjectMigration } from "./projectMigrationPlan";
 import { previewProjectImport } from "./projectTransfer";
 
 const specimen = () => readFileSync(new URL("../../../tests/fixtures/scientific-selection/gf01-legacy-project.math3d", import.meta.url));
@@ -33,6 +33,11 @@ describe("M3D20-11 deterministic Project migration plan", () => {
     }
     expect(mixed.steps[0]?.code).toBe("adopt-workspace");
     expect(fromHandoff.steps[0]?.code).toBe("adopt-handoff");
+    const firstCopy = independentMigrationCopy(mixed, "migration_token_001");
+    const secondCopy = independentMigrationCopy(mixed, "migration_token_002");
+    expect(firstCopy.identity.id).not.toBe(secondCopy.identity.id);
+    expect(firstCopy.workspace).toEqual(secondCopy.workspace);
+    expect(() => independentMigrationCopy(planProjectMigration(specimen()), "migration_token_003")).toThrow("retains its saved identity");
   });
 
   it("refuses future envelopes, damaged evidence and invalid UTF-8", () => {
