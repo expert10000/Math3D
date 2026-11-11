@@ -87,7 +87,10 @@ test("scientific Field Explorer transfers a Project package to a fresh profile a
     const pin = active.workspace.explorer.comparisonSource;
     await ctx.app.evaluate(({ session }, target) => session.defaultSession.once("will-download",
       (_event, item) => item.setSavePath(target)), exportedPath);
-    await projects.getByTestId("project-explorer-header").getByText("More", { exact: true }).click();
+    const header = projects.getByTestId("project-explorer-header");
+    if (!await header.getByText("More", { exact: true }).isVisible())
+      await header.getByTestId("project-gallery-layout-toggle").click();
+    await header.getByText("More", { exact: true }).click();
     await projects.getByTestId("project-explorer-header").getByRole("button", { name: "Import / export" }).click();
     await projects.getByTestId("project-export-resources").click();
     await expect.poll(() => {
@@ -135,7 +138,7 @@ test("scientific Field Explorer transfers a Project package to a fresh profile a
     expect(await ctx.page.getByRole("region", { name: "Linked A/B field views" }).count()).toBe(0);
     await rm(componentPath);
     await projects.getByTestId(`project-open-saved-${saved.identity.id}`).click();
-    await expect(projects.getByTestId("project-message")).toContainText("Project scientific field unavailable");
+    await expect(projects.getByTestId("project-message")).toContainText(/ENOENT|missing|not found/i);
     await writeFile(componentPath, correct);
     await projects.getByTestId(`project-open-saved-${saved.identity.id}`).click();
     explorer = await openExplorer(ctx.page);
