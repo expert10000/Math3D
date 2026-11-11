@@ -136,6 +136,7 @@ import { KernelWorkspacePanel } from "./components/KernelWorkspacePanel";
 import { ProjectWorkbookMiddleView } from "./components/ProjectWorkbookMiddleView";
 import { ProjectDetailMiddleView } from "./components/ProjectDetailMiddleView";
 import { PROJECT_STORAGE_KEY, projectPayloadKey, saveLibraryProject } from "./projects/projectLibrary";
+import type { ResearchCommand } from "./projects/researchCommands";
 import { saveSavedMeshComparisonObservation } from "./projects/saveSavedMeshComparisonObservation";
 import { projectNoteRenderedBody } from "./projects/projectNoteValues";
 import { WorkbookSnapshotRecord } from "./components/WorkbookSnapshotRecord";
@@ -1483,6 +1484,9 @@ type CommandPaletteItem = {
   title: string;
   keywords: string;
   shortcut?: string;
+  detail?: string;
+  group?: string;
+  unavailableReason?: string;
   run: () => void | Promise<void>;
 };
 type GallerySortPreset = "name" | "family" | "complexity" | "demoReady";
@@ -42119,6 +42123,15 @@ const App: React.FC = () => {
   const [commandInput, setCommandInput] = useState("");
   const [commandHistory, setCommandHistory] = useState<{ cmd: string; out: string }[]>([]);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [researchCommandItems, setResearchCommandItems] = useState<readonly ResearchCommand[]>([]);
+  useEffect(() => {
+    const receive = (event: Event) => setResearchCommandItems((event as CustomEvent<readonly ResearchCommand[]>).detail);
+    window.addEventListener("math3d:research-command-index", receive);
+    return () => window.removeEventListener("math3d:research-command-index", receive);
+  }, []);
+  useEffect(() => {
+    if (commandPaletteOpen) window.dispatchEvent(new Event("math3d:request-research-commands"));
+  }, [commandPaletteOpen]);
   useEffect(() => {
     let mounted = true;
     void window.quantumScenes?.consumeLaunch?.().then((result) => {
@@ -71767,6 +71780,10 @@ case "mobius":
         keywords: "settings preferences compute engines docker sage octave install start stop logs diagnostics",
         run: () => handleMenuCommand("edit:preferences"),
       },
+      ...researchCommandItems.map(command => ({ id: `research:${command.key}`, title: command.title,
+        keywords: `${command.group} ${command.detail} ${command.status ?? ""} ${command.unavailableReason ?? ""}`,
+        detail: command.detail, group: command.group, unavailableReason: command.unavailableReason,
+        run: () => { window.dispatchEvent(new CustomEvent("math3d:execute-research-command", { detail: command.key })); } })),
     ],
     [
       activeStageId,
@@ -71781,14 +71798,15 @@ case "mobius":
       handleRunAllStale,
       handleRunCommand,
       handleRunComputeStage,
+      researchCommandItems,
     ]
   );
   const filteredCommandPaletteItems = useMemo(() => {
-    const q = commandPaletteQuery.trim().toLowerCase();
-    if (!q) return commandPaletteItems;
+    const words = commandPaletteQuery.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+    if (!words.length) return commandPaletteItems;
     return commandPaletteItems.filter((item) => {
-      const hay = `${item.title} ${item.keywords} ${item.shortcut ?? ""}`.toLowerCase();
-      return hay.includes(q);
+      const hay = `${item.title} ${item.keywords} ${item.detail ?? ""} ${item.shortcut ?? ""}`.toLocaleLowerCase();
+      return words.every(word => hay.includes(word));
     });
   }, [commandPaletteItems, commandPaletteQuery]);
   const visibleCommandPaletteItems = useMemo(
@@ -71796,7 +71814,7 @@ case "mobius":
     [filteredCommandPaletteItems]
   );
   const runCommandPaletteItem = useCallback((item: CommandPaletteItem | null) => {
-    if (!item) return;
+    if (!item || item.unavailableReason) return;
     setCommandPaletteOpen(false);
     setCommandPaletteQuery("");
     setCommandPaletteIndex(0);
@@ -112084,12 +112102,12 @@ case "mobius":
         </div>
       )}
       {commandPaletteOpen && (
-        <div
+        <div className="global-command-palette-backdrop"
           style={{
             position: "fixed",
             inset: 0,
             background: "rgba(15, 23, 42, 0.35)",
-            zIndex: 2600,
+            zIndex: 3300,
             display: "flex",
             alignItems: "flex-start",
             justifyContent: "center",
@@ -112102,7 +112120,7 @@ case "mobius":
             }
           }}
         >
-          <div
+          <div role="dialog" aria-modal="true" aria-label="Command palette" data-testid="global-command-palette"
             style={{
               width: 760,
               maxWidth: "min(96vw, 760px)",
@@ -112171,6 +112189,8 @@ case "mobius":
                     <button
                       key={item.id}
                       type="button"
+                      data-testid={`command-palette-${item.id}`}
+                      aria-disabled={!!item.unavailableReason}
                       onMouseEnter={() => setCommandPaletteIndex(idx)}
                       onClick={() => runCommandPaletteItem(item)}
                       style={{
@@ -112179,6 +112199,7 @@ case "mobius":
                         borderRadius: 8,
                         border: "1px solid " + (active ? "#93c5fd" : "#e2e8f0"),
                         background: active ? "#eff6ff" : "#fff",
+                        color: item.unavailableReason ? "#64748b" : undefined,
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "space-between",
@@ -112186,7 +112207,9 @@ case "mobius":
                         fontSize: 12,
                       }}
                     >
-                      <span>{item.title}</span>
+                      <span style={{ display: "grid", gap: 2 }}><strong>{item.title}</strong>
+                        {(item.unavailableReason || item.detail) && <small style={{ color: item.unavailableReason ? "#9b3b22" : "#52657b" }}>
+                          {item.unavailableReason ?? item.detail}</small>}</span>
                       {item.shortcut && (
                         <span style={{ fontSize: 10, color: "#64748b", fontWeight: 700 }}>
                           {item.shortcut}

@@ -50,6 +50,7 @@ import { ProjectDependenciesPanel } from "./ProjectDependenciesPanel";
 import { ProjectRelationshipMap } from "./ProjectRelationshipMap";
 import { ProjectCursorInspector } from "./ProjectCursorInspector";
 import { ProjectStudiesPanel } from "./ProjectStudiesPanel";
+import { buildResearchCommands, type ResearchCommand } from "../projects/researchCommands";
 import { addQualifiedStudyGraphCurveLink } from "../projects/studyGraphCurveLink";
 import { addQualifiedStudyCurveSurfaceLink } from "../projects/studyCurveSurfaceLink";
 import { addQualifiedStudySurfaceMeshLink } from "../projects/studySurfaceMeshLink";
@@ -1929,6 +1930,72 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     onUpdateDraft={(id, patch) => setNoteDrafts((current) => current.map((draft) => draft.id === id ? { ...draft, ...patch } : draft))}
     onDiscardDraft={(id) => setNoteDrafts((current) => current.filter((draft) => draft.id !== id))}
     onSaveDrafts={saveNoteDrafts} onSaveNote={saveEditedNote} onChangeValues={changeNoteValues} onSendToWorkbook={sendNoteToWorkbook} />;
+  const closeExplorer = () => {
+    onOpenChange(false);
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+      const source = document.querySelector<HTMLElement>('[data-testid="module-workspace"]');
+      if (source && source.getClientRects().length) {
+        if (source.tabIndex < 0) source.tabIndex = -1;
+        source.focus({ preventScroll: true });
+      } else document.querySelector<HTMLElement>('[data-testid="projects-toggle"]')?.focus({ preventScroll: true });
+    }));
+  };
+  const openResearchSection = (section: "gallery" | "studies" | "results" | "workbooks" | "notes") => {
+    setNotesOpen(false); setQuick(false); setViewerCompanion(false);
+    if (section === "gallery") { setDetailView(false); setCollection("Starter projects"); return; }
+    setDetailView(true);
+    if (section === "notes") { openProjectNotes(); return; }
+    openDetailPage(section === "results" ? "results" : section === "workbooks" ? "documents" : "overview",
+      section === "workbooks" ? contentsSection : undefined);
+  };
+  const returnToSource = () => {
+    const entry = project?.workspace.entries.find(item => item.expected.id === viewingDocumentId);
+    if (entry && canNavigateDocument?.(entry.expected.id, entry.module))
+      onNavigateDocument?.(entry.expected.id, entry.module);
+    closeExplorer();
+  };
+  const researchCommands = buildResearchCommands({ project, savedProjects: library.entries,
+    workbookBytes: projectWorkbookBytes, workbookState: id => resourceSessionId.current !== project?.identity.id || !resourceSession.current
+      ? "unverified" : resourceSession.current.bytes({ kind: "workbook-payload", id }) ? "available" : "missing",
+    canOpenDocument: (id, module) => !!canNavigateDocument?.(id, module),
+    canOpenWorkbook: !!onOpenWorkbook, canOpenCas: !!onOpenCasGallery, preview, busy });
+  const selectResearchCommand = (command: ResearchCommand) => {
+    if (command.unavailableReason) return;
+    const target = command.target;
+    if (target.kind === "gallery") { openResearchSection("gallery"); onOpenChange(true); return; }
+    if (target.kind === "current-project") { setQuick(false); setViewerCompanion(false); setDetailView(true);
+      openDetailPage("overview"); onOpenChange(true); return; }
+    if (target.kind === "cas") { onOpenCasGallery?.(); return; }
+    if (target.kind === "saved-project") { void openLibraryProject(target.id); return; }
+    if (target.kind === "study") { setStudyFocus(previous => ({ id: target.id, token: (previous?.token ?? 0) + 1 }));
+      setQuick(false); setViewerCompanion(false); setDetailView(true); openDetailPage("overview"); onOpenChange(true); return; }
+    if (target.kind === "result") { setResultFocus(previous => ({ id: target.id, token: (previous?.token ?? 0) + 1 }));
+      setQuick(false); setViewerCompanion(false); setDetailView(true); openDetailPage("results"); onOpenChange(true); return; }
+    if (target.kind === "workbook") { void openProjectWorkbook(target.id); return; }
+    if (target.kind === "citation") { void openProjectWorkbook(target.id, false, target.stageId, target.blockId); return; }
+    if (target.kind === "note") {
+      setQuick(false); setViewerCompanion(false); setDetailView(true); onOpenChange(true);
+      window.requestAnimationFrame(() => openProjectNotes(target.id)); return;
+    }
+    if (target.kind === "document") { onOpenChange(true); viewBesideProject(target.id, target.module); }
+  };
+  useEffect(() => {
+    const publish = () => window.dispatchEvent(new CustomEvent("math3d:research-command-index", { detail: researchCommands }));
+    const execute = (event: Event) => {
+      const command = researchCommands.find(item => item.key === (event as CustomEvent<string>).detail);
+      if (command) selectResearchCommand(command);
+    };
+    window.addEventListener("math3d:request-research-commands", publish);
+    window.addEventListener("math3d:execute-research-command", execute);
+    return () => {
+      window.removeEventListener("math3d:request-research-commands", publish);
+      window.removeEventListener("math3d:execute-research-command", execute);
+    };
+  });
+  useEffect(() => {
+    // A palette opened while a Project is loading must enable its commands when the load completes.
+    window.dispatchEvent(new CustomEvent("math3d:research-command-index", { detail: researchCommands }));
+  }, [project, library, busy, preview, resourceVersion]);
   const fullDetails = !quick && detailView;
   useEffect(() => {
     if (!hasOpenProject || busy || preview || managed || !project?.metadata.tags?.includes("ripple-wave-study") ||
@@ -1955,7 +2022,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         } else setQuick(true);
         onOpenChange(true);
       }} className="project-context-toggle">{hasOpenProject ? "Project" : "Quick projects"}</button>, document.body)}
-    {open && <ProjectGalleryFrame quick={quick} viewerCompanion={viewerCompanion} placement={projectPlacement} onClose={() => onOpenChange(false)}>
+    {open && <ProjectGalleryFrame quick={quick} viewerCompanion={viewerCompanion} placement={projectPlacement} onClose={closeExplorer}>
       <header data-testid="project-explorer-header" className={`project-gallery-header${viewerCompanion && quick ? " project-companion-header" : ""}`}>
         <div className="project-gallery-heading"><div><p>{viewerCompanion && quick ? "PROJECT" : "MATH3D · PROJECTS"}</p><h2>{quick && !viewerCompanion ? "Quick Projects" : detailView ? project?.metadata.title ?? "Project" : "Projects Gallery"}</h2></div><div className="project-gallery-heading-actions" style={{ display:"flex",gap:8 }}>
           {fullDetails ? <>
@@ -1970,9 +2037,18 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
             {!quick && <button type="button" data-testid="project-detail-toggle" aria-pressed={detailView} onClick={() => { setNotesOpen(false); workspacePanel.current?.scrollTo({ top: 0 }); setDetailView(value => !value); }}>{detailView ? "Browse projects" : "View current project"}</button>}
             <button data-testid="project-gallery-layout-toggle" aria-label={viewerCompanion && quick ? "Project details" : undefined} title={viewerCompanion && quick ? "Project details" : undefined} onClick={() => { if (!viewerCompanion) setNotesOpen(false); if (viewerCompanion) setDetailPage("overview"); setQuick(value => !value); setViewerCompanion(false); }}>{quick ? viewerCompanion ? "⋯" : "Full gallery" : "Quick panel"}</button>
           </>}
-          <button type="button" aria-label="Close project explorer" title="Close Project panel" onClick={() => onOpenChange(false)}>{(viewerCompanion && quick) || fullDetails ? "×" : "Close"}</button></div></div>
+          <button type="button" aria-label="Close project explorer" title="Close Project panel" onClick={closeExplorer}>{(viewerCompanion && quick) || fullDetails ? "×" : "Close"}</button></div></div>
         <div className="project-gallery-statusline"><p data-testid="project-view-mode" role="status">{managed ? "Managing saved project" : preview ? "Saved project preview" : "Current workspace"}{!fullDetails && ` · ${project?.metadata.title ?? "Untitled project"}`}{project && library.entries.some((entry) => entry.id === project.identity.id) && <strong className="project-gallery-saved-badge">Saved in Your saved projects</strong>}</p>
           {!fullDetails && <button type="button" data-testid="project-restore-saved" disabled={busy || !!managed || !project || !library.entries.some((entry) => entry.id === project.identity.id)} onClick={previewSavedOpen}>{preview ? "Open saved project" : "Review saved version"}</button>}</div>
+      {hasOpenProject && !quick && <nav className="project-research-navigation" aria-label="Research navigation" data-testid="project-research-navigation">
+        {(["gallery", "studies", "results", "workbooks", "notes"] as const).map(section =>
+          <button key={section} type="button" data-testid={`project-research-nav-${section}`}
+            aria-current={section === "gallery" ? !detailView ? "page" : undefined : detailView &&
+              ((section === "studies" && detailPage === "overview") || (section === "results" && detailPage === "results") ||
+                (section === "workbooks" && detailPage === "documents") || (section === "notes" && notesOpen)) ? "page" : undefined}
+            onClick={() => openResearchSection(section)}>{section[0].toUpperCase() + section.slice(1)}</button>)}
+        <button type="button" data-testid="project-research-nav-source" disabled={!viewingDocumentId} onClick={returnToSource}>Back to source</button>
+      </nav>}
       {hasOpenProject && !preview && viewingDocumentId && !fullDetails && <nav className="project-context-breadcrumb" data-testid="project-breadcrumb" aria-label="Project breadcrumb">
         {!viewerCompanion && <><button type="button" data-testid="project-breadcrumb-root" onClick={() => { setQuick(true); setViewerCompanion(true); onViewProjectDetail?.(); }}>{project?.metadata.title ?? "Project"}</button><span aria-hidden="true">›</span></>}
         <span className="project-breadcrumb-module">{project?.workspace.entries.find(entry => entry.expected.id === viewingDocumentId)?.module ?? activeModule ?? "Document"}</span>

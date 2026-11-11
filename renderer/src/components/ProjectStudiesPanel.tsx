@@ -101,6 +101,11 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
   const statusByMember = new Map(open ? inspectProjectStudyMembers(project, open).map(item => [item.memberId, item.status]) : []);
   const statusLabel = { "current-reference": "Source current", changed: "Source changed",
     "missing-document": "Document missing", "missing-result": "Result missing" } as const;
+  const focusStudySection = (testId: string) => {
+    const section = [...viewRef.current?.querySelectorAll<HTMLElement>("[data-testid]") ?? []]
+      .find(element => element.dataset.testid === testId);
+    section?.scrollIntoView({ block: "nearest" }); section?.focus({ preventScroll: true });
+  };
   return <section className="project-dashboard-card" data-testid="project-studies-panel" aria-label="Project Studies">
     <div className="project-dashboard-card-heading"><h4>Studies</h4><span>{studies.length}</span></div>
     <p>Save a question and pane layout using existing Project documents.</p>
@@ -129,8 +134,18 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
         setVisiblePaneId(null);
       }}>{study.title}</button> · {study.layout.mode} · {study.members.length} members
     </li>)}</ul>
-    {open && <div ref={viewRef} data-testid="project-study-view" data-study-id={open.id}>
+    {open && <div ref={viewRef} className="project-study-view" data-testid="project-study-view" data-study-id={open.id}>
+      <button type="button" data-testid="project-study-back" onClick={() => {
+        const id = open.id;
+        setOpenId(null); setVisiblePaneId(null);
+        window.requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-testid="project-study-open-${CSS.escape(id)}"]`)?.focus());
+      }}>Back to Studies</button>
       <h5>{open.title}</h5>
+      <nav className="project-study-jump" aria-label="Study research path">
+        <button type="button" onClick={() => focusStudySection("project-study-note-references")}>Notes</button>
+        <button type="button" onClick={() => focusStudySection("project-study-workbook-references")}>Citations</button>
+        <button type="button" onClick={() => focusStudySection("project-study-panes")}>Source panes</button>
+      </nav>
       {focusStudy?.id === open.id && focusStudy.selectionId &&
         <p role="status" data-testid="project-study-focused-selection">
           Returned to saved selection {focusStudy.selectionId} · source qualification required before opening a pane.
@@ -217,7 +232,7 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
           </div>;
         })}
       </section>}
-      <section aria-label="Notes on this Study" data-testid="project-study-note-references">
+      <section aria-label="Notes on this Study" data-testid="project-study-note-references" tabIndex={-1}>
         <h6>Notes on this Study ({pinnedNotes.length})</h6>
         {pinnedNotes.length ? <ul>{pinnedNotes.map(note => {
           const inspected = noteResolver && inspectProjectNoteAnchor(note, noteResolver);
@@ -228,7 +243,7 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
           </li>;
         })}</ul> : <p>No Note is anchored to a saved Study selection.</p>}
       </section>
-      <section aria-label="Workbook citations of this Study" data-testid="project-study-workbook-references">
+      <section aria-label="Workbook citations of this Study" data-testid="project-study-workbook-references" tabIndex={-1}>
         <h6>Referenced by Workbooks ({workbookReferences.length})</h6>
         {workbookReferences.length ? <ul>{workbookReferences.map(reference =>
           <li key={`${reference.workbookId}:${reference.blockId}`}>
@@ -239,8 +254,7 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
               Open cited block</button>
           </li>)}</ul> : <p>No checked Workbook citation is recorded for this Study.</p>}
       </section>
-      <div data-testid="project-study-panes" data-layout={open.layout.mode} style={{ display: "grid",
-        gridTemplateColumns: open.layout.mode === "single" || open.layout.mode === "tabs" ? "1fr" : "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+      <div className="project-study-panes" data-testid="project-study-panes" data-layout={open.layout.mode} tabIndex={-1}>
         {open.layout.panes.map(pane => {
           const member = open.members.find(item => item.memberId === pane.memberId)!;
           const choice = choiceById.get(member.documentId);
@@ -256,9 +270,11 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
           const quantumReference = quantumDocument && project.quantumScenes?.find(reference =>
             reference.sceneFingerprint === quantumDocument.source.sceneFingerprint &&
             reference.directory === quantumDocument.location.directory);
-          return <div key={pane.paneId} data-testid={`project-study-pane-${pane.paneId}`} style={{ border: "1px solid #cbd5e1", padding: 8, minWidth: 0, overflow: "hidden" }}>
+          return <div key={pane.paneId} className="project-study-pane" data-testid={`project-study-pane-${pane.paneId}`}>
             <strong>{choice?.title ?? member.documentId}</strong><p>{member.role} · {statusLabel[status]}
               {paneEvidence.resourceStatus === "missing" ? " · source bytes unavailable" : ""} · saved r{member.expected.revision}</p>
+            <p role="status" data-testid={`project-study-source-status-${pane.paneId}`} title={paneEvidence.reason}>
+              Saved source pin: {paneEvidence.status} · resource {paneEvidence.resourceStatus}</p>
             {quantumDocument ? <button type="button" data-testid={`project-study-open-source-${pane.paneId}`}
               disabled={!quantumReference || !onOpenQuantumSource || !sourceCurrent}
               onClick={() => { if (quantumReference && sourceCurrent) void onOpenQuantumSource?.(quantumReference); }}>
