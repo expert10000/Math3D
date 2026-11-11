@@ -32,7 +32,7 @@ const color = (value: number | null, min: number, max: number) => {
 const phaseColor = (value: number) =>
   `hsl(${((value + Math.PI) / (2 * Math.PI) * 360) % 360} 84% 58%)`;
 
-export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoom = 1,
+export function VectorField3DSliceView({ document, slice, probe, sharedValueRange, clipBounds, zoom = 1,
   center = [0.5, 0.5], onZoomChange, onCenterChange, onProbeSelect, onSendLineToGraphs,
   onSendDerivedLineToGraphs, derivedLineBusy, seedPlacementActive = false,
   seedPlacementDisabled = false, onSeedPlacementToggle, onSeedPropose, proposedSeed,
@@ -53,6 +53,7 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
   onSendVectorDerivedToGraphs, onPublishVectorDerivedRegion,
   regionBusy = false, linkedRegionFocus = null }: {
   document: VectorField3DDocument; slice: VectorField3DSliceArtifact;
+  sharedValueRange?: Readonly<{ min: number; max: number }>;
   probe?: readonly [number, number, number] | null;
   clipBounds?: VectorField3DClipBounds;
   zoom?: number; onZoomChange?: (zoom: number) => void;
@@ -430,7 +431,7 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
           fill={scalarOverlay ? scalarValue !== null && scalarValue !== undefined ?
             scalarOverlay.mode === "complex-phase" ? phaseColor(scalarValue) :
               color(scalarValue, scalarOverlay.min, scalarOverlay.max) : "#334155" :
-            color(value, slice.min, slice.max)}
+            color(value, sharedValueRange?.min ?? slice.min, sharedValueRange?.max ?? slice.max)}
           opacity={clipped ? .2 : scalarOverlay ? scalarOverlay.opacity : 1}
           style={{ cursor: seedPlacementActive || onProbeSelect ? "crosshair" : undefined }} onClick={() => {
             if (!onProbeSelect || seedPlacementActive || graphSelectionMode || subrectangleSelecting ||
@@ -571,11 +572,11 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
         `${part.name}: ${part.sampleSha256}`).join(" · ")}.
     </p>}
     <div className="vector-field3d-slice-legend" role="img"
-      aria-label={`Color legend, ${(scalarOverlay?.min ?? slice.min).toPrecision(4)} to ${(scalarOverlay?.max ?? slice.max).toPrecision(4)} ${scalarOverlay?.unit ?? slice.unit}`}>
-      <span>{(scalarOverlay?.min ?? slice.min).toPrecision(4)}</span><span className="vector-field3d-slice-legend-bar"
+      aria-label={`Color legend, ${(scalarOverlay?.min ?? sharedValueRange?.min ?? slice.min).toPrecision(4)} to ${(scalarOverlay?.max ?? sharedValueRange?.max ?? slice.max).toPrecision(4)} ${scalarOverlay?.unit ?? slice.unit}`}>
+      <span>{(scalarOverlay?.min ?? sharedValueRange?.min ?? slice.min).toPrecision(4)}</span><span className="vector-field3d-slice-legend-bar"
         style={scalarOverlay?.mode === "complex-phase" ? { background:
           "linear-gradient(90deg, #f15353, #e9e74e, #50d7aa, #5f9ff0, #f15353)" } : undefined} />
-      <span>{(scalarOverlay?.max ?? slice.max).toPrecision(4)} {scalarOverlay?.unit ?? slice.unit}</span>
+      <span>{(scalarOverlay?.max ?? sharedValueRange?.max ?? slice.max).toPrecision(4)} {scalarOverlay?.unit ?? slice.unit}</span>
     </div>
     <p role="status">{slice.channel} {slice.min.toPrecision(4)}–{slice.max.toPrecision(4)} {slice.unit};
       {" "}{slice.rejected} invalid of {slice.evaluated} samples. Dimmed cells lie outside the display clip;

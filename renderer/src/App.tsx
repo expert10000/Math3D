@@ -1,3 +1,4 @@
+import { checkpointProjectFieldExplorerDocument, pinProjectFieldExplorerBaseline } from "@math3d/core";
 import { measureBooleanResult, type BooleanResultEvidence } from './services/booleanResultEvidence';
 import { type SurfaceViewerKind, type BBox3, type MeshPromotionTraceState, type MeshPromotionOperationEntry, type MeshBenchmarkModel, type SurfaceMeshAssetPreset, type SurfaceMeshTopologySavedPreset, type TopologySerializedSurfaceMeshData, type StoredSurfaceMeshTopologyHistoryEntry, type SurfaceMeshTopologyHistoryEntry, type SurfaceMeshTopologyPickMode, type UnifiedSelectionKindFilterState, type UnifiedSelectionTopologyFilterMode, type SurfaceMeshTopologyOperation, type ImplicitBakeBounds, type MeshOperationLastValidation, type GenerateSurfaceStatus, type CgalHealthState, type Vec3, type ComplexMapLine, type ComplexPreimageMode, type ComplexDistortionMode, type ComplexMapProbe, type ComplexMapProbePin, type ParamDomain, type ChartMode, type GeodesicPathMethod, type GeodesicPathSourceMode, type GeodesicPathEndpoint, type GeodesicHeatEndpoint, type GeodesicDiskCenter, type SurfaceInspectMetrics, type AnalysisFocusedSection, MESH_BENCHMARK_CATEGORY_ORDER, MESH_BENCHMARK_CATEGORY_LABELS, findSurfaceMeshTopologyDemoPresetByOperation, type SurfaceMeshTopologyDemoPreset, SURFACE_MESH_TOPOLOGY_DEMO_PRESETS, buildTopologyDemoCubeMesh, applySurfaceMeshOps, surfaceMeshTriangleCount, LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD, benchmarkNowMs, SURFACES_EQ_META, PARAM_SURFACES_META, isGraphSurface, isImplicitSurface, type SurfacesLeftTab, detectPrincipalAxisDirection, vLen, vNormalize, vScale, normalizeParamDomain, WEIERSTRASS_DEFAULTS, colorModesForSurfaceViewer, isComplexMapSurfaceLabel, COMPLEX_MAP_OUTPUT_LABELS, COMPLEX_MAP_LABEL, DEFAULT_VOLUME_PRESET_ID, COMPLEX_GRID_COLORS, cardStyle, pill, formatBenchmarkBytes, pillRow, COMPLEX_MAP_CUSTOM_ID, COMPLEX_MAP_PRESETS, estimateTargetEdgeFromBudget, clampNumber, SURFACE_MESH_TOPOLOGY_PICK_MODES, SURFACE_MESH_TOPOLOGY_OPERATION_OPTIONS, fmt, fmt3, COLOR_MODE_LABELS, IMPLICIT_EXPR_PRESETS, DEFAULT_ROTATIONAL_PROFILE_POINTS_TEXT, ROTATIONAL_AXIS_DIRECTIONS, vDot, vSub, vCross, type MeshWorkspaceInspectorSummary, type InspectorPanelTab, type SurfaceWorkflowStepId, type SurfaceWorkflowStepState, type MeshPerfBenchmarkId, type MeshPipelineProfileRun, type MeshPipelineProfilePhase, type MeshDebugMonitorState, type MeshDebugEvent, type MeshDebugMemorySnapshot, type MeshBenchmarkPerformanceSuiteState, type MeshBenchmarkPerformanceResult, type DeferredSurfaceSampleSetInfo, type MeshBenchmarkVerificationContext, type GeometryProbeSelectionMode, type GeometryProbeSelectionDetails, type GeometryProbePoint, type MeshAnalyzeProbeHistoryEntry, type GraphDomain, type ImplicitDomain, type GraphDomainPreset, type ParamDomainPreset, type ImplicitDomainPreset, getParamDomainPreviewBounds, normalizeGraphDomain, getDefaultGraphSpan, normalizeImplicitDomain, getDefaultImplicitDomain, getEditableImplicitCustomExpr, MESH_PERF_BENCHMARK_PRESETS, type MeshPerfBenchmarkPreset, serializeMeshPipelineProfileRun, serializeMeshDebugMonitorState, buildTangentBasis } from "./surfacePanelShared";
 import { type SurfacesLeftPanelProps, type SurfacesRightPanelProps } from "./surfacePanels";
@@ -51378,8 +51379,7 @@ case "mobius":
         surfaceDerivedMeshPublishedRef.current.candidate === surfaceDerivedMeshCandidate &&
         activeDerivedSurfaceMeshResult?.payload?.data.kind === "derived-mesh" &&
         activeDerivedSurfaceMeshResult.payload.data.meshId === surfaceDerivedMeshPublishedRef.current.meshId) {
-      const meshId = surfaceDerivedMeshPublishedRef.current.meshId;
-      if (surfaceDerivedMeshSelectedId !== meshId) setSurfaceDerivedMeshSelectedId(meshId);
+      // Reusing the live publication must preserve an explicitly selected snapshot.
       return;
     }
     const payload = buildDerivedSurfaceMeshPayload();
@@ -51409,7 +51409,7 @@ case "mobius":
       return changed ? { ...document, derivedMeshes: records.slice(-64) } : document;
     });
     setSurfaceDerivedMeshSelectedId(payload.meshId);
-  }, [activeCanonicalSurfaceDefinition, activeDerivedSurfaceMeshResult, buildDerivedSurfaceMeshPayload, publishDerivedSurfaceMeshPayload, surfaceDerivedCandidateKey, surfaceDerivedMeshCandidate, surfaceDerivedMeshSelectedId, surfaceMeshAnalysisHandoff]);
+  }, [activeCanonicalSurfaceDefinition, activeDerivedSurfaceMeshResult, buildDerivedSurfaceMeshPayload, publishDerivedSurfaceMeshPayload, surfaceDerivedCandidateKey, surfaceDerivedMeshCandidate, surfaceMeshAnalysisHandoff]);
   const activeDerivedSurfaceMeshPayload = activeDerivedSurfaceMeshResult?.state === "ready" && activeDerivedSurfaceMeshResult.payload?.data.kind === "derived-mesh"
     ? activeDerivedSurfaceMeshResult.payload.data
     : null;
@@ -91213,7 +91213,24 @@ case "mobius":
             onSaveSageResult={(record) => { openNormalSurfacesWorkspace(); saveSageResultToWorkbook(record); }}
             onOpenSageRuntimes={() => { setComputeCenterInitialTab("runtimes"); setComputeCenterOpen(true); }}
             savedVectorField3D={vectorField3DDocument} openVectorField3DRequest={vectorField3DOpenRequest}
-            onSaveVectorField3D={field => { setVectorField3DDocument(field); setVectorField3DOpenRequest(null); }}
+            onSaveVectorField3D={field => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (active && restored) {
+                const updated = checkpointProjectFieldExplorerDocument(active, field);
+                activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
+                setNotebookProjectVersion(value => value + 1);
+              }
+              setVectorField3DDocument(field); setVectorField3DOpenRequest(null);
+            }}
+            onPinVectorField3DBaseline={field => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const pinned = pinProjectFieldExplorerBaseline(active, field, crypto.randomUUID());
+              activeNotebookProjectRef.current = pinned.project; restored.workspace = pinned.project.workspace;
+              setVectorField3DDocument(pinned.document); setVectorField3DOpenRequest(null);
+              setNotebookProjectVersion(value => value + 1);
+              return pinned.document;
+            }}
             onPromoteVectorField3DIsosurface={promoteFieldIsosurfaceToMesh}
             savedVectorField3DPointResults={vectorField3DPointResults}
             onSaveVectorField3DPointResult={(field, result) => {

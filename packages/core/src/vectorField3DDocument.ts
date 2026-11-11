@@ -56,7 +56,17 @@ export type VectorField3DOverlayRegion = Readonly<{
   normalAxis: 0 | 1 | 2; fixedCoordinate: number;
   bounds: readonly [readonly [number, number], readonly [number, number]];
   vectorChannel: "speed" | "p" | "q" | "r"; visible: boolean }>;
-export type VectorField3DWorkspace = Readonly<{ selectedLayer: VectorField3DLayer;
+export type FieldExplorerInspectorSection = "all" | "layer" | "probe" | "analyze" | "provenance";
+export type FieldExplorerWorkflow = Readonly<{
+  inspectorSection: FieldExplorerInspectorSection;
+  comparisonSource: DocumentIdentity | null;
+  comparisonResolution: 5 | 9 | 13 | 16;
+  comparisonVisible: boolean;
+}>;
+export type VectorField3DWorkspace = Readonly<{
+  /** Optional display state. Omitted on legacy documents to retain their canonical bytes. */
+  explorer?: FieldExplorerWorkflow;
+  selectedLayer: VectorField3DLayer;
   sliceChannel: "component" | "divergence" | "curl-magnitude" |
     "curl-x" | "curl-y" | "curl-z" | "grad-speed-x" | "grad-speed-y" |
     "grad-speed-z" | "grad-speed-magnitude" | "laplacian-speed";
@@ -249,7 +259,18 @@ const normalizeVectorField3DDocumentUncached = (value: unknown): ValidationResul
       { cameraState: null } : {}),
   } : legacyWorkspace;
   if (!record(workspace) || !exact(workspace,
-      ["selectedLayer", "sliceChannel", "layout", "sliceCoordinates", "viewsLinked", "viewZoom", "viewCenter", "probe", "linkedProbe", "scalarOverlay", "complexOverlay", "linkedLineProfile", "overlayRegion", "hiddenSeedGroups", "seedGroupStyles", "equilibriumConstructions", "isosurfaceLevel", "isosurfaceTriangleBudget", "clipBounds", "cameraPreset", "cameraState"]) ||
+      ["selectedLayer", "sliceChannel", "layout", "sliceCoordinates", "viewsLinked", "viewZoom", "viewCenter", "probe", "linkedProbe", "scalarOverlay", "complexOverlay", "linkedLineProfile", "overlayRegion", "hiddenSeedGroups", "seedGroupStyles", "equilibriumConstructions", "isosurfaceLevel", "isosurfaceTriangleBudget", "clipBounds", "cameraPreset", "cameraState",
+        ...(Object.prototype.hasOwnProperty.call(workspace, "explorer") ? ["explorer"] : [])]) ||
+      Object.prototype.hasOwnProperty.call(workspace, "explorer") &&
+        (!record(workspace.explorer) || !exact(workspace.explorer,
+          ["inspectorSection", "comparisonSource", "comparisonResolution", "comparisonVisible"]) ||
+          !["all", "layer", "probe", "analyze", "provenance"].includes(workspace.explorer.inspectorSection as string) ||
+          ![5, 9, 13, 16].includes(workspace.explorer.comparisonResolution as number) ||
+          typeof workspace.explorer.comparisonVisible !== "boolean" ||
+          workspace.explorer.comparisonSource !== null &&
+            (!isDocumentIdentity(workspace.explorer.comparisonSource) ||
+              !workspace.explorer.comparisonSource.id.startsWith("math3d:vector-field3d:") ||
+              workspace.explorer.comparisonSource.id === value.identity.id)) ||
       workspace.scalarOverlay !== null && (!record(workspace.scalarOverlay) ||
         !exact(workspace.scalarOverlay, ["reference", "title", "unit", "opacity", "visible"]) ||
         !isGraph2DFieldReference(workspace.scalarOverlay.reference) ||

@@ -13,7 +13,8 @@ import { canonicalJsonStringify, createVectorField3DDocument, defaultVectorField
   createCombinedVectorField3DRegionResultWithCurl,
   createVectorDerivedRegionResult,
   verifyVectorField3DVolumes,
-  type VectorField3DDifferentialArtifact,
+  fieldExplorerWorkflow, reviseFieldExplorerWorkflow, resolveFieldExplorerBaseline,
+  type FieldExplorerInspectorSection, type VectorField3DDifferentialArtifact,
   type AnalysisResultEnvelope,
   type ScientificSelection,
   type VectorField3DEquilibriumSearch,
@@ -100,6 +101,7 @@ import { VectorField3DLocalTopologyPanel } from "./VectorField3DLocalTopologyPan
 import { VectorField3DTopologyStudiesPanel } from "./VectorField3DTopologyStudiesPanel";
 import { VectorField3DAdvancedTopologyPanel } from "./VectorField3DAdvancedTopologyPanel";
 import { VectorField3DTensorGlyphPanel } from "./VectorField3DTensorGlyphPanel";
+import { FieldExplorerBaselineViews } from "./FieldExplorerBaselineViews";
 import { VectorField3DComparisonPanel } from "./VectorField3DComparisonPanel";
 import { VectorField3DFrameUnitPanel } from "./VectorField3DFrameUnitPanel";
 import { VectorField3DTimeSourcePanel } from "./VectorField3DTimeSourcePanel";
@@ -141,7 +143,7 @@ export function createDefaultVectorField3DDocument(): VectorField3DDocument {
 }
 
 export function VectorField3DPanel({ initialDocument, savedDocument, project, focusSelectionRequest,
-  onSaveDocument, onClose, mount,
+  onSaveDocument, onPinBaseline, onClose, mount,
   onAddGraphLine, isGraphLineImported, onAddAnalyticLine, onAddDerivedLine,
   onAddLinkedOverlayLine, onFocusRegionInGraphs, onFocusSubrectangleInGraphs,
   onPublishVectorSubrectangle, onPublishCombinedSubrectangle,
@@ -186,6 +188,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   derivedProfileBusyId?: string | null;
   derivedProfileProgress?: string;
   derivedProfileError?: string;
+  onPinBaseline?: (document: VectorField3DDocument) => VectorField3DDocument;
   onSaveDocument?: (document: VectorField3DDocument) => void; onClose: () => void;
   mount?: HTMLElement;
   onAddGraphLine?: (preview: Graph2DScientificDatasetPreview, selection: VectorField3DGraphLineSelection) => void;
@@ -292,7 +295,6 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   onReturnToVectorLayer?: () => void;
 }) {
   const [libraryQuery, setLibraryQuery] = useState("");
-  const [inspectorSection, setInspectorSection] = useState<"all" | "layer" | "probe" | "analyze" | "provenance">("all");
   const matchingLibraryEntries = libraryEntries.filter(entry =>
     [entry.title, entry.sceneTitle, entry.datasetId, entry.kind, entry.unit,
       entry.sourceStatus, entry.reason].some(value => value?.toLowerCase().includes(libraryQuery.trim().toLowerCase())));
@@ -327,6 +329,10 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
     if (event.key === "Escape") { event.stopPropagation(); onClose(); return; }
   };
   const [document, setDocument] = useState(initialDocument ?? createDefaultVectorField3DDocument);
+  const inspectorSection = fieldExplorerWorkflow(document).inspectorSection;
+  const setInspectorSection = (section: FieldExplorerInspectorSection) =>
+    setDocument(current => reviseFieldExplorerWorkflow(current, { inspectorSection: section }));
+  const baseline = resolveFieldExplorerBaseline(project, document);
   const [cursorViewId] = useState(() => `vector-field3d-${++nextVectorCursorView}`);
   const [linkedCursor, setLinkedCursor] = useState<ProjectScientificCursor | null>(null);
   const [cursorStatus, setCursorStatus] = useState("");
@@ -2091,6 +2097,23 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
         equilibriaButtonRef.current?.focus({ preventScroll: true });
       });
     }}>Equilibria</button>
+    {" "}<button type="button" disabled={busy || lineBusy || !!fieldLayer || !project} onClick={save}>Save field to Project</button>
+    {" "}<button type="button" disabled={busy || lineBusy || !onPinBaseline || !!fieldLayer || !project}
+      onClick={() => { try {
+        const current = currentDocument();
+        if (current.identity.structuralHash !== document.identity.structuralHash)
+          throw new Error("Preview the current expressions before pinning a baseline.");
+        setDocument(onPinBaseline!(current)); setError("");
+        setSaveStatus("Baseline B pinned in the Project workspace. Save the Project to retain A and B.");
+        requestAnimationFrame(() => dialogRef.current?.querySelector<HTMLElement>(
+          '[data-testid="gf18-field-comparison"]')?.scrollIntoView({ block: "nearest" }));
+      } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } }}>
+      Pin current as baseline B</button>
+    {" "}<button type="button" disabled={!!fieldLayer} onClick={() => {
+      setInspectorSection("analyze");
+      requestAnimationFrame(() => dialogRef.current?.querySelector<HTMLElement>(
+        '[data-testid="gf18-field-comparison"]')?.scrollIntoView({ block: "nearest" }));
+    }}>Compare</button>
     {" "}<button type="button" onClick={onClose}>Back to Graphs</button></div></header>
     <div className="scientific-field-explorer-controls" aria-label="Field controls">
     <FieldExplorerProjectHierarchy project={project}
@@ -2434,6 +2457,11 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
     <h5 className="field-explorer-inspector-title" aria-live="polite">
       {inspectorSection === "all" ? "Overview" :
         inspectorSection[0]!.toUpperCase() + inspectorSection.slice(1)}</h5>
+    {!fieldLayer && <div data-gf06-section="analyze" className="field-explorer-compare-inspector">
+      <VectorField3DComparisonPanel document={document} project={project}
+        onWorkflowChange={changes => setDocument(current => reviseFieldExplorerWorkflow(current, changes))}
+        onSave={onSaveComparisonResult} onOpenProfile={onOpenComparisonProfile} />
+    </div>}
     {fieldLayer && <section className="scientific-explorer-field-inspector" data-gf06-section="layer">
       <h4>{fieldLayer.metadata.title}</h4>
       <p>{fieldLayer.source.paired ? "Complex pair" : "Scalar field"} ·
@@ -2898,8 +2926,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
         onValidateAtlasCoverage={onValidateAtlasCoverage}
         onValidateAtlasSeams={onValidateAtlasSeams}
         onValidateAtlasRefinement={onValidateAtlasRefinement} />
-      <VectorField3DComparisonPanel document={document} project={project}
-        onSave={onSaveComparisonResult} onOpenProfile={onOpenComparisonProfile} />
+
       <VectorField3DFrameUnitPanel document={document} />
       <VectorField3DTimeSourcePanel document={document} project={project}
         onSave={onSaveTemporalSource} onSavePathline={onSaveTemporalPathline}
@@ -3083,7 +3110,11 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
         onOpenDetails={() => onOpenFieldDetails?.()} /> : <>
       {error && <div role="alert" className="scientific-field-explorer-viewer-error"
         data-testid="vector-field3d-viewer-error">{error}</div>}
-      {multiView ? <div className={`vector-field3d-linked-grid vector-field3d-linked-grid-${workspace.layout}`}>
+      {fieldExplorerWorkflow(document).comparisonVisible ? <FieldExplorerBaselineViews
+        document={document} baseline={baseline} onProbeSelect={point => void selectProbe(point)}
+        onSendLineToGraphs={sendAnalyticLine} onSendDerivedLineToGraphs={sendDerivedLine}
+        onClose={() => setDocument(current => reviseFieldExplorerWorkflow(current,
+          { comparisonVisible: false }))} /> : multiView ? <div className={`vector-field3d-linked-grid vector-field3d-linked-grid-${workspace.layout}`}>
         <div className="vector-field3d-linked-cell">{artifact ?
           <VectorField3DArrowView document={document} artifact={artifact} isosurface={isosurface}
             trajectories={visibleTrajectories} probe={selectedEquilibrium !== null ?

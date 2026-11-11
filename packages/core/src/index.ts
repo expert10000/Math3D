@@ -276,3 +276,5 @@ export * from "./graph2dCaptureRecipe";
 export * from "./meshBufferCodec";
 export * from "./projectResources";
 export * from "./researchReference";
+
+export * from "./fieldExplorerWorkflow";
