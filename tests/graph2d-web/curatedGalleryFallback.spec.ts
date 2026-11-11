@@ -54,5 +54,18 @@ test("narrow browser keeps guided source and citation preview readable", async (
   await expect(evidence).toContainText("current");
   const box = await evidence.boundingBox();
   expect(box && box.x >= 0 && box.x + box.width <= 392).toBeTruthy();
+  expect(await evidence.evaluate(element => Array.from(element.querySelectorAll("li"))
+    .every(item => item.scrollWidth <= item.clientWidth + 1))).toBe(true);
   await expect(page.getByTestId("project-import-limit")).toContainText("desktop");
+  if (process.env.MATH3D_UI_CAPTURE_DIR) {
+    const directory = process.env.MATH3D_UI_CAPTURE_DIR;
+    mkdirSync(directory, { recursive: true });
+    await evidence.evaluate(element => element.scrollIntoView({ block: "start", inline: "start" }));
+    await page.screenshot({ path: join(directory, "ui-browser-narrow-preview.png") });
+    writeFileSync(join(directory, "ui-browser-build-identity.json"), JSON.stringify({
+      commit: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
+      indexSha256: createHash("sha256").update(readFileSync("apps/web/dist/index.html")).digest("hex"),
+      host: "local Chromium preview server", viewport: "390x780", source: "working tree at capture time",
+    }, null, 2) + "\n");
+  }
 });

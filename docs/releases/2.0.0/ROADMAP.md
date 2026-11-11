@@ -1048,6 +1048,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 - `M3D20-09c feat(ui): Zen/presentation view and scientific overlay options` (P1).
 - `M3D20-09d test(ui): compact viewport, keyboard, high zoom, dark/light snapshots` (P0).
 
+**Source-checkout UI convergence (2026-11-11):** CAS has a direct Open Projects return after saving, and Projects exposes Gallery, Studies, Results, Workbooks, Notes and Back to source actions. Study Back restores focus to its list entry; closing Projects focuses the source workspace. The existing global Ctrl+K palette now searches saved Projects, Study panes, results, Workbook citations, Notes and source documents, with host or payload refusal reasons. The Study layout stacks at narrow container widths and 200% zoom, with keyboard-reachable research path jumps and explicit source pin/resource status. Desktop acceptance follows the full Gallery → Study → Result → Workbook → Note → source → Gallery route through restart; local Chromium checks narrow research preview. See [UI coherence acceptance](UI_COHERENCE_ACCEPTANCE.md). Installed-package, mobile-device, high-contrast/dark-theme and broader keyboard coverage remain release gates.
+
 **Exit:** primary workflow actions remain discoverable at all supported sizes. Palette/presentation can defer if needed without compromising core functionality.
 
 ### M3D20-10 — Performance and resilience gate (P0)

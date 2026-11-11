@@ -1922,7 +1922,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       setQuick(false); setViewerCompanion(false); setDetailView(true); openDetailPage("results"); onOpenChange(true); return; }
     if (target.kind === "workbook") { void openProjectWorkbook(target.id); return; }
     if (target.kind === "citation") { void openProjectWorkbook(target.id, false, target.stageId, target.blockId); return; }
-    if (target.kind === "note") { onOpenChange(true); openProjectNotes(target.id); return; }
+    if (target.kind === "note") {
+      setQuick(false); setViewerCompanion(false); setDetailView(true); onOpenChange(true);
+      window.requestAnimationFrame(() => openProjectNotes(target.id)); return;
+    }
     if (target.kind === "document") { onOpenChange(true); viewBesideProject(target.id, target.module); }
   };
   useEffect(() => {
@@ -1938,6 +1941,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       window.removeEventListener("math3d:execute-research-command", execute);
     };
   });
+  useEffect(() => {
+    // A palette opened while a Project is loading must enable its commands when the load completes.
+    window.dispatchEvent(new CustomEvent("math3d:research-command-index", { detail: researchCommands }));
+  }, [project, library, busy, preview, resourceVersion]);
   const fullDetails = !quick && detailView;
   useEffect(() => {
     if (!hasOpenProject || busy || preview || managed || !project?.metadata.tags?.includes("ripple-wave-study") ||

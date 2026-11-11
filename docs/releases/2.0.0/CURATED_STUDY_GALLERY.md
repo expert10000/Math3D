@@ -22,14 +22,14 @@ The active Gallery now qualifies each card against probed storage, WebGL and ver
 | QWZ | Desktop verified `.qscene` chooser | Created after two verified scenes are admitted | Existing QWZ Study and tampered-byte desktop tests; external scenes required |
 | SSH | Desktop verified `.qscene` chooser | No bundled Study | Import contract only; no verified producer fixture |
 | Hydrogen | Desktop verified `.qscene` chooser | No bundled Study | Import contract only; no verified producer fixture |
-| Algebra structures | CAS / Algebra examples | Saved algebra objects in a named Project | Desktop Gallery route and saved GF(5) example; card provenance has component coverage, while return navigation needs an interaction fix |
+| Algebra structures | CAS / Algebra examples | Saved algebra objects in a named Project | Desktop Gallery route, saved GF(5) example and revision summary; CAS Open Projects returns to its card |
 
 ## Host and asset receipts (source checkout, 2026-11-11)
 
 | Host | Exercised path | Observed result | Remaining gate |
 | --- | --- | --- | --- |
 | Windows renderer model (Vitest) | All 11 built-in guided copies: compatibility, resources, narrative save/restart, changed source, omitted sidecar, export/import | 11/11 desktop open contracts and 11/11 narrative lifecycle cases pass | Model checks do not establish installed-package behavior |
-| Windows Electron source checkout | Guided Gallery and external card labels, Catenary Study restart and reset, narrative JSON review/import/collision, CAS GF(5) save | Desktop Gallery suite passes | Other 10 routes need installed-host interaction receipts; CAS-to-Projects return is blocked by workspace pointer interception after saving |
+| Windows Electron source checkout | Guided Gallery and external card labels, Catenary Study restart and reset, narrative JSON review/import/collision, CAS GF(5) save and return | Desktop Gallery suite passes | Other 10 routes still need installed-host interaction receipts |
 | Local Chromium browser | Edge-path desktop-only card and research preview, including source/citation/Note status and library save in en-US/UTC and pl-PL/Auckland | Read-only fallback passes in both locales | Hosted browser and other route interaction receipts |
 | Mobile Project model (Vitest) | Guided Catenary Project Workbook citations and Note pin; missing Workbook payload | Current pins shown, legacy pins unverified, missing payload unavailable | Android device and app-package interaction receipt |
 | External QWZ/SSH/hydrogen | Verified chooser facility and route labels | Correctly conditional on desktop chooser and local producer bundle | Matching independently verified producer scenes |

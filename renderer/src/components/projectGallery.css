@@ -446,3 +446,4 @@ body:has(.project-viewer-panel:not(.project-embedded-panel)[data-project-placeme
 .curated-study-content details p { margin:6px 0; }
 .curated-study-actions { display:flex;flex-wrap:wrap;gap:6px;align-items:center; }
 .curated-study-content > small { color:#9a4b1d;font-size:11px; }
+[data-testid="curated-study-research-preview"] { min-width:0;overflow-wrap:anywhere; }

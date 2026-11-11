@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { instantiateMath3DProjectTemplate } from "@math3d/core";
+import { createGraph2DDocument, createMixedWorkspaceDocument, instantiateMath3DProjectTemplate,
+  replaceMath3DProjectWorkspace, structuralHash } from "@math3d/core";
 import { prepareCuratedStudyBundle } from "./curatedStudyProject";
 import { buildResearchCommands, searchResearchCommands } from "./researchCommands";
 
@@ -35,5 +36,24 @@ describe("global research command index", () => {
     expect(commands).toHaveLength(3);
     expect(commands.find(command => command.target.kind === "current-project")?.unavailableReason).toBe("No Project is open.");
     expect(commands.find(command => command.target.kind === "cas")?.unavailableReason).toMatch(/unavailable/);
+  });
+
+  it("labels a saved citation historical after its pinned Graph source changes", () => {
+    const sourceId = guided.project.workspace.studies![0]!.members[0]!.documentId;
+    const entries = guided.project.workspace.entries.map(entry => {
+      if (entry.expected.id !== sourceId || entry.checkpoint.format !== "math3d.graph2d-document") return entry;
+      const old = entry.checkpoint;
+      const source = { ...old.source, objects: old.source.objects.map((object, index) => index === 0 ?
+        { ...object, label: `${object.label} revised` } : object) };
+      const checkpoint = createGraph2DDocument({ ...old, stableKey: old.identity.id, title: old.metadata.title, source,
+        identity: { ...old.identity, revision: old.identity.revision + 1, structuralHash: structuralHash(source) } });
+      return { ...entry, checkpoint, expected: checkpoint.identity, replay: null };
+    });
+    const changed = replaceMath3DProjectWorkspace(guided.project,
+      createMixedWorkspaceDocument({ ...guided.project.workspace, entries }));
+    const citation = buildResearchCommands({ ...input(), project: changed })
+      .find(command => command.target.kind === "citation");
+    expect(citation?.status).toBe("historical");
+    expect(citation?.detail).toContain("earlier Study");
   });
 });
