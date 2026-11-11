@@ -2,9 +2,9 @@
 
 **Product roadmap · Architecture / UX / Scientific interoperability / Release engineering**<br>
 **Prepared:** 2026-11-05<br>
-**Updated:** 2026-11-09<br>
+**Updated:** 2026-11-12<br>
 **Target:** Math3D 2.0.0 General Availability (GA)<br>
-**Status:** Architecture, workflow, documentation, and release-gate work is merged to `main`; RC1, RC2, and GA are not declared. Root and renderer packages still report 1.7.0, and no `v2.0.0` tag exists.<br>
+**Status:** The source branch reports 2.0.0 across the root, desktop, renderer, and lockfiles. RC1, RC2, and GA are not declared; no `v2.0.0` tag or signed 2.0 candidate exists.<br>
 **Primary product claim:** *Construct, compute, analyze, compare, document, and publish connected mathematical objects in one scientific workspace.*
 
 > **Release principle.** Version 2.0.0 is not another sequence of independent scientific-module expansions. It is the release that makes the already substantial Geometry, Curves, Surfaces, Mesh, Volume, Graphs, Field Explorer, Topology, CAS/Sage, Projects, Workbooks, and Quantum capabilities behave as **one integrated, reproducible scientific application**.
@@ -23,11 +23,11 @@
 | 17 · RC2 | Pinned source migration corpus, independent resource transfers, timed soak runner, and exact-candidate rehearsal verifier | Two-hour soak, exact-artifact install/upgrade, host-specific receipts, and written sign-off for one commit and manifest |
 | 18 · GA | Legacy 1.x publish-path guard, reviewed sign-off verifier, immutable asset staging, and uploaded-download audit | Approved zero-blocker receipt, `v2.0.0` tag, publication, final downloaded install, and remote-byte audit |
 
-The gate scripts and source tests are **preparation**, not evidence that a 2.0 installer or release has passed. The local source checkout remains version 1.7.0. Keep installer execution at the final qualification stage; only promote a capability or checklist item after evidence names the exact candidate commit and artifact hash.
+The gate scripts and source tests are **preparation**, not evidence that a 2.0 installer or release has passed. This branch has a 2.0 source baseline, but the two-hour memory plateau and exact signed installer remain unqualified. Only promote a capability or checklist item after evidence names the exact candidate commit and artifact hash.
 
 **Immediate P0 release blocker — QI-40:** The currently published v1.7.0 Windows installer still contains the NSIS component seen in intermittent installer crashes. The [production fix](https://github.com/expert10000/Math3D/pull/29) is on `main` and passed 36/36 exact-file installs on Windows 2022 and Windows latest, plus installed UI/QEC, rollback, and upgrade in a [nonpublishing signoff](https://github.com/expert10000/Math3D/actions/runs/42396101411). It has not changed the published download. An earlier installed current-main candidate exceeded the QI-40 memory target: 2,832,516 bytes late growth against 2,097,152 bytes. The toolchain fix must reach the actual 2.0 packaging path and the memory gate must pass on the exact 2.0 release candidate; see the [installation and upgrade gate](INSTALL_UPGRADE_GATE.md).
 
-**Next release path:** qualify the merged installer toolchain fix in the 2.0 packaging path, diagnose the installed memory excess, close or explicitly limit the shared cursor/Study and three flagship journeys, and resolve the native CGAL source-bundle blocker. Then choose and review a 2.0 integration baseline, run the RC1 freeze and acceptance matrix, and qualify the signed candidate, migration, soak, gallery, and host claims. GA sign-off, tagging, staging, publication, and verification of downloaded bytes follow that evidence.
+**Next release path:** freeze and rerun RC1 source acceptance on the current clean 2.0 commit, then fix the measured renderer native-memory growth and complete the two-hour plateau. The signed-candidate workflow must acquire a verified signing identity before exact-file installation, 1.7 upgrade, rollback, integrity, and installed memory tests can run. Resolve remaining native source, Gallery, and host claims against that same candidate before GA sign-off, tagging, staging, publication, and downloaded-byte verification.
 
 ---
 
@@ -1146,9 +1146,9 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 ### M3D20-16 — RC1 feature freeze (P0)
 
-**16a preparation:** The [freeze gate](RC1_FREEZE_GATE.md) pins the reviewed 2.0 source commit, lockfile bytes, resolved native desktop dependencies, and existing Project/workspace/result schema contracts. It intentionally rejects the current 1.7 checkout; RC1 is not declared.
+**16a preparation:** The [freeze gate](RC1_FREEZE_GATE.md) pins the reviewed 2.0 source commit, lockfile bytes, resolved native desktop dependencies, and existing Project/workspace/result schema contracts. A clean 2.0 source freeze was generated for `5bde394e`; the later Project test-harness correction requires a new manifest. RC1 is not declared.
 
-**16b preparation:** The [RC1 acceptance runner and blocker register](RC1_ACCEPTANCE_GATE.md) define a reproducible source-check sequence and explicit outstanding 2.0 gates. The current checkout cannot run it as RC1 because it still reports 1.7.0.
+**16b preparation:** The [RC1 acceptance runner and blocker register](RC1_ACCEPTANCE_GATE.md) define a reproducible source-check sequence and explicit outstanding 2.0 gates. The first 2.0 source run passed its first ten checks but failed one desktop Project transfer test because its simulated destination retained the Electron recovery journal. The isolated test passes after clearing that journal; a full rerun on the corrected commit is required.
 
 - Branch from reviewed 2.0 integration baseline, lock dependency versions and schema contracts.
 - Run full CI + mathematical fixtures + release smoke suite.
@@ -1163,7 +1163,7 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **17b independent transfer:** `tests/unit/release20IndependentTransfer.test.ts` checks that Mesh, Graph table, and measured Volume source bytes survive Project package import, export, and reimport with their scientific lineage. It rejects a changed source sidecar and confirms that a JSON-only copy reports required source data as unavailable.
 
-**17c reliability preparation:** The [source reliability soak](RC2_SOAK_GATE.md) describes a repeatable run covering Projects, scientific results, quantum, and a desktop first-use Study restart. `--run` requires a matching 2.0 freeze manifest and at least 120 minutes, records every cycle and stops on a failed check. It has not run on the current 1.7 checkout and does not qualify an installed candidate.
+**17c reliability preparation:** The [source reliability soak](RC2_SOAK_GATE.md) covers Projects, scientific results, quantum, first-use Study restart, hard-exit recovery, and a same-process memory run. Its source run on `5bde394e` passed the preliminary scientific and recovery checks, but renderer private bytes crossed the predeclared budget after about 11.5 minutes. The run was stopped, so it does not establish a two-hour plateau or qualify an installed candidate.
 
 **17d release rehearsal:** The [exact-candidate rehearsal gate](RC2_REHEARSAL_GATE.md) checks that the source freeze, signed Windows install and upgrade receipts, source soak, verified assets, three gallery captures, public license metadata, and locally staged site all refer to one 2.0 commit and installer hash. It remains pending real candidate artifacts and installed evidence.
 

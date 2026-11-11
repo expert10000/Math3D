@@ -32,7 +32,14 @@ export async function runNamedProjectRoundTrip(page: Page, exportJson: (checkpoi
   expect(await projectStorage()).toEqual(before);
 
   // Independent destination-host storage; the source library above was protected.
-  await page.evaluate(() => { localStorage.clear(); localStorage.setItem("math3d.computeEngines.firstLaunchSeen", "1"); });
+  await page.evaluate(() => {
+    // An independent destination has neither the source library nor its
+    // hard-exit recovery journal. Clearing only localStorage lets Electron
+    // restore the source library on reload and correctly reject the import.
+    (window as Window & { projectDurability?: { clearForTest?: () => void } }).projectDurability?.clearForTest?.();
+    localStorage.clear();
+    localStorage.setItem("math3d.computeEngines.firstLaunchSeen", "1");
+  });
   await page.reload(); await page.getByTestId("projects-toggle").click();
   await panel.getByTestId("project-import-file").setInputFiles(upload);
   await panel.getByTestId("project-import-save").click();

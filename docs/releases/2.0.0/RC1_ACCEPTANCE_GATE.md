@@ -1,6 +1,6 @@
 # M3D20-16 — RC1 acceptance and blocker register
 
-RC1 is **not yet signed off**. Use `node scripts/release20-rc1-checks.mjs --plan` to inspect the repeatable source checks. After a reviewed 2.0 integration branch and a matching [freeze manifest](RC1_FREEZE_GATE.md) exist, run `node scripts/release20-rc1-checks.mjs --run <freeze-manifest> <evidence-json>`. The runner refuses a 1.7 checkout, a dirty worktree, or mismatched freeze identity. It records each command, result, duration, the source commit, and freeze-manifest hash. A failing check stops the sequence and leaves the partial evidence file for triage.
+RC1 is **not yet signed off**. Use `node scripts/release20-rc1-checks.mjs --plan` to inspect the repeatable source checks. On a clean reviewed 2.0 integration commit, generate a matching [freeze manifest](RC1_FREEZE_GATE.md) and run `node scripts/release20-rc1-checks.mjs --run <freeze-manifest> <evidence-json>`. The runner refuses a 1.7 checkout, a dirty worktree, or mismatched freeze identity. It records each command, result, duration, the source commit, and freeze-manifest hash. A failing check stops the sequence and leaves the partial evidence file for triage.
 
 The source sequence covers TypeScript, Project contracts and desktop journeys, scientific goldens, a quantum baseline, Sage gateway units, SBOM tests, site/gallery integrity, core/renderer builds, kernel acceptance, and the first-use Study journey. This is a **focused repeatable subset**, not a substitute for the full CI matrix, live Sage backends, physical Android, hosted deployment, Linux packages, or installed candidate tests. Link the full CI run and those environment-specific receipts to the same commit before RC1 review. Installer execution is reserved for the later release qualification stage.
 
@@ -8,10 +8,12 @@ The source sequence covers TypeScript, Project contracts and desktop journeys, s
 
 | Item | Current state | RC1 disposition |
 | --- | --- | --- |
-| Reviewed 2.0 integration commit and freeze manifest | Repository package is 1.7.0; no 2.0 integration baseline identified | Blocking: choose reviewed commit, align versions, generate and verify manifest |
+| Reviewed 2.0 integration commit and freeze manifest | The source branch reports 2.0.0. A clean freeze for `5bde394e` passed verification, but a subsequent Project test-harness correction changes the commit | Generate and verify a fresh manifest for the corrected clean commit before RC1 review |
+| Source acceptance and full CI | Full CI passed on `5bde394e`. Local source acceptance passed ten checks, then the desktop Project suite failed because its simulated destination retained the recovery journal; the corrected isolated case passes | Rerun the complete acceptance sequence and full CI on the corrected frozen commit |
+| Two-hour viewer memory plateau | Same-process source run on `5bde394e` was stopped after about 11.5 minutes when renderer private bytes exceeded 1024 MiB and late growth exceeded the declared limits | Blocking: diagnose native renderer growth, fix it, and complete a two-hour run on a clean identified build |
 | General Project-owned Study and shared cursor | Roadmap target; current narrow quantum Study and starter Projects do not prove the general model | Blocking if advertised as a 2.0 flagship capability; otherwise narrow the release claim and acceptance journey |
 | Public native CGAL source bundle | Existing native distribution gate still requires public source-bundle integration | Blocking for a distributable build containing that component |
-| Signing identity and exact 2.0 candidate | No signed 2.0 installer or matching candidate evidence in this checkout | Blocking before release signoff; installer qualification runs at the end |
+| Signing identity and exact 2.0 candidate | Candidate workflow preflight on `5bde394e` failed: certificate, password, signer thumbprint, and timestamp inputs were absent; no signed installer was built | Blocking: use a verified trusted signer, then qualify one installer hash through clean install, 1.7 upgrade, rollback, integrity, and installed memory |
 | Three flagship gallery captures | Current gallery has source-build images with mixed commit attribution | Blocking before any image is labeled an installed 2.0 capture; use the [gallery gate](GALLERY_EVIDENCE_GATE.md) |
 | Hosted browser, physical Android, installed Linux | Capability matrix records unverified deployment, device, and package journeys | Keep claims limited; promote only with host-specific evidence |
 
