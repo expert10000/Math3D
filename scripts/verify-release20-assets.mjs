@@ -35,11 +35,18 @@ export async function verifyRelease20Assets(root, version = '2.0.0', assetsOverr
     `Math3D-Setup-${version}.exe`, `Math3D-${version}-windows.cdx.json`,
     `Math3D-${version}-windows-licenses.md`, `Math3D-${version}-LICENSE`,
     `Math3D-${version}-THIRD_PARTY_NOTICES.md`, `Math3D-${version}-SOURCE_OFFER.md`,
-    'candidate-manifest.json', 'signatures.json', 'nsis.json',
+    'candidate-manifest.json', 'freeze-manifest.json', 'signatures.json', 'nsis.json', 'SOURCE_MANIFEST-windows.json',
+    `Math3D-${version}-source.zip`,
   ];
   for (const name of required) requireCondition(listed.has(name), `Required release asset missing: ${name}`);
   const candidate = await verifyRelease20Candidate(join(assets, 'candidate-manifest.json'),
     join(assets, `Math3D-Setup-${version}.exe`));
+  const freezeBytes = await readFile(join(assets, 'freeze-manifest.json'));
+  const freeze = JSON.parse(freezeBytes.toString('utf8').replace(/^\uFEFF/, ''));
+  requireCondition(digest(freezeBytes) === candidate.freezeManifestSha256 &&
+    freeze.schema === 'math3d/release20-rc1-freeze/v1' && freeze.status === 'frozen' &&
+    freeze.version === version && freeze.sourceCommit === candidate.commit,
+    'Frozen source manifest differs from candidate.');
   const buildIdentity = await readFile(join(root, 'dist/build-identity.json'));
   const identity = JSON.parse(buildIdentity);
   requireCondition(digest(buildIdentity) === candidate.buildIdentitySha256 && identity.version === version &&
@@ -58,6 +65,17 @@ export async function verifyRelease20Assets(root, version = '2.0.0', assetsOverr
     nsis.installerSha256 === candidate.installerSha256 &&
     nsis.systemDllSha256 === candidate.nsisSystemDllSha256 && nsis.systemDllBytes === 30208,
     'NSIS receipt differs from candidate bytes.');
+  const sourceManifest = JSON.parse(await readFile(join(assets, 'SOURCE_MANIFEST-windows.json'), 'utf8'));
+  const declaredSources = JSON.parse(await readFile(join(root, 'compliance/public-source-manifest.json'), 'utf8'));
+  const selectedSources = declaredSources.sources.filter(item => item.targets.includes('windows'));
+  requireCondition(sourceManifest.math3d?.version === version && sourceManifest.math3d?.commit === candidate.commit &&
+    sourceManifest.math3d.sourceArchive === `Math3D-${version}-source.zip` &&
+    sourceManifest.math3d.releaseBuildPatch === null &&
+    sourceManifest.target === 'windows' && JSON.stringify(sourceManifest.sources) === JSON.stringify(selectedSources) &&
+    selectedSources.some(item => item.name === 'CGAL' && item.version === '6.2.1' && item.targets.includes('native-cgal')),
+    'Windows corresponding-source inventory differs from candidate or native source pins.');
+  for (const source of selectedSources) requireCondition(listed.get(source.filename) === source.sha256,
+    `Corresponding source bytes differ: ${source.filename}`);
   for (const source of ['LICENSE', 'THIRD_PARTY_NOTICES.md', 'SOURCE_OFFER.md']) {
     const published = `Math3D-${version}-${source}`;
     const bytes = await readFile(join(root, source));

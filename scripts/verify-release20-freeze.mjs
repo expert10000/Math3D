@@ -26,8 +26,13 @@ export async function verifyRelease20Freeze({ root, manifestPath, expectedCommit
   const app = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
   const renderer = JSON.parse(await readFile(join(root, 'renderer/package.json'), 'utf8'));
   const lock = JSON.parse(await readFile(join(root, 'package-lock.json'), 'utf8'));
-  requireValue(app.version === '2.0.0' && renderer.version === '2.0.0' && lock.version === '2.0.0',
-    'Root, renderer and lockfile must all identify 2.0.0.');
+  const desktop = JSON.parse(await readFile(join(root, 'apps/desktop/package.json'), 'utf8'));
+  const rendererLock = JSON.parse(await readFile(join(root, 'renderer/package-lock.json'), 'utf8'));
+  requireValue(app.version === '2.0.0' && desktop.version === '2.0.0' && renderer.version === '2.0.0' &&
+    lock.version === '2.0.0' && lock.packages?.['']?.version === '2.0.0' &&
+    lock.packages?.['apps/desktop']?.version === '2.0.0' && rendererLock.version === '2.0.0' &&
+    rendererLock.packages?.['']?.version === '2.0.0',
+    'Root, desktop, renderer and both npm lockfiles must all identify 2.0.0.');
   requireValue(exactKeys(manifest.lockfiles, freezeLockfiles), 'Freeze lockfile inventory differs from the required set.');
   for (const path of freezeLockfiles) {
     requireValue(manifest.lockfiles[path] === sha(await readFile(join(root, path))), `Frozen bytes changed: ${path}`);
@@ -56,8 +61,29 @@ export async function verifyRelease20Freeze({ root, manifestPath, expectedCommit
       source.includes(`export const ${expected.version[0]} = ${expected.version[1]} as const`),
     `Frozen schema version changed: ${path}`);
   }
+  const nativePath = 'native/cgal-worker/dependency-manifest.json';
+  const publicPath = 'compliance/public-source-manifest.json';
+  const nativeBytes = await readFile(join(root, nativePath));
+  const publicBytes = await readFile(join(root, publicPath));
+  const native = JSON.parse(nativeBytes.toString('utf8'));
+  const publicSources = JSON.parse(publicBytes.toString('utf8'));
+  const cgal = publicSources.sources?.find(item => item.name === 'CGAL' &&
+    item.version === native.windowsReferenceBuild?.cgal && item.targets?.includes('windows'));
+  requireValue(native.distributionStatus === 'blocked-pending-public-source-bundle-integration' &&
+    cgal?.targets?.includes('native-cgal') && /^[0-9a-f]{64}$/.test(cgal.sha256 ?? '') &&
+    ['GMP', 'MPFR'].every(name => publicSources.sources?.some(item => item.name === name &&
+      item.targets?.includes('windows') && item.targets?.includes('native-cgal'))),
+    'Pinned Windows native source inventory is incomplete; standalone native bundling stays blocked.');
+  requireValue(exactKeys(manifest.nativeSources, ['dependencyManifestSha256', 'publicSourceManifestSha256',
+    'distributionStatus', 'windowsCgalVersion', 'windowsCgalSourceSha256']) &&
+    manifest.nativeSources.dependencyManifestSha256 === sha(nativeBytes) &&
+    manifest.nativeSources.publicSourceManifestSha256 === sha(publicBytes) &&
+    manifest.nativeSources.distributionStatus === native.distributionStatus &&
+    manifest.nativeSources.windowsCgalVersion === cgal.version &&
+    manifest.nativeSources.windowsCgalSourceSha256 === cgal.sha256,
+    'Native source inventory differs from the frozen 2.0 baseline.');
   return { sourceCommit: expectedCommit, version: '2.0.0', lockfiles: freezeLockfiles.length,
-    contracts: Object.keys(freezeContracts).length, dependencies: dependencyNames.length };
+    contracts: Object.keys(freezeContracts).length, dependencies: dependencyNames.length, nativeSources: 1 };
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {

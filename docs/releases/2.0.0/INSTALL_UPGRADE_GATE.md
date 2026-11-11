@@ -1,6 +1,6 @@
 # M3D20-13 installation and upgrade gates
 
-These gates are for the **exact signed 2.0.0 candidate**, not a source checkout or a renamed 1.7 installer. The current repository version is 1.7.0, so the 2.0 installer and upgrade gates remain pending until a 2.0 candidate manifest and artifacts exist.
+These gates are for the **exact signed 2.0.0 candidate**, not a source checkout or a renamed 1.7 installer. The source version is now aligned to 2.0.0, but the installer and upgrade gates remain pending until a signed candidate manifest and artifacts exist.
 
 The manual [2.0 candidate workflow](../../../.github/workflows/release20-candidate.yml) and `scripts/build-release20-candidate.ps1` stop before packaging unless root, renderer and both npm locks identify a clean reviewed 2.0.0 commit and the Windows signing inputs are present. The builder freezes the worker, checks its protocol, verifies Authenticode on the installer/app/worker, extracts the exact NSIS 3.13 `System.dll`, and writes a candidate manifest, signatures, SBOM, attributions and asset checksums under one temporary output. This is a build route, not an installed receipt. No Windows signing secrets or signed 2.0 installer are available in the present checkout.
 
