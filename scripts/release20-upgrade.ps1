@@ -108,6 +108,9 @@ try {
     throw 'Original profile backup differs from the 1.7 source profile.'
   }
   $evidence.profileBackup = $backup
+  $inventoryPath = Join-Path $root 'profile-before-2.0.inventory.json'
+  $originalInventory | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $inventoryPath -Encoding UTF8
+  $evidence.profileInventoryPath = $inventoryPath
   $evidence.profileInventorySha256 = $originalInventory.digest
   $evidence.profileFileCount = $originalInventory.fileCount
   $evidence.checks.profileBackup = 'passed'

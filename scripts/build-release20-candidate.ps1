@@ -20,6 +20,8 @@ try {
   $env:CSC_KEY_PASSWORD = $env:MATH3D_WINDOWS_CSC_KEY_PASSWORD
   npm run dist:ci
   if ($LASTEXITCODE -ne 0) { throw '2.0 candidate packaging failed.' }
+  node scripts/smoke-python-worker.mjs --exe (Join-Path $repo 'release/win-unpacked/resources/python-worker/worker.exe')
+  if ($LASTEXITCODE -ne 0) { throw 'Frozen candidate worker protocol smoke failed.' }
   $installer = Join-Path $repo 'release/Math3D Setup 2.0.0.exe'
   if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) { throw 'Exact 2.0 installer was not produced.' }
   New-Item -ItemType Directory -Path $output | Out-Null
@@ -33,6 +35,12 @@ try {
   node scripts/release20-candidate.mjs --record $staged (Join-Path $repo 'release/win-unpacked') `
     $signatureReport $nsisReport (Join-Path $output 'candidate-manifest.json')
   if ($LASTEXITCODE -ne 0) { throw 'Candidate manifest generation failed.' }
+  $sbom = Join-Path $output 'sbom'
+  node scripts/generate-release-sbom.mjs --target windows --app-dir (Join-Path $repo 'release/win-unpacked') `
+    --out $sbom --version 2.0.0
+  if ($LASTEXITCODE -ne 0) { throw 'Candidate SBOM generation failed.' }
+  node scripts/stage-release20-candidate-assets.mjs $repo $output $sbom (Join-Path $output 'assets')
+  if ($LASTEXITCODE -ne 0) { throw 'Candidate asset integrity verification failed.' }
   Write-Host "Exact 2.0 candidate and verification receipts: $output"
 } finally {
   Remove-Item Env:CSC_LINK, Env:CSC_KEY_PASSWORD -ErrorAction SilentlyContinue

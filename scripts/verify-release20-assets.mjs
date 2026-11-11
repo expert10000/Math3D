@@ -3,14 +3,15 @@ import { createHash } from 'node:crypto';
 import { readFile, readdir, lstat } from 'node:fs/promises';
 import { join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { verifyRelease20Candidate } from './verify-release20-candidate.mjs';
 
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const requireCondition = (condition, message) => { if (!condition) throw new Error(message); };
 const safeAsset = name => /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name) && name !== '..';
 
-export async function verifyRelease20Assets(root, version = '2.0.0') {
+export async function verifyRelease20Assets(root, version = '2.0.0', assetsOverride) {
   requireCondition(version === '2.0.0', 'This gate accepts only the 2.0.0 release.');
-  const assets = join(root, 'release-assets');
+  const assets = assetsOverride ?? join(root, 'release-assets');
   const unpacked = join(root, 'release', 'win-unpacked');
   const entries = await readdir(assets, { withFileTypes: true });
   const names = entries.map(entry => entry.name);
@@ -34,8 +35,29 @@ export async function verifyRelease20Assets(root, version = '2.0.0') {
     `Math3D-Setup-${version}.exe`, `Math3D-${version}-windows.cdx.json`,
     `Math3D-${version}-windows-licenses.md`, `Math3D-${version}-LICENSE`,
     `Math3D-${version}-THIRD_PARTY_NOTICES.md`, `Math3D-${version}-SOURCE_OFFER.md`,
+    'candidate-manifest.json', 'signatures.json', 'nsis.json',
   ];
   for (const name of required) requireCondition(listed.has(name), `Required release asset missing: ${name}`);
+  const candidate = await verifyRelease20Candidate(join(assets, 'candidate-manifest.json'),
+    join(assets, `Math3D-Setup-${version}.exe`));
+  const buildIdentity = await readFile(join(root, 'dist/build-identity.json'));
+  const identity = JSON.parse(buildIdentity);
+  requireCondition(digest(buildIdentity) === candidate.buildIdentitySha256 && identity.version === version &&
+    identity.commit === candidate.commit && identity.dirty === false, 'Build identity differs from candidate source.');
+  const unpackedApp = digest(await readFile(join(unpacked, 'Math3D.exe')));
+  const unpackedWorker = digest(await readFile(join(unpacked, 'resources/python-worker/worker.exe')));
+  requireCondition(unpackedApp === candidate.executableSha256 && unpackedWorker === candidate.workerSha256,
+    'Unpacked executable bytes differ from the signed candidate.');
+  const signatures = JSON.parse((await readFile(join(assets, 'signatures.json'), 'utf8')).replace(/^\uFEFF/, ''));
+  requireCondition(signatures.schema === 'math3d/release20-signatures/v1' &&
+    signatures.thumbprint.toLowerCase() === candidate.signerThumbprint &&
+    [candidate.installerSha256, unpackedApp, unpackedWorker].every(hash =>
+      signatures.files?.some(file => file.sha256 === hash)), 'Signature receipt differs from candidate bytes.');
+  const nsis = JSON.parse((await readFile(join(assets, 'nsis.json'), 'utf8')).replace(/^\uFEFF/, ''));
+  requireCondition(nsis.schema === 'math3d/release20-nsis/v1' &&
+    nsis.installerSha256 === candidate.installerSha256 &&
+    nsis.systemDllSha256 === candidate.nsisSystemDllSha256 && nsis.systemDllBytes === 30208,
+    'NSIS receipt differs from candidate bytes.');
   for (const source of ['LICENSE', 'THIRD_PARTY_NOTICES.md', 'SOURCE_OFFER.md']) {
     const published = `Math3D-${version}-${source}`;
     const bytes = await readFile(join(root, source));
@@ -47,6 +69,9 @@ export async function verifyRelease20Assets(root, version = '2.0.0') {
   requireCondition(bom.bomFormat === 'CycloneDX' && bom.specVersion === '1.6' &&
     bom.metadata?.component?.name === 'Math3D' && bom.metadata.component.version === version,
   'Windows SBOM identity is invalid.');
+  requireCondition(bom.components?.some(component => component.name === 'Math3D' &&
+    component.properties?.some(property => property.name === 'math3d:sourceCommit' && property.value === candidate.commit)),
+    'Windows SBOM source commit differs from candidate.');
   const report = await readFile(join(assets, `Math3D-${version}-windows-licenses.md`), 'utf8');
   requireCondition(report.startsWith(`# Math3D ${version} windows release inventory`) && report.includes('## Declared package licenses'),
     'Windows license inventory is invalid.');
@@ -75,11 +100,11 @@ export async function verifyRelease20Assets(root, version = '2.0.0') {
   await walk(unpacked);
   requireCondition(actual.size === filesInBom.size && actual.size > 0, 'SBOM file coverage differs from unpacked app.');
   for (const [name, hash] of actual) requireCondition(filesInBom.get(name) === hash, `SBOM file mismatch: ${name}`);
-  return { version, assetCount: files.length, unpackedFileCount: actual.size,
+  return { version, sourceCommit: candidate.commit, assetCount: files.length, unpackedFileCount: actual.size,
     installerSha256: listed.get(`Math3D-Setup-${version}.exe`), sbomSha256: listed.get(`Math3D-${version}-windows.cdx.json`) };
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
-  try { console.log(JSON.stringify(await verifyRelease20Assets(process.cwd(), process.argv[2] ?? '2.0.0'))); }
+  try { console.log(JSON.stringify(await verifyRelease20Assets(process.cwd(), process.argv[2] ?? '2.0.0', process.argv[3]))); }
   catch (error) { console.error(error.message); process.exitCode = 1; }
 }

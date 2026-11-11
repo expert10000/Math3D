@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const requireValue = (condition, message) => { if (!condition) throw new Error(message); };
-const readJson = async path => JSON.parse(await readFile(path, 'utf8'));
+const readJson = async path => JSON.parse((await readFile(path, 'utf8')).replace(/^\uFEFF/, ''));
 const pins = ['electron', 'electron-builder', 'better-sqlite3'];
 const inputs = ['package-lock.json', 'renderer/package-lock.json', 'python/worker/requirements.freeze.txt',
   'python/worker/build-requirements.freeze.txt'];
@@ -16,10 +16,12 @@ const expectedSystemDll = '1556ee1bf1cb477124e1269b534ed81653ba71994dab7903ee378
 /** Refuse a 1.x checkout or a non-frozen dependency before any packaging work. */
 export async function inspectRelease20CandidateInputs(root, sourceCommit, clean, signingPresent) {
   requireValue(/^[0-9a-f]{40}$/.test(sourceCommit) && clean, 'Candidate source must be a clean, exact Git commit.');
-  const [app, renderer, lock] = await Promise.all(['package.json', 'renderer/package.json', 'package-lock.json']
+  const [app, renderer, lock, rendererLock] = await Promise.all(['package.json', 'renderer/package.json', 'package-lock.json', 'renderer/package-lock.json']
     .map(name => readJson(join(root, name))));
-  requireValue(app.version === '2.0.0' && renderer.version === '2.0.0' && lock.version === '2.0.0',
-    'Candidate requires a reviewed 2.0.0 root, renderer and npm lockfile.');
+  requireValue(app.version === '2.0.0' && renderer.version === '2.0.0' && lock.version === '2.0.0' &&
+    lock.packages?.['']?.version === '2.0.0' && rendererLock.version === '2.0.0' &&
+    rendererLock.packages?.['']?.version === '2.0.0',
+    'Candidate requires a reviewed 2.0.0 root, renderer and both npm lockfiles.');
   for (const name of pins) {
     const declared = app.dependencies?.[name] ?? app.devDependencies?.[name];
     requireValue(/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(declared ?? '') &&

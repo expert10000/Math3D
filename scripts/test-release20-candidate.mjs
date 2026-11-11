@@ -15,8 +15,9 @@ try {
   const app = { version: '2.0.0', devDependencies: dependencies };
   await put('package.json', JSON.stringify(app));
   await put('renderer/package.json', JSON.stringify({ version: '2.0.0' }));
-  await put('package-lock.json', JSON.stringify({ version: '2.0.0', packages: Object.fromEntries(Object.entries(dependencies).map(([name, version]) => [`node_modules/${name}`, { version }])) }));
-  await put('renderer/package-lock.json', '{}');
+  await put('package-lock.json', JSON.stringify({ version: '2.0.0', packages: { '': { version: '2.0.0' },
+    ...Object.fromEntries(Object.entries(dependencies).map(([name, version]) => [`node_modules/${name}`, { version }])) } }));
+  await put('renderer/package-lock.json', JSON.stringify({ version: '2.0.0', packages: { '': { version: '2.0.0' } } }));
   await put('python/worker/requirements.freeze.txt', 'vtk==9.7.0\n');
   await put('python/worker/build-requirements.freeze.txt', 'pyinstaller==6.19.0\n');
   const preflight = await inspectRelease20CandidateInputs(root, commit, true, true);
@@ -31,9 +32,9 @@ try {
   const unpacked = join(root, 'release/win-unpacked');
   const appExe = await put('release/win-unpacked/Math3D.exe', 'signed app');
   const worker = await put('release/win-unpacked/resources/python-worker/worker.exe', 'signed worker');
-  const signatures = await put('candidate/signatures.json', JSON.stringify({ schema: 'math3d/release20-signatures/v1',
+  const signatures = await put('candidate/signatures.json', '\uFEFF' + JSON.stringify({ schema: 'math3d/release20-signatures/v1',
     version: '2.0.0', thumbprint, files: await Promise.all([installer, appExe, worker].map(async name => ({ name, sha256: sha(await readFile(name)) }))) }));
-  const nsis = await put('candidate/nsis.json', JSON.stringify({ schema: 'math3d/release20-nsis/v1',
+  const nsis = await put('candidate/nsis.json', '\uFEFF' + JSON.stringify({ schema: 'math3d/release20-nsis/v1',
     installerSha256: sha(await readFile(installer)), systemDllSha256: '1556ee1bf1cb477124e1269b534ed81653ba71994dab7903ee3782b75acc2810', systemDllBytes: 30208 }));
   const output = join(root, 'candidate/candidate-manifest.json');
   const options = { root, sourceCommit: commit, installerPath: installer, unpackedRoot: unpacked,

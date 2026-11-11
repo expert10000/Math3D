@@ -26,7 +26,8 @@ export async function verifyRelease20Candidate(manifestPath, installerPath) {
   const installerSha256 = sha(await readFile(installerPath));
   assert(installerSha256 === m.installerSha256, 'Installer bytes differ from candidate manifest.');
   return { commit: m.commit, installerSha256, signerThumbprint: m.signerThumbprint,
-    executableSha256: m.executableSha256, workerSha256: m.workerSha256, nsisSystemDllSha256: nsisHash };
+    executableSha256: m.executableSha256, workerSha256: m.workerSha256,
+    buildIdentitySha256: m.buildIdentitySha256, nsisSystemDllSha256: nsisHash };
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
