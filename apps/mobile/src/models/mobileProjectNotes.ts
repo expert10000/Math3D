@@ -1,4 +1,4 @@
-import { createProjectNote, pinProjectNoteAnchor, serializeMath3DProject, structuralHash,
+import { createProjectNote, serializeMath3DProject, structuralHash,
   updateProjectNote, upsertMath3DProjectNote, VerifiedProjectResources, type ProjectNoteAnchor } from "@math3d/core";
 import type { MobileStoredSceneProject } from "./mobileScene";
 import { mobileProjectResourceContext } from "./mobileProjectResources";
@@ -33,8 +33,8 @@ export const saveMobileProjectNote = (stored: MobileStoredSceneProject, input: M
       const workbook = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as { stages: { blocks: { id: string }[] }[] };
       const block = workbook.stages.flatMap(stage => stage.blocks).find(item => item.id === input.workbookBlock!.blockId);
       if (!block) throw new TypeError("Workbook block is unavailable.");
-      anchor = pinProjectNoteAnchor(project, { kind: "workbook-block", workbookId: reference.id, workbookRevision: reference.revision,
-        blockId: block.id, blockHash: structuralHash(block) });
+      anchor = { kind: "workbook-block", workbookId: reference.id, workbookRevision: reference.revision,
+        blockId: block.id, blockHash: structuralHash(block) };
     }
     note = createProjectNote({ projectId: project.identity.id, stableKey: ["mobile", now, project.notes?.length ?? 0, title],
       kind: "text", title, body, anchor, createdAt: now });

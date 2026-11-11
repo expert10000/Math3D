@@ -2,29 +2,11 @@ import { describe, expect, it } from "vitest";
 import { createResearchReference, inspectResearchReference, normalizeResearchReference,
   researchResourcePins, viewerSourceFromDocument, createProjectStudyFromDocuments,
   createStudyPaneResearchReference, renameProjectStudy,
-  createStableDocumentId, pinProjectNoteAnchor, normalizeProjectNoteAnchor, structuralHash,
-  upsertMath3DProjectWorkbook } from "@math3d/core";
+  createStableDocumentId } from "@math3d/core";
 import { instantiateNotebookStarter } from "../projects/notebookStarters";
 
 describe("shared research reference", () => {
   const fixture = () => instantiateNotebookStarter("edge-path-evidence", "research-reference");
-
-  it("qualifies Workbook block pins against exact payload descriptors and bytes", () => {
-    const { project, resources } = fixture();
-    const workbook = project.workbooks![0]!;
-    const anchor = pinProjectNoteAnchor(project, { kind: "workbook-block", workbookId: workbook.id,
-      workbookRevision: workbook.revision, blockId: "observation", blockHash: structuralHash("observation") });
-    const pin = anchor.researchReference!;
-    expect(normalizeProjectNoteAnchor(anchor)).toEqual(anchor);
-    expect(inspectResearchReference(project, pin, item => resources.bytes(item))).toMatchObject({
-      status: "current", resourceStatus: "verified" });
-    expect(inspectResearchReference(project, pin, () => null).resourceStatus).toBe("missing");
-    expect(inspectResearchReference(project, pin, () => new Uint8Array([1, 2, 3])).resourceStatus).toBe("missing");
-    const changed = upsertMath3DProjectWorkbook(project, { ...workbook, revision: workbook.revision + 1 });
-    expect(inspectResearchReference(changed, pin, item => resources.bytes(item)).status).toBe("historical");
-    expect(() => pinProjectNoteAnchor(changed, { ...anchor, researchReference: undefined })).toThrow(/Workbook changed/);
-    expect(normalizeProjectNoteAnchor({ ...anchor, blockId: "another-block" })).toBeNull();
-  });
 
   it("pins exact source, result and resource descriptors without copying their bytes", () => {
     const { project, resources } = fixture();

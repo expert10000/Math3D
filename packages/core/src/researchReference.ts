@@ -21,8 +21,7 @@ export type ResearchReferenceInspection = Readonly<{ status: "current" | "histor
 
 /** A descriptor pin records identity; callers supply bytes when publication needs verification. */
 export function researchResourcePins(project: Math3DProject, sourceId: StableDocumentId): readonly ResearchResourcePin[] {
-  return researchInventory(project).filter(item => (item.required && item.owners.includes(sourceId)) ||
-    (item.kind === "workbook-payload" && item.id === sourceId))
+  return researchInventory(project).filter(item => item.required && item.owners.includes(sourceId))
     .map(item => ({ kind: item.kind, id: item.id, descriptorHash: structuralHash(item.reference), checksum: item.checksum }))
     .sort((a, b) => `${a.kind}:${a.id}`.localeCompare(`${b.kind}:${b.id}`));
 }
@@ -54,17 +53,8 @@ export function migrateLegacyStudyPaneResearchReference(study: StudyRecordV1, pa
 
 /** Capture a Note's source descriptor at the moment its draft is saved. */
 export function pinProjectNoteAnchor(project: Math3DProject, anchor: ProjectNoteAnchor): ProjectNoteAnchor {
-  if (anchor.researchReference) return anchor;
-  if (anchor.kind === "workbook-block") {
-    const workbook = project.workbooks?.find(item => item.id === anchor.workbookId);
-    if (!workbook || workbook.revision !== anchor.workbookRevision)
-      throw new TypeError("Workbook changed before its evidence pins were saved.");
-    return { ...anchor, researchReference: createResearchReference({ projectId: project.identity.id,
-      kind: "selection", targetId: workbook.id, selectionId: anchor.blockId, targetHash: anchor.blockHash,
-      source: { documentId: workbook.id, revision: workbook.revision, generation: workbook.revision, structuralHash: workbook.checksum },
-      resources: researchResourcePins(project, workbook.id) }) };
-  }
   if (!("source" in anchor)) return anchor;
+  if (anchor.researchReference) return anchor;
   const source = anchor.source;
   const entry = project.workspace.entries.find(item => item.expected.id === source.documentId);
   if (!entry || !matchesScientificSourceGeneration(source,
@@ -94,14 +84,12 @@ export function inspectResearchReference(project: Math3DProject, candidate: unkn
   if (ref.projectId !== project.identity.id) return { status: "different-project", resourceStatus: "not-checked",
     reason: "Reference belongs to another Project." };
   const sourceEntry = project.workspace.entries.find(item => item.expected.id === ref.source.documentId);
-  const workbook = project.workbooks?.find(item => item.id === ref.source.documentId);
-  if (!sourceEntry && !workbook) return { status: "missing", resourceStatus: "missing", reason: "Source document is missing." };
-  const currentSource = sourceEntry ? viewerSourceFromDocument({ identity: sourceEntry.expected }) :
-    { documentId: workbook!.id, revision: workbook!.revision, generation: workbook!.revision, structuralHash: workbook!.checksum };
+  if (!sourceEntry) return { status: "missing", resourceStatus: "missing", reason: "Source document is missing." };
+  const currentSource = viewerSourceFromDocument({ identity: sourceEntry.expected });
   let targetAvailable = false, targetMatches = false;
   if (ref.kind === "document") {
-    targetAvailable = !!sourceEntry || !!workbook;
-    targetMatches = currentSource.structuralHash === ref.targetHash;
+    targetAvailable = !!project.workspace.entries.find(item => item.expected.id === ref.targetId);
+    targetMatches = sourceEntry.expected.structuralHash === ref.targetHash;
   } else if (ref.kind === "result") {
     const result = project.workspace.results.find(item => item.resultId === ref.targetId);
     targetAvailable = !!result;
@@ -128,8 +116,7 @@ export function inspectResearchReference(project: Math3DProject, candidate: unkn
   const inventory = researchInventory(project);
   const resources = ref.resources.map(pin => {
     const item = inventory.find(candidate => candidate.kind === pin.kind && candidate.id === pin.id &&
-      (candidate.owners.includes(ref.source.documentId) ||
-        candidate.kind === "workbook-payload" && candidate.id === workbook?.id));
+      candidate.owners.includes(ref.source.documentId));
     return item && structuralHash(item.reference) === pin.descriptorHash && item.checksum === pin.checksum ? item : null;
   });
   const missingResource = resources.some(item => !item) || !!readResource && resources.some(item => {
