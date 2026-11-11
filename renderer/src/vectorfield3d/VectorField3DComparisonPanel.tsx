@@ -5,7 +5,7 @@ import { compareVectorField3D, createVectorField3DComparisonResult,
   type FieldExplorerWorkflow,
   type AnalysisResultEnvelope, type Math3DProject, type VectorField3DDocument,
   type VectorField3DComparisonTransfers } from "@math3d/core";
-import { loadVerifiedVectorFieldTransfer } from "./loadVerifiedVectorFieldTransfer";
+import { loadVerifiedVectorFieldTransfer, SCIENTIFIC_FIELD_REVERIFY_EVENT } from "./loadVerifiedVectorFieldTransfer";
 
 export function VectorField3DComparisonPanel({ document, project, onSave, onOpenProfile, onWorkflowChange }: {
   document: VectorField3DDocument; project: Math3DProject | null | undefined;
@@ -46,9 +46,10 @@ export function VectorField3DComparisonPanel({ document, project, onSave, onOpen
     `${source.identity.id}:${source.identity.revision}:${source.identity.structuralHash}`;
   const verifiedTransfer = (source: VectorField3DDocument) => verified[key(source)] ?? null;
   useEffect(() => {
-    let active = true;
-    const refresh = async () => {
-      if (active) setVerified({});
+    let active = true, verificationEpoch = 0;
+    const refresh = async (event?: Event) => {
+      const run = ++verificationEpoch;
+      if (active) { setVerified({}); if (event) { epoch.current++; setResult(null); setBusy(false); } }
       const sourcesToCheck = project?.workspace.entries.filter(item => item.module === "vector3d" &&
         item.checkpoint.format === "math3d.vector-field3d-document" &&
         item.checkpoint.source.field.kind === "scientific-bundle").map(item =>
@@ -57,12 +58,14 @@ export function VectorField3DComparisonPanel({ document, project, onSave, onOpen
         const transfer = await load(source);
         return [key(source), vectorField3DComparisonTransferKey(transfer)] as const;
       }));
-      if (active) setVerified(Object.fromEntries(outcomes.flatMap(outcome =>
+      if (active && run === verificationEpoch) setVerified(Object.fromEntries(outcomes.flatMap(outcome =>
         outcome.status === "fulfilled" ? [outcome.value] : [])));
     };
     void refresh();
     window.addEventListener("focus", refresh);
-    return () => { active = false; window.removeEventListener("focus", refresh); };
+    window.addEventListener(SCIENTIFIC_FIELD_REVERIFY_EVENT, refresh);
+    return () => { active = false; verificationEpoch++; window.removeEventListener("focus", refresh);
+      window.removeEventListener(SCIENTIFIC_FIELD_REVERIFY_EVENT, refresh); };
   }, [project?.identity.structuralHash]);
   const compare = async () => {
     const run = ++epoch.current;
