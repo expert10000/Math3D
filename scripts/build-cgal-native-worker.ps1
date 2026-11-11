@@ -15,6 +15,11 @@ $toolchain = Join-Path $repoRoot ".deps/vcpkg/scripts/buildsystems/vcpkg.cmake"
 if (-not (Test-Path -LiteralPath $toolchain)) {
   throw "CGAL vcpkg toolchain not found at $toolchain. Install the pinned native dependencies first."
 }
+$vcpkgRoot = Join-Path $repoRoot ".deps/vcpkg"
+$actualRecipe = (& git -C $vcpkgRoot rev-parse HEAD).Trim()
+if ($LASTEXITCODE -ne 0 -or $actualRecipe -ne "52fd90f2b7798d9fe6fef18fc1787db44574d704") {
+  throw "Native CGAL build requires the pinned public vcpkg recipe commit."
+}
 $target = Join-Path $repoRoot $BuildDirectory
 & $cmake -S (Join-Path $repoRoot "native/cgal-worker") -B $target "-DCMAKE_TOOLCHAIN_FILE=$toolchain" "-DVCPKG_TARGET_TRIPLET=$Triplet"
 if ($LASTEXITCODE -ne 0) { throw "Native CGAL configure failed." }

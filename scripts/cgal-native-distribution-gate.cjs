@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const { verifyNativeCgalSourceBundle } = require("./native-cgal-source-contract.cjs");
+const { verifyNativeCgalBuildReceipt, receiptName } = require("./native-cgal-build-receipt.cjs");
 
 const root = path.resolve(__dirname, "..");
 const manifest = require("../native/cgal-worker/dependency-manifest.json");
@@ -41,6 +42,8 @@ function assertNativeCgalPackagingPolicy(config) {
     JSON.parse(fs.readFileSync(path.join(root, "compliance/public-source-manifest.json"), "utf8")),
     fs.readFileSync(path.join(root, "native/cgal-worker/dependency-manifest.json")), commit.stdout.trim());
   verifyLocalReferenceBuild();
+  verifyNativeCgalBuildReceipt(process.env.MATH3D_NATIVE_CGAL_BUILD_RECEIPT ??
+    path.join(root, "build/native/cgal-worker", receiptName), { sourceManifestPath: receiptPath });
 }
 
 function installedVersion(status, name) {

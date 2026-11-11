@@ -50,7 +50,7 @@ export async function verifyRelease20Assets(root, version = '2.0.0') {
   const report = await readFile(join(assets, `Math3D-${version}-windows-licenses.md`), 'utf8');
   requireCondition(report.startsWith(`# Math3D ${version} windows release inventory`) && report.includes('## Declared package licenses'),
     'Windows license inventory is invalid.');
-  const filesInBom = new Map();
+  const filesInBom = new Map(), ownersInBom = new Map();
   for (const component of bom.components ?? []) {
     if (component.type !== 'file') continue;
     const name = component.name;
@@ -59,6 +59,7 @@ export async function verifyRelease20Assets(root, version = '2.0.0') {
       /^[0-9a-f]{64}$/.test(hash ?? '') && !filesInBom.has(name), `Invalid or duplicate SBOM file: ${name}`);
     requireCondition(component.properties?.some(item => item.name === 'math3d:owner' && item.value), `SBOM file lacks owner: ${name}`);
     filesInBom.set(name, hash);
+    ownersInBom.set(name, component.properties.find(item => item.name === 'math3d:owner').value);
   }
   const actual = new Map();
   async function walk(directory) {
@@ -75,6 +76,38 @@ export async function verifyRelease20Assets(root, version = '2.0.0') {
   await walk(unpacked);
   requireCondition(actual.size === filesInBom.size && actual.size > 0, 'SBOM file coverage differs from unpacked app.');
   for (const [name, hash] of actual) requireCondition(filesInBom.get(name) === hash, `SBOM file mismatch: ${name}`);
+  if (actual.has('resources/native-cgal/math3d-cgal-worker.exe')) {
+    const receiptName = 'NATIVE_BUILD_RECEIPT-windows.json';
+    requireCondition(listed.has(receiptName) && listed.has('SOURCE_MANIFEST-windows.json'),
+      'Native CGAL build or corresponding-source receipt is missing from release assets.');
+    const receipt = JSON.parse(await readFile(join(assets, receiptName), 'utf8'));
+    const sourceReceipt = JSON.parse(await readFile(join(assets, 'SOURCE_MANIFEST-windows.json'), 'utf8'));
+    const build = sourceReceipt.nativeCgal;
+    const expectedVersions = { cgal: '6.2.1', 'boost-core': '1.92.0', gmp: '6.3.0', mpfr: '4.2.2' };
+    const licenseHashes = receipt.licenseEvidence?.copyrightSha256;
+    requireCondition(receipt.schema === 'math3d.native-cgal-build/v1' &&
+      receipt.target === 'windows' && receipt.triplet === 'x64-windows' &&
+      sourceReceipt.schemaVersion === 1 && sourceReceipt.target === 'windows' &&
+      build?.distributionStatus === 'source-bundle-integrated' &&
+      receipt.sourceManifestSha256 === listed.get('SOURCE_MANIFEST-windows.json') &&
+      receipt.sourceCommit === sourceReceipt.math3d?.commit &&
+      receipt.dependencyManifestSha256 === build?.dependencyManifestSha256 &&
+      receipt.vcpkgRecipeCommit === '52fd90f2b7798d9fe6fef18fc1787db44574d704' &&
+      Object.entries(expectedVersions).every(([name, version]) => receipt.versions?.[name] === version) &&
+      receipt.licenseEvidence?.cgalExpression === 'GPL-3.0-or-later OR LicenseRef-Commercial' &&
+      /^[0-9a-f]{64}$/.test(receipt.licenseEvidence?.cgalCorefinementHeaderSha256 ?? '') &&
+      Object.keys(expectedVersions).every(name => /^[0-9a-f]{64}$/.test(licenseHashes?.[name] ?? '') &&
+        /^[0-9a-f]{64}$/.test(receipt.vcpkgSbomSha256?.[name] ?? '')),
+    'Native CGAL build receipt is not bound to the released sources.');
+    const nativeFiles = [...actual.keys()].filter(name => name.startsWith('resources/native-cgal/'));
+    requireCondition(nativeFiles.length === Object.keys(receipt.binaries ?? {}).length &&
+      nativeFiles.every(name => {
+        const leaf = name.slice('resources/native-cgal/'.length);
+        const owner = receipt.sbomOwners?.[leaf];
+        return receipt.binaries?.[leaf] === actual.get(name) && owner === ownersInBom.get(name) &&
+          bom.components.some(component => component['bom-ref'] === owner);
+      }), 'Native CGAL binary hash or SBOM owner differs from the build receipt.');
+  }
   return { version, assetCount: files.length, unpackedFileCount: actual.size,
     installerSha256: listed.get(`Math3D-Setup-${version}.exe`), sbomSha256: listed.get(`Math3D-${version}-windows.cdx.json`) };
 }

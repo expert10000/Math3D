@@ -13,6 +13,8 @@ import { createRequire } from "node:module";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
 const { selectPublicSources, verifyNativeCgalSourceBundle } = require("./native-cgal-source-contract.cjs");
+const { verifyNativeCgalBuildReceipt, nativeCgalSbomOwners, receiptName } =
+  require("./native-cgal-build-receipt.cjs");
 const args = process.argv.slice(2);
 const value = (flag, fallback) => {
   const at = args.indexOf(flag);
@@ -240,6 +242,8 @@ for (const name of ["GMP", "MPFR"]) {
 
 let nativeWorkerRef = null;
 const nativeDirectory = path.join(appDir, "resources/native-cgal");
+const nativeOwners = nativeCgalSbomOwners(readJson(path.join(root,
+  "native/cgal-worker/dependency-manifest.json")));
 if (fs.existsSync(nativeDirectory)) {
   const receiptPath = process.env.MATH3D_NATIVE_CGAL_SOURCE_MANIFEST;
   if (!receiptPath) errors.push("Packaged native CGAL worker has no corresponding-source receipt.");
@@ -248,6 +252,9 @@ if (fs.existsSync(nativeDirectory)) {
     if (git.status !== 0) throw new Error("Cannot identify native CGAL source commit.");
     verifyNativeCgalSourceBundle(path.dirname(path.resolve(receiptPath)), readJson(receiptPath), sourceManifest,
       fs.readFileSync(path.join(root, "native/cgal-worker/dependency-manifest.json")), git.stdout.trim());
+    verifyNativeCgalBuildReceipt(process.env.MATH3D_NATIVE_CGAL_BUILD_RECEIPT ??
+      path.join(root, "build/native/cgal-worker", receiptName),
+      { sourceManifestPath: receiptPath, releaseDir: nativeDirectory });
   } catch (error) { errors.push(`Native CGAL source receipt failed: ${error.message}`); }
   nativeWorkerRef = own("application:math3d-native-cgal-worker", {
     type: "application", name: "Math3D native CGAL worker", version,
@@ -297,10 +304,7 @@ const executable = (name, absolute) => /\.(exe|dll|so(?:\.\d+)*|dylib|node|pyd|w
 const classify = (name) => {
   if (name.startsWith("resources/native-cgal/")) {
     const leaf = path.posix.basename(name).toLowerCase();
-    if (leaf === "math3d-cgal-worker.exe") return nativeWorkerRef;
-    if (/^(?:lib|msys-)?gmp(?:-|\.|$)/.test(leaf)) return nativeRefs.get("GMP") ?? null;
-    if (/^(?:lib|msys-)?mpfr(?:-|\.|$)/.test(leaf)) return nativeRefs.get("MPFR") ?? null;
-    return null;
+    return nativeOwners[leaf] ?? null;
   }
   if (name.startsWith("resources/python-worker/")) {
     const inside = name.slice("resources/python-worker/".length).toLowerCase();

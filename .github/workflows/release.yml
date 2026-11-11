@@ -227,6 +227,9 @@ jobs:
           npm run release:source -- --target windows --out release-source --version "${{ steps.meta.outputs.version }}"
           npm run verify:cgal-native-source
           npm run test:cgal-native-release
+          node scripts/write-native-cgal-build-receipt.mjs release-source/SOURCE_MANIFEST-windows.json
+          Copy-Item -LiteralPath build/native/cgal-worker/NATIVE_BUILD_RECEIPT-windows.json `
+            -Destination release-source/NATIVE_BUILD_RECEIPT-windows.json
 
       - name: Build Windows installer
         env:
@@ -264,7 +267,12 @@ jobs:
       - name: Prepare corresponding source assets
         shell: pwsh
         run: |
-          npm run release:source -- --target windows --out release-source --version "${{ steps.meta.outputs.version }}"
+          if (Test-Path -LiteralPath release-source/SOURCE_MANIFEST-windows.json) {
+            npm run verify:cgal-native-source
+          } else {
+            npm run release:source -- --target windows --out release-source --version "${{ steps.meta.outputs.version }}"
+          }
+          if ($LASTEXITCODE -ne 0) { throw "Corresponding source preparation failed." }
 
       - name: Verify native CGAL corresponding source
         run: node scripts/verify-native-cgal-source-bundle.mjs release-source
