@@ -1,5 +1,6 @@
 import type { Math3DProject } from "@math3d/core";
 import { VerifiedProjectResources, type ProjectResourceSidecar, type ProjectResourceBytes } from "./projectResources";
+import { runWithDeferredProjectDurability } from "./projectLibrary";
 
 const DATABASE = "math3d.project-resources.v1", STORE = "projects";
 const BACKUP_SLOT_KEY = "math3d.project-resource-backup-slot.v1";
@@ -55,7 +56,7 @@ export const stageProjectBackupResources = async (project: Math3DProject, resour
   const db = await open();
   try {
     await new Promise<void>((resolve, reject) => {
-      const transaction = db.transaction(STORE, "readwrite");
+      const transaction = db.transaction(STORE, "readwrite", { durability: "strict" });
       transaction.objectStore(STORE).put({ id: slot, projectId: project.identity.id, schemaVersion: 2, resources: resources.byteEntries() } satisfies Record);
       transaction.oncomplete = () => resolve();
       transaction.onabort = () => reject(transaction.error ?? new Error("Project backup staging failed."));
@@ -102,12 +103,13 @@ export const commitProjectResources = async <T>(project: Math3DProject, resource
   if (options.reuseExistingProject && (!backupRecord?.resources.length || options.stagedBackupSlot)) {
     const fastStart = performance.now();
     try {
-      const result = commit();
+      const deferred = runWithDeferredProjectDurability(commit);
       if (options.stagedBackupSlot) localStorage.setItem(BACKUP_SLOT_KEY, options.stagedBackupSlot);
       else if (backupRecord) localStorage.removeItem(BACKUP_SLOT_KEY);
+      deferred.flush();
       measure("fast-activation", fastStart);
       performance.clearMeasures("project-resource-commit:transaction");
-      return result;
+      return deferred.result;
     } catch (failure) {
       try {
         const keys = Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index)!).filter((key) => key.startsWith("math3d.project"));
@@ -124,8 +126,10 @@ export const commitProjectResources = async <T>(project: Math3DProject, resource
   const transactionStart = performance.now();
   try {
     return await new Promise<T>((resolve, reject) => {
-      const transaction = db.transaction(STORE, "readwrite");
-      let result: T, failure: unknown, attempted = false;
+      // A Save is acknowledged only after the browser commits the source sidecars
+      // with strict durability; a graceful close is not required for the archive.
+      const transaction = db.transaction(STORE, "readwrite", { durability: "strict" });
+      let result: T, flush: (() => void) | undefined, failure: unknown, attempted = false;
       const store = transaction.objectStore(STORE);
       // A verified saved archive already contains the opened Project. The
       // previous workspace backup still participates in this transaction.
@@ -136,13 +140,27 @@ export const commitProjectResources = async <T>(project: Math3DProject, resource
         measure("write-request", transactionStart);
         const callbackStart = performance.now();
         try {
-          attempted = true; result = commit();
+          attempted = true;
+          const deferred = runWithDeferredProjectDurability(commit);
+          result = deferred.result; flush = deferred.flush;
           if (options.stagedBackupSlot) localStorage.setItem(BACKUP_SLOT_KEY, options.stagedBackupSlot);
           else if (backupRecord) localStorage.removeItem(BACKUP_SLOT_KEY);
         } catch (error) { failure = error; transaction.abort(); }
         measure("commit-callback", callbackStart);
       };
-      transaction.oncomplete = () => { measure("transaction", transactionStart); resolve(result!); };
+      transaction.oncomplete = () => {
+        measure("transaction", transactionStart);
+        try { flush?.(); resolve(result!); }
+        catch (error) {
+          try {
+            const keys = Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index)!).filter((key) => key.startsWith("math3d.project"));
+            for (const key of keys) if (!before.has(key)) localStorage.removeItem(key);
+            for (const [key, value] of before) if (localStorage.getItem(key) !== value) localStorage.setItem(key, value);
+            rollbackHost?.();
+          } catch (rollbackError) { reject(new AggregateError([error, rollbackError], "Durable Project checkpoint and rollback failed.")); return; }
+          reject(error);
+        }
+      };
       transaction.onabort = () => {
         if (attempted) {
           try {

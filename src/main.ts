@@ -14,6 +14,7 @@ import { quantumStudyLaunchArguments } from "./main/quantumScene/studyHandoff";
 import { registerScientificSceneIpc } from "./main/ipc/scientificSceneIpc";
 import { registerWorkspaceFileIpc } from "./main/ipc/workspaceFileIpc";
 import { registerProjectThumbnailIpc } from "./main/ipc/projectThumbnailIpc";
+import { registerProjectDurabilityIpc } from "./main/ipc/projectDurabilityIpc";
 import { runPythonWorkerStartupCheck, stopPythonWorker } from "./main/python/pythonWorker";
 import { stopNativeCgalWorker } from "./main/python/nativeCgalWorker";
 import { recordPythonWorkerStartup, registerPythonWorkerDiagnosticsIpc } from "./main/python/pythonWorkerDiagnostics";
@@ -1027,6 +1028,7 @@ app.whenReady().then(async () => {
   registerScientificSceneIpc();
   registerWorkspaceFileIpc();
   registerProjectThumbnailIpc();
+  registerProjectDurabilityIpc(isE2e);
 
   ipcMain.handle("app:capture-screenshot", async (evt, req: AppCaptureRequest): Promise<AppCaptureResponse> => {
     try {

@@ -1105,6 +1105,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **M3D20-13 tooling update (2026-11-11):** A dedicated, manually dispatched Windows candidate workflow requires a clean version-2.0 root/desktop/renderer/two-lock checkout and signing configuration before building. It binds the frozen source manifest, corresponding-source archive including native CGAL 6.2.1, pinned NSIS component, signed installer/app/worker, build identity, SBOM, attributions and SHA-256 manifest to one candidate receipt. The fresh-install and 1.7-upgrade runners reverify candidate bytes and signer; upgrade inventories the complete 1.7 backup and rehearses rollback from a copy. Fixture tests and source core build pass. No usable code-signing certificate, signed 2.0 artifact, clean-VM install, upgrade, rollback or final integrity receipt is available in this checkout. M3D20-10 hard-exit recovery, longer memory soak and installed-candidate measurements remain release blockers.
 
+**Candidate unblock update (2026-11-11):** The root, desktop, renderer and both npm lock roots now identify 2.0.0, and the frozen native source set includes pinned CGAL 6.2.1. The source-build hard-exit test passed 2/2 for saved Project bytes and resource sidecars after terminating Electron's process tree. This closes the reproduced source-checkout crash/reopen failure; installed hard-exit recovery, the two-hour soak, installed memory measurement and signed-candidate qualification remain open. The historical status notes above describe their earlier source commits.
+
 **Exit:** distributable tested without source checkout; all required resource identities recorded for exact release assets.
 
 ### M3D20-14 — Documentation and help (P0)
