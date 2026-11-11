@@ -28,6 +28,8 @@ The [source gate report](evidence/m3d20-10-source-gate.json) passes its host, da
 
 The 2.0 source checkout now writes a disk-synced Project checkpoint before acknowledging Save. Recovery reconciles it before the first UI read, refuses corrupt or newer local state, and does not reconstruct missing resource bytes. Resource-backed Saves defer the checkpoint until the strict sidecar transaction completes. `npx playwright test tests/e2e/project-hard-exit-recovery.spec.ts --reporter=list` passed 2/2 on Windows after terminating the entire Electron process tree: one named Project and its library returned with exact bytes, and one resource-rich Project reopened with matching Mesh and Volume sidecars. This is a source-build crash/restart observation, not installed-package or power-loss evidence.
 
+The [RC2 soak runner](RC2_SOAK_GATE.md) now includes that hard-exit test and a 120-minute, same-process navigation/memory observation. The [long-memory reviewer](../../../scripts/check-release20-long-memory.mjs) requires identified clean build bytes, at least two complete 100-action cycles, two elapsed hours, no page errors, and sampled RSS under the existing source ceiling. It reports late growth without qualifying a plateau; installed memory requires its own candidate hash and frozen budget. Neither two-hour run nor installed memory measurement has been executed for this 2.0 checkout.
+
 ## Reproduce and decide
 
 From the repository root in PowerShell on the reference host:

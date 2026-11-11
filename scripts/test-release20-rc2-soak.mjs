@@ -7,7 +7,7 @@ assert.throws(() => soakMinutes('120.5'), /whole/);
 assert.throws(() => soakMinutes('1441'), /1440/);
 assert.equal(soakMinutes('120'), 120);
 assert.deepEqual(soakChecks.map(check => check.id),
-  ['project-contracts', 'scientific-results', 'quantum-baseline', 'first-use-study']);
+  ['project-contracts', 'scientific-results', 'quantum-baseline', 'first-use-study', 'hard-exit-project', 'same-process-memory']);
 assert(!soakChecks.some(check => /installer|dist:|publish/.test([check.id, check.command, ...check.args].join(' '))));
 const plan = spawnSync(process.execPath, ['scripts/release20-rc2-soak.mjs', '--plan'], { encoding: 'utf8' });
 assert.equal(plan.status, 0);
