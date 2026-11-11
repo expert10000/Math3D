@@ -30,8 +30,9 @@ export const resolvePlatformJourneys = (host: PlatformCapabilitySnapshot, eviden
   const project = evidence.project;
   const projectStatus = !project ? unavailable("No verified Project has been selected.") :
     !project.verified ? unavailable("Project validation has not completed.") :
-      host.runtime === "mobile" ? preview("This mobile host offers a saved Project preview; document editors vary by source.") :
-        !project.canRestore ? preview(project.reason ?? "This Project has a missing source or unsupported editor.") :
+      !project.canRestore ? preview(project.reason ?? "This Project has a missing source or unsupported editor.") :
+        !storage.available ? preview(storage.reason ?? "Persistent storage is unavailable.") :
+        host.runtime === "mobile" ? preview("This mobile host offers a saved Project preview; document editors vary by source.") :
           project.requiresWebgl2 && !rendering.available ? preview(rendering.reason ?? "WebGL2 is unavailable.") : open;
   const projectSave = !project || !project.verified ? unavailable("A verified Project is required before saving.") :
     !storage.available ? unavailable(storage.reason ?? "Persistent storage is unavailable.") : open;

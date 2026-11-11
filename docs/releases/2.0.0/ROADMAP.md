@@ -1082,7 +1082,7 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **12a matrix drafted:** [Platform capabilities](PLATFORM_CAPABILITIES.md) records journey-level support and explicit unverified deployment/device/package gates. Subsequent 12b–c work must attach representative evidence before promoting a claim.
 
-**12b–c prepared for review:** source-build Windows and local-browser Project package reopen tests, mobile model preview tests, and a browser blocked-storage control test are present. Hosted deployment, physical Android and installed Linux evidence remain open; the matrix does not claim those gates passed.
+**12b–c source-host acceptance (2026-11-11):** [source-host receipt](PLATFORM_SOURCE_ACCEPTANCE.md) records a Windows Electron Project/research restart and six local Chromium cases across two locales: verified package reopen, blocked storage, missing-source preview and already-loaded offline research. A shared journey decision now combines host facilities with verified Project compatibility; Gallery saved copies inspect their actual sidecars before enabling Open. Mobile model tests cover package/sidecar return, preview-only editors, missing-source reasons, storage refusal and future-field refusal. The [capability matrix](PLATFORM_CAPABILITIES.md) keeps hosted deployment, physical Android and installed Linux as unverified. M3D20-10 hard-exit recovery, longer memory soak and installed-candidate measurements remain separate release blockers.
 
 **Exit:** advertised parity exactly matches tested capabilities, including view-only fallbacks.
 

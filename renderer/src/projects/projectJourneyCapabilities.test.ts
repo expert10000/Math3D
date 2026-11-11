@@ -16,6 +16,7 @@ describe("Project journey decisions", () => {
   it("keeps verified Graph Project opening separate from storage and WebGL guesses", () => {
     expect(resolveProjectJourneys(host(), compatible).project.mode).toBe("open");
     expect(resolveProjectJourneys(host(true, false), compatible).project.mode).toBe("open");
+    expect(resolveProjectJourneys(host(false), compatible).project.mode).toBe("preview");
     expect(resolveProjectJourneys(host(false), compatible).projectSave).toMatchObject({ mode: "unavailable", reason: expect.stringMatching(/storage/) });
     expect(resolveProjectJourneys(host(false), compatible).gallery.mode).toBe("preview");
   });
@@ -32,5 +33,7 @@ describe("Project journey decisions", () => {
       { route: "remote", verified: true, reason: null }).compute.reason).toMatch(/transport/);
     expect(resolveProjectJourneys(host(true, true, true), compatible,
       { route: "remote", verified: true, reason: null }).compute.mode).toBe("open");
+    expect(resolveProjectJourneys(host(true, true, false, false), compatible,
+      { route: "local-worker", verified: true, reason: null }).compute.reason).toMatch(/worker/);
   });
 });

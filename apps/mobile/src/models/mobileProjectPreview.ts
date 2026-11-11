@@ -1,5 +1,6 @@
-import { adoptMixedWorkspaceProject, parseMath3DProject, parseMixedWorkspaceDocument, parseWorkspaceProjectHandoff,
+import { adoptMixedWorkspaceProject, parseMath3DProject, parseMixedWorkspaceDocument, parseWorkspaceProjectHandoff, requirePlatformFacilities,
   replayMixedWorkspaceDocument, serializeMath3DProject, parseProjectPackage, type Math3DProject, type ProjectResourceSidecar } from "@math3d/core";
+import type { PlatformCapabilitySnapshot } from "@math3d/core";
 import type { MobileStoredSceneProject } from "./mobileScene";
 import { mobileProjectResourceContext, readMobileProjectResources } from "./mobileProjectResources";
 import { resolveMobileProjectWorkspace } from "./mobileProjectReplay";
@@ -37,7 +38,9 @@ export const readMobilePreviewProject = (stored: MobileStoredSceneProject): Math
 };
 
 export const importMobileProjectPreview = (raw: string, projects: readonly MobileStoredSceneProject[], sourceName: string,
-  sourceKind: "imported" | "desktop" | "shared" = "imported", now = Date.now()): MobileStoredSceneProject => {
+  sourceKind: "imported" | "desktop" | "shared" = "imported", now = Date.now(),
+  host?: PlatformCapabilitySnapshot): MobileStoredSceneProject => {
+  if (host) requirePlatformFacilities(host, ["persistentStorage"]);
   if (new TextEncoder().encode(raw).length > 25 * 1024 * 1024) throw new TypeError("Project exceeds the mobile import limit.");
   const format = JSON.parse(raw)?.format;
   let project: Math3DProject;
