@@ -29,6 +29,7 @@ type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoi
   onCreateQwz: (quantumStudyId: string) => void;
   onPinQwz: (studyId: string, sampleIndex: number) => void;
   onUnpinQwz: (studyId: string) => void;
+  onDeriveQwzProfile?: (studyId: string) => Promise<{ graphId: string; resultId: string }>;
   workbookBytes?: (id: string) => Uint8Array | null;
   onOpenWorkbookBlock?: (id: string, stageId: WorkbookStageId, blockId: string) => void;
   onCapturePinnedNote?: (studyId: string, memberId: string, selectionId: string) => void;
@@ -39,7 +40,7 @@ type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoi
 
 /** A Study is a saved layout of references; opening a pane delegates to its owning document. */
 export function ProjectStudiesPanel({ project, documents, editable, resources, focusStudy, onCreate, onRename, onFork, onConfigure,
-  onLink, onLinkCurveSurface, onLinkSurfaceMesh, onCreateQwz, onPinQwz, onUnpinQwz, workbookBytes, onOpenWorkbookBlock,
+  onLink, onLinkCurveSurface, onLinkSurfaceMesh, onCreateQwz, onPinQwz, onUnpinQwz, onDeriveQwzProfile, workbookBytes, onOpenWorkbookBlock,
   onCapturePinnedNote, onOpenNote,
   onOpenQuantumSource, onInspectResult, onOpenDocument }: Props) {
   const [selected, setSelected] = useState<string[]>([]);
@@ -167,7 +168,9 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
       {surfaceMeshPair && surfaceMeshLinked && <StudySurfaceMeshControl project={project}
         pair={surfaceMeshPair} studyId={open.id} />}
       {qwzPair && <StudyQwzCursorControl project={project} pair={qwzPair} study={open}
-        editable={editable} onPin={onPinQwz} onUnpin={onUnpinQwz} />}
+        editable={editable} onPin={onPinQwz} onUnpin={onUnpinQwz}
+        onDeriveProfile={onDeriveQwzProfile}
+        onOpenGraphProfile={id => onOpenDocument(id, "graph2d")} />}
       {project.metadata.tags?.includes("catenoid-evidence") && open.members.some(member =>
         project.workspace.entries.find(entry => entry.expected.id === member.documentId)?.module === "surface") &&
         <CatenoidWaistEvidencePanel project={project} resources={resources} />}

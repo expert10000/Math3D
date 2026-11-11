@@ -66,11 +66,20 @@ test("Lab QWZ study handoff stages both exact scenes in a new Math3D Project", a
     await studies.getByTestId("project-study-pin-qwz-k").click();
     await expect(studies.getByTestId("project-study-qwz-pin-status")).toContainText("Pinned band sample 0");
     await expect(studies.getByTestId("project-study-quantum-linked-k")).toContainText("Linked k=");
+    await studies.getByTestId("project-study-derive-qwz-profile").click();
+    await expect(studies.getByTestId("project-study-qwz-profile-status"))
+      .toContainText("Saved band profile in Graph", { timeout: 60_000 });
+    await expect(studies.getByTestId("project-study-qwz-saved-profile"))
+      .toContainText("producer samples");
     await studies.getByTestId("project-study-preview-toggle-inspector").click();
     await expect(studies.getByTestId("project-study-qwz-inspector")).toContainText("Chern number: -1", { timeout: 60_000 });
     await expect(studies.getByTestId("project-study-quantum-linked-k")).toContainText("Linked k=");
     await projects.getByTestId("project-save").click();
     await expect(projects.getByTestId("project-message")).toContainText("Saved", { timeout: 60_000 });
+    const savedAfterProfile = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    expect(savedAfterProfile.workspace.studies[0].pinnedSelectionIds).toHaveLength(1);
+    if (!await studies.getByTestId("project-study-note-on-pin").count())
+      await studies.locator('[data-testid^="project-study-open-"]').click();
     await studies.getByTestId("project-study-note-on-pin").click();
     const notes = projects.getByTestId("project-notes-panel");
     await expect(notes).toBeVisible();
@@ -95,6 +104,12 @@ test("Lab QWZ study handoff stages both exact scenes in a new Math3D Project", a
       studyId: project.workspace.studies[0].id, memberId: "bands" });
     expect(project.workspace.entries.filter((entry: { module: string }) => entry.module === "quantum")
       .every((entry: { checkpoint: { linkedViews?: unknown[] } }) => entry.checkpoint.linkedViews?.length === 1)).toBe(true);
+    const profile = project.workspace.results.find((result: { provenance: { operation: { type: string } } }) =>
+      result.provenance.operation.type === "quantum.qwz-band-profile");
+    expect(profile).toBeTruthy();
+    expect(profile.summary.rowCount).toBeGreaterThan(1);
+    expect(project.workspace.entries.some((entry: { module: string; expected: { id: string } }) =>
+      entry.module === "graph2d" && entry.expected.id === profile.provenance.operation.parameters.graphDocumentId)).toBe(true);
     await app.close();
     app = await launchRepoElectron({ args: ["."], cwd: resolve(__dirname, "..", ".."),
       env: { ...process.env, MATH3D_E2E_PROFILE_ROOT: join(root, "profile"),
@@ -139,6 +154,8 @@ test("Lab QWZ study handoff stages both exact scenes in a new Math3D Project", a
     expect(verifiedEvidence.verification).toMatchObject({ status: "verified", omissions: [],
       selection: { band: { sampleIndex: 0 }, curvature: { sampleIndex: expect.any(Number) },
         projection: { strategy: "nearest-lowest-index" } } });
+    expect(verifiedEvidence.profile).toMatchObject({ status: "saved", rowCount: profile.summary.rowCount,
+      resultId: profile.resultId });
     await reopenedStudies.getByTestId("project-study-open-source-curvature").click();
     await expect(reopenedPage.getByTestId("quantum-scene-preview")).toBeVisible({ timeout: 60_000 });
     await reopenedPage.getByTestId("quantum-scene-close").click();
@@ -164,7 +181,16 @@ test("Lab QWZ study handoff stages both exact scenes in a new Math3D Project", a
     expect(withheldEvidence.source).toEqual(verifiedEvidence.source);
     expect(withheldEvidence.verification).toMatchObject({ status: "withheld", selection: null,
       invariants: null, omissions: ["band energy", "Berry curvature", "reciprocal projection", "topology invariants"] });
+    expect(withheldEvidence.profile).toMatchObject({ resultId: profile.resultId,
+      status: "withheld" });
     await writeFile(blob, original);
+    const missingBand = join(handoff, names[1], "band-energy-0.f64");
+    const bandBytes = await readFile(missingBand);
+    await rm(missingBand);
+    const missingEvidence = await exportEvidence("qwz-missing-band-evidence.json");
+    expect(missingEvidence.verification).toMatchObject({ status: "withheld", selection: null });
+    expect(missingEvidence.profile).toMatchObject({ status: "withheld", resultId: profile.resultId });
+    await writeFile(missingBand, bandBytes);
   } finally {
     await app.close();
     if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-qi08-ui-")) throw new Error("Unsafe QI-08 cleanup path");

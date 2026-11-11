@@ -14,6 +14,7 @@ import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, 
   migrateProjectScientificSelections,
   createProjectStudyFromDocuments, renameProjectStudy, forkProjectStudy, configureProjectStudy,
   createProjectQwzQuadStudy, pinProjectQwzSample, unpinProjectQwzSample, qualifyProjectQwzPair,
+  qualifyProjectQwzQuadStudy,
   type ProjectComposition, type ProjectSavedMeshComparison,
   type ProjectNote,
   type Math3DProject, type MixedWorkspaceDocument, type KernelWorkspaceModule, type QuantumSceneDocument, type ViewerProvenanceEvidence } from "@math3d/core";
@@ -50,6 +51,7 @@ import { addQualifiedStudyGraphCurveLink } from "../projects/studyGraphCurveLink
 import { addQualifiedStudyCurveSurfaceLink } from "../projects/studyCurveSurfaceLink";
 import { addQualifiedStudySurfaceMeshLink } from "../projects/studySurfaceMeshLink";
 import { prepareCuratedStudyProject } from "../projects/curatedStudyProject";
+import { deriveQwzBandProfile } from "../projects/qwzBandProfile";
 const ProjectCompositionView = React.lazy(() => import("./ProjectCompositionView").then(module => ({ default: module.ProjectCompositionView })));
 const QuantumNativeOverlayView = React.lazy(() => import("./QuantumNativeOverlayView").then(module => ({ default: module.QuantumNativeOverlayView })));
 const ProjectSavedMeshResultComparisonView = React.lazy(() => import("./ProjectSavedMeshResultComparisonView").then(module => ({ default: module.ProjectSavedMeshResultComparisonView })));
@@ -1791,6 +1793,23 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     } catch (error) { setMessage(`QWZ Study refused: ${(error as Error).message}`); }
     finally { setBusy(false); }
   };
+  const stageQwzBandProfile = async (studyId: string) => {
+    const source = projectStateRef.current;
+    if (!source || busy || preview || managed) throw new TypeError("Project is not editable.");
+    const study = source.workspace.studies?.find(item => item.id === studyId);
+    const pair = study && qualifyProjectQwzQuadStudy(source, study);
+    if (!study || !pair) throw new TypeError("Four-view QWZ Study sources are unavailable.");
+    const before = serializeMath3DProject(source);
+    setBusy(true);
+    try {
+      const derived = await deriveQwzBandProfile(source, study, pair, pointTableStore);
+      if (!projectStateRef.current || serializeMath3DProject(projectStateRef.current) !== before)
+        throw new TypeError("Project changed during QWZ profile verification.");
+      setProject(derived.project);
+      setMessage("Verified reciprocal band profile staged in Graph with a saved result. Save Project to keep it.");
+      return { graphId: derived.graph.identity.id, resultId: derived.result.resultId };
+    } finally { setBusy(false); }
+  };
   const renderNotesPanel = (layout: "floating" | "page") => <ProjectNotesPanel layout={layout} project={notesProject} workspace={notesWorkspace} readResource={comparisonResource} drafts={noteDrafts} busy={busy} message={notesMessage} focusNoteId={selectedNoteId ?? noteRequest?.id}
     selectionAvailable={Boolean(captureNoteSelection?.())} workbooks={noteWorkbooks}
     onClose={() => setNotesOpen(false)} onOpenProjects={() => { setNotesOpen(false); if (layout === "floating") { setDetailView(true); onOpenChange(true); } }} onRefresh={refreshNotes}
@@ -2056,6 +2075,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                 "QWZ k selection pinned in Study.")}
               onUnpinQwz={id => stageStudy(source => unpinProjectQwzSample(source, id),
                 "QWZ k selection removed from Study.")}
+              onDeriveQwzProfile={stageQwzBandProfile}
               onCapturePinnedNote={(studyId, memberId, selectionId) => {
                 try {
                   const anchor = createProjectStudySelectionNoteAnchor(project, studyId, memberId, selectionId);

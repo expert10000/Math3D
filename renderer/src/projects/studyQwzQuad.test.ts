@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { createProjectQwzQuadStudy, createQuantumSceneDocument, instantiateMath3DProjectTemplate,
+import { createMixedWorkspaceDocument, createProjectQwzQuadStudy, createQuantumSceneDocument, instantiateMath3DProjectTemplate,
   inspectProjectQwzPinnedSample, parseMath3DProject, pinProjectQwzSample,
   qualifyProjectQwzPair, qualifyProjectQwzQuadStudy, serializeMath3DProject, unpinProjectQwzSample,
-  upsertProjectStudy,
+  upsertProjectStudy, replaceMath3DProjectWorkspace,
   type ProjectQuantumSceneReference } from "@math3d/core";
 import { admitVerifiedQwzStudy } from "./quantumStudyAdmission";
+import { mergeProjectLiveWorkspace } from "./projectTransfer";
 
 const runId = "run-qwz-quad", resultSha256 = "9".repeat(64);
 const references: ProjectQuantumSceneReference[] = ["curvature", "bands"].map((role, index) => ({
@@ -24,6 +25,20 @@ const admitted = async () => admitVerifiedQwzStudy(base, { runId, resultSha256, 
   async reference => documents.find(item => item.source.sceneFingerprint === reference.sceneFingerprint)!);
 
 describe("M3D20-04 QWZ four-view Study assembly", () => {
+  it("keeps the Quantum Study when a Graph editor capture omits its layout", async () => {
+    const admittedProject = await admitted();
+    const quad = createProjectQwzQuadStudy(admittedProject,
+      admittedProject.workspace.quantumStudies![0]!.id, "graph-capture", "QWZ graph profile");
+    const { quantumStudies: _quantumStudies, ...withoutQuantumLayout } = quad.workspace;
+    const live = createMixedWorkspaceDocument({ ...withoutQuantumLayout,
+      entries: quad.workspace.entries.filter(entry => entry.module !== "quantum"),
+      activeDocumentIds: quad.workspace.activeDocumentIds.filter(id =>
+        quad.workspace.entries.some(entry => entry.module !== "quantum" && entry.expected.id === id)) });
+    const merged = mergeProjectLiveWorkspace(quad.workspace, live);
+    const restored = replaceMath3DProjectWorkspace(quad, merged);
+    expect(merged.quantumStudies).toEqual(quad.workspace.quantumStudies);
+    expect(qualifyProjectQwzQuadStudy(restored, restored.workspace.studies![0]!)).not.toBeNull();
+  });
   it("reuses two exact source members for four saved view roles", async () => {
     const project = await admitted(), quantumId = project.workspace.quantumStudies![0]!.id;
     expect(qualifyProjectQwzPair(project, quantumId)).toMatchObject({ curvature: documents[0], bands: documents[1] });

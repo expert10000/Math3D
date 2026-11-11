@@ -4,22 +4,35 @@ import { inspectProjectQwzPinnedSample,
 import { verifyProjectQwzSample } from "../projects/qwzStudySample";
 import { buildQwzStudyEvidence, qwzStudyEvidenceCsv } from "../projects/qwzStudyEvidence";
 import { resultPublicationJson } from "../results/resultPublication";
+import { QWZ_BAND_PROFILE_OPERATION } from "../projects/qwzBandProfile";
 import { scientificCursorBus } from "./scientificCursor";
 
 /** Publish only an importer-verified band sample after the curvature target is qualified. */
-export function StudyQwzCursorControl({ project, pair, study, editable, onPin, onUnpin }: {
+export function StudyQwzCursorControl({ project, pair, study, editable, onPin, onUnpin,
+  onDeriveProfile, onOpenGraphProfile }: {
   project: Math3DProject; pair: ProjectQwzPair; study: StudyRecordV1;
   editable: boolean;
   onPin: (studyId: string, sampleIndex: number) => void;
   onUnpin: (studyId: string) => void;
+  onDeriveProfile?: (studyId: string) => Promise<{ graphId: string; resultId: string }>;
+  onOpenGraphProfile?: (graphId: string) => void;
 }) {
   const pin = inspectProjectQwzPinnedSample(study, pair);
+  const profileResult = project.workspace.results.find(item =>
+    item.provenance.operation.type === QWZ_BAND_PROFILE_OPERATION &&
+    (item.provenance.operation.parameters as Record<string, unknown>).studyId === study.id);
+  const profileGraphId = (profileResult?.provenance.operation.parameters as
+    Record<string, unknown> | undefined)?.graphDocumentId;
+  const profileGraph = typeof profileGraphId === "string" ? project.workspace.entries.find(entry =>
+    entry.module === "graph2d" && entry.expected.id === profileGraphId) : null;
   const [index, setIndex] = useState(() => pin.status === "current" ? String(pin.sampleIndex) : "");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [verifiedIndex, setVerifiedIndex] = useState<number | null>(null);
   const [exportBusy, setExportBusy] = useState(false);
   const [exportMessage, setExportMessage] = useState("");
+  const [profileMessage, setProfileMessage] = useState("");
+  const [profileBusy, setProfileBusy] = useState(false);
   const generation = useRef(0);
   const restoredPin = useRef<string | null>(null);
   useEffect(() => () => { generation.current++; }, [project, pair.curvature.identity.id, pair.bands.identity.id]);
@@ -85,6 +98,19 @@ export function StudyQwzCursorControl({ project, pair, study, editable, onPin, o
     {editable && pin.status !== "none" && <button type="button" data-testid="project-study-unpin-qwz-k"
       onClick={() => { setVerifiedIndex(null); onUnpin(study.id); }}>Remove pinned k</button>}
     {pin.status === "current" && <p data-testid="project-study-qwz-pin-status">Pinned band sample {pin.sampleIndex}; source verified on open.</p>}
+    {editable && pin.status === "current" && onDeriveProfile && <button type="button"
+      data-testid="project-study-derive-qwz-profile" disabled={profileBusy}
+      onClick={() => { setProfileBusy(true); setProfileMessage("Rechecking QWZ sources and band path…");
+        void onDeriveProfile(study.id).then(({ graphId }) =>
+          setProfileMessage(`Saved band profile in Graph ${graphId}. Save Project to retain it.`))
+          .catch(error => setProfileMessage(`QWZ profile withheld: ${(error as Error).message}`))
+          .finally(() => setProfileBusy(false)); }}>Derive reciprocal band profile in Graph</button>}
+    {profileMessage && <p role="status" data-testid="project-study-qwz-profile-status">{profileMessage}</p>}
+    {profileResult && profileGraph && <div data-testid="project-study-qwz-saved-profile">
+      <span>Saved reciprocal band profile · {String((profileResult.summary as Record<string, unknown>).rowCount)} producer samples</span>
+      {onOpenGraphProfile && <button type="button" data-testid="project-study-open-qwz-graph"
+        onClick={() => onOpenGraphProfile(profileGraph.expected.id)}>Open profile in Graph</button>}
+    </div>}
     {message && <p role="status" data-testid="project-study-qwz-cursor-status">{message}</p>}
     <button type="button" data-testid="project-study-export-qwz-evidence" disabled={exportBusy}
       onClick={() => { void exportEvidence("json"); }}>Export Study evidence JSON</button>
