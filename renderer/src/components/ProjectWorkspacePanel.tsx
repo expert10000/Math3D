@@ -40,6 +40,9 @@ import { projectAlgebraCasHandoff, resolveProjectAlgebraCasHandoff,
 import { projectAlgebraLocusCurveSourceStatus, resolveProjectAlgebraLocusCurveSource,
   resolveProjectAlgebraLocusCurveAlgebraReturn } from "@math3d/core";
 import { createSavedSurfaceMesh } from "../projects/savedSurfaceMesh";
+import { MeshDocumentAdapter } from "../mesh/meshDocumentAdapter";
+import { prepareSurfaceRidgeWorkbook, recordSurfaceRidgeComparison,
+  SURFACE_RIDGE_COMPARISON_OPERATION } from "../projects/surfaceRidgePublication";
 import { inspectProjectDependencies } from "../projects/projectDependencies";
 import { presentProjectFreshness, presentProjectRelationFreshness } from "../projects/projectFreshnessPresentation";
 import { projectDependencyRefreshOptions, refreshProjectDependency, projectAnalysisRefreshOptions, recomputeProjectAnalysis } from "../projects/projectDependencyRefresh";
@@ -1849,6 +1852,32 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     try { setProject(change(project)); setMessage(`${success} Save Project to keep it.`); }
     catch (error) { setMessage(`Study change refused: ${(error as Error).message}`); }
   };
+  const stageSurfaceRidgeComparison = async (surfaceId: string, meshId: string, ridgeIndex: number) => {
+    const source = projectStateRef.current;
+    if (!source || busy || preview || managed) throw new TypeError("Project is not editable.");
+    const mesh = source.workspace.entries.find(entry => entry.module === "mesh" && entry.expected.id === meshId);
+    if (mesh?.checkpoint.format !== "math3d.mesh-document") throw new TypeError("Saved Mesh is unavailable.");
+    if (!resourceSession.current) throw new TypeError("Saved Mesh source resources are unavailable.");
+    setBusy(true);
+    try {
+      const adapter = new MeshDocumentAdapter(mesh.checkpoint, resourceSession.current.meshStore(source));
+      const recorded = recordSurfaceRidgeComparison(source, adapter, surfaceId, ridgeIndex);
+      const result = recorded.workspace.results.find(item =>
+        item.provenance.operation.type === SURFACE_RIDGE_COMPARISON_OPERATION &&
+        item.provenance.source.documentId === surfaceId &&
+        (item.provenance.operation.parameters as Record<string, unknown>).ridgeIndex === ridgeIndex &&
+        (item.provenance.operation.parameters as Record<string, unknown>).meshDocumentId === meshId);
+      if (!result) throw new TypeError("Ridge result could not be saved.");
+      const prepared = prepareSurfaceRidgeWorkbook(recorded, result.resultId);
+      const resources = collectResources(prepared.project, resourceSession.current, false,
+        { id: prepared.workbookId, bytes: prepared.workbookBytes });
+      if (projectStateRef.current !== source) throw new TypeError("Project changed during ridge publication.");
+      resourceSession.current = resources; resourceSessionId.current = source.identity.id;
+      setResourceVersion(version => version + 1);
+      setProject(prepared.project);
+      setMessage("Surface ridge Curve, Mesh comparison and Workbook staged. Save Project to keep them.");
+    } finally { setBusy(false); }
+  };
   const stageQwzQuadStudy = async (quantumStudyId: string) => {
     const source = projectStateRef.current;
     if (!source || busy || preview || managed) return;
@@ -2163,6 +2192,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               onUnpinQwz={id => stageStudy(source => unpinProjectQwzSample(source, id),
                 "QWZ k selection removed from Study.")}
               onDeriveQwzProfile={stageQwzBandProfile}
+              onPublishSurfaceRidge={stageSurfaceRidgeComparison}
               onPinScientificSelection={(id, selectionId) => stageStudy(source =>
                 pinProjectStudyScientificSelection(source, id, selectionId), "Scientific selection pinned in Study.")}
               onCapturePinnedNote={(studyId, memberId, selectionId) => {

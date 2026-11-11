@@ -14,6 +14,7 @@ import { StudyGraphCurveControl } from "./StudyGraphCurveControl";
 import { StudyCurveSurfaceControl } from "./StudyCurveSurfaceControl";
 import { StudySurfaceMeshControl } from "./StudySurfaceMeshControl";
 import { CatenoidWaistEvidencePanel } from "./CatenoidWaistEvidencePanel";
+import { SurfaceRidgePublicationPanel } from "./SurfaceRidgePublicationPanel";
 import { StudyQwzCursorControl } from "./StudyQwzCursorControl";
 import { qualifyStudyScientificSelectionPin } from "../projects/projectStudyNoteAnchor";
 
@@ -32,6 +33,7 @@ type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoi
   onPinQwz: (studyId: string, sampleIndex: number) => void;
   onUnpinQwz: (studyId: string) => void;
   onDeriveQwzProfile?: (studyId: string) => Promise<{ graphId: string; resultId: string }>;
+  onPublishSurfaceRidge?: (surfaceId: string, meshId: string, ridgeIndex: number) => Promise<void>;
   onPinScientificSelection: (studyId: string, selectionId: string) => void;
   workbookBytes?: (id: string) => Uint8Array | null;
   onOpenWorkbookBlock?: (id: string, stageId: WorkbookStageId, blockId: string) => void;
@@ -44,6 +46,7 @@ type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoi
 /** A Study is a saved layout of references; opening a pane delegates to its owning document. */
 export function ProjectStudiesPanel({ project, documents, editable, resources, focusStudy, onCreate, onRename, onFork, onConfigure,
   onLink, onLinkCurveSurface, onLinkSurfaceMesh, onCreateQwz, onPinQwz, onUnpinQwz, onDeriveQwzProfile,
+  onPublishSurfaceRidge,
   onPinScientificSelection, workbookBytes, onOpenWorkbookBlock,
   onCapturePinnedNote, onOpenNote,
   onOpenQuantumSource, onInspectResult, onOpenDocument }: Props) {
@@ -117,6 +120,8 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
       qualifyProjectQwzPair(project, item.id)).map(item => <button type="button" key={item.id}
         data-testid={`project-study-create-qwz-${item.id}`} onClick={() => onCreateQwz(item.id)}>
         Create four-view QWZ Study from {item.title}</button>)}
+    <SurfaceRidgePublicationPanel project={project} resources={resources} editable={editable}
+      onPublish={onPublishSurfaceRidge} />
     <ul>{studies.map(study => <li key={study.id}>
       <button type="button" data-testid={`project-study-open-${study.id}`} onClick={() => {
         setOpenId(study.id); setEditTitle(study.title); setDescription(study.description ?? "");
