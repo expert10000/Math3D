@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { algebraicLocusGeometryDocument, buildSageAlgebraicLocusScene, canonicalJsonStringify,
   sampleSageAlgebraicLocus, sampledAlgebraicLocusGeometryDocument,
   analyzeSageAlgebraicSingularity, algebraicSingularityGeometryDocument,
@@ -9,12 +9,17 @@ import { algebraicLocusGeometryDocument, buildSageAlgebraicLocusScene, canonical
   type SageAlgebraicLocusSample, type SageAlgebraicSingularityScene } from "@math3d/core";
 import SageAlgebraicLocusPlot from "./SageAlgebraicLocusPlot";
 import SageAlgebraicSingularityView from "./SageAlgebraicSingularityView";
+import { sageExecutionRegistry, type SageBackend,
+  type SageOperationHandle } from "../../services/sageOperationExecution";
+import type { SageRunResponse } from "../../integrations/sage/sageSchemas";
 
 type Props = { project: Math3DProject; target: AlgebraObjectRef;
   onSave: (scene: SageAlgebraicLocusScene) => void | Promise<void>;
   onSaveSample: (sample: SageAlgebraicLocusSample) => void | Promise<void>;
   onOpenGeometry?: (documentId: string) => void | Promise<void>;
-  onSaveSingularity: (analysis: SageAlgebraicSingularityScene) => void | Promise<void> };
+  onSaveSingularity: (analysis: SageAlgebraicSingularityScene) => void | Promise<void>;
+  onSaveSageEvidence?: (scene: SageAlgebraicLocusScene, response: SageRunResponse,
+    backend: SageBackend) => void | Promise<void> };
 const axisNames = ["x", "y", "z"];
 const download = (name: string, body: string) => {
   const url = URL.createObjectURL(new Blob([body], { type: "application/json" }));
@@ -24,7 +29,7 @@ const download = (name: string, body: string) => {
 };
 
 export default function SageAlgebraicLocusBuilder({ project, target, onSave, onSaveSample,
-  onOpenGeometry, onSaveSingularity }: Props) {
+  onOpenGeometry, onSaveSingularity, onSaveSageEvidence }: Props) {
   const record = project.algebraObjects?.find((entry) => entry.id === target.objectId)?.revisions[target.revision - 1];
   const ambientRef = record?.definition.kind === "ideal" ? record.definition.ambientRing : null;
   const ambient = ambientRef
@@ -44,9 +49,15 @@ export default function SageAlgebraicLocusBuilder({ project, target, onSave, onS
   const [inspected, setInspected] = useState<{ signature: string; analysis: SageAlgebraicSingularityScene } | null>(null);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [sageBackend, setSageBackend] = useState<SageBackend>("local");
+  const [sageMessage, setSageMessage] = useState("");
+  const [sageRunning, setSageRunning] = useState(false);
+  const sageHandle = useRef<SageOperationHandle | null>(null);
   const handoff = projectAlgebraCasHandoff(project, target);
   const signature = JSON.stringify({ projectId: project.identity.id, target, polynomial,
     bounds: bounds.slice(0, variables.length), tolerance, maxSamples });
+  const currentSignature = useRef(signature);
+  currentSignature.current = signature;
   const scene = preview?.signature === signature ? preview.scene : null;
   const sample = sampled?.signature === signature ? sampled.sample : null;
   const analysisSignature = `${signature}/${JSON.stringify(point.slice(0, variables.length))}`;
@@ -115,6 +126,28 @@ export default function SageAlgebraicLocusBuilder({ project, target, onSave, onS
     catch (error) { setMessage(String((error as Error).message ?? error)); }
     finally { setBusy(false); }
   };
+  const runSageSingularities = async () => {
+    if (busy || sageRunning || !onSaveSageEvidence) return;
+    const requestedSignature = signature;
+    setSageRunning(true); setSageMessage("Running supported Sage symbolic singularities job…");
+    try {
+      const qualified = requireQualifiedScene();
+      if (qualified.source.equations.length !== 1)
+        throw new TypeError("Sage symbolic singularities accepts one polynomial; this ideal has multiple generators.");
+      const handle = sageExecutionRegistry.run({ operation: "sage.symbolic.singularities",
+        jobId: crypto.randomUUID(), backend: sageBackend,
+        params: { expression: qualified.source.equations[0],
+          variables: qualified.domain.bounds.map(bound => bound.variable) } });
+      sageHandle.current = handle;
+      const { response } = await handle.promise;
+      if (!response.success) throw new TypeError(response.error ?? "Sage singularities did not complete.");
+      if (currentSignature.current !== requestedSignature)
+        throw new TypeError("Locus source or bounds changed during the Sage job; result was not saved.");
+      await onSaveSageEvidence(qualified, response, sageBackend);
+      setSageMessage("Saved Sage singularity result with its exact locus source in Project.");
+    } catch (error) { setSageMessage(`Sage locus result withheld: ${(error as Error).message}`); }
+    finally { sageHandle.current = null; setSageRunning(false); }
+  };
   if (!record || (record.definition.kind !== "ideal" && record.definition.kind !== "polynomial-ring")) return null;
   return <section data-testid="cas-locus-builder" style={{ display: "grid", gap: 8,
     border: "1px solid #c7d9ed", borderRadius: 8, padding: 10, maxWidth: 720 }}>
@@ -165,6 +198,21 @@ export default function SageAlgebraicLocusBuilder({ project, target, onSave, onS
         <button type="button" onClick={() => download(`math3d-locus-geometry-${scene.source.target.revision}.json`,
           canonicalJsonStringify(algebraicLocusGeometryDocument(scene)))}>Export Geometry JSON</button>
       </div>
+      {onSaveSageEvidence && <div data-testid="cas-locus-sage" style={{ display: "grid", gap: 5 }}>
+        <strong>Sage symbolic singularities · one polynomial</strong>
+        <label>Backend <select aria-label="Locus Sage backend" value={sageBackend}
+          disabled={sageRunning} onChange={event => setSageBackend(event.target.value as SageBackend)}>
+          <option value="local">Local WSL</option><option value="docker">Docker service</option>
+        </select></label>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button type="button" data-testid="cas-locus-run-sage" disabled={busy || sageRunning ||
+            !qualifiedScene || qualifiedScene.source.equations.length !== 1}
+            onClick={() => { void runSageSingularities(); }}>Run Sage singularities and save result</button>
+          {sageRunning && <button type="button" data-testid="cas-locus-cancel-sage"
+            onClick={() => { sageHandle.current?.cancel(); setSageMessage("Cancelling Sage locus job…"); }}>Cancel Sage job</button>}
+        </div>
+        {sageMessage && <p role="status" data-testid="cas-locus-sage-status">{sageMessage}</p>}
+      </div>}
       {sample && <div data-testid="cas-locus-sample" style={{ display: "grid", gap: 6 }}>
         <SageAlgebraicLocusPlot sample={sample} />
         <div>Exact source: {sample.scene.source.target.label}@{sample.scene.source.target.revision} · {sample.scene.sceneHash}</div>

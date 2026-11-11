@@ -39,6 +39,8 @@ The gate scripts and source tests are **preparation**, not evidence that a 2.0 i
 
 **Bounded QWZ profile publication (2026-11-11):** A pinned, source-qualified reciprocal sample now derives a constant-coordinate band-energy section of at most 65 producer samples, saves a point-series Graph and result with exact source relations, and includes the profile in the Study evidence export. Desktop acceptance covers cold restart, a changed source bundle, missing band bytes, and retention of the Quantum Study layout after Graph capture. The section uses verified producer values; it is not an independent band computation or a general path editor. Full installed-candidate and arbitrary reciprocal-path acceptance remain open.
 
+**Saved algebraic locus and singularities (2026-11-11):** A current, single-polynomial CAS locus can run the brokered Sage symbolic singularities operation on an advertised desktop route and save the exact response, engine, source revision, and locus Geometry relation in Project. The bounded real sample and tangent inspection retain separate visualization provenance; reopening the saved Project reads these records without running Sage. Focused desktop acceptance covers an unavailable service, cancellation, successful save, bounded Geometry, and offline cold reopen; source revision refusal and JSON reimport are checked in the focused source tests. General ideals, arbitrary dimensions, installed-candidate runtime evidence, and symbolic validation independent of Sage remain open.
+
 ---
 
 ## 0. Executive decision

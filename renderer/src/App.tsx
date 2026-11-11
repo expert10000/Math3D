@@ -337,6 +337,7 @@ import TheoryLabInstallationPanel from "./components/TheoryLabInstallationPanel"
 import ComputeCenterPanel from "./features/computeCenter/ComputeCenterPanel";
 import SageConsoleDock from "./features/sageLab/SageConsoleDock";
 import CASAlgebraWorkspace from "./features/sageLab/CASAlgebraWorkspace";
+import { saveSageLocusSingularities } from "./projects/sageLocusJourney";
 import NumberTheoryWorkspace from "./features/sageLab/NumberTheoryWorkspace";
 import { graphSageSource } from "./features/sageLab/graphSageSource";
 import { useResponsiveLayout } from "./hooks/useResponsiveLayout";
@@ -112201,6 +112202,19 @@ case "mobius":
             window.dispatchEvent(new Event("math3d:project-saved-externally"));
           }
           return installed.primary;
+        }}
+        onSaveLocusSageEvidence={(scene, response, backend) => {
+          const current = projectForNotePins;
+          if (!current || current.identity.id !== scene.source.projectId)
+            throw new TypeError("Open the matching Project before saving Sage locus evidence.");
+          const savedBytes = localStorage.getItem(projectPayloadKey(current.identity.id));
+          if (!savedBytes || parseMath3DProject(savedBytes).identity.structuralHash !== current.identity.structuralHash)
+            throw new TypeError("The saved Project changed. Reopen it before saving Sage evidence.");
+          const next = saveSageLocusSingularities(current, scene, response, backend);
+          saveLibraryProject(localStorage, next, Date.now(), undefined, { expectedBytes: savedBytes });
+          activeNotebookProjectRef.current = next;
+          setNotebookProjectVersion((version) => version + 1);
+          window.dispatchEvent(new Event("math3d:project-saved-externally"));
         }}
         onSaveLocusSingularity={(analysis) => {
           const current = projectForNotePins;

@@ -41,6 +41,8 @@ import SageObjectOperations from "./SageObjectOperations";
 import SageRecipes from "./SageRecipes";
 import SageAlgebraEvidenceInspector from "./SageAlgebraEvidenceInspector";
 import { algebraEvidenceInspectorModel } from "./algebraEvidenceInspectorModel";
+import type { SageRunResponse } from "../../integrations/sage/sageSchemas";
+import type { SageBackend } from "../../services/sageOperationExecution";
 import { algebraEvidenceInspectorExportCsv, algebraEvidenceInspectorExportJson,
   algebraEvidencePublication } from "./algebraEvidenceInspectorExport";
 import { createQuotientStarter, describeStructure, resolveStructureSelection, selectedStructure,
@@ -60,6 +62,8 @@ export type CASAlgebraWorkspaceProps = Omit<SageServicesWorkspaceProps, "structu
   requestedSelection?: { projectId: string; target: AlgebraObjectRef;
     contentHash: string; evidence?: ProjectAlgebraLocusReturn | null; token: number } | null;
   onSaveLocusSingularity?: (analysis: SageAlgebraicSingularityScene) => void | Promise<void>;
+  onSaveLocusSageEvidence?: (scene: SageAlgebraicLocusScene, response: SageRunResponse,
+    backend: SageBackend) => void | Promise<void>;
   onSaveRecipe: (recipe: AlgebraRecipeGraph) => void | Promise<void>;
   onAppendRecipeEvidence: (base: Math3DProject, evidence: ProjectAlgebraEvidence) => Math3DProject | Promise<Math3DProject>;
   onOpenProjects: () => void;
@@ -82,7 +86,7 @@ const readSavedSelection = (project: Math3DProject | null): unknown => {
 
 export default function CASAlgebraWorkspace({ project, onCreateStructure, onSaveEvidence, onSaveRecipe,
   onSaveLocusScene, onSaveLocusSample, onOpenLocusGeometry, onPromoteLocusCurve,
-  onSaveLocusSingularity, onAppendRecipeEvidence, onOpenProjects,
+  onSaveLocusSingularity, onSaveLocusSageEvidence, onAppendRecipeEvidence, onOpenProjects,
   onInstallGalleryExample, requestedSelection, workspaceContext = "cas", ...props }: CASAlgebraWorkspaceProps) {
   const [selection, setSelection] = useState<AlgebraObjectRef | null>(() =>
     resolveStructureSelection(project, requestedSelection && requestedSelection.projectId === project?.identity.id
@@ -539,7 +543,8 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       <SageAlgebraicLocusBuilder key={`${chosen.record.id}@${chosen.record.revision}`}
         project={project} target={{ objectId: chosen.record.id, revision: chosen.record.revision }}
         onSave={onSaveLocusScene} onSaveSample={onSaveLocusSample} onOpenGeometry={onOpenLocusGeometry}
-        onSaveSingularity={onSaveLocusSingularity} />}
+        onSaveSingularity={onSaveLocusSingularity}
+        onSaveSageEvidence={onSaveLocusSageEvidence} />}
     {chosen.record.kind === "ideal" && <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
       <label>Quotient name <input aria-label="Quotient name" value={quotientName}
         onChange={(event) => setQuotientName(event.target.value)} placeholder={`${chosen.record.label} quotient`} /></label>
