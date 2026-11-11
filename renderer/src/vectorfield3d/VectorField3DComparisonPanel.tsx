@@ -49,7 +49,7 @@ export function VectorField3DComparisonPanel({ document, project, onSave, onOpen
     let active = true, verificationEpoch = 0;
     const refresh = async (event?: Event) => {
       const run = ++verificationEpoch;
-      if (active) { setVerified({}); if (event) setResult(null); }
+      if (active) { setVerified({}); if (event) { epoch.current++; setResult(null); setBusy(false); } }
       const sourcesToCheck = project?.workspace.entries.filter(item => item.module === "vector3d" &&
         item.checkpoint.format === "math3d.vector-field3d-document" &&
         item.checkpoint.source.field.kind === "scientific-bundle").map(item =>

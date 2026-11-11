@@ -43,8 +43,7 @@ export function FieldExplorerBaselineViews({ document, baseline, onProbeSelect, 
       return { slices: null, error: currentVerification?.error ?? "" };
     return { slices: fieldExplorerBaselineSlices(document, baseline, currentVerification?.transfers ?? {}), error: "" };
   } catch (cause) { return { slices: null, error: (cause as Error).message }; }
-  }, [document.identity.structuralHash, baseline?.identity.id, baseline?.identity.structuralHash,
-    baseline?.identity.revision, view.selectedLayer, view.sliceChannel, view.sliceCoordinates.join(","), currentVerification, scientific]);
+  }, [pairKey, view.selectedLayer, view.sliceChannel, view.sliceCoordinates.join(","), currentVerification, scientific]);
   return <section className="field-explorer-baseline-views" aria-label="Linked A/B field views">
     <header><div><strong>Live A / pinned B</strong><p>Shared physical plane, probe and color range.
       Select a cell in either view to update both profiles. Profiles use native sampled grid points.</p></div>
