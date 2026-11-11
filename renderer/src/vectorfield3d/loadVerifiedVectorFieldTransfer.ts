@@ -1,6 +1,8 @@
 import { verifyVectorField3DVolumes, type VectorField3DDocument,
   type VerifiedVectorFieldTransfer } from "@math3d/core";
 
+export const SCIENTIFIC_FIELD_REVERIFY_EVENT = "math3d:field-sources-reverify";
+
 /** Reopen pinned resources through the desktop verifier before using sampled values. */
 export async function loadVerifiedVectorFieldTransfer(source: VectorField3DDocument,
   verifier?: Window["scientificScenes"]):
