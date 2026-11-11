@@ -41,9 +41,10 @@ test("scientific Field Explorer transfers a Project package to a fresh profile a
     const original = fixture.workspace.entries[0]!.checkpoint as VectorField3DDocument;
     if (original.source.field.kind !== "scientific-bundle") throw new Error("Wrong scientific fixture");
     const manifestJson = await readFile(join(directory, "manifest.json"), "utf8");
-    const references = original.source.field.references.map(reference => createGraph2DFieldReference(
-      manifestJson, reference.sceneFingerprint, { kind: "directory", value: directory }, reference.datasetId,
-      reference.component)) as typeof original.source.field.references;
+    const savedReferences = original.source.field.references;
+    const relink = (reference: typeof savedReferences[number]) => createGraph2DFieldReference(
+      manifestJson, reference.sceneFingerprint, { kind: "directory", value: directory }, reference.datasetId, reference.component);
+    const references = [relink(savedReferences[0]), relink(savedReferences[1]), relink(savedReferences[2])] as const;
     const field = createVectorField3DDocument({ ...original.source,
       field: { ...original.source.field, references } }, { stableKey: "scientific-workflow-A" });
     const source = reviseVectorField3DWorkspace(field, { ...defaultVectorField3DWorkspace(field.source),
