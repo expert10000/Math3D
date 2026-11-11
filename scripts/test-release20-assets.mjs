@@ -117,7 +117,8 @@ try {
     bom.components.push({ 'bom-ref': owner, type: 'library', name });
   }
   const source = JSON.stringify({ schemaVersion: 1, target: 'windows',
-    math3d: { commit: 'a'.repeat(40) }, nativeCgal: {
+    math3d: { version: '2.0.0', commit, sourceArchive: 'Math3D-2.0.0-source.zip', releaseBuildPatch: null },
+    sources: [nativeSource], nativeCgal: {
       distributionStatus: 'source-bundle-integrated', dependencyManifestSha256: 'b'.repeat(64) } }) + '\n';
   await write('release-assets/SOURCE_MANIFEST-windows.json', source);
   const receipt = { schema: 'math3d.native-cgal-build/v1', target: 'windows', triplet: 'x64-windows',
