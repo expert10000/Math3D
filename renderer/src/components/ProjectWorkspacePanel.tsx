@@ -46,6 +46,7 @@ import { ProjectDependenciesPanel } from "./ProjectDependenciesPanel";
 import { ProjectRelationshipMap } from "./ProjectRelationshipMap";
 import { ProjectCursorInspector } from "./ProjectCursorInspector";
 import { ProjectStudiesPanel } from "./ProjectStudiesPanel";
+import { buildResearchCommands, type ResearchCommand } from "../projects/researchCommands";
 import { addQualifiedStudyGraphCurveLink } from "../projects/studyGraphCurveLink";
 import { prepareCuratedStudyBundle } from "../projects/curatedStudyProject";
 import { curatedStudy } from "../projects/curatedStudyCatalog";
@@ -1902,6 +1903,41 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       onNavigateDocument?.(entry.expected.id, entry.module);
     closeExplorer();
   };
+  const researchCommands = buildResearchCommands({ project, savedProjects: library.entries,
+    workbookBytes: projectWorkbookBytes, workbookState: id => resourceSessionId.current !== project?.identity.id || !resourceSession.current
+      ? "unverified" : resourceSession.current.bytes({ kind: "workbook-payload", id }) ? "available" : "missing",
+    canOpenDocument: (id, module) => !!canNavigateDocument?.(id, module),
+    canOpenWorkbook: !!onOpenWorkbook, canOpenCas: !!onOpenCasGallery, preview, busy });
+  const selectResearchCommand = (command: ResearchCommand) => {
+    if (command.unavailableReason) return;
+    const target = command.target;
+    if (target.kind === "gallery") { openResearchSection("gallery"); onOpenChange(true); return; }
+    if (target.kind === "current-project") { setQuick(false); setViewerCompanion(false); setDetailView(true);
+      openDetailPage("overview"); onOpenChange(true); return; }
+    if (target.kind === "cas") { onOpenCasGallery?.(); return; }
+    if (target.kind === "saved-project") { void openLibraryProject(target.id); return; }
+    if (target.kind === "study") { setStudyFocus(previous => ({ id: target.id, token: (previous?.token ?? 0) + 1 }));
+      setQuick(false); setViewerCompanion(false); setDetailView(true); openDetailPage("overview"); onOpenChange(true); return; }
+    if (target.kind === "result") { setResultFocus(previous => ({ id: target.id, token: (previous?.token ?? 0) + 1 }));
+      setQuick(false); setViewerCompanion(false); setDetailView(true); openDetailPage("results"); onOpenChange(true); return; }
+    if (target.kind === "workbook") { void openProjectWorkbook(target.id); return; }
+    if (target.kind === "citation") { void openProjectWorkbook(target.id, false, target.stageId, target.blockId); return; }
+    if (target.kind === "note") { onOpenChange(true); openProjectNotes(target.id); return; }
+    if (target.kind === "document") { onOpenChange(true); viewBesideProject(target.id, target.module); }
+  };
+  useEffect(() => {
+    const publish = () => window.dispatchEvent(new CustomEvent("math3d:research-command-index", { detail: researchCommands }));
+    const execute = (event: Event) => {
+      const command = researchCommands.find(item => item.key === (event as CustomEvent<string>).detail);
+      if (command) selectResearchCommand(command);
+    };
+    window.addEventListener("math3d:request-research-commands", publish);
+    window.addEventListener("math3d:execute-research-command", execute);
+    return () => {
+      window.removeEventListener("math3d:request-research-commands", publish);
+      window.removeEventListener("math3d:execute-research-command", execute);
+    };
+  });
   const fullDetails = !quick && detailView;
   useEffect(() => {
     if (!hasOpenProject || busy || preview || managed || !project?.metadata.tags?.includes("ripple-wave-study") ||

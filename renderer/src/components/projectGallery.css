@@ -7,7 +7,7 @@
    intact; Return to document reveals the same canvas and source draft. */
 body:has(#project-gallery-host:not(:empty)) .math3d-app > [data-testid="project-source-editor"] { visibility:hidden;pointer-events:none; }
 #project-gallery-host:not(:empty) { position:relative;z-index:2600;width:100%;min-width:0;padding:0 10px 12px;box-sizing:border-box; }
-.math3d-app:has(> #project-gallery-host:not(:empty)) > #project-gallery-host ~ * { display:none!important; }
+.math3d-app:has(> #project-gallery-host:not(:empty)) > #project-gallery-host ~ *:not(.global-command-palette-backdrop) { display:none!important; }
 body:has(#project-gallery-host:not(:empty)) :is([data-testid="projects-quick-toggle"][data-active-project="false"],[data-testid="notes-toggle"],[data-testid="kernel-workspace-toggle"]) { display:none!important; }
 .project-quick-panel { position:fixed;right:14px;top:90px;width:440px;max-width:calc(100vw - 28px);max-height:calc(100vh - 125px);overflow:auto;z-index:2501; }
 .project-gallery-page *, .project-quick-panel * { box-sizing:border-box; }
