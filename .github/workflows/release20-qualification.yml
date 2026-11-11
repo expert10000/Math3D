@@ -1,0 +1,180 @@
+name: Qualify exact signed 2.0 Windows candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_run_id:
+        description: Run ID of the signed 2.0 candidate workflow
+        required: true
+        type: string
+      source_commit:
+        description: Reviewed 40-character source commit
+        required: true
+        type: string
+      installer_sha256:
+        description: Approved SHA-256 of Math3D-Setup-2.0.0.exe
+        required: true
+        type: string
+      freeze_sha256:
+        description: Approved SHA-256 of the freeze manifest
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  integrity:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_commit }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@v7
+        with:
+          run-id: ${{ inputs.candidate_run_id }}
+          github-token: ${{ github.token }}
+          name: math3d-2.0-windows-candidate-${{ inputs.source_commit }}
+          path: ${{ runner.temp }}/candidate
+      - name: Verify uploaded bytes and frozen identity
+        shell: pwsh
+        run: |
+          node scripts/verify-release20-uploaded-assets.mjs `
+            (Join-Path $env:RUNNER_TEMP 'candidate') `
+            '${{ inputs.source_commit }}' '${{ inputs.installer_sha256 }}' '${{ inputs.freeze_sha256 }}' `
+            (Join-Path $env:RUNNER_TEMP 'asset-receipt.json')
+          if ($LASTEXITCODE -ne 0) { throw 'Uploaded candidate integrity failed.' }
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release20-integrity-receipt
+          path: ${{ runner.temp }}/asset-receipt.json
+          if-no-files-found: error
+
+  fresh_install:
+    needs: integrity
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_commit }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/download-artifact@v7
+        with:
+          run-id: ${{ inputs.candidate_run_id }}
+          github-token: ${{ github.token }}
+          name: math3d-2.0-windows-candidate-${{ inputs.source_commit }}
+          path: ${{ runner.temp }}/candidate
+      - name: Install exact test locks
+        shell: pwsh
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw 'Root test install failed.' }
+          npm --prefix renderer ci
+          if ($LASTEXITCODE -ne 0) { throw 'Renderer test install failed.' }
+      - name: Install on a fresh Windows runner and reopen a Study
+        shell: pwsh
+        run: |
+          node scripts/verify-release20-uploaded-assets.mjs `
+            (Join-Path $env:RUNNER_TEMP 'candidate') `
+            '${{ inputs.source_commit }}' '${{ inputs.installer_sha256 }}' '${{ inputs.freeze_sha256 }}' `
+            (Join-Path $env:RUNNER_TEMP 'fresh-asset-check.json')
+          if ($LASTEXITCODE -ne 0) { throw 'Fresh runner received different candidate bytes.' }
+          ./scripts/release20-fresh-install.ps1 `
+            -InstallerPath (Join-Path $env:RUNNER_TEMP 'candidate/Math3D-Setup-2.0.0.exe') `
+            -CandidateManifest (Join-Path $env:RUNNER_TEMP 'candidate/candidate-manifest.json') `
+            -EvidencePath (Join-Path $env:RUNNER_TEMP 'fresh-install.json')
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: release20-fresh-install-receipt
+          path: ${{ runner.temp }}/fresh-install.json
+          if-no-files-found: warn
+
+  upgrade:
+    needs: integrity
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_commit }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/download-artifact@v7
+        with:
+          run-id: ${{ inputs.candidate_run_id }}
+          github-token: ${{ github.token }}
+          name: math3d-2.0-windows-candidate-${{ inputs.source_commit }}
+          path: ${{ runner.temp }}/candidate
+      - name: Install exact test locks
+        shell: pwsh
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw 'Root test install failed.' }
+          npm --prefix renderer ci
+          if ($LASTEXITCODE -ne 0) { throw 'Renderer test install failed.' }
+      - name: Upgrade exact published 1.7 bytes and rehearse rollback
+        shell: pwsh
+        run: |
+          node scripts/verify-release20-uploaded-assets.mjs `
+            (Join-Path $env:RUNNER_TEMP 'candidate') `
+            '${{ inputs.source_commit }}' '${{ inputs.installer_sha256 }}' '${{ inputs.freeze_sha256 }}' `
+            (Join-Path $env:RUNNER_TEMP 'upgrade-asset-check.json')
+          if ($LASTEXITCODE -ne 0) { throw 'Upgrade runner received different candidate bytes.' }
+          $old = Join-Path $env:RUNNER_TEMP 'Math3D-Setup-1.7.0.exe'
+          Invoke-WebRequest -Uri 'https://github.com/expert10000/Math3D/releases/download/v1.7.0/Math3D-Setup-1.7.0.exe' -OutFile $old
+          ./scripts/release20-upgrade.ps1 `
+            -OldInstaller $old `
+            -CandidateInstaller (Join-Path $env:RUNNER_TEMP 'candidate/Math3D-Setup-2.0.0.exe') `
+            -CandidateManifest (Join-Path $env:RUNNER_TEMP 'candidate/candidate-manifest.json') `
+            -EvidencePath (Join-Path $env:RUNNER_TEMP 'upgrade.json')
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: release20-upgrade-receipt
+          path: ${{ runner.temp }}/upgrade.json
+          if-no-files-found: warn
+
+  qualify:
+    needs: [integrity, fresh_install, upgrade]
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_commit }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: release20-*-receipt
+          merge-multiple: true
+          path: ${{ runner.temp }}/receipts
+      - name: Require all exact-candidate installed receipts
+        shell: pwsh
+        run: |
+          node scripts/check-release20-qualification.mjs `
+            (Join-Path $env:RUNNER_TEMP 'receipts/asset-receipt.json') `
+            (Join-Path $env:RUNNER_TEMP 'receipts/fresh-install.json') `
+            (Join-Path $env:RUNNER_TEMP 'receipts/upgrade.json') `
+            '${{ inputs.source_commit }}' '${{ inputs.installer_sha256 }}' `
+            (Join-Path $env:RUNNER_TEMP 'release20-qualification.json')
+          if ($LASTEXITCODE -ne 0) { throw 'Exact candidate qualification failed.' }
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: release20-qualification-receipt
+          path: ${{ runner.temp }}/release20-qualification.json
+          if-no-files-found: warn

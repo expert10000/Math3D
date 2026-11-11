@@ -119,14 +119,21 @@ export function inspectResearchReference(project: Math3DProject, candidate: unkn
       candidate.owners.includes(ref.source.documentId));
     return item && structuralHash(item.reference) === pin.descriptorHash && item.checksum === pin.checksum ? item : null;
   });
-  const missingResource = resources.some(item => !item) || !!readResource && resources.some(item => {
-    if (!item) return true;
-    try { const bytes = readResource(item); if (!bytes) return true; verifyProjectResourceBytes(item, bytes); return false; }
-    catch { return true; }
-  });
+  const unavailable = resources.findIndex(item => !item);
+  let resourceReason = unavailable >= 0 ?
+    `Pinned ${ref.resources[unavailable]!.kind} resource ${ref.resources[unavailable]!.id} is missing or its descriptor changed.` : "";
+  if (!resourceReason && readResource) for (const item of resources) {
+    if (!item) continue;
+    try {
+      const bytes = readResource(item);
+      if (!bytes) { resourceReason = `Pinned ${item.kind} source bytes ${item.id} are unavailable.`; break; }
+      verifyProjectResourceBytes(item, bytes);
+    } catch { resourceReason = `Pinned ${item.kind} source bytes ${item.id} failed verification.`; break; }
+  }
+  const missingResource = !!resourceReason;
   const resourceStatus = missingResource ? "missing" : readResource ? "verified" : "not-checked";
   const current = targetMatches && matchesScientificSourceGeneration(ref.source, currentSource) && !missingResource;
   return { status: current ? "current" : "historical", resourceStatus,
-    reason: missingResource ? "Pinned source resource is unavailable or changed." : !targetMatches ?
+    reason: missingResource ? resourceReason : !targetMatches ?
       "Referenced target changed." : current ? "Source generation and target identity match." : "Source generation changed." };
 }

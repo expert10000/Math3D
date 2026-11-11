@@ -140,7 +140,7 @@ jobs:
           done
           docker compose -f services/sage-worker/docker-compose.yml logs
           exit 1
-      - name: Scoped real Docker computation and cancellation
+      - name: Scoped real Docker computation, ideal singularities and cancellation
         run: npx playwright test --config playwright.sage-live-docker.config.ts --retries=0 --reporter=list,json
       - name: Preserve service logs
         if: always()

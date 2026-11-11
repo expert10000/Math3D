@@ -130,6 +130,62 @@ test("guided Catenary Project keeps its exact two-pane Study through a desktop r
   } finally { await closeSurfaceApp(ctx); }
 });
 
+test("guided Catenoid Study opens its saved Mesh curvature result after a cold restart", async () => {
+  test.setTimeout(180_000);
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    let page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByRole("button", { name: "Starter projects", exact: true }).click();
+    await panel.getByTestId("project-gallery-guided").click();
+    await panel.getByTestId("curated-study-open-catenoid-evidence").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Opened supported project", { timeout: 60_000 });
+    const first = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const study = first.workspace.studies[0];
+    expect(study.members.map((member: { documentId: string }) => first.workspace.entries.find(
+      (entry: { expected: { id: string } }) => entry.expected.id === member.documentId).module))
+      .toEqual(["surface", "mesh"]);
+    expect(study.members[1].resultId).toBe(first.workspace.results.find((result: { provenance: { source: { documentId: string } } }) =>
+      result.provenance.source.documentId === study.members[1].documentId).resultId);
+    expect(first.workbooks).toHaveLength(2);
+    expect(first.workbooks.some((book: { title: string }) => book.title.endsWith("Research"))).toBe(true);
+    if (!await panel.getByTestId("project-studies-panel").count())
+      await panel.getByTestId("project-gallery-layout-toggle").click();
+    if (!await panel.getByTestId("project-study-panes").count())
+      await panel.getByTestId("project-studies-panel").locator('[data-testid^="project-study-open-"]').click();
+    const comparison = panel.getByTestId("project-catenoid-waist-evidence");
+    await expect(comparison).toContainText("analytic reference K=-1");
+    await expect(comparison).toContainText("discrete estimate K=");
+    await expect(panel.getByTestId("project-study-open-result-pane-1")).toBeEnabled();
+    await expect(panel.getByTestId("project-study-open-result-pane-2")).toBeEnabled();
+    const evidencePath = test.info().outputPath("catenoid-waist-comparison.json");
+    await ctx.app.evaluate(({ session }, target) => session.defaultSession.once("will-download",
+      (_event, item) => item.setSavePath(target)), evidencePath);
+    await comparison.getByTestId("project-catenoid-waist-export").click();
+    await expect.poll(() => { try { return readFileSync(evidencePath).length; } catch { return 0; } })
+      .toBeGreaterThan(100);
+    const exported = JSON.parse(readFileSync(evidencePath, "utf8"));
+    expect(exported.result.summary.analyticWaistGaussian).toBe(-1);
+    expect(exported.result.provenance.operation.type).toBe("surface.catenoid-waist-comparison");
+    await panel.getByTestId("project-save").click();
+    const profile = ctx.profileDir;
+    await ctx.app.close();
+    ctx = await launchSurfaceApp({}, profile); page = ctx.page; panel = page.getByTestId("project-explorer-panel");
+    await openLastSavedProject(page);
+    if (!await panel.getByTestId("project-studies-panel").count())
+      await panel.getByTestId("project-gallery-layout-toggle").click();
+    if (!await panel.getByTestId("project-study-panes").count())
+      await panel.getByTestId("project-studies-panel").locator('[data-testid^="project-study-open-"]').click();
+    await expect(panel.getByTestId("project-catenoid-waist-evidence"))
+      .toContainText("discrete estimate K=");
+    await panel.getByTestId("project-study-open-result-pane-2").click();
+    await expect(panel.getByTestId("project-results-browser")).toBeVisible();
+    await expect(panel.getByTestId(`project-result-select-${study.members[1].resultId}`))
+      .toHaveAttribute("aria-current", "true");
+  } finally { await closeSurfaceApp(ctx); }
+});
+
 test("guided reset opens a new Study while retaining the original Project, Workbook and Note", async () => {
   let ctx: LaunchedSurfaceApp | null = null;
   try {

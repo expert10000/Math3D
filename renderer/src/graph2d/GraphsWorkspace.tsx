@@ -94,6 +94,7 @@ import type { SymbolicResultRecord } from "../features/sageLab/SageSymbolicPanel
 import { graphSageSource } from "../features/sageLab/graphSageSource";
 import { Graph2DPlot } from "./Graph2DPlot";
 import { scientificCursorBus, type ProjectScientificCursor } from "../components/scientificCursor";
+import { NativeProjectCursorInspector } from "../components/NativeProjectCursorInspector";
 import { graphAnalyticRowCursorDraft, projectFieldCursorToAnalyticLine } from "./fieldGraphCursor";
 import { currentGraphCurvePair, graphProbeCurveCursorDraft, projectCurveParameterToGraph } from "./graphCurveCursor";
 import { ScientificFieldPlane } from "./ScientificFieldPlane";
@@ -4997,6 +4998,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
       </div>
       {showRight && <aside className="graph2d-panel graph2d-right" aria-label="Graph inspector">
         <h2>Inspector</h2>
+        <NativeProjectCursorInspector project={project} document={document} module="graph2d" />
         {sageRecord && <SageSymbolicAnalysisCard record={sageRecord} sourceStatus={sageSourceStatus}
           onSaveWorkbook={onSaveSageResult ? () => onSaveSageResult(sageRecord) : undefined} />}
         {guided && <details className="graph2d-guided-panel" data-testid="graph2d-guided-panel">

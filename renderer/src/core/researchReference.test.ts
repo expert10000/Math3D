@@ -32,7 +32,8 @@ describe("shared research reference", () => {
       targetId: entry.expected.id, source: viewerSourceFromDocument({ identity: entry.expected }),
       targetHash: entry.expected.structuralHash, resources: researchResourcePins(project, entry.expected.id) });
     expect(inspectResearchReference(project, ref, item => resources.bytes(item)).status).toBe("current");
-    expect(inspectResearchReference(project, ref, () => null)).toMatchObject({ status: "historical", resourceStatus: "missing" });
+    expect(inspectResearchReference(project, ref, () => null)).toMatchObject({ status: "historical",
+      resourceStatus: "missing", reason: expect.stringContaining(ref.resources[0]!.id) });
     const absentId = createStableDocumentId("mesh", "absent-research-target");
     const missingRef = createResearchReference({ ...ref, targetId: absentId,
       source: { ...ref.source, documentId: absentId } });

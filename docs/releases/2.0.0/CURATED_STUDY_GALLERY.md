@@ -12,7 +12,7 @@ The active Gallery now qualifies each card against probed storage, WebGL and ver
 | Geometry and topology | Built-in Project | Geometry + Topology | Narrative matrix; no installed-host restart fixture |
 | Geometry Note pins | Built-in Project | Geometry | Narrative matrix; existing local pin behaviour has separate tests |
 | Derivative | Built-in Project | Graph + Curve; recorded derivative on Graph | Narrative matrix; no installed-host restart fixture |
-| Catenoid evidence | Built-in Project | Mesh + Surface; saved curvature result on Mesh | Narrative matrix with retained Mesh sidecar; desktop only |
+| Catenoid evidence | Built-in Project | Surface + Mesh; pinned analytic/discrete comparison on Surface and curvature result on Mesh | Narrative matrix with retained Mesh sidecar; desktop cold restart and Result navigation |
 | Edge path evidence | Built-in Project | Mesh + Surface; saved path result on Mesh | Narrative matrix with retained Mesh sidecar; browser research preview; desktop editing |
 | Graph derivative notebook | Built-in Project | Graph + Curve; recorded result on Graph | Narrative matrix; existing Workbook retained alongside guided Workbook |
 | Ripple wave | Built-in Project | Graph + Surface + Geometry | Narrative matrix with retained Mesh sidecar; desktop only |
@@ -50,7 +50,7 @@ The active Gallery now qualifies each card against probed storage, WebGL and ver
 
 1. Run `npx vitest run renderer/src/projects/galleryDesktopCompatibility.test.ts renderer/src/projects/flagshipNarrativeMatrix.test.ts renderer/src/projects/curatedStudyQualification.test.ts renderer/src/projects/curatedStudyPreview.test.ts renderer/src/projects/projectResearchNarrativeImport.test.ts tests/unit/mobileProjectExplorer.test.ts`.
 2. Run `npm run build:core` and `npx tsc -p renderer/tsconfig.app.json --noEmit`.
-3. Run `npx playwright test tests/e2e/project-curated-gallery.spec.ts --reporter=list` in a source checkout with Electron available. Build web, then run `npx playwright test -c playwright.graph2d.config.ts tests/graph2d-web/curatedGalleryFallback.spec.ts --reporter=list` for local Chromium.
+3. Run `npx playwright test tests/e2e/project-curated-gallery.spec.ts --reporter=list` in a source checkout with Electron available. The Catenoid copy must reopen its Surface/Mesh Study and navigate to the comparison result. Build web, then run `npx playwright test -c playwright.graph2d.config.ts tests/graph2d-web/curatedGalleryFallback.spec.ts --reporter=list` for local Chromium.
 4. In Projects → Starter projects, switch to Guided Studies. Filter Quantum scene and confirm three external-source cards. Filter Algebra and open the CAS examples. Open the Catenary guided copy and confirm its saved two-pane Study after restarting the desktop app.
 
 The M3D20-07 built-in research narrative exit has an automated renderer-host matrix. M3D20-08 source-checkout routes now have working open or honest preview paths. Its full release exit remains open for installed-host coverage of every route, hosted browser and Android device receipts, independently verified external scenes, and release-candidate performance budgets.

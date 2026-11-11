@@ -12,8 +12,9 @@ import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, 
   relinkMath3DProjectScientificScene, upsertMath3DProjectScientificScene, type ProjectScientificSceneReference,
   upsertMath3DProjectComposition, upsertMath3DProjectSavedMeshComparison, inspectProjectCompositionAvailability,
   migrateProjectScientificSelections,
-  createProjectStudyFromDocuments, renameProjectStudy, forkProjectStudy,
+  createProjectStudyFromDocuments, renameProjectStudy, forkProjectStudy, configureProjectStudy,
   createProjectQwzQuadStudy, pinProjectQwzSample, unpinProjectQwzSample, qualifyProjectQwzPair,
+  qualifyProjectQwzQuadStudy,
   type ProjectComposition, type ProjectSavedMeshComparison,
   type ProjectNote,
   type Math3DProject, type MixedWorkspaceDocument, type KernelWorkspaceModule, type QuantumSceneDocument, type ViewerProvenanceEvidence } from "@math3d/core";
@@ -39,6 +40,9 @@ import { projectAlgebraCasHandoff, resolveProjectAlgebraCasHandoff,
 import { projectAlgebraLocusCurveSourceStatus, resolveProjectAlgebraLocusCurveSource,
   resolveProjectAlgebraLocusCurveAlgebraReturn } from "@math3d/core";
 import { createSavedSurfaceMesh } from "../projects/savedSurfaceMesh";
+import { MeshDocumentAdapter } from "../mesh/meshDocumentAdapter";
+import { prepareSurfaceRidgeWorkbook, recordSurfaceRidgeComparison,
+  SURFACE_RIDGE_COMPARISON_OPERATION } from "../projects/surfaceRidgePublication";
 import { inspectProjectDependencies } from "../projects/projectDependencies";
 import { presentProjectFreshness, presentProjectRelationFreshness } from "../projects/projectFreshnessPresentation";
 import { projectDependencyRefreshOptions, refreshProjectDependency, projectAnalysisRefreshOptions, recomputeProjectAnalysis } from "../projects/projectDependencyRefresh";
@@ -48,6 +52,9 @@ import { ProjectCursorInspector } from "./ProjectCursorInspector";
 import { ProjectStudiesPanel } from "./ProjectStudiesPanel";
 import { buildResearchCommands, type ResearchCommand } from "../projects/researchCommands";
 import { addQualifiedStudyGraphCurveLink } from "../projects/studyGraphCurveLink";
+import { addQualifiedStudyCurveSurfaceLink } from "../projects/studyCurveSurfaceLink";
+import { addQualifiedStudySurfaceMeshLink } from "../projects/studySurfaceMeshLink";
+import { deriveQwzBandProfile } from "../projects/qwzBandProfile";
 import { prepareCuratedStudyBundle } from "../projects/curatedStudyProject";
 import { curatedStudy } from "../projects/curatedStudyCatalog";
 import { qualifyCuratedStudy } from "../projects/curatedStudyQualification";
@@ -1884,6 +1891,32 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     try { setProject(change(project)); setMessage(`${success} Save Project to keep it.`); }
     catch (error) { setMessage(`Study change refused: ${(error as Error).message}`); }
   };
+  const stageSurfaceRidgeComparison = async (surfaceId: string, meshId: string, ridgeIndex: number) => {
+    const source = projectStateRef.current;
+    if (!source || busy || preview || managed) throw new TypeError("Project is not editable.");
+    const mesh = source.workspace.entries.find(entry => entry.module === "mesh" && entry.expected.id === meshId);
+    if (mesh?.checkpoint.format !== "math3d.mesh-document") throw new TypeError("Saved Mesh is unavailable.");
+    if (!resourceSession.current) throw new TypeError("Saved Mesh source resources are unavailable.");
+    setBusy(true);
+    try {
+      const adapter = new MeshDocumentAdapter(mesh.checkpoint, resourceSession.current.meshStore(source));
+      const recorded = recordSurfaceRidgeComparison(source, adapter, surfaceId, ridgeIndex);
+      const result = recorded.workspace.results.find(item =>
+        item.provenance.operation.type === SURFACE_RIDGE_COMPARISON_OPERATION &&
+        item.provenance.source.documentId === surfaceId &&
+        (item.provenance.operation.parameters as Record<string, unknown>).ridgeIndex === ridgeIndex &&
+        (item.provenance.operation.parameters as Record<string, unknown>).meshDocumentId === meshId);
+      if (!result) throw new TypeError("Ridge result could not be saved.");
+      const prepared = prepareSurfaceRidgeWorkbook(recorded, result.resultId);
+      const resources = collectResources(prepared.project, resourceSession.current, false,
+        { id: prepared.workbookId, bytes: prepared.workbookBytes });
+      if (projectStateRef.current !== source) throw new TypeError("Project changed during ridge publication.");
+      resourceSession.current = resources; resourceSessionId.current = source.identity.id;
+      setResourceVersion(version => version + 1);
+      setProject(prepared.project);
+      setMessage("Surface ridge Curve, Mesh comparison and Workbook staged. Save Project to keep them.");
+    } finally { setBusy(false); }
+  };
   const stageQwzQuadStudy = async (quantumStudyId: string) => {
     const source = projectStateRef.current;
     if (!source || busy || preview || managed) return;
@@ -1909,6 +1942,24 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       setProject(next); setMessage("Four-view QWZ Study staged. Save Project to keep it.");
     } catch (error) { setMessage(`QWZ Study refused: ${(error as Error).message}`); }
     finally { setBusy(false); }
+  };
+  const stageQwzBandProfile = async (studyId: string, pathIndices?: readonly number[]) => {
+    const source = projectStateRef.current;
+    if (!source || busy || preview || managed) throw new TypeError("Project is not editable.");
+    const study = source.workspace.studies?.find(item => item.id === studyId);
+    const pair = study && qualifyProjectQwzQuadStudy(source, study);
+    if (!study || !pair) throw new TypeError("Four-view QWZ Study sources are unavailable.");
+    const before = serializeMath3DProject(source);
+    setBusy(true);
+    try {
+      const derived = await deriveQwzBandProfile(source, study, pair, pointTableStore,
+        window.quantumScenes?.bandSample, pathIndices);
+      if (!projectStateRef.current || serializeMath3DProject(projectStateRef.current) !== before)
+        throw new TypeError("Project changed during QWZ profile verification.");
+      setProject(derived.project);
+      setMessage("Verified reciprocal band profile staged in Graph with a saved result. Save Project to keep it.");
+      return { graphId: derived.graph.identity.id, resultId: derived.result.resultId };
+    } finally { setBusy(false); }
   };
   const renderNotesPanel = (layout: "floating" | "page") => <ProjectNotesPanel layout={layout} project={notesProject} workspace={notesWorkspace} readResource={comparisonResource} drafts={noteDrafts} busy={busy} message={notesMessage} focusNoteId={selectedNoteId ?? noteRequest?.id}
     selectionAvailable={Boolean(captureNoteSelection?.())} workbooks={noteWorkbooks}
@@ -2243,12 +2294,20 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               onRename={(id, studyTitle) => stageStudy(source => renameProjectStudy(source, id, studyTitle), "Study renamed.")}
               onFork={(id, studyTitle) => stageStudy(source => forkProjectStudy(source, id,
                 crypto.randomUUID(), studyTitle), "Study forked.")}
+              onConfigure={(id, description, mode, paneIds) => stageStudy(source =>
+                configureProjectStudy(source, id, { description, mode, paneIds }), "Study layout staged. Save Project to keep it.")}
               onLink={id => stageStudy(source => addQualifiedStudyGraphCurveLink(source, id), "Graph–Curve parameter link added.")}
+              onLinkCurveSurface={id => stageStudy(source => addQualifiedStudyCurveSurfaceLink(source, id),
+                "Curve–Surface chart link added.")}
+              onLinkSurfaceMesh={id => stageStudy(source => addQualifiedStudySurfaceMeshLink(source, id),
+                "Surface–Mesh physical coordinate link added.")}
               onCreateQwz={id => { void stageQwzQuadStudy(id); }}
               onPinQwz={(id, sampleIndex) => stageStudy(source => pinProjectQwzSample(source, id, sampleIndex),
                 "QWZ k selection pinned in Study.")}
               onUnpinQwz={id => stageStudy(source => unpinProjectQwzSample(source, id),
                 "QWZ k selection removed from Study.")}
+              onDeriveQwzProfile={stageQwzBandProfile}
+              onPublishSurfaceRidge={stageSurfaceRidgeComparison}
               onPinScientificSelection={(id, selectionId) => stageStudy(source =>
                 pinProjectStudyScientificSelection(source, id, selectionId), "Scientific selection pinned in Study.")}
               onCapturePinnedNote={(studyId, memberId, selectionId) => {
@@ -2261,6 +2320,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               }}
               onOpenNote={id => openProjectNotes(id)}
               onOpenQuantumSource={openLinkedQuantumScene}
+              onInspectResult={id => { setResultFocus(previous => ({ id, token: (previous?.token ?? 0) + 1 }));
+                openDetailPage("results"); }}
               onOpenDocument={(id, module) => viewBesideProject(id, module)} />
           </div>}
           {!quick && detailView && project && <ProjectRelationshipMap project={project} titles={documentTitles}
