@@ -29,6 +29,8 @@ import SageLocalExtensionWorkspace from "./SageLocalExtensionWorkspace";
 import SageEllipticCurveBuilder from "./SageEllipticCurveBuilder";
 import SageEllipticCurveVisualization from "./SageEllipticCurveVisualization";
 import SageAlgebraicLocusBuilder from "./SageAlgebraicLocusBuilder";
+import { inspectSavedSageLocusSingularities,
+  SAGE_LOCUS_SINGULARITIES_OPERATION } from "../../projects/sageLocusJourney";
 import SageAlgebraicLocusPlot from "./SageAlgebraicLocusPlot";
 import SageAlgebraicSingularityView from "./SageAlgebraicSingularityView";
 import SageSchemeBuilder from "./SageSchemeBuilder";
@@ -63,7 +65,7 @@ export type CASAlgebraWorkspaceProps = Omit<SageServicesWorkspaceProps, "structu
     contentHash: string; evidence?: ProjectAlgebraLocusReturn | null; token: number } | null;
   onSaveLocusSingularity?: (analysis: SageAlgebraicSingularityScene) => void | Promise<void>;
   onSaveLocusSageEvidence?: (scene: SageAlgebraicLocusScene, response: SageRunResponse,
-    backend: SageBackend) => void | Promise<void>;
+    backend: SageBackend, sample?: SageAlgebraicLocusSample) => void | Promise<void>;
   onSaveRecipe: (recipe: AlgebraRecipeGraph) => void | Promise<void>;
   onAppendRecipeEvidence: (base: Math3DProject, evidence: ProjectAlgebraEvidence) => Math3DProject | Promise<Math3DProject>;
   onOpenProjects: () => void;
@@ -462,6 +464,21 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
         <button type="button" style={action} data-testid={`cas-saved-locus-compare-${choice.documentId}`}
           onClick={() => setComparisonChoice(choice)}>Compare with selected</button>}</div>)}
     </section>}
+    {project.workspace.results.filter(result => result.provenance.operation.type ===
+      SAGE_LOCUS_SINGULARITIES_OPERATION &&
+      (result.provenance.operation.parameters as Record<string, unknown>).algebraObjectId === chosen.record.id)
+      .map(result => {
+        const checked = inspectSavedSageLocusSingularities(project, result.resultId);
+        return <section key={result.resultId} data-testid="cas-saved-sage-locus-evidence"
+          style={{ border: "1px solid #c7d9ed", borderRadius: 8, padding: 10 }}>
+          <strong>Saved Sage singularity evidence · read-only</strong>
+          {checked.status === "current" ? <>
+            <p>Exact algebra revision {String((result.provenance.operation.parameters as Record<string, unknown>).algebraRevision)};
+              {" "}bounded sample {String((result.provenance.operation.parameters as Record<string, unknown>).sampleResultHash ?? "not attached")}.</p>
+            <pre>{JSON.stringify((result.summary as Record<string, unknown>).exactResult, null, 2)}</pre>
+          </> : <p role="status">Exact values withheld: {checked.reason}</p>}
+        </section>;
+      })}
     {comparison?.error && <div role="alert">{comparison.error}</div>}
     {comparison?.value && <section data-testid="cas-saved-locus-comparison"
       style={{ display: "grid", gap: 5, border: "1px solid #c7d9ed", borderRadius: 8, padding: 10 }}>

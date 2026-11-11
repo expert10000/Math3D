@@ -463,6 +463,17 @@ describe("Sage scientific execution contract", () => {
     })).toThrow("Invalid Sage characteristic polynomial parameters.");
   });
 
+  it("brokers bounded ideal singularities only on Docker", async () => {
+    const request = { operation: "sage.symbolic.singularities" as const, backend: "docker" as const,
+      params: { equations: ["y^2-x^3", "z"], variables: ["x", "y", "z"] } };
+    const handle = runSageJob(request, { run: async input => ({ engine: "sagemath",
+      operation: input.operation, success: true, latex: "", result: { points: [] }, warnings: [] }) });
+    expect((await handle.promise).broker.ok).toBe(true);
+    expect(() => runSageJob({ ...request, backend: "local" })).toThrow(/Invalid Sage singularity analysis parameters/);
+    expect(() => runSageJob({ ...request, params: { equations: ["x"], variables: ["x", "y", "z"] } }))
+      .toThrow(/Invalid Sage singularity analysis parameters/);
+  });
+
   it("records a live-shaped Docker modular-inverse rejection and its diagnostic", async () => {
     const operation = "sage.numberTheory.modInverse";
     const handle = runSageJob({ operation, backend: "docker", params: { a: "2", modulus: "4" } }, {

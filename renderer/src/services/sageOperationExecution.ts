@@ -237,6 +237,12 @@ const validateSageJob = (request: SageRunRequest & { operation: BrokeredSageOper
         params.polynomials.length > 0 && params.polynomials.length <= 12 &&
         params.polynomials.every((item) => typeof item === "string" && item.trim().length > 0) &&
         stringVariables && Array.isArray(variables) && variables.length > 0 && variables.length <= 8
+    : request.operation === "sage.symbolic.singularities" && params.equations !== undefined
+      ? request.backend === "docker" && Array.isArray(params.equations) &&
+        params.equations.length === 2 &&
+        params.equations.every((item) => typeof item === "string" && item.trim().length > 0 && item.length <= 256) &&
+        stringVariables && Array.isArray(variables) && variables.length === 3 &&
+        new Set(variables).size === 3
     : request.operation === "sage.numberTheory.gcd"
       ? request.backend !== "local" && Array.isArray(params.values) && params.values.length >= 2 && params.values.length <= 32 &&
         params.values.every((item) => typeof item === "string" && /^-?[0-9]{1,128}$/.test(item))

@@ -112222,14 +112222,14 @@ case "mobius":
           }
           return installed.primary;
         }}
-        onSaveLocusSageEvidence={(scene, response, backend) => {
+        onSaveLocusSageEvidence={(scene, response, backend, sample) => {
           const current = projectForNotePins;
           if (!current || current.identity.id !== scene.source.projectId)
             throw new TypeError("Open the matching Project before saving Sage locus evidence.");
           const savedBytes = localStorage.getItem(projectPayloadKey(current.identity.id));
           if (!savedBytes || parseMath3DProject(savedBytes).identity.structuralHash !== current.identity.structuralHash)
             throw new TypeError("The saved Project changed. Reopen it before saving Sage evidence.");
-          const next = saveSageLocusSingularities(current, scene, response, backend);
+          const next = saveSageLocusSingularities(current, scene, response, backend, sample);
           saveLibraryProject(localStorage, next, Date.now(), undefined, { expectedBytes: savedBytes });
           activeNotebookProjectRef.current = next;
           setNotebookProjectVersion((version) => version + 1);
