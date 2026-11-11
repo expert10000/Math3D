@@ -32,8 +32,16 @@ export async function runNamedProjectRoundTrip(page: Page, exportJson: (checkpoi
   expect(await projectStorage()).toEqual(before);
 
   // Independent destination-host storage; the source library above was protected.
-  await page.evaluate(() => { localStorage.clear(); localStorage.setItem("math3d.computeEngines.firstLaunchSeen", "1"); });
+  // Desktop startup restores durable checkpoints, so reset both stores just as
+  // resetSurfaceAppState does. Browser-only runs have no durability bridge.
+  await page.evaluate(() => {
+    window.projectDurability?.clearForTest?.();
+    localStorage.clear(); localStorage.setItem("math3d.computeEngines.firstLaunchSeen", "1");
+  });
   await page.reload(); await page.getByTestId("projects-toggle").click();
+  const destination = await projectStorage();
+  expect(destination["math3d.project-library.v1"]).toBeUndefined();
+  expect(Object.keys(destination).some(key => key.startsWith("math3d.project.v1.payload."))).toBe(false);
   await panel.getByTestId("project-import-file").setInputFiles(upload);
   await panel.getByTestId("project-import-save").click();
   await expect(panel.getByTestId("project-message")).toContainText("Imported into the library");

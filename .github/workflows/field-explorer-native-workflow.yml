@@ -42,7 +42,7 @@ jobs:
         shell: bash
         run: npm run typecheck:noemit && npm run build:core
       - name: Desktop cold reopen and existing Inspector/comparison journeys
-        run: npx playwright test tests/e2e/field-explorer-native-workflow.spec.ts tests/e2e/field-explorer-scientific-workflow.spec.ts tests/e2e/field-explorer-gf06.spec.ts tests/e2e/graph-field-gf17-gf19.spec.ts --grep "native Field Explorer|scientific Field Explorer transfers|GF-06 opens|GF-17/18 local" --reporter=list
+        run: npx playwright test tests/e2e/unified-projects.spec.ts tests/e2e/field-explorer-native-workflow.spec.ts tests/e2e/field-explorer-scientific-workflow.spec.ts tests/e2e/field-explorer-gf06.spec.ts tests/e2e/graph-field-gf17-gf19.spec.ts --grep "PRJ08 named project|native Field Explorer|scientific Field Explorer transfers|GF-06 opens|GF-17/18 local" --reporter=list
       - name: Upload source-bound evidence
         if: always()
         uses: actions/upload-artifact@v7
