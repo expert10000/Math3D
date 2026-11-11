@@ -1,6 +1,11 @@
-import { createProjectStudyFromDocuments, upsertProjectStudy,
-  updateMath3DProjectMetadata, type Math3DProject } from "@math3d/core";
+import { createProjectNote, createProjectStudyFromDocuments, matchesScientificSourceGeneration,
+  pinProjectNoteAnchor, upsertMath3DProjectNote, upsertMath3DProjectWorkbook, upsertProjectStudy,
+  updateMath3DProjectMetadata, viewerSourceFromDocument, structuralHash, type Math3DProject } from "@math3d/core";
+import { createDefaultWorkbook, createNotebookReference } from "@math3d/workbook";
 import type { CuratedStarterId } from "./curatedStudyCatalog";
+import { curatedStudy } from "./curatedStudyCatalog";
+import { prepareProjectWorkbook } from "./projectWorkbookBinding";
+import { captureProjectResources, type VerifiedProjectResources } from "./projectResources";
 
 const layouts: Partial<Record<CuratedStarterId, Readonly<{
   title: string; modules: readonly ("graph2d" | "curve" | "surface" | "geometry" | "topology" | "mesh")[];
@@ -14,6 +19,9 @@ const layouts: Partial<Record<CuratedStarterId, Readonly<{
   "graph-derivative-notebook": { title: "Graph and Curve with recorded evidence", modules: ["graph2d", "curve"], resultOnModule: "graph2d" },
   "ripple-wave-study": { title: "Wave profile and constructed representations", modules: ["graph2d", "surface", "geometry"] },
   "surface-geometry-probe": { title: "Source-backed Surface and Geometry", modules: ["surface", "geometry"] },
+  "edge-path-evidence": { title: "Saved edge path evidence", modules: ["mesh", "surface"], resultOnModule: "mesh" },
+  "mesh-comparison-study": { title: "Retained Mesh generations", modules: ["mesh"], resultOnModule: "mesh" },
+  "mesh-curvature-study": { title: "Discrete curvature across Mesh scales", modules: ["mesh"], resultOnModule: "mesh" },
 };
 
 /** Add a saved reference layout only for an explicitly chosen guided Gallery copy. */
@@ -31,7 +39,9 @@ export function prepareCuratedStudyProject(project: Math3DProject, id: CuratedSt
     const first = next.workspace.studies![0]!;
     const member = first.members.find(item => project.workspace.entries.find(entry =>
       entry.expected.id === item.documentId)?.module === layout.resultOnModule);
-    const result = next.workspace.results.find(item => item.provenance.source.documentId === member?.documentId);
+    const memberSource = member && viewerSourceFromDocument({ identity: member.expected });
+    const result = memberSource && [...next.workspace.results].reverse().find(item =>
+      matchesScientificSourceGeneration(item.provenance.source, memberSource));
     if (!member || !result) throw new TypeError(`Guided Study ${id} lacks its recorded source result.`);
     next = upsertProjectStudy(next, { ...first, members: first.members.map(item => item.memberId === member.memberId ?
       { ...item, resultId: result.resultId } : item) });
@@ -50,6 +60,45 @@ export function prepareCuratedStudyProject(project: Math3DProject, id: CuratedSt
   return updateMath3DProjectMetadata(next, { ...next.metadata,
     tags: [...new Set([...(next.metadata.tags ?? []), "curated-study-v1"])],
   });
+}
+
+/** Guided copies gain a connected Study, Note, and Workbook while ordinary starters stay unchanged. */
+export function prepareCuratedStudyBundle(bundle: { project: Math3DProject; resources?: VerifiedProjectResources },
+  id: CuratedStarterId, instanceKey: string) {
+  let project = prepareCuratedStudyProject(bundle.project, id, instanceKey);
+  if (!layouts[id]) return { project, resources: bundle.resources };
+  const study = project.workspace.studies?.[0], card = curatedStudy(id);
+  if (!study || !card) throw new TypeError("Guided research Study is unavailable.");
+  const member = (id === "catenoid-evidence" ? study.members.find(item =>
+    project.workspace.entries.find(entry => entry.expected.id === item.documentId)?.module === "mesh") : null)
+    ?? study.members[0]!;
+  const result = member.resultId && project.workspace.results.find(item => item.resultId === member.resultId);
+  const anchor = result ? { kind: "result" as const, source: result.provenance.source,
+    resultId: result.resultId, resultHash: structuralHash(result) } :
+    { kind: "document" as const, source: viewerSourceFromDocument({ identity: member.expected }) };
+  const note = createProjectNote({ projectId: project.identity.id,
+    stableKey: ["curated-narrative", id, instanceKey, "note"], kind: "text",
+    title: `${study.title} observation`, body: `${card.insight} ${card.limitation}`,
+    anchor: pinProjectNoteAnchor(project, anchor), createdAt: 0 });
+  project = upsertMath3DProjectNote(project, note);
+  let sequence = 0;
+  const workbook = createDefaultWorkbook(() => `guided-${id}-${instanceKey}-${++sequence}`);
+  workbook.title = `${study.title} Research`;
+  workbook.stages[0]!.blocks[0]!.text = `${card.question} ${card.prerequisites}`;
+  workbook.stages[1]!.blocks = [{ id: `guided-${id}-study`, type: "reference", title: "Saved Study and panes",
+    notebookReference: createNotebookReference(project, "study", study.id) },
+  ...(result ? [{ id: `guided-${id}-result`, type: "reference" as const,
+    title: "Recorded result", notebookReference: createNotebookReference(project, "result", result.resultId) }] : [])];
+  workbook.stages[3]!.blocks = [{ id: `guided-${id}-interpretation`, type: "text", title: "Interpretation and limits",
+    text: `${card.insight} ${card.limitation}` }];
+  workbook.dependencies = [{ id: `guided-${id}-note-dependency`, targetBlockId: `guided-${id}-interpretation`,
+    source: { kind: "note", projectId: project.identity.id, noteId: note.identity.id,
+      revision: note.identity.revision, hash: note.identity.structuralHash } }];
+  const prepared = prepareProjectWorkbook(project, workbook, `guided-${id}-${instanceKey}`);
+  project = upsertMath3DProjectWorkbook(project, prepared.reference);
+  const resources = captureProjectResources(project, item => item.kind === "workbook-payload" &&
+    item.id === prepared.reference.id ? prepared.bytes : bundle.resources?.bytes(item) ?? null);
+  return { project, resources };
 }
 
 export const curatedStudyHasLayout = (id: CuratedStarterId): boolean => !!layouts[id];

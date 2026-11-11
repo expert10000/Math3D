@@ -5,6 +5,7 @@ import { acceptGraph2DComplexContour, applyGraph2DAuthoring, createEmptyGraph2DD
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { buildMobileProjectExplorer } from "../../apps/mobile/src/models/mobileProjectExplorer";
 import { instantiateNotebookStarter } from "../../renderer/src/projects/notebookStarters";
+import { prepareCuratedStudyBundle } from "../../renderer/src/projects/curatedStudyProject";
 
 describe("PRJ21 read-only named-project explorer", () => {
   it("opens a Project Workbook and its Notes from verified mobile resource bytes", () => {
@@ -14,10 +15,21 @@ describe("PRJ21 read-only named-project explorer", () => {
     expect(explorer.workbooks[0]?.available).toBe(true);
     expect(explorer.workbooks[0]?.stages.map(stage => stage.id)).toEqual(["define", "compute", "visualize", "explain"]);
     expect(explorer.notes.map(note => note.title)).toContain("Derivative source");
-    expect(explorer.notes[0]?.status).toBe("current");
+    expect(explorer.notes[0]?.status).toBe("unverified");
     const withoutPayload = buildMobileProjectExplorer(serializeMath3DProject(project));
     expect(withoutPayload.workbooks[0]?.available).toBe(false);
     expect(withoutPayload.notes).toHaveLength(1);
+  });
+  it("qualifies guided Workbook citations and Note pins in a mobile Project preview", () => {
+    const made = prepareCuratedStudyBundle({ project: instantiateMath3DProjectTemplate("catenary-study", "mobile-guided") },
+      "catenary-study", "mobile-guided");
+    const explorer = buildMobileProjectExplorer(serializeMath3DProject(made.project), made.resources!.sidecars());
+    const citations = explorer.workbooks.flatMap(book => book.stages.flatMap(stage => stage.blocks
+      .map(block => block.citation).filter(Boolean)));
+    expect(citations.length).toBeGreaterThan(0);
+    expect(citations.every(item => item?.status === "current")).toBe(true);
+    expect(explorer.notes.find(note => note.title.endsWith("observation"))?.status).toBe("current");
+    expect(buildMobileProjectExplorer(serializeMath3DProject(made.project)).workbooks[0]?.available).toBe(false);
   });
   it("shows all companions, revisions, relations and analysis without modifying the saved project", () => {
     const project = instantiateMath3DProjectTemplate("catenary-study", "mobile-explorer");

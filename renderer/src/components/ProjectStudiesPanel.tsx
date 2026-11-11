@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { inspectProjectNoteAnchor, inspectProjectStudyMembers, qualifyProjectQwzPair, qualifyProjectQwzQuadStudy,
+import { migrateLegacyStudyPaneResearchReference, inspectResearchReference, inspectProjectNoteAnchor,
+  inspectProjectStudyMembers, qualifyProjectQwzPair, qualifyProjectQwzQuadStudy, structuralHash,
   type KernelWorkspaceModule, type Math3DProject, type ProjectQuantumSceneReference,
   type StudyRecordV1 } from "@math3d/core";
 import type { VerifiedProjectResources } from "../projects/projectResources";
@@ -14,13 +15,14 @@ import { StudyCurveSurfaceControl } from "./StudyCurveSurfaceControl";
 import { StudySurfaceMeshControl } from "./StudySurfaceMeshControl";
 import { CatenoidWaistEvidencePanel } from "./CatenoidWaistEvidencePanel";
 import { StudyQwzCursorControl } from "./StudyQwzCursorControl";
+import { qualifyStudyScientificSelectionPin } from "../projects/projectStudyNoteAnchor";
 
 const StudyPanePreview = lazy(() => import("./StudyPanePreview").then(module => ({ default: module.StudyPanePreview })));
 
 type DocumentChoice = Readonly<{ id: string; title: string; module: KernelWorkspaceModule }>;
 type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoice[]; editable: boolean;
   resources?: VerifiedProjectResources;
-  focusStudy?: Readonly<{ id: string; token: number }> | null;
+  focusStudy?: Readonly<{ id: string; token: number; selectionId?: string }> | null;
   onCreate: (title: string, ids: readonly string[]) => void; onRename: (id: string, title: string) => void;
   onFork: (id: string, title: string) => void; onLink: (id: string) => void;
   onLinkCurveSurface: (id: string) => void;
@@ -30,6 +32,7 @@ type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoi
   onPinQwz: (studyId: string, sampleIndex: number) => void;
   onUnpinQwz: (studyId: string) => void;
   onDeriveQwzProfile?: (studyId: string) => Promise<{ graphId: string; resultId: string }>;
+  onPinScientificSelection: (studyId: string, selectionId: string) => void;
   workbookBytes?: (id: string) => Uint8Array | null;
   onOpenWorkbookBlock?: (id: string, stageId: WorkbookStageId, blockId: string) => void;
   onCapturePinnedNote?: (studyId: string, memberId: string, selectionId: string) => void;
@@ -40,7 +43,8 @@ type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoi
 
 /** A Study is a saved layout of references; opening a pane delegates to its owning document. */
 export function ProjectStudiesPanel({ project, documents, editable, resources, focusStudy, onCreate, onRename, onFork, onConfigure,
-  onLink, onLinkCurveSurface, onLinkSurfaceMesh, onCreateQwz, onPinQwz, onUnpinQwz, onDeriveQwzProfile, workbookBytes, onOpenWorkbookBlock,
+  onLink, onLinkCurveSurface, onLinkSurfaceMesh, onCreateQwz, onPinQwz, onUnpinQwz, onDeriveQwzProfile,
+  onPinScientificSelection, workbookBytes, onOpenWorkbookBlock,
   onCapturePinnedNote, onOpenNote,
   onOpenQuantumSource, onInspectResult, onOpenDocument }: Props) {
   const [selected, setSelected] = useState<string[]>([]);
@@ -82,6 +86,14 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
   const pairKind = paneModules.length === 2 ? [...paneModules].sort().join(":") : "";
   const withheldMember = open && inspectProjectStudyMembers(project, open)
     .find(member => member.status !== "current-reference");
+  const availableScientificSelections = open ? (project.workspace.scientificSelections ?? []).filter(selection => {
+    if (selection.identity.kind !== "authored" || selection.source?.kind !== "document" ||
+      !selection.source.checkpoint) return false;
+    const source = selection.source;
+    return open.members.some(member => member.documentId === source.documentId &&
+      member.expected.revision === source.checkpoint?.revision &&
+      member.expected.structuralHash === source.checkpoint.structuralHash);
+  }) : [];
   const choiceById = new Map(documents.map(document => [document.id, document]));
   const statusByMember = new Map(open ? inspectProjectStudyMembers(project, open).map(item => [item.memberId, item.status]) : []);
   const statusLabel = { "current-reference": "Source current", changed: "Source changed",
@@ -114,6 +126,10 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
     </li>)}</ul>
     {open && <div ref={viewRef} data-testid="project-study-view" data-study-id={open.id}>
       <h5>{open.title}</h5>
+      {focusStudy?.id === open.id && focusStudy.selectionId &&
+        <p role="status" data-testid="project-study-focused-selection">
+          Returned to saved selection {focusStudy.selectionId} · source qualification required before opening a pane.
+        </p>}
       {editable && <div><label>Rename Study <input aria-label="Rename Study" value={editTitle}
         onChange={event => setEditTitle(event.target.value)} /></label>
         <button type="button" data-testid="project-study-rename" disabled={!editTitle.trim()}
@@ -178,6 +194,24 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
         <button key={id} type="button" data-testid="project-study-note-on-pin"
           disabled={!onCapturePinnedNote}
           onClick={() => onCapturePinnedNote?.(open.id, "bands", id)}>Note on pinned k selection</button>)}
+      {availableScientificSelections.length > 0 && <section aria-label="Saved scientific selections">
+        <h6>Saved scientific selections</h6>
+        {availableScientificSelections.map(selection => {
+          if (selection.identity.kind !== "authored" || selection.source?.kind !== "document") return null;
+          const source = selection.source, selectionId = selection.identity.id;
+          const pin = `selection:${structuralHash(selection)}`;
+          const owner = open.members.find(item => item.documentId === source.documentId);
+          const pinned = open.pinnedSelectionIds.includes(pin) &&
+            !!qualifyStudyScientificSelectionPin(project.workspace, open, pin);
+          return <div key={selectionId} data-focused={focusStudy?.selectionId === pin}>
+            <span>{selection.geometry.kind} · {selection.role} · source r{source.checkpoint?.revision}</span>{" "}
+            {pinned ? <button type="button" disabled={!editable || !onCapturePinnedNote || !owner}
+              onClick={() => owner && onCapturePinnedNote?.(open.id, owner.memberId, pin)}>Note on selection</button> :
+              <button type="button" disabled={!editable} onClick={() => onPinScientificSelection(open.id, selectionId)}>
+                Pin selection to Study</button>}
+          </div>;
+        })}
+      </section>}
       <section aria-label="Notes on this Study" data-testid="project-study-note-references">
         <h6>Notes on this Study ({pinnedNotes.length})</h6>
         {pinnedNotes.length ? <ul>{pinnedNotes.map(note => {
@@ -206,6 +240,11 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
           const member = open.members.find(item => item.memberId === pane.memberId)!;
           const choice = choiceById.get(member.documentId);
           const status = statusByMember.get(member.memberId) ?? "missing-document";
+          const paneEvidence = inspectResearchReference(project,
+            open.paneReferences?.find(item => item.paneId === pane.paneId)?.reference ??
+              migrateLegacyStudyPaneResearchReference(open, pane.paneId),
+            resources ? item => resources.bytes(item) : undefined);
+          const sourceCurrent = status === "current-reference" && paneEvidence.status === "current";
           const workspaceEntry = project.workspace.entries.find(entry => entry.expected.id === member.documentId);
           const quantumDocument = qwzPair && [qwzPair.curvature, qwzPair.bands]
             .find(document => document.identity.id === member.documentId);
@@ -213,14 +252,15 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
             reference.sceneFingerprint === quantumDocument.source.sceneFingerprint &&
             reference.directory === quantumDocument.location.directory);
           return <div key={pane.paneId} data-testid={`project-study-pane-${pane.paneId}`} style={{ border: "1px solid #cbd5e1", padding: 8, minWidth: 0, overflow: "hidden" }}>
-            <strong>{choice?.title ?? member.documentId}</strong><p>{member.role} · {statusLabel[status]} · saved r{member.expected.revision}</p>
+            <strong>{choice?.title ?? member.documentId}</strong><p>{member.role} · {statusLabel[status]}
+              {paneEvidence.resourceStatus === "missing" ? " · source bytes unavailable" : ""} · saved r{member.expected.revision}</p>
             {quantumDocument ? <button type="button" data-testid={`project-study-open-source-${pane.paneId}`}
-              disabled={status === "changed" || !quantumReference || !onOpenQuantumSource}
-              onClick={() => { if (quantumReference) void onOpenQuantumSource?.(quantumReference); }}>
-              Verify and view source scene</button> : <button type="button" disabled={!workspaceEntry || status === "changed"}
-              onClick={() => { if (workspaceEntry) onOpenDocument(member.documentId, workspaceEntry.module); }}>Open source document</button>}
+              disabled={!quantumReference || !onOpenQuantumSource || !sourceCurrent}
+              onClick={() => { if (quantumReference && sourceCurrent) void onOpenQuantumSource?.(quantumReference); }}>
+              Verify and view source scene</button> : <button type="button" disabled={!workspaceEntry || !sourceCurrent}
+              onClick={() => { if (workspaceEntry && sourceCurrent) onOpenDocument(member.documentId, workspaceEntry.module); }}>Open source document</button>}
             {member.resultId && <button type="button" data-testid={`project-study-open-result-${pane.paneId}`}
-              disabled={status !== "current-reference" || !onInspectResult}
+              disabled={!sourceCurrent || !onInspectResult}
               onClick={() => onInspectResult?.(member.resultId!)}>Inspect saved result</button>}
             <button type="button" data-testid={`project-study-preview-toggle-${pane.paneId}`}
               onClick={() => setVisiblePaneId(current => current === pane.paneId ? null : pane.paneId)}>

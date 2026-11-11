@@ -1,18 +1,20 @@
 import React, { useMemo } from "react";
-import { inspectProjectNoteAnchor, matchesScientificSourceGeneration, structuralHash, viewerSourceFromDocument,
+import { inspectProjectNoteAnchor, inspectResearchReference, matchesScientificSourceGeneration, structuralHash, viewerSourceFromDocument,
   type KernelWorkspaceModule, type Math3DProject, type ProjectNote, type ScientificSourceGeneration } from "@math3d/core";
-import { inspectNotebookReference, type NotebookReference, type Workbook, type WorkbookStageId } from "@math3d/workbook";
+import { type NotebookReference, type Workbook, type WorkbookStageId } from "@math3d/workbook";
 import { readProjectWorkbook } from "../projects/projectWorkbookBinding";
 import { projectNoteSourceResolver } from "../projects/projectNoteTargets";
 import { resolveProjectComparisonNoteTarget } from "../projects/projectComparisonNotes";
 import type { ProjectResourceReader } from "../projects/projectResources";
+import { assessProjectResearchCitation } from "../projects/projectResearchCitation";
 
-type Status = "current" | "stale" | "missing" | "different-project" | "unanchored" | "invalid";
+type Status = "current" | "stale" | "historical" | "missing" | "different-project" | "unanchored" | "invalid" | "corrupt";
 type Citation = { workbookId: string; stageId: WorkbookStageId; blockId: string; blockTitle: string;
   targetId: string; kind: NotebookReference["kind"]; source: ScientificSourceGeneration; origin: string; status: Status; reason: string };
 type NoteUse = { workbookId: string; stageId: WorkbookStageId; blockId: string; blockTitle: string;
   noteId: string; noteTitle: string; revision: number; status: Status };
-type LoadedWorkbook = { reference: NonNullable<Math3DProject["workbooks"]>[number]; workbook: Workbook | null };
+type LoadedWorkbook = { reference: NonNullable<Math3DProject["workbooks"]>[number]; workbook: Workbook | null;
+  availability: "current" | "missing" | "corrupt" };
 type Props = {
   project: Math3DProject;
   titles: ReadonlyMap<string, string>;
@@ -21,6 +23,7 @@ type Props = {
   canOpenDocument: (id: string, module: KernelWorkspaceModule) => boolean;
   onOpenDocument: (id: string, module: KernelWorkspaceModule) => void;
   onInspectResult: (id: string) => void;
+  onOpenStudy: (id: string) => void;
   onOpenWorkbookBlock: (id: string, stageId: WorkbookStageId, blockId: string) => void;
   onOpenNote: (id: string) => void;
   canOpenNote: boolean;
@@ -28,17 +31,19 @@ type Props = {
   addRippleResearchBusy?: boolean;
 };
 
-const statusText = (status: Status) => ({ current: "Up to date", stale: "Historical", missing: "Unavailable",
-  "different-project": "Other Project", unanchored: "No target", invalid: "Invalid" })[status];
-const tone = (status: Status) => status === "current" ? "current" : status === "stale" ? "stale" : "unavailable";
+const statusText = (status: Status) => ({ current: "Up to date", stale: "Historical", historical: "Historical", missing: "Unavailable",
+  "different-project": "Other Project", unanchored: "No target", invalid: "Invalid", corrupt: "Corrupt" })[status];
+const tone = (status: Status) => status === "current" ? "current" : status === "stale" || status === "historical" ? "stale" : "unavailable";
 
 /** Reads verified Workbook payloads and the Project's stored Note anchors; prose is never treated as a link. */
 export const ProjectResearchLinks: React.FC<Props> = ({ project, titles, workbookBytes, readResource, canOpenDocument, onOpenDocument,
-  onInspectResult, onOpenWorkbookBlock, onOpenNote, canOpenNote, onAddRippleResearch, addRippleResearchBusy }) => {
+  onInspectResult, onOpenStudy, onOpenWorkbookBlock, onOpenNote, canOpenNote, onAddRippleResearch, addRippleResearchBusy }) => {
   const research = useMemo(() => {
     const workbooks: LoadedWorkbook[] = (project.workbooks ?? []).map(reference => {
-      try { const bytes = workbookBytes(reference.id); return { reference, workbook: bytes ? readProjectWorkbook(bytes, reference) : null }; }
-      catch { return { reference, workbook: null }; }
+      const bytes = workbookBytes(reference.id);
+      if (!bytes) return { reference, workbook: null, availability: "missing" as const };
+      try { return { reference, workbook: readProjectWorkbook(bytes, reference), availability: "current" as const }; }
+      catch { return { reference, workbook: null, availability: "corrupt" as const }; }
     });
     const citations: Citation[] = [], noteUses: NoteUse[] = [], seen = new Set<string>();
     const add = (workbookId: string, stageId: WorkbookStageId, blockId: string, blockTitle: string,
@@ -47,7 +52,7 @@ export const ProjectResearchLinks: React.FC<Props> = ({ project, titles, workboo
         reference.source.structuralHash]);
       if (seen.has(key)) return;
       seen.add(key);
-      const inspection = inspectNotebookReference(project, reference);
+      const inspection = assessProjectResearchCitation(project, reference, readResource);
       citations.push({ workbookId, stageId, blockId, blockTitle, targetId: reference.targetId, kind: reference.kind,
         source: reference.source, origin, status: inspection.status, reason: inspection.reason });
     };
@@ -87,15 +92,22 @@ export const ProjectResearchLinks: React.FC<Props> = ({ project, titles, workboo
       const block = loaded?.workbook?.stages.flatMap(stage => stage.blocks).find(item => item.id === blockId);
       return loaded && block ? { revision: loaded.reference.revision, hash: structuralHash(block) } : null;
     };
-    const notes = (project.notes ?? []).map(note => ({ note, inspection: inspectProjectNoteAnchor(note, { ...resolver,
-      comparison: id => resolveProjectComparisonNoteTarget(project, id, readResource,
-        note.anchor?.kind === "comparison" ? note.anchor.alignment : "not applicable"), workbookBlock: blockLookup }) }));
+    const notes = (project.notes ?? []).map(note => {
+      const base = inspectProjectNoteAnchor(note, { ...resolver,
+        comparison: id => resolveProjectComparisonNoteTarget(project, id, readResource,
+          note.anchor?.kind === "comparison" ? note.anchor.alignment : "not applicable"), workbookBlock: blockLookup });
+      const pinned = note.anchor?.researchReference && inspectResearchReference(project, note.anchor.researchReference, readResource);
+      const inspection = base.status === "current" && pinned && pinned.status !== "current" ?
+        { ...base, status: pinned.status === "missing" ? "missing" as const : "stale" as const,
+          reason: pinned.reason } : base;
+      return { note, inspection };
+    });
     return { workbooks, citations, noteUses, notes };
   }, [project, workbookBytes, readResource]);
 
   const documentButton = (id: string, label: string, status: Status) => {
     const entry = project.workspace.entries.find(item => item.expected.id === id);
-    return <button type="button" disabled={!entry || status === "missing" || status === "different-project" || !canOpenDocument(id, entry.module)}
+    return <button type="button" disabled={!entry || status !== "current" || !canOpenDocument(id, entry.module)}
       onClick={() => entry && onOpenDocument(id, entry.module)}>{label}</button>;
   };
   const noteTarget = (note: ProjectNote, status: Status) => {
@@ -128,14 +140,16 @@ export const ProjectResearchLinks: React.FC<Props> = ({ project, titles, workboo
       </button></p>}
     <div className="project-research-grid">
       <section aria-label="Workbook citations"><h4>Workbook citations ({research.citations.length + research.noteUses.length})</h4>
-        {research.workbooks.map(({ reference, workbook }) => !workbook && <p key={reference.id} className="project-research-unavailable" data-testid={`project-research-workbook-unavailable-${reference.id}`}>{reference.title}: Workbook payload unavailable. Its citations cannot be inspected.</p>)}
+        {research.workbooks.map(({ reference, workbook, availability }) => !workbook && <p key={reference.id} className="project-research-unavailable" data-testid={`project-research-workbook-unavailable-${reference.id}`}>
+          {reference.title}: {availability === "corrupt" ? "Corrupt Workbook payload" : "Missing Workbook payload"}. Its citations cannot be inspected.</p>)}
         {research.citations.length || research.noteUses.length ? <ul>{research.citations.map((item, index) => <li key={`${item.workbookId}:${item.blockId}:${index}`} data-testid={`project-research-citation-${index}`}>
           <strong>{research.workbooks.find(loaded => loaded.reference.id === item.workbookId)?.reference.title} / {item.blockTitle}</strong>
           <small>{item.origin} · {item.kind === "study" ? project.workspace.studies?.find(study => study.id === item.targetId)?.title ?? item.targetId : item.kind === "document" ? titles.get(item.targetId) ?? item.targetId : project.workspace.results.find(result => result.resultId === item.targetId)?.provenance.operation.type ?? item.targetId} · r{item.source.revision} g{item.source.generation}</small>
           <span className="project-freshness-badge" data-tone={tone(item.status)} title={item.reason}>{statusText(item.status)}</span>
           <div className="project-research-actions"><button type="button" onClick={() => onOpenWorkbookBlock(item.workbookId, item.stageId, item.blockId)}>Open block</button>
             {item.kind === "document" ? documentButton(item.targetId, "Open document", item.status) :
-              item.kind === "result" ? <button type="button" disabled={item.status === "missing" || item.status === "different-project"} onClick={() => onInspectResult(item.targetId)}>Inspect result</button> : null}</div>
+              item.kind === "result" ? <button type="button" disabled={item.status === "missing" || item.status === "different-project" || item.status === "corrupt"} onClick={() => onInspectResult(item.targetId)}>Inspect result</button> :
+              item.kind === "study" ? <button type="button" disabled={item.status !== "current"} onClick={() => onOpenStudy(item.targetId)}>Open exact Study</button> : null}</div>
         </li>)}{research.noteUses.map((item, index) => <li key={`${item.workbookId}:${item.blockId}:note:${index}`} data-testid={`project-research-note-use-${index}`}>
           <strong>{research.workbooks.find(loaded => loaded.reference.id === item.workbookId)?.reference.title} / {item.blockTitle}</strong>
           <small>Note dependency · {item.noteTitle} · r{item.revision}</small>

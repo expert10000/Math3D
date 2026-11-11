@@ -26,4 +26,13 @@ describe("curated Gallery platform actions", () => {
     expect(html).toContain("Open CAS examples");
     expect(html).not.toContain("Scene import requires the desktop app.");
   });
+
+  it("links the CAS card to exact definitions saved in the active Project", () => {
+    const html = renderToStaticMarkup(<CuratedStudyCard {...common} item={curatedStudy("cas-structures")!}
+      quantumImportAvailable={false} onOpenCasGallery={noop}
+      casProvenance={{ projectTitle: "Research", definitions: [{ label: "GF(5)", revision: 2 }], results: 1 }} />);
+    expect(html).toContain("Saved in Research");
+    expect(html).toContain("GF(5) · revision 2");
+    expect(html).toContain("Review saved provenance in CAS");
+  });
 });

@@ -11,8 +11,8 @@ export const projectImportControls = (preview: Pick<ProjectCompatibility, "canOp
       !canRestore ? "This host cannot restore a Project workspace." :
       !preview.canOpenWorkspace ? preview.reasons.join(" ") || "This Project is preview-only on this host." : null,
   });
-export const ProjectCompatibilityPanel: React.FC<{ preview: ProjectCompatibility & { inputKind: string }; onCancel: () => void; onImport: () => void; onOpen: () => void; canOpen: boolean; busy?: boolean }> =
-  ({ preview, onCancel, onImport, onOpen, canOpen, busy = false }) => {
+export const ProjectCompatibilityPanel: React.FC<{ preview: ProjectCompatibility & { inputKind: string }; onCancel: () => void; onImport: () => void; onOpen: () => void; canOpen: boolean; openLimit?: string | null; busy?: boolean }> =
+  ({ preview, onCancel, onImport, onOpen, canOpen, openLimit, busy = false }) => {
     const [storage] = useState(() => probeRendererPlatformCapabilities().facilities.persistentStorage);
     const controls = projectImportControls(preview, storage, canOpen, busy);
     return <section data-testid="project-import-preview" style={{ marginTop: 12, padding: 8, border: "1px solid #64748b", borderRadius: 6, overflowWrap: "anywhere" }}>
@@ -23,7 +23,7 @@ export const ProjectCompatibilityPanel: React.FC<{ preview: ProjectCompatibility
       <button type="button" data-testid="project-import-save" disabled={!controls.canSave} onClick={onImport}>Save to library</button>
       <button type="button" data-testid="project-import-cancel" disabled={busy} onClick={onCancel}>Cancel</button>
     </div>
-    {controls.reason && <p role="status" data-testid="project-import-limit" style={{ color: "#9a3412" }}>{controls.reason}</p>}
+    {(openLimit || controls.reason) && <p role="status" data-testid="project-import-limit" style={{ color: "#9a3412" }}>{openLimit || controls.reason}</p>}
     <strong>Document compatibility</strong>
     {preview.documents.map((document) => <div key={document.id}>{document.module} · revision {document.revision} · replay verified · {document.readOnly ? "read-only document; external source re-verified before open" : document.editable ? "editor supported" : "preview only"}</div>)}
     <strong style={{ display: "block", marginTop: 8 }}>Required Graph capabilities</strong>

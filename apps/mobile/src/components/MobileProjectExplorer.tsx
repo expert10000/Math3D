@@ -47,6 +47,8 @@ export const MobileProjectExplorer: React.FC<{ raw: string; resources?: readonly
           <Text style={styles.itemMeta}>{block.title} · {block.type}</Text>
           {!!block.text && <Text style={styles.note}>{block.text}</Text>}
           {!!block.formula && <Text style={styles.note}>{block.formula}</Text>}
+          {block.citation && <Text testID={`mobile-project-citation-${block.id}`} style={styles.itemMeta}>
+            Citation: {block.citation.status} · {block.citation.reason}</Text>}
           {onSaveNote && <Pressable testID={`mobile-project-note-on-block-${block.id}`} accessibilityRole="button" style={styles.secondaryBtn}
             onPress={() => { setNoteDraft({ title: `Note on ${block.title}`, body: "", workbookBlock: { workbookId: selectedWorkbook.id, blockId: block.id } }); setNoteMessage(""); }}>
             <Text style={styles.secondaryBtnText}>Note on this block</Text>
@@ -68,6 +70,7 @@ export const MobileProjectExplorer: React.FC<{ raw: string; resources?: readonly
       <Text accessibilityRole="header" style={styles.itemTitle}>{selectedNote.title}</Text>
       <Text style={styles.note}>{selectedNote.body}</Text>
       <Text style={styles.itemMeta}>Anchor: {selectedNote.status}</Text>
+      <Text style={styles.itemMeta}>{selectedNote.reason}</Text>
       {onSaveNote && <Pressable testID="mobile-project-edit-note" accessibilityRole="button" style={styles.secondaryBtn}
         onPress={() => { setNoteDraft({ noteId: selectedNote.id, title: selectedNote.title, body: selectedNote.body }); setNoteMessage(""); }}>
         <Text style={styles.secondaryBtnText}>Edit Note</Text>

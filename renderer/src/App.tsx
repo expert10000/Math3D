@@ -52,6 +52,7 @@ import { checkSavedRegionResultSources, type SavedRegionSourceStatus } from
 import { WorkbookPublication, type PublicationKind } from "./components/WorkbookPublication";
 import { loadProjectResources } from "./projects/projectResourceArchive";
 import { createNotebookPublicationEvidenceSnapshot, createPortableNotebookPublication, notebookPublicationManifest, notebookPublicationMarkdown, notebookPublicationManifestHtml, portableNotebookPublicationHtml } from "./workbook/notebookPublication";
+import { createPortableResearchNarrative } from "./workbook/researchNarrative";
 import { algebraReproManifestMarkdown, createAlgebraReproManifest } from "./workbook/algebraReproManifest";
 import { freezeWorkbookSnapshot, workbookSnapshotQualification } from "@math3d/workbook";
 import { rerunNotebookAnalysis } from "./workbook/notebookRerun";
@@ -78083,6 +78084,13 @@ case "mobius":
       const snapshot = createNotebookPublicationEvidenceSnapshot([book], reportProject,
         context?.readArtifact, selected, reportReader);
       downloadTextFile(canonicalJsonStringify(snapshot), base + ".evidence.json", "application/json");
+      return;
+    }
+    if (kind === "research-narrative") {
+      if (!reportProject || !context?.live) throw new TypeError("Save and open a named Project before exporting its research narrative.");
+      const narrativeResources = exactResources ?? await loadProjectResources(reportProject);
+      const narrative = createPortableResearchNarrative(reportProject, [book], narrativeResources, reportReader, selected);
+      downloadTextFile(canonicalJsonStringify(narrative), base + ".research-narrative.json", "application/json");
       return;
     }
     if (kind === "markdown") {

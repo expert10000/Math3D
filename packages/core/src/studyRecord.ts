@@ -1,6 +1,7 @@
 import { canonicalJsonStringify, createStableDocumentId, isDocumentIdentity, isStableDocumentId,
   type CanonicalJsonValue, type DocumentIdentity, type StableDocumentId } from "./documentIdentity";
 import type { ValidationResult } from "./validation";
+import { normalizeResearchReference, type ResearchReference } from "./researchReferenceSchema";
 
 export const STUDY_RECORD_FORMAT = "math3d.study/v1" as const;
 export const MAX_STUDY_RECORD_BYTES = 24 * 1024;
@@ -15,6 +16,7 @@ export type StudyRecordV1 = Readonly<{
   title: string; description?: string; members: readonly StudyMember[];
   layout: Readonly<{ mode: "single" | "split-2" | "quad" | "tabs"; panes: readonly StudyPane[] }>;
   links: readonly StudyLink[]; pinnedSelectionIds: readonly string[];
+  paneReferences?: readonly Readonly<{ paneId: string; reference: ResearchReference }>[];
   notesRefs?: readonly string[]; workbookRefs?: readonly string[];
 }>;
 
@@ -30,7 +32,7 @@ export function normalizeStudyRecordV1(value: unknown): ValidationResult<StudyRe
   try {
     if (!record(value) || !exact(value,
       ["format", "schemaVersion", "id", "projectId", "title", "members", "layout", "links", "pinnedSelectionIds"],
-      ["description", "notesRefs", "workbookRefs"]) || value.format !== STUDY_RECORD_FORMAT || value.schemaVersion !== 1 ||
+      ["description", "notesRefs", "workbookRefs", "paneReferences"]) || value.format !== STUDY_RECORD_FORMAT || value.schemaVersion !== 1 ||
         !isStableDocumentId(value.id) || !value.id.startsWith("math3d:study:") ||
         !isStableDocumentId(value.projectId) || !value.projectId.startsWith("math3d:project:") ||
         typeof value.title !== "string" || !value.title.trim() || value.title.trim() !== value.title || value.title.length > 160 ||
@@ -61,6 +63,17 @@ export function normalizeStudyRecordV1(value: unknown): ValidationResult<StudyRe
         value.layout.mode === "quad" && panes.length !== 4)
       return { ok: false, errors: ["Invalid Study layout or pane reference."] };
     const paneIds = new Set(panes.map(pane => (pane as StudyPane).paneId));
+    if (value.paneReferences !== undefined && (!Array.isArray(value.paneReferences) ||
+      value.paneReferences.length !== panes.length ||
+      new Set(value.paneReferences.map((item: { paneId: string }) => item.paneId)).size !== value.paneReferences.length ||
+      value.paneReferences.some((item: unknown) => {
+        if (!record(item) || !exact(item, ["paneId", "reference"]) || !paneIds.has(item.paneId as string)) return true;
+        const pane = panes.find(candidate => (candidate as StudyPane).paneId === item.paneId) as StudyPane | undefined;
+        const member = members.find(candidate => (candidate as StudyMember).memberId === pane?.memberId) as StudyMember | undefined;
+        const reference = normalizeResearchReference(item.reference);
+        return !member || !reference || reference.kind !== "document" || reference.projectId !== value.projectId ||
+          reference.targetId !== member.documentId || reference.source.documentId !== member.documentId;
+      }))) return { ok: false, errors: ["Invalid Study pane research references."] };
     if (links.some(link => !record(link) || !exact(link,
       ["id", "kind", "sourcePaneId", "targetPaneId", "mappingId", "direction"]) ||
         !token(link.id) || !["cursor", "parameter", "time", "camera"].includes(String(link.kind)) ||

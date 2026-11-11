@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { inspectProjectStudyMembers, instantiateMath3DProjectTemplate,
   parseMath3DProject, serializeMath3DProject } from "@math3d/core";
 import { instantiateNotebookStarter } from "./notebookStarters";
-import { curatedStudyHasLayout, prepareCuratedStudyProject } from "./curatedStudyProject";
+import { curatedStudyHasLayout, prepareCuratedStudyBundle, prepareCuratedStudyProject } from "./curatedStudyProject";
+import { exportProjectPackage, parseProjectPackage } from "./projectResources";
+import { readProjectWorkbook } from "./projectWorkbookBinding";
 
 describe("guided Gallery Project Study copies", () => {
   it.each(["catenary-study", "derivative-study", "scene-topology-study", "geometry-note-pins"] as const)(
@@ -58,8 +60,25 @@ describe("guided Gallery Project Study copies", () => {
   it("declares only supported layouts and refuses a mismatched Project", () => {
     expect(curatedStudyHasLayout("ripple-wave-study")).toBe(true);
     expect(curatedStudyHasLayout("catenoid-evidence")).toBe(true);
-    expect(curatedStudyHasLayout("mesh-curvature-study")).toBe(false);
+    expect(curatedStudyHasLayout("mesh-curvature-study")).toBe(true);
     const project = instantiateMath3DProjectTemplate("catenary-study", "wrong");
     expect(() => prepareCuratedStudyProject(project, "derivative-study", "wrong")).toThrow(/identity/);
   });
+
+  it.each(["catenoid-evidence", "edge-path-evidence", "mesh-comparison-study", "mesh-curvature-study"] as const)(
+    "connects the %s guided Study, Note, Workbook and exact source after package import", id => {
+      const ordinary = instantiateNotebookStarter(id, `guided-${id}`);
+      const guided = prepareCuratedStudyBundle(ordinary, id, `guided-${id}`);
+      const reopened = parseProjectPackage(exportProjectPackage(guided.project, guided.resources!));
+      const study = reopened.project.workspace.studies![0]!;
+      expect(study.paneReferences?.length).toBe(study.layout.panes.length);
+      expect(study.members[0]!.resultId).toBeDefined();
+      const note = reopened.project.notes!.find(item => item.title.endsWith("observation"))!;
+      expect(note.anchor?.researchReference?.resources.length).toBeGreaterThan(0);
+      const research = reopened.project.workbooks!.find(item => item.title === `${study.title} Research`)!;
+      const book = readProjectWorkbook(reopened.resources.bytes({ kind: "workbook-payload", id: research.id })!, research);
+      expect(book.stages[1]!.blocks[0]!.notebookReference?.targetId).toBe(study.id);
+      expect(book.dependencies?.some(item => item.source.kind === "note" && item.source.noteId === note.identity.id)).toBe(true);
+      expect(ordinary.project.workspace.studies).toBeUndefined();
+    });
 });

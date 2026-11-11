@@ -13,6 +13,7 @@ import {
   createNotebookReference,
   inspectNotebookReference,
   normalizeNotebookReference,
+  migrateLegacyNotebookReference,
 } from "@math3d/workbook";
 
 const study = () => instantiateMath3DProjectTemplate("catenary-study", "notebook-reference-test");
@@ -26,7 +27,7 @@ describe("NOTE01 project-backed notebook references", () => {
     const resultRef = createNotebookReference(project, "result", result.resultId);
     expect(inspectNotebookReference(project, graphRef).status).toBe("current");
     expect(inspectNotebookReference(project, resultRef).status).toBe("current");
-    expect(Object.keys(graphRef).sort()).toEqual(["kind", "projectId", "schemaVersion", "source", "targetId"]);
+    expect(Object.keys(graphRef).sort()).toEqual(["kind", "pinnedEvidence", "projectId", "schemaVersion", "source", "targetId"]);
     expect(resultRef.kind === "result" && resultRef.resultHash).toMatch(/^sha256:/);
     expect(JSON.stringify(graphRef)).not.toContain("exp(x)");
     expect(JSON.stringify(resultRef)).not.toContain("summary");
@@ -117,5 +118,16 @@ describe("NOTE01 project-backed notebook references", () => {
     }));
     expect(inspectNotebookReference(missing, reference).status).toBe("missing");
     expect(inspectNotebookReference(instantiateMath3DProjectTemplate("catenary-study", "other-study"), reference).status).toBe("different-project");
+  });
+
+  it("migrates a v1 citation without borrowing resource pins from the current Project", () => {
+    const project = study();
+    const created = createNotebookReference(project, "result", project.workspace.results[0]!.resultId);
+    const { pinnedEvidence: _evidence, ...legacy } = created;
+    const migrated = migrateLegacyNotebookReference({ ...legacy, schemaVersion: 1 });
+    expect(migrated?.source).toEqual(created.source);
+    expect(migrated?.pinnedEvidence).toMatchObject({ pinState: "legacy-unpinned", resources: [] });
+    expect(migrated?.schemaVersion).toBe(2);
+    expect(normalizeNotebookReference(migrated)).toEqual(migrated);
   });
 });

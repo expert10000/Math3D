@@ -1,9 +1,10 @@
 import React, { useState } from "react";
-import { MATH3D_PROJECT_TEMPLATES, type Math3DProjectTemplateId } from "@math3d/core";
+import { MATH3D_PROJECT_TEMPLATES, type Math3DProjectTemplateId, type PlatformCapabilitySnapshot } from "@math3d/core";
 
 import { NOTEBOOK_STARTERS, type NotebookStarterId } from "../projects/notebookStarters";
 import { CURATED_STUDIES, type CuratedStudy } from "../projects/curatedStudyCatalog";
 import { curatedStudyHasLayout } from "../projects/curatedStudyProject";
+import { qualifyCuratedStudy, type CuratedStudyQualification } from "../projects/curatedStudyQualification";
 import type { ProjectLibraryEntry } from "../projects/projectLibrary";
 export type ProjectStarterId = Math3DProjectTemplateId | NotebookStarterId;
 const curatedStarterId = (item: CuratedStudy): ProjectStarterId | null =>
@@ -77,10 +78,12 @@ export const StarterArtwork: React.FC<{ id: ProjectStarterId }> = ({ id }) => <s
 export const ProjectTemplatesPanel: React.FC<{ onPreview: (id: ProjectStarterId) => void; onOpen: (id: ProjectStarterId) => void; onNewCopy: (id: ProjectStarterId) => void;
   onPreviewCurated: (id: ProjectStarterId) => void; onOpenCurated: (id: ProjectStarterId) => void; onNewCuratedCopy: (id: ProjectStarterId) => void;
   onImportQuantumScene?: () => void; quantumImportAvailable?: boolean; onOpenCasGallery?: () => void;
+  casProvenance?: Readonly<{ projectTitle: string; definitions: readonly Readonly<{ label: string; revision: number }>[]; results: number }> | null;
   copies: Partial<Record<ProjectStarterId, ProjectLibraryEntry>>; guidedCopies: Partial<Record<ProjectStarterId, ProjectLibraryEntry>>;
-  busy: boolean; query?: string; moduleFilter?: string }> = ({ onPreview, onOpen, onNewCopy,
+  busy: boolean; query?: string; moduleFilter?: string; host?: PlatformCapabilitySnapshot;
+  assetBytes?: Readonly<Record<string, number>> }> = ({ onPreview, onOpen, onNewCopy,
     onPreviewCurated, onOpenCurated, onNewCuratedCopy, onImportQuantumScene, quantumImportAvailable = false,
-    onOpenCasGallery, copies, guidedCopies, busy, query = "", moduleFilter = "All modules" }) => {
+    onOpenCasGallery, casProvenance, copies, guidedCopies, busy, query = "", moduleFilter = "All modules", host, assetBytes = {} }) => {
   const [id, setId] = useState<ProjectStarterId>("catenary-study");
   const [view, setView] = useState<"starters" | "studies">("starters");
   const matches = starters.filter(item => (moduleFilter === "All modules" || PROJECT_STARTER_MODULES[item.id].includes(moduleFilter)) &&
@@ -105,7 +108,11 @@ export const ProjectTemplatesPanel: React.FC<{ onPreview: (id: ProjectStarterId)
       <div className="curated-study-grid">{guided.map(item => <CuratedStudyCard key={item.id} item={item}
         starterTitle={curatedStarterId(item) ? starters.find(starter => starter.id === curatedStarterId(item))?.title : undefined}
         hasCopy={!!(curatedStarterId(item) && guidedCopies[curatedStarterId(item)!])} busy={busy}
+        qualification={host ? qualifyCuratedStudy(item, host, { quantumChooser: quantumImportAvailable,
+          casAvailable: !!onOpenCasGallery, measuredBytes: assetBytes[item.id],
+          source: assetBytes[item.id] === undefined ? "unmeasured" : item.route.kind === "project" && guidedCopies[item.route.starterId] ? "saved-copy" : "prepared-copy" }) : undefined}
         quantumImportAvailable={quantumImportAvailable} onImportQuantumScene={onImportQuantumScene} onOpenCasGallery={onOpenCasGallery}
+        casProvenance={casProvenance}
         onOpen={onOpenCurated} onPreview={onPreviewCurated} onNewCopy={onNewCuratedCopy} />)}</div>
     </>}
     {view === "starters" && <>
@@ -133,9 +140,11 @@ export const ProjectTemplatesPanel: React.FC<{ onPreview: (id: ProjectStarterId)
 };
 
 export const CuratedStudyCard: React.FC<{ item: CuratedStudy; starterTitle?: string; hasCopy: boolean; busy: boolean;
+  qualification?: CuratedStudyQualification;
+  casProvenance?: Readonly<{ projectTitle: string; definitions: readonly Readonly<{ label: string; revision: number }>[]; results: number }> | null;
   quantumImportAvailable: boolean; onImportQuantumScene?: () => void; onOpenCasGallery?: () => void;
   onOpen: (id: ProjectStarterId) => void; onPreview: (id: ProjectStarterId) => void; onNewCopy: (id: ProjectStarterId) => void }> =
-  ({ item, starterTitle, hasCopy, busy, quantumImportAvailable, onImportQuantumScene, onOpenCasGallery, onOpen, onPreview, onNewCopy }) => {
+  ({ item, starterTitle, hasCopy, busy, qualification, casProvenance, quantumImportAvailable, onImportQuantumScene, onOpenCasGallery, onOpen, onPreview, onNewCopy }) => {
     const starter = item.route.kind === "project" ? item.route.starterId : null;
     const quantum = item.route.kind === "verified-quantum-import";
     const title = starterTitle ?? (quantum ? item.route.model.toUpperCase() : item.route.kind === "cas-gallery" ? "Algebra structures" : item.question);
@@ -143,26 +152,36 @@ export const CuratedStudyCard: React.FC<{ item: CuratedStudy; starterTitle?: str
       <div className="curated-study-art">{starter ? <StarterArtwork id={starter} /> :
         <div className="curated-study-quantum-art" aria-hidden="true">{quantum ? "ψ" : "𝔄"}</div>}</div>
       <div className="curated-study-content">
-        <div className="curated-study-badges"><span>{item.field}</span><span>{item.platforms.join(" · ")}</span>
+        <div className="curated-study-badges"><span>{item.field}</span><span>{qualification ? `${qualification.mode} on this host` : item.platforms.join(" · ")}</span>
           <span>{starter ? curatedStudyHasLayout(starter) ? "Saved Study layout" : "Built-in Project" : quantum ? "External verified scene" : "Built-in algebra examples"}</span></div>
+        {qualification?.reason && <p role="status" data-testid={`curated-study-limit-${item.id}`}>{qualification.reason}</p>}
         <h4>{title}</h4>
         <p className="curated-study-question">{item.question}</p>
+        {item.route.kind === "cas-gallery" && casProvenance && <div data-testid="curated-study-cas-provenance">
+          <strong>Saved in {casProvenance.projectTitle}</strong>
+          <p>{casProvenance.definitions.length} exact definitions · {casProvenance.results} saved computation records</p>
+          <ul>{casProvenance.definitions.slice(0, 4).map((record, index) =>
+            <li key={`${record.label}:${index}`}>{record.label} · revision {record.revision}</li>)}</ul>
+          <button type="button" disabled={busy || !onOpenCasGallery} onClick={onOpenCasGallery}>Review saved provenance in CAS</button>
+        </div>}
         <dl><div><dt>Objects</dt><dd>{item.objects}</dd></div><div><dt>Do</dt><dd>{item.operations}</dd></div>
           <div><dt>Learn</dt><dd>{item.insight}</dd></div></dl>
         <details><summary>Requirements and limits</summary>
-          <p><strong>Prerequisites:</strong> {item.prerequisites}</p><p><strong>Assets:</strong> {item.approximateAssets}</p>
-          <p><strong>Offline:</strong> {item.offline}</p><p><strong>First open:</strong> {item.firstOpen}</p>
+          <p><strong>Prerequisites:</strong> {item.prerequisites}</p><p><strong>Assets:</strong> {qualification?.measuredBytes !== null && qualification?.measuredBytes !== undefined ?
+            `${qualification.measuredBytes.toLocaleString()} bytes measured from the ${qualification.source.replace("-", " ")}; ${item.approximateAssets}` :
+            `Not measured until a Project copy is prepared. ${item.approximateAssets}`}</p>
+          <p><strong>Offline:</strong> {qualification?.offline ?? item.offline}</p><p><strong>First open:</strong> {item.firstOpen}</p>
           <p><strong>Reset:</strong> {item.reset}</p><p><strong>Limit:</strong> {item.limitation}</p>
         </details>
         <div className="curated-study-actions">{starter ? <>
-          <button type="button" data-testid={`curated-study-open-${item.id}`} disabled={busy} onClick={() => onOpen(starter)}>{hasCopy ? "Resume Project" : "Open Project"}</button>
-          <button type="button" data-testid={`curated-study-preview-${item.id}`} disabled={busy} onClick={() => onPreview(starter)}>Preview</button>
-          {hasCopy && <button type="button" data-testid={`curated-study-reset-${item.id}`} disabled={busy} onClick={() => onNewCopy(starter)}>New copy</button>}
+          <button type="button" data-testid={`curated-study-open-${item.id}`} disabled={busy || qualification?.mode !== undefined && qualification.mode !== "open"} onClick={() => onOpen(starter)}>{hasCopy ? "Resume Project" : "Open Project"}</button>
+          <button type="button" data-testid={`curated-study-preview-${item.id}`} disabled={busy || qualification?.mode === "unavailable"} onClick={() => onPreview(starter)}>Preview</button>
+          {hasCopy && <button type="button" data-testid={`curated-study-reset-${item.id}`} disabled={busy || qualification?.mode !== undefined && qualification.mode !== "open"} onClick={() => onNewCopy(starter)}>New copy</button>}
         </> : quantum ? <button type="button" data-testid={`curated-study-import-${item.id}`}
-          disabled={busy || !quantumImportAvailable || !onImportQuantumScene} onClick={onImportQuantumScene}>
+          disabled={busy || qualification?.mode !== undefined && qualification.mode !== "open" || !quantumImportAvailable || !onImportQuantumScene} onClick={onImportQuantumScene}>
           Choose verified scene bundle</button> : <button type="button" data-testid="curated-study-open-cas-structures"
-          disabled={busy || !onOpenCasGallery} onClick={onOpenCasGallery}>Open CAS examples</button>}</div>
-        {quantum && !quantumImportAvailable && <small>Scene import requires the desktop app.</small>}
+          disabled={busy || qualification?.mode !== undefined && qualification.mode !== "open" || !onOpenCasGallery} onClick={onOpenCasGallery}>Open CAS examples</button>}</div>
+        {quantum && !quantumImportAvailable && <small>{qualification?.reason ?? "Scene import requires the desktop app."}</small>}
       </div>
     </article>;
   };

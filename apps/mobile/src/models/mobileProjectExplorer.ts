@@ -1,4 +1,5 @@
-import { buildProjectExplorer, evaluateDocumentRelationStatus, inspectProjectNoteAnchor, isAnalysisResultCurrent, matchesScientificSourceGeneration, structuralHash,
+import { buildProjectExplorer, evaluateDocumentRelationStatus, inspectProjectNoteAnchor, inspectResearchReference,
+  normalizeResearchReference, isAnalysisResultCurrent, matchesScientificSourceGeneration, structuralHash,
   parseMath3DProject, replayMixedWorkspaceDocument, viewerSourceFromDocument, projectResourceInventory, VerifiedProjectResources, type ProjectResourceSidecar } from "@math3d/core";
 import { projectVectorField3DTopologyStatus, projectPoincareReturnStatus,
   projectLyapunovStatus, projectLocalManifoldPatchStatus,
@@ -46,7 +47,20 @@ export const buildMobileProjectExplorer = (raw: string, sidecars: readonly Proje
   const tree = buildProjectExplorer(project, resolved);
   const sources = new Map([...resolved].map(([id, document]) => [id, viewerSourceFromDocument(document)]));
   const dependencies = createInMemoryDependencyGraph({ relations: project.workspace.relations, resolveSource: id => sources.get(id) ?? null });
-  type MobileWorkbook = { id: string; title: string; stages: { id: string; title: string; blocks: { id: string; title: string; type: string; text?: string; formula?: string }[] }[] };
+  type MobileWorkbook = { id: string; title: string; stages: { id: string; title: string; blocks: { id: string; title: string; type: string; text?: string; formula?: string;
+    notebookReference?: unknown; citation?: { status: string; reason: string } }[] }[] };
+  const citationStatus = (candidate: unknown) => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate))
+      return { status: "corrupt", reason: "Citation structure is invalid." };
+    const raw = candidate as Record<string, unknown>;
+    const pin = normalizeResearchReference(raw.pinnedEvidence);
+    if (!pin) return { status: "unverified", reason: "Legacy citation has no saved resource pin." };
+    if (raw.projectId !== project.identity.id || raw.targetId !== pin.targetId || raw.kind !== pin.kind ||
+        raw.source === undefined || structuralHash(raw.source) !== structuralHash(pin.source))
+      return { status: "corrupt", reason: "Citation and saved evidence pin disagree." };
+    const checked = inspectResearchReference(project, pin, item => resources.bytes(item));
+    return { status: checked.status, reason: checked.reason };
+  };
   const workbooks = (project.workbooks ?? []).map(reference => {
     const bytes = resources.bytes({ kind: "workbook-payload", id: reference.id });
     if (!bytes) return { id: reference.id, title: reference.title, revision: reference.revision, available: false, stages: [] as MobileWorkbook["stages"] };
@@ -56,11 +70,13 @@ export const buildMobileProjectExplorer = (raw: string, sidecars: readonly Proje
         workbook.stages.some(stage => !stage || typeof stage.id !== "string" || typeof stage.title !== "string" || !Array.isArray(stage.blocks) ||
           stage.blocks.some(block => !block || typeof block.id !== "string" || typeof block.title !== "string" || typeof block.type !== "string" ||
             block.text !== undefined && typeof block.text !== "string" || block.formula !== undefined && typeof block.formula !== "string"))) throw new Error("Invalid Workbook");
-      return { id: reference.id, title: reference.title, revision: reference.revision, available: true, stages: workbook.stages };
+      return { id: reference.id, title: reference.title, revision: reference.revision, available: true,
+        stages: workbook.stages.map(stage => ({ ...stage, blocks: stage.blocks.map(block => ({ ...block,
+          ...(block.notebookReference ? { citation: citationStatus(block.notebookReference) } : {}) })) })) };
     } catch { return { id: reference.id, title: reference.title, revision: reference.revision, available: false, stages: [] as MobileWorkbook["stages"] }; }
   });
-  const notes = (project.notes ?? []).map(note => ({ id: note.identity.id, title: note.title, body: note.body, kind: note.kind,
-    anchor: note.anchor, status: inspectProjectNoteAnchor(note, {
+  const notes = (project.notes ?? []).map(note => {
+    const anchor = inspectProjectNoteAnchor(note, {
       projectId: project.identity.id, source: id => sources.get(id) ?? null,
       result: id => {
         const result = project.workspace.results.find(item => item.resultId === id);
@@ -71,7 +87,15 @@ export const buildMobileProjectExplorer = (raw: string, sidecars: readonly Proje
         const block = workbook?.stages.flatMap(stage => stage.blocks).find(item => item.id === blockId);
         return workbook && block ? { revision: workbook.revision, hash: structuralHash(block) } : null;
       },
-    }).status }));
+    });
+    const pin = note.anchor?.researchReference;
+    const checked = pin ? inspectResearchReference(project, pin, item => resources.bytes(item)) : null;
+    const status = anchor.status !== "current" ? anchor.status : checked?.status === "current" ? "current" :
+      checked?.status === "missing" ? "unavailable" : checked ? "stale" : "unverified";
+    return { id: note.identity.id, title: note.title, body: note.body, kind: note.kind,
+      anchor: note.anchor, status, reason: anchor.status !== "current" ? anchor.reason :
+        checked?.reason ?? "Note has no saved resource pin." };
+  });
   const rank = { current: 0, stale: 1, unavailable: 2, broken: 3 } as const;
   const merge = (left: keyof typeof rank, right: keyof typeof rank) => rank[left] >= rank[right] ? left : right;
   const relations = project.workspace.relations.map(relation => {

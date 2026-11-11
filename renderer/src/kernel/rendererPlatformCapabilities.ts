@@ -10,6 +10,7 @@ export type RendererPlatformProbe = Readonly<{
   persistentStorage: boolean;
   network: boolean;
   touchInput: boolean;
+  mobileViewport?: boolean;
 }>;
 const status = (available: boolean, reason: string): PlatformFacilityStatus => ({ available, reason: available ? null : reason });
 export const snapshotFromRendererProbe = (probe: RendererPlatformProbe): PlatformCapabilitySnapshot => {
@@ -23,7 +24,7 @@ export const snapshotFromRendererProbe = (probe: RendererPlatformProbe): Platfor
     network: status(probe.network, "Fetch transport is unavailable."),
     touchInput: status(probe.touchInput, "No touch input is reported by this host."),
   };
-  return createPlatformCapabilitySnapshot({ runtime: probe.desktopBridge ? "desktop" : "browser", adapterId: "math3d.renderer-host",
+  return createPlatformCapabilitySnapshot({ runtime: probe.desktopBridge ? "desktop" : probe.touchInput && probe.mobileViewport ? "mobile" : "browser", adapterId: "math3d.renderer-host",
     adapterVersion: "1.0.0", facilities });
 };
 
@@ -43,5 +44,6 @@ export const probeRendererPlatformCapabilities = (): PlatformCapabilitySnapshot 
     hostFileSystem: typeof window.meshFiles?.open === "function" && typeof window.volumeFiles?.save === "function",
     nativeDialog: typeof window.meshFiles?.open === "function",
     webgl2, backgroundWorker: typeof Worker !== "undefined", persistentStorage,
-    network: typeof window.fetch === "function", touchInput: (window.navigator?.maxTouchPoints ?? 0) > 0 });
+    network: typeof window.fetch === "function", touchInput: (window.navigator?.maxTouchPoints ?? 0) > 0,
+    mobileViewport: typeof window.matchMedia === "function" && window.matchMedia("(max-width: 700px)").matches });
 };

@@ -25,6 +25,11 @@ describe("NTS02 Note drafts", () => {
     expect(() => createProjectNoteDraft("selection", workspace, "s", 100)).toThrow("Commit a selection");
     const selected = { ...workspace, committedSelection: { state: "committed" as const, source, entityIds: ["curve-1"] } };
     expect(createProjectNoteDraft("selection", selected, "s", 100).anchor).toEqual({ kind: "document", source });
+    const selectedProject = createMath3DProject(selected, { stableKey: "pinned-note", title: "Pinned Note" });
+    const saved = bindProjectNoteDrafts(selectedProject, [createProjectNoteDraft("selection", selected, "s", 100)]);
+    expect(saved.notes?.[0]?.anchor?.researchReference).toMatchObject({
+      projectId: selectedProject.identity.id, source, resources: [],
+    });
     expect(() => createProjectNoteDraft("result", workspace, "r", 100)).toThrow("Save an analysis result");
     const result = createAnalysisResultEnvelope({ resultId: "result:area:1", status: "numerical", provenance: {
       source, operation: { type: "geometry.measure-area", algorithm: "sample", algorithmVersion: "1", parameters: {} },
