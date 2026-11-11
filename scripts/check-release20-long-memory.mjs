@@ -22,25 +22,29 @@ check('one app process and completed cycles', Number.isInteger(receipt.pid) && r
 check('no page errors', receipt.pageErrors?.length === 0, receipt.pageErrors);
 const samples = receipt.cycles?.flatMap(cycle => cycle.samples.map(sample => sample.rssMiB)) ?? [];
 const peak = samples.length ? Math.max(...samples) : null;
-check('sampled peak agrees', peak !== null && peak === receipt.peakSampledRssMiB, { peak, reported: receipt.peakSampledRssMiB });
-check('host class', receipt.method?.host === (modeArg === 'installed' ? 'installed candidate' : 'source checkout'), receipt.method?.host);
-if (modeArg === 'source') {
-  check('source RSS ceiling', peak !== null && peak <= budgets.source.navigationPeakRssMiB,
-    { peak, limit: budgets.source.navigationPeakRssMiB });
-} else {
-  check('qualified installed budget', budget?.qualified === true, budget?.reason ?? budget?.qualified);
-  check('exact candidate identity', !!budget?.packageSha256 && receipt.method?.packageSha256 === budget.packageSha256,
-    receipt.method?.packageSha256);
-  check('installed RSS ceiling', Number.isFinite(budget?.longMemoryPeakRssMiB) && peak <= budget.longMemoryPeakRssMiB,
-    { peak, limit: budget?.longMemoryPeakRssMiB });
-}
 const late = samples.slice(Math.floor(samples.length * 0.8));
 const preceding = samples.slice(Math.floor(samples.length * 0.6), Math.floor(samples.length * 0.8));
 const mean = values => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
 const lateGrowthMiB = late.length && preceding.length ? Number((mean(late) - mean(preceding)).toFixed(1)) : null;
+check('sampled peak agrees', peak !== null && peak === receipt.peakSampledRssMiB, { peak, reported: receipt.peakSampledRssMiB });
+check('host class', receipt.method?.host === (modeArg === 'installed' ? 'installed candidate' : 'source checkout'), receipt.method?.host);
+if (modeArg === 'source') {
+  check('source memory observation', peak !== null && peak > 0,
+    { peak, shortRunCeilingNotApplied: budgets.source.navigationPeakRssMiB });
+} else {
+  check('qualified installed budget', budget?.qualified === true, budget?.reason ?? budget?.qualified);
+  check('reviewed installed late-growth budget', budget?.reviewed === true, budget?.reviewed);
+  check('exact candidate identity', !!budget?.packageSha256 && receipt.method?.packageSha256 === budget.packageSha256,
+    receipt.method?.packageSha256);
+  check('installed RSS ceiling', Number.isFinite(budget?.longMemoryPeakRssMiB) && peak <= budget.longMemoryPeakRssMiB,
+    { peak, limit: budget?.longMemoryPeakRssMiB });
+  check('installed late-growth ceiling', Number.isFinite(budget?.longMemoryLateGrowthMiB) &&
+    lateGrowthMiB !== null && lateGrowthMiB <= budget.longMemoryLateGrowthMiB,
+  { lateGrowthMiB, limit: budget?.longMemoryLateGrowthMiB });
+}
 const result = { schema: 'math3d.release20.long-memory-review.v1', mode: modeArg,
-  status: checks.every(item => item.pass) ? 'observed' : 'failed',
-  plateauQualified: false, // A budget and independent same-candidate review are still required.
+  status: checks.every(item => item.pass) ? modeArg === 'installed' ? 'passed' : 'observed' : 'failed',
+  plateauQualified: modeArg === 'installed' && checks.every(item => item.pass),
   peakSampledRssMiB: peak, lateGrowthMiB, checks };
 mkdirSync(dirname(resolve(outputArg)), { recursive: true });
 writeFileSync(resolve(outputArg), JSON.stringify(result, null, 2) + '\n');

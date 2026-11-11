@@ -18,6 +18,9 @@ try {
   writeFileSync(input, JSON.stringify(receipt));
   assert.equal(run('source').status, 0);
   assert.equal(JSON.parse(readFileSync(output, 'utf8')).plateauQualified, false);
+  for (const cycle of receipt.cycles) for (const sample of cycle.samples) sample.rssMiB = 1800;
+  receipt.peakSampledRssMiB = 1800; writeFileSync(input, JSON.stringify(receipt));
+  assert.equal(run('source').status, 0); // A fresh-run RSS ceiling is not a long-run budget.
   receipt.elapsedMs = 119 * 60_000; writeFileSync(input, JSON.stringify(receipt));
   assert.equal(run('source').status, 1);
   receipt.elapsedMs = 120 * 60_000; receipt.method.host = 'installed candidate'; writeFileSync(input, JSON.stringify(receipt));

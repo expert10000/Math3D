@@ -7,14 +7,21 @@ import { bytesToMiB, sampleProcessTreeSafely } from "./helpers/processMemory";
 
 const minutesText = process.env.MATH3D_MEMORY_SOAK_MINUTES;
 const minutes = Number(minutesText);
-test.skip(minutesText === undefined, "Set MATH3D_MEMORY_SOAK_MINUTES=120 or more for an intentional long run.");
+const smoke = process.env.MATH3D_MEMORY_SOAK_SMOKE === "1";
+const smokeCycles = Number(process.env.MATH3D_MEMORY_SOAK_SMOKE_CYCLES || "1");
+const diagnosticRoute = process.env.MATH3D_MEMORY_SOAK_ROUTE;
+test.skip(minutesText === undefined && !smoke, "Set MATH3D_MEMORY_SOAK_MINUTES=120 or more for an intentional long run.");
 
 test("one Electron process retains responsive navigation and records long-run memory", async ({}, testInfo) => {
-  if (!Number.isInteger(minutes) || minutes < 120 || minutes > 1440) throw new Error("Memory soak requires 120–1440 whole minutes.");
-  test.setTimeout((minutes + 45) * 60_000);
+  if (!smoke && (!Number.isInteger(minutes) || minutes < 120 || minutes > 1440)) throw new Error("Memory soak requires 120–1440 whole minutes.");
+  if (smoke && (!Number.isInteger(smokeCycles) || smokeCycles < 1 || smokeCycles > 20)) throw new Error("Smoke cycles must be 1–20.");
+  if (diagnosticRoute && (!smoke || !["surfaces", "mesh", "volume", "projects"].includes(diagnosticRoute)))
+    throw new Error("A diagnostic route requires smoke mode and one supported target.");
+  const routes = diagnosticRoute ? ["graphs", diagnosticRoute] : ["graphs", "surfaces", "mesh", "volume", "projects"];
+  test.setTimeout(smoke ? (smokeCycles * 3 + 5) * 60_000 : (minutes + 45) * 60_000);
   const reportPath = path.resolve(process.env.MATH3D_MEMORY_SOAK_REPORT || testInfo.outputPath("release20-long-memory.json"));
   const build = JSON.parse(readFileSync("dist/build-identity.json", "utf8"));
-  if (build.dirty || !build.commit || !build.rendererHash) throw new Error("Memory soak requires a clean, identified source build.");
+  if (!build.commit || !build.rendererHash || !smoke && build.dirty) throw new Error("Memory soak requires a clean, identified source build.");
   const expectedCommit = process.env.MATH3D_RELEASE20_EXPECTED_COMMIT;
   if (expectedCommit && build.commit !== expectedCommit) throw new Error("Memory soak build differs from the frozen commit.");
   const started = Date.now(), deadline = started + minutes * 60_000;
@@ -24,10 +31,12 @@ test("one Electron process retains responsive navigation and records long-run me
       totalMemoryGiB: Math.round(os.totalmem() / 1024 ** 3 * 10) / 10 },
     method: { host: process.env.MATH3D_PACKAGED_APP_EXE ? "installed candidate" : "source checkout",
       packageSha256: process.env.MATH3D_CANDIDATE_INSTALLER_SHA256 || null,
+      routeSequence: routes,
       measurement: "same-process sampled process-tree RSS; GPU allocation and forced-GC heap are not measured" },
-    requestedMinutes: minutes, startedAtUtc: new Date(started).toISOString(), elapsedMs: 0,
+    requestedMinutes: smoke ? 0 : minutes, startedAtUtc: new Date(started).toISOString(), elapsedMs: 0,
     pid: 0, cycles: [] as Array<{ startedAtMs: number; finishedAtMs?: number; actions: number;
-      samples: Array<{ action: number; elapsedMs: number; rssMiB: number }> }>, pageErrors: [] as string[],
+      samples: Array<{ action: number; elapsedMs: number; rssMiB: number; processCount: number;
+        byRoleMiB: Record<string, number>; jsHeapMiB: number | null; domNodes: number }> }>, pageErrors: [] as string[],
     peakSampledRssMiB: 0, failure: null as string | null,
   };
   const save = () => { mkdirSync(path.dirname(reportPath), { recursive: true });
@@ -41,17 +50,25 @@ test("one Electron process retains responsive navigation and records long-run me
     if (!pid) throw new Error("Electron PID unavailable.");
     report.pid = pid;
     page.on("pageerror", error => { report.pageErrors.push(error.message); save(); });
-    const routes = ["graphs", "surfaces", "mesh", "volume", "projects"] as const;
     const sample = async (action: number) => {
       const value = await sampleProcessTreeSafely(pid, Date.now() - started);
       if (value.error || value.rssBytes <= 0) throw new Error(value.error || "Process-tree RSS sample unavailable.");
       const rssMiB = Number(bytesToMiB(value.rssBytes).toFixed(1));
+      const renderer = await page.evaluate(() => ({
+        jsHeapBytes: (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize ?? null,
+        domNodes: document.getElementsByTagName("*").length,
+      }));
       report.peakSampledRssMiB = Math.max(report.peakSampledRssMiB, rssMiB);
-      return { action, elapsedMs: Date.now() - started, rssMiB };
+      return { action, elapsedMs: Date.now() - started, rssMiB, processCount: value.processCount,
+        byRoleMiB: Object.fromEntries(Object.entries(value.byRole).map(([role, bytes]) =>
+          [role, Number(bytesToMiB(bytes).toFixed(1))])),
+        jsHeapMiB: renderer.jsHeapBytes === null ? null : Number(bytesToMiB(renderer.jsHeapBytes).toFixed(1)),
+        domNodes: renderer.domNodes };
     };
     do {
       const cycle = { startedAtMs: Date.now() - started, actions: 0,
-        samples: [] as Array<{ action: number; elapsedMs: number; rssMiB: number }>, finishedAtMs: undefined as number | undefined };
+        samples: [] as Array<{ action: number; elapsedMs: number; rssMiB: number; processCount: number;
+          byRoleMiB: Record<string, number>; jsHeapMiB: number | null; domNodes: number }>, finishedAtMs: undefined as number | undefined };
       report.cycles.push(cycle);
       cycle.samples.push(await sample(0)); save();
       for (let action = 1; action <= 100; action++) {
@@ -71,11 +88,18 @@ test("one Electron process retains responsive navigation and records long-run me
         if (action % 10 === 0) { cycle.samples.push(await sample(action)); save(); }
       }
       await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
+      if (smoke && process.env.MATH3D_MEMORY_SOAK_FORCE_GC === "1") {
+        const cdp = await page.context().newCDPSession(page);
+        try { await cdp.send("HeapProfiler.collectGarbage"); }
+        finally { await cdp.detach(); }
+        await page.waitForTimeout(2_000);
+        cycle.samples.push(await sample(101));
+      }
       if (report.pageErrors.length) throw new Error(`Page error: ${report.pageErrors[0]}`);
       cycle.finishedAtMs = Date.now() - started;
       report.elapsedMs = cycle.finishedAtMs; save();
-    } while (Date.now() < deadline);
-    report.status = "completed";
+    } while (smoke ? report.cycles.length < smokeCycles : Date.now() < deadline);
+    report.status = smoke ? "smoke" : "completed";
   } catch (error) { report.status = "failed"; report.failure = (error as Error).message; throw error; }
   finally {
     report.elapsedMs = Date.now() - started; save();

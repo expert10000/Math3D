@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { mkdtemp, mkdir, writeFile, readFile, rm, readdir, copyFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -71,6 +72,16 @@ try {
   for (const name of ['CGAL-cgal-v6.2.1.tar.gz', 'Math3D-2.0.0-source.zip', 'SOURCE_MANIFEST-windows.json'])
     await copyFile(join(assets, name), join(sourceDir, name));
   assert.equal((await stageRelease20CandidateAssets(root, candidateDir, sbomDir, sourceDir, join(root, 'staged'))).unpackedFileCount, 5);
+  const uploaded = join(root, 'uploaded');
+  await mkdir(join(uploaded, 'assets'), { recursive: true });
+  for (const name of await readdir(assets)) await copyFile(join(assets, name), join(uploaded, 'assets', name));
+  for (const name of ['Math3D-Setup-2.0.0.exe', 'candidate-manifest.json'])
+    await copyFile(join(assets, name), join(uploaded, name));
+  const portableArgs = ['scripts/verify-release20-uploaded-assets.mjs', uploaded, commit,
+    candidate.math3d.installerSha256, candidate.math3d.freezeManifestSha256, join(root, 'portable-review.json')];
+  assert.equal(spawnSync(process.execPath, portableArgs, { encoding: 'utf8' }).status, 0);
+  await writeFile(join(uploaded, 'assets', 'Math3D-Setup-2.0.0.exe'), 'tampered');
+  assert.equal(spawnSync(process.execPath, portableArgs, { encoding: 'utf8' }).status, 1);
   await assert.rejects(stageRelease20CandidateAssets(root, candidateDir, sbomDir, sourceDir, join(root, 'staged')), /empty/);
   await write('release-assets/CGAL-cgal-v6.2.1.tar.gz', 'wrong native source');
   await sums();

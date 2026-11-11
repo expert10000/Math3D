@@ -10,6 +10,7 @@ export const soakChecks = Object.freeze([
   { id: 'project-contracts', command: 'npm', args: ['run', 'test:projects:contracts'] },
   { id: 'scientific-results', command: 'npm', args: ['run', 'test:scientific:golden'] },
   { id: 'quantum-baseline', command: 'npm', args: ['run', 'test:quantum:qwz-baseline'] },
+  { id: 'restore-build-identity', command: 'node', args: ['scripts/write-build-identity.mjs'] },
   { id: 'first-use-study', command: 'npx', args: ['playwright', 'test', 'tests/e2e/release20-first-use-study.spec.ts', '--reporter=list'] },
   { id: 'hard-exit-project', command: 'npx', args: ['playwright', 'test', 'tests/e2e/project-hard-exit-recovery.spec.ts', '--reporter=list'] },
   { id: 'same-process-memory', command: 'npx', args: ['playwright', 'test', 'tests/e2e/release20-long-memory.spec.ts', '--reporter=list'] },
@@ -37,6 +38,7 @@ async function main() {
   await verifyRelease20Freeze({ root, manifestPath: resolve(freezePath), expectedCommit: sourceCommit });
   const destination = resolve(evidencePath), started = Date.now(), deadline = started + minutes * 60_000;
   const memoryReceipt = resolve(dirname(destination), 'release20-long-memory.json');
+  const memoryReview = resolve(dirname(destination), 'release20-long-memory-review.json');
   const report = { schema: 'math3d/release20-rc2-source-soak/v1', status: 'running', sourceCommit,
     freezeManifestSha256: sha(freezeBytes), requestedMinutes: minutes, startedAtUtc: new Date(started).toISOString(),
     cycles: [], failure: null };
@@ -66,9 +68,12 @@ async function main() {
           if (memory.status !== 'completed' || memory.build?.commit !== sourceCommit || memory.elapsedMs < 120 * 60_000 ||
               memory.cycles?.length < 2 || memory.pageErrors?.length)
             throw new Error('Same-process memory receipt is incomplete or differs from the frozen source.');
+          const reviewed = spawnSync('node', ['scripts/check-release20-long-memory.mjs', memoryReceipt, 'source', memoryReview],
+            { cwd: root, stdio: 'inherit', shell: process.platform === 'win32' });
+          if (reviewed.status !== 0) throw new Error('Same-process memory observation is incomplete or invalid.');
           cycle.memory = { receipt: memoryReceipt, cycles: memory.cycles.length,
             peakSampledRssMiB: memory.peakSampledRssMiB, elapsedMs: memory.elapsedMs,
-            plateauQualified: false };
+            review: memoryReview, plateauQualified: false };
           await save();
         }
       }

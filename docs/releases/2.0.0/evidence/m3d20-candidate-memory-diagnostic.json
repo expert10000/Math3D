@@ -1,0 +1,47 @@
+{
+  "schema": "math3d.release20.memory-diagnostic-summary.v1",
+  "status": "diagnostic-only",
+  "host": {
+    "os": "win32 10.0.26200",
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900K",
+    "logicalCpus": 24,
+    "totalMemoryGiB": 127.7
+  },
+  "appBuild": {
+    "version": "2.0.0",
+    "commit": "327f2c8bc674001df3fd24779c0883d5458e1494",
+    "rendererHash": "dc8f8f4da533a7c897fb0b6d79ba11bb62947def1ca12d13ba4211bbb0f59bd7"
+  },
+  "qualification": {
+    "sourceCheckoutCleanForDiagnostics": false,
+    "twoHourRunCompleted": false,
+    "installedCandidateMeasured": false,
+    "memoryPlateauQualified": false
+  },
+  "eightCycleNavigation": {
+    "actions": 800,
+    "elapsedMs": 1140950,
+    "pageErrors": 0,
+    "processCountAtEveryCycleEnd": 6,
+    "initialProcessTreeRssMiB": 785.3,
+    "cycleEndProcessTreeRssMiB": [1176.8, 1410, 1577.3, 1701.7, 1853.4, 2011.2, 2134, 2300.7],
+    "cycleEndRendererRssMiB": [585.9, 806.8, 963.3, 1081.7, 1225.1, 1370.7, 1492.9, 1653.7],
+    "cycleEndGpuRssMiB": [267.3, 275.8, 284.2, 288.6, 295.5, 306.2, 306.7, 311.1],
+    "rawReceiptSha256": "77b2e28818122e37efdfffb26e7efe5b2659342b2ee676786a58cf80dce00dd7"
+  },
+  "forcedGcComparison": {
+    "cycles": 3,
+    "rendererRssBeforeGcMiB": [596.7, 758.5, 931.4],
+    "rendererRssAfterGcMiB": [510.8, 682.6, 853.5],
+    "domNodesBeforeAndAfterGc": 666,
+    "reportedJsHeapMiB": 45.2,
+    "rawReceiptSha256": "49c922ae5c50eb46e51f7fce014eaa8757251bc7cf06550971de77990befde35"
+  },
+  "isolatedPairs": [
+    { "route": "surfaces", "initialRssMiB": 788.5, "finalRssMiB": 851.6, "rawReceiptSha256": "348bea793bfea94ae315f922dd18732ec998e7b89f85978a9b98a1a2c451f563" },
+    { "route": "mesh", "initialRssMiB": 787.4, "finalRssMiB": 986.5, "rawReceiptSha256": "b803f43663d9d6a9dee696aa8bf3b4b680217b40e96a89d11f07c0a8beec295c" },
+    { "route": "volume", "initialRssMiB": 790.9, "finalRssMiB": 977, "rawReceiptSha256": "2ca78a5ff9165820f1eb537d3fef9bef5523af37efa0646840bd4a86d17133da" },
+    { "route": "projects", "initialRssMiB": 789.2, "finalRssMiB": 882.3, "rawReceiptSha256": "835edea6d51aa449dc106518b9b95235441620fac393222cf6d97758f12ac8a2" }
+  ],
+  "limitations": "Source Electron navigation smokes. The long-run test was stopped after a short diagnostic; neither a two-hour plateau nor installed 2.0 memory has been qualified. RSS includes native memory and does not establish ownership of retained allocations."
+}
