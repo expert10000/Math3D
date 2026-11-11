@@ -4,8 +4,9 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { reviseVectorField3DWorkspace, defaultVectorField3DWorkspace, checkpointProjectFieldExplorerDocument,
-  serializeMath3DProject, parseProjectPackage, type VectorField3DDocument } from "@math3d/core";
-import { createGf23Project } from "../fixtures/graph-field/gf23Bundle";
+  serializeMath3DProject, parseProjectPackage, parseMath3DProject, createVectorField3DDocument,
+  createGraph2DFieldReference, createMath3DProject, createMixedWorkspaceDocument, createStableDocumentId,
+  upsertProjectScientificSelection, type VectorField3DDocument } from "@math3d/core";
 import { launchSurfaceApp, closeSurfaceApp, openLastSavedProject, resetSurfaceAppState,
   type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
 
@@ -36,11 +37,28 @@ test("scientific Field Explorer transfers a Project package to a fresh profile a
   let ctx: LaunchedSurfaceApp | null = await launchSurfaceApp();
   try {
     await resetSurfaceAppState(ctx.page);
-    const base = createGf23Project({ kind: "directory", value: directory });
-    const field = base.workspace.entries[0]!.checkpoint as VectorField3DDocument;
+    const fixture = parseMath3DProject(readFileSync(resolve("tests/fixtures/graph-field/gf23-bundled-profile.math3d"), "utf8"));
+    const original = fixture.workspace.entries[0]!.checkpoint as VectorField3DDocument;
+    if (original.source.field.kind !== "scientific-bundle") throw new Error("Wrong scientific fixture");
+    const manifestJson = await readFile(join(directory, "manifest.json"), "utf8");
+    const references = original.source.field.references.map(reference => createGraph2DFieldReference(
+      manifestJson, reference.sceneFingerprint, { kind: "directory", value: directory }, reference.datasetId,
+      reference.component)) as typeof original.source.field.references;
+    const field = createVectorField3DDocument({ ...original.source,
+      field: { ...original.source.field, references } }, { stableKey: "scientific-workflow-A" });
     const source = reviseVectorField3DWorkspace(field, { ...defaultVectorField3DWorkspace(field.source),
       selectedLayer: "xy", probe: [0, 0, 0] });
-    const initial = checkpointProjectFieldExplorerDocument(base, source);
+    const base = createMath3DProject(createMixedWorkspaceDocument({
+      entries: [{ module: "vector3d", checkpoint: source, expected: source.identity, replay: null }],
+      activeDocumentIds: [source.identity.id], results: [], artifacts: [], relations: [],
+      constructions: [], committedSelection: null }), { stableKey: "scientific-workflow-project" });
+    const initial = upsertProjectScientificSelection(checkpointProjectFieldExplorerDocument(base, source), {
+      format: "math3d.scientific-selection", schemaVersion: 1,
+      identity: { kind: "authored", id: createStableDocumentId("scientific-selection", "scientific-workflow-line") },
+      role: "analysis", source: { kind: "document", documentId: source.identity.id,
+        checkpoint: { revision: source.identity.revision, structuralHash: source.identity.structuralHash } },
+      frame: { kind: "cartesian", axes: source.source.axes.map(axis => ({ name: axis.label, unit: axis.unit })) },
+      geometry: { kind: "axis-line", varyingAxis: 0, fixedCoordinates: [null, 0, 0], extent: [-4, 4] } });
     await importFile(ctx.page, serializeMath3DProject(initial));
     let explorer = await openExplorer(ctx.page);
     await explorer.getByRole("button", { name: "Pin current as baseline B", exact: true }).click();
@@ -63,6 +81,8 @@ test("scientific Field Explorer transfers a Project package to a fresh profile a
     await expect(projects.getByTestId("project-message")).toContainText("Saved");
     const saved = await ctx.page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     const active = saved.workspace.entries.find((entry: any) => entry.expected.id === source.identity.id).checkpoint;
+    expect(active.workspace.probe[0]).toBeCloseTo(-0.4);
+    expect(active.workspace.probe[1]).toBeCloseTo(0.4);
     const pin = active.workspace.explorer.comparisonSource;
     await ctx.app.evaluate(({ session }, target) => session.defaultSession.once("will-download",
       (_event, item) => item.setSavePath(target)), exportedPath);
