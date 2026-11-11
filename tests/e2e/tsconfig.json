@@ -24,6 +24,8 @@
     "checkJs": false
   },
   "include": [
+    "../../renderer/src/global.d.ts",
+    "../../renderer/node_modules/vite/client.d.ts",
     "../../playwright.config.ts",
     "./**/*.ts",
     "../graph2d-web/**/*.ts",
