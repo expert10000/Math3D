@@ -256,12 +256,22 @@ export class VolumeJobCache {
     };
   }
 
+  peek(key: string): VolumeJobArtifact | null {
+    return this.entries.get(key) ?? null;
+  }
+
   set(key: string, artifact: VolumeJobArtifact): void {
     const previous = this.entries.get(key);
-    if (previous) this.bytes -= artifactBytes(previous);
+    if (previous) {
+      this.bytes -= artifactBytes(previous);
+      this.entries.delete(key);
+    }
+    const size = artifactBytes(artifact);
+    // A single large extraction must not defeat the cache's memory ceiling.
+    if (size > this.maximumBytes) return;
     this.entries.set(key, artifact);
-    this.bytes += artifactBytes(artifact);
-    while (this.bytes > this.maximumBytes && this.entries.size > 1) {
+    this.bytes += size;
+    while (this.bytes > this.maximumBytes && this.entries.size > 0) {
       const oldest = this.entries.keys().next().value as string | undefined;
       if (!oldest) break;
       const removed = this.entries.get(oldest);
@@ -276,6 +286,11 @@ export class VolumeJobCache {
       this.entries.delete(key);
       this.bytes -= artifactBytes(artifact);
     }
+  }
+
+  clear(): void {
+    this.entries.clear();
+    this.bytes = 0;
   }
 
   summary() {

@@ -1048,8 +1048,6 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
       renderer.domElement.removeEventListener("webglcontextlost", handleContextLost);
       renderer.domElement.removeEventListener("webglcontextrestored", handleContextRestored);
       disposeOrbitControls(controls);
-      renderer.dispose();
-      renderer.domElement.remove();
 
       if (sliceMeshRef.current) {
         scene.remove(sliceMeshRef.current);
@@ -1131,6 +1129,9 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
         sliceTextureRef.current.dispose();
         sliceTextureRef.current = null;
       }
+      renderer.dispose();
+      renderer.forceContextLoss();
+      renderer.domElement.remove();
     };
   }, [publishCameraState]);
 

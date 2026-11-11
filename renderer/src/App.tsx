@@ -35498,6 +35498,7 @@ const App: React.FC = () => {
   const volumeScientificJobRef = useRef<VolumeIsosurfaceScientificJob | null>(null);
   if (!volumeScientificJobRef.current) volumeScientificJobRef.current = new VolumeIsosurfaceScientificJob(() => volumeKernelAdapterRef.current, volumeWorkerCoordinatorRef.current);
   const activeVolumeWorkerHandleRef = useRef<{ requestId: string; cancel: () => void } | null>(null);
+  const cancelledVolumeWorkerRequestIdRef = useRef<string | null>(null);
   const volumeWorkerRequestCounterRef = useRef(0);
   const [volumeComputeRuntime, setVolumeComputeRuntime] = useState<{
     lifecycle: VolumeJobLifecycle | "idle";
@@ -35533,6 +35534,7 @@ const App: React.FC = () => {
     if (!jobs) return;
     const iso = typeof isoOverride === "number" ? isoOverride : volumeIsoValue;
     activeVolumeWorkerHandleRef.current?.cancel();
+    cancelledVolumeWorkerRequestIdRef.current = null;
     setVolumeShowIsosurface(true);
     const requestId = `volume-isosurface:${canonicalVolumeObject.identity.volumeId}:${canonicalVolumeObject.identity.volumeRevision}:${++volumeWorkerRequestCounterRef.current}`;
     const request = createVolumeJobRequest({
@@ -35557,8 +35559,15 @@ const App: React.FC = () => {
     }
     activeVolumeWorkerHandleRef.current = handle;
     const outcome = await handle.promise;
+    // An older cancellation or failure must not replace the lifecycle of a newer extraction.
+    if (activeVolumeWorkerHandleRef.current?.requestId !== handle.requestId) return;
     const artifact = outcome.artifact;
-    if (activeVolumeWorkerHandleRef.current?.requestId === handle.requestId) activeVolumeWorkerHandleRef.current = null;
+    activeVolumeWorkerHandleRef.current = null;
+    if (cancelledVolumeWorkerRequestIdRef.current === handle.requestId) {
+      cancelledVolumeWorkerRequestIdRef.current = null;
+      setVolumeComputeRuntime((previous) => ({ ...previous, lifecycle: "cancelled", progress: 0, message: "Isosurface extraction cancelled." }));
+      return;
+    }
     if (!outcome.broker.ok || artifact?.state !== "complete" || !artifact.output.positions?.length || !artifact.output.indices?.length) {
       setVolumeComputeRuntime((previous) => ({ ...previous, lifecycle: artifact?.state ?? "failed", progress: 0, message: artifact?.failure?.message ?? (!outcome.broker.ok ? outcome.broker.message : "The isosurface produced no triangles."), lastProfile: artifact?.profile ?? null }));
       return;
@@ -35619,7 +35628,13 @@ const App: React.FC = () => {
     setVolumeDerivedResults((previous) => [result, ...previous.filter((entry) => entry.id !== resultId)].slice(0, 24));
     setVolumeComputeRuntime({ lifecycle: "complete", operation: "marchingCubes", progress: 1, message: `Applied full isosurface · ${metrics.vertexCount.toLocaleString()} vertices · ${metrics.faceCount.toLocaleString()} faces.`, lastProfile: artifact.profile });
   }, [activeVolumeKernelAdapter, canonicalVolumeObject, volumeDataset.grid, volumeIsoSmooth, volumeIsoSmoothIterations, volumeIsoValue]);
-  const handleCancelVolumeIsosurface = useCallback(() => activeVolumeWorkerHandleRef.current?.cancel(), []);
+  const handleCancelVolumeIsosurface = useCallback(() => {
+    const active = activeVolumeWorkerHandleRef.current;
+    if (!active) return;
+    cancelledVolumeWorkerRequestIdRef.current = active.requestId;
+    active.cancel();
+    setVolumeComputeRuntime((previous) => ({ ...previous, lifecycle: "cancelled", progress: 0, message: "Isosurface extraction cancelled." }));
+  }, []);
   const handleDeleteVolumeDerivedResult = useCallback((id: string) => {
     volumeDerivedGeometryRef.current.delete(id);
     setVolumeDerivedResults((previous) => deleteVolumeDerivedResult(previous, id, volumeStorageStoreRef.current));

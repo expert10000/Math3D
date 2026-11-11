@@ -43,6 +43,8 @@ const request = (operation: VolumeJobRequest["operation"], requestId = `job-${op
 class InlineWorker implements VolumeWorkerLike {
   private listeners = new Set<(event: MessageEvent<VolumeWorkerOutbound>) => void>();
   private cancelled = new Set<string>();
+  onerror: ((event: ErrorEvent) => void) | null = null;
+  onmessageerror: ((event: MessageEvent) => void) | null = null;
   runs = 0;
   terminated = false;
   postMessage(message: VolumeWorkerInbound) {
@@ -155,6 +157,67 @@ describe("Volume computation foundation", () => {
     expect(await failed.promise).toMatchObject({ state: "failed", failure: { message: "injected worker failure" } });
     expect(coordinator.getLastValid(volume.identity.volumeId, "histogram")?.artifactId).toBe(validArtifact.artifactId);
     coordinator.dispose();
+  });
+
+  it("keeps an oversized artifact out of the cache and refuses a stale cache hit", async () => {
+    const worker = new InlineWorker();
+    let revision = { volumeRevision: 1, sampledGridRevision: 1 };
+    const coordinator = new VolumeWorkerCoordinator(() => worker, new VolumeJobCache(16), () => revision);
+    const source = request("gradientVolume", "large-cache");
+    expect((await coordinator.submit(source).promise).state).toBe("complete");
+    expect(coordinator.cache.summary()).toMatchObject({ entries: 0, byteLength: 0 });
+    expect(coordinator.getLastValid(volume.identity.volumeId, "gradientVolume")).toBeNull();
+    expect((await coordinator.submit({ ...source, requestId: "again" }).promise).profile.cacheHit).toBe(false);
+    expect(worker.runs).toBe(2);
+    coordinator.dispose();
+
+    const cachedWorker = new InlineWorker();
+    const cached = new VolumeWorkerCoordinator(() => cachedWorker, new VolumeJobCache(), () => revision);
+    const histogram = request("histogram", "cache-source");
+    expect((await cached.submit(histogram).promise).state).toBe("complete");
+    revision = { volumeRevision: 2, sampledGridRevision: 2 };
+    expect(await cached.submit({ ...histogram, requestId: "stale-cache" }).promise)
+      .toMatchObject({ state: "stale", failure: { code: "STALE_REVISION" } });
+    expect(cachedWorker.runs).toBe(1);
+    cached.dispose();
+  });
+
+  it("cancels a superseded operation before an older result can publish", async () => {
+    const worker = new ManualWorker();
+    const coordinator = new VolumeWorkerCoordinator(() => worker, new VolumeJobCache(),
+      () => ({ volumeRevision: 1, sampledGridRevision: 1 }));
+    const first = coordinator.submit(request("histogram", "first-race", { bins: 8 }));
+    const second = coordinator.submit(request("histogram", "second-race", { bins: 16 }));
+    expect(await first.promise).toMatchObject({ state: "cancelled", failure: { code: "CANCELLED" } });
+    worker.publish({ type: "result", requestId: "first-race", volumeRevision: 1, sampledGridRevision: 1,
+      output: { histogram: Uint32Array.of(100) }, wallTimeMs: 1, peakWorkingSetBytes: 16, warnings: [] });
+    worker.publish({ type: "result", requestId: "second-race", volumeRevision: 1, sampledGridRevision: 1,
+      output: { histogram: Uint32Array.of(27) }, wallTimeMs: 1, peakWorkingSetBytes: 16, warnings: [] });
+    expect((await second.promise).output.histogram?.[0]).toBe(27);
+    expect(coordinator.getLastValid(volume.identity.volumeId, "histogram")?.output.histogram?.[0]).toBe(27);
+    coordinator.dispose();
+  });
+
+  it("fails pending jobs immediately on worker crash, retries with a new worker, and releases idle resources", async () => {
+    const workers = [new ManualWorker(), new ManualWorker()];
+    let factoryIndex = 0;
+    const coordinator = new VolumeWorkerCoordinator(() => workers[factoryIndex++]!, new VolumeJobCache(),
+      () => ({ volumeRevision: 1, sampledGridRevision: 1 }), 10);
+    const pending = coordinator.submit(request("histogram", "crashed"));
+    workers[0]!.onerror?.({ message: "injected crash", preventDefault: () => undefined } as ErrorEvent);
+    expect(await pending.promise).toMatchObject({ state: "failed", failure: { code: "WORKER_FAILURE" } });
+    expect(workers[0]!.terminated).toBe(true);
+    expect(coordinator.diagnostics()).toMatchObject({ activeJobs: 0, backend: "idle" });
+    const retry = coordinator.submit(request("histogram", "retry-after-crash"));
+    workers[1]!.publish({ type: "result", requestId: "retry-after-crash", volumeRevision: 1, sampledGridRevision: 1,
+      output: { histogram: Uint32Array.of(27) }, wallTimeMs: 1, peakWorkingSetBytes: 16, warnings: [] });
+    expect((await retry.promise).state).toBe("complete");
+    await new Promise(resolve => setTimeout(resolve, 25));
+    expect(workers[1]!.terminated).toBe(true);
+    expect(coordinator.diagnostics()).toMatchObject({ backend: "idle", cache: { entries: 1 } });
+    coordinator.dispose();
+    expect(coordinator.cache.summary()).toMatchObject({ entries: 0, byteLength: 0 });
+    expect(() => coordinator.submit(request("histogram", "after-dispose"))).toThrow(/disposed/);
   });
 
   it("plans soft/hard memory guards, bricked storage, and 128³/256³ profiles", () => {
