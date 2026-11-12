@@ -7,8 +7,12 @@ on:
       - 'renderer/src/vectorfield3d/**'
       - 'renderer/src/graph2d/GraphsWorkspace.tsx'
       - 'renderer/src/components/ProjectWorkspacePanel.tsx'
+      - 'renderer/src/components/ScientificBundleImport.tsx'
+      - 'renderer/package.json'
+      - 'renderer/package-lock.json'
       - 'tests/fixtures/graph-field/portableScientificProject.ts'
       - 'tests/graph2d-web/scientificProjectPackages.spec.ts'
+      - 'tests/graph2d-web/scientificBundleImport.spec.ts'
       - 'playwright.projects.config.ts'
       - '.github/workflows/scientific-project-web-packages.yml'
   workflow_dispatch:
@@ -37,13 +41,13 @@ jobs:
       - name: Install locked dependencies
         run: npm ci --ignore-scripts && npm --prefix renderer ci --ignore-scripts
       - name: Focused package and resource regressions
-        run: node renderer/node_modules/vitest/vitest.mjs run --config renderer/vite.config.ts renderer/src/vectorfield3d/scientificProjectPackages.test.ts renderer/src/vectorfield3d/fieldExplorerScientificWorkflow.test.ts renderer/src/vectorfield3d/fieldExplorerWorkflow.test.tsx renderer/src/projects/projectResources.test.ts renderer/src/projects/projectResourceArchive.test.ts tests/unit/mobileProjectResources.test.ts --maxWorkers=2
+        run: node renderer/node_modules/vitest/vitest.mjs run --config renderer/vite.config.ts renderer/src/projects/scientificBundleImport.test.ts renderer/src/vectorfield3d/scientificProjectPackages.test.ts renderer/src/vectorfield3d/fieldExplorerScientificWorkflow.test.ts renderer/src/vectorfield3d/fieldExplorerWorkflow.test.tsx renderer/src/projects/projectResources.test.ts renderer/src/projects/projectResourceArchive.test.ts tests/unit/mobileProjectResources.test.ts --maxWorkers=2
       - name: Type check and build the actual web application
         run: npm run typecheck:noemit && npm run build:web
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Real browser import, cold restart, and damaged-source recovery
-        run: npx playwright test --config playwright.projects.config.ts scientificProjectPackages.spec.ts --reporter=list
+        run: npx playwright test --config playwright.projects.config.ts scientificProjectPackages.spec.ts scientificBundleImport.spec.ts --reporter=list
       - name: Upload browser evidence
         if: always()
         uses: actions/upload-artifact@v7
