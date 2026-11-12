@@ -74,6 +74,7 @@ import type { NotebookReference, NotebookArtifactReader } from "@math3d/workbook
 import { captureProjectViewThumbnail } from "./projects/projectViewThumbnail";
 import { supportsSavedSurfaceResolution, type SurfaceStudyResolution } from "./projects/surfaceStudyResolution";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useScopedCallback } from "./hooks/useScopedCallback";
 import * as THREE from "three";
 import { ConvexGeometry } from "three/examples/jsm/geometries/ConvexGeometry.js";
 import { ADDITION, Brush, Evaluator, INTERSECTION, REVERSE_SUBTRACTION, SUBTRACTION } from "three-bvh-csg";
@@ -41693,7 +41694,7 @@ const App: React.FC = () => {
     }
     pushSurfacesCameraTourCommand({ action: "stop" });
   }, [surfacesCameraTourStatus, surfacesCameraTourCaptureStatus, pushSurfacesCameraTourCommand]);
-  const playSurfacesTour = useCallback(
+  const playSurfacesTour = useScopedCallback(
     (captureVideo: boolean) => {
       if (mode !== "surfaces" || !isSurfaceDatasetKind(datasetKind)) return;
       const stamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -41754,7 +41755,7 @@ const App: React.FC = () => {
   const handlePlaySurfacesImplicitDemo = useCallback(() => {
     playSurfacesTour(false);
   }, [playSurfacesTour]);
-  const handleCaptureSurfacesImplicitDemo = useCallback(() => {
+  const handleCaptureSurfacesImplicitDemo = useScopedCallback(() => {
     playSurfacesTour(true);
   }, [playSurfacesTour]);
   const handleRunSurfaceGalleryDemo = useCallback(
@@ -50722,7 +50723,7 @@ case "mobius":
       return next;
     });
   }, [activeCanonicalSurfaceDefinition.identity.key, activeSurfaceCurvatureField]);
-  const handleSelectSurfaceCurvatureRegion = useCallback((classification: SurfaceCurvatureClass) => {
+  const handleSelectSurfaceCurvatureRegion = useScopedCallback((classification: SurfaceCurvatureClass) => {
     if (!activeSurfaceCurvatureField || !activeSurfaceCurvaturePresentation.canUseCurrentValues) return;
     const indices = surfaceCurvatureRegionIndices(activeSurfaceCurvatureField, classification);
     if (!indices.length) return;
@@ -51256,7 +51257,7 @@ case "mobius":
     setInspectIdx(first); setSelectionMaskOverride({ selected, count }); setSelectionMask({ selected, count });
     setSelectRegionEnabled(true); setSelectionOverlayVisible(true); setCameraResetToken((token) => token + 1);
   }, [surfaceSampleSet?.samples.length]);
-  const handleSelectSurfaceChartRegion = useCallback((region: "degenerate" | "nearDegenerate" | "orientationFlip") => {
+  const handleSelectSurfaceChartRegion = useScopedCallback((region: "degenerate" | "nearDegenerate" | "orientationFlip") => {
     if (activeSurfaceChart) selectSurfaceChartIndices(activeSurfaceChart.regions[region]);
   }, [activeSurfaceChart, selectSurfaceChartIndices]);
   const handleToggleSurfaceChartOverlay = useCallback((kind: "boundary" | "seam" | "orientation-flip" | "degenerate") => {
@@ -51510,7 +51511,7 @@ case "mobius":
     setSurfaceDerivedMeshStatus(activeSurfaceDerivedMeshRecord.identity.source.surfaceId === activeCanonicalSurfaceDefinition.identity.surfaceId ? `Opened source ${activeSurfaceDerivedMeshRecord.identity.source.label} at current Surface revision.` : "The recorded source is not the active Surface; its provenance remains available in the Inspector.");
   }, [activeCanonicalSurfaceDefinition.identity.surfaceId, activeSurfaceDerivedMeshRecord]);
   const handleInspectDerivedSurfaceMesh = useCallback(() => { setSurfaceInspectDerivedMesh(true); setRightPanelTab("inspector"); }, []);
-  const handleMapSurfaceSelectionToDerivedMesh = useCallback(() => {
+  const handleMapSurfaceSelectionToDerivedMesh = useScopedCallback(() => {
     if (!activeDerivedSurfaceMeshPayload) return;
     const indices = selectionMask?.selected ? Array.from(selectionMask.selected, (selected, index) => selected ? index : -1).filter((index) => index >= 0) : inspectIdx != null ? [inspectIdx] : [];
     const mapping = mapSourceSelectionToDerivedMesh(activeDerivedSurfaceMeshPayload.correspondence, indices);
@@ -51643,7 +51644,7 @@ case "mobius":
     setSurfaceDerivedMeshStatus(`${workflow === "remesh" ? "Remesh" : "Robust Mesh"} opened in the shared Mesh Analysis backend workflow. Source revision ${route.sourceRevision} remains attached; run and inspect detailed parameters, validation, warnings, timing, and logs there.`);
   }, [activeCanonicalSurfaceDefinition.representation, activeSurfaceDerivedMeshRecord, focusMeshOperationRow, openDerivedSurfaceMesh]);
 
-  const handleReturnToSurfaceSource = useCallback(() => {
+  const handleReturnToSurfaceSource = useScopedCallback(() => {
     const handoff = surfaceMeshAnalysisHandoff;
     if (!handoff) return;
     const selectedMeshVertex = surfaceMeshInspectPick?.vertexIndex ?? inspectIdx;
@@ -51706,7 +51707,7 @@ case "mobius":
     setVolumeDerivedResults((previous) => previous.map((result) => result.id === id ? detachVolumeDerivedResult(result) : result));
   }, []);
 
-  const openVolumeDerivedResult = useCallback((id: string, destination: "mesh" | "geometry" | "analysis") => {
+  const openVolumeDerivedResult = useScopedCallback((id: string, destination: "mesh" | "geometry" | "analysis") => {
     const result = volumeDerivedResults.find((entry) => entry.id === id);
     const geometry = volumeDerivedGeometryRef.current.get(id);
     if (!result?.isosurface || !geometry || !qualifyVolumeDerivedResult(result, canonicalVolumeObject, { isoValue: volumeIsoValue }, true).canTransfer) return;
@@ -54667,7 +54668,7 @@ case "mobius":
     ]
   );
 
-  const buildWorkbookWorkspaceState = useCallback(
+  const buildWorkbookWorkspaceState = useScopedCallback(
     (embedAssets = true): WorkbookWorkspaceState => {
     const now = Date.now();
     const graphDomainCopy: Record<string, GraphDomain> = {};
@@ -56077,7 +56078,7 @@ case "mobius":
     markWorkbookManualSave,
   ]);
 
-  const handleSnapshotWorkbookSession = useCallback((name?: string) => {
+  const handleSnapshotWorkbookSession = useScopedCallback((name?: string) => {
     if (IS_REPLAY_MODE) return;
     const savedAt = Date.now();
     const cleanName = (name ?? "").trim();
@@ -62023,7 +62024,7 @@ case "mobius":
     void refreshCgalHealthState();
   }, [refreshCgalHealthState]);
 
-  const handleMeshOperationValidate = useCallback(async () => {
+  const handleMeshOperationValidate = useScopedCallback(async () => {
     if (meshOperationBusy) return;
     if (cgalHealthState?.ok === false) {
       setMeshOperationError(cgalHealthState.error ?? "Python worker unavailable.");
@@ -62080,7 +62081,7 @@ case "mobius":
     refreshCgalHealthAfterWorkerAction,
   ]);
 
-  const handleValidateLastMeshOperationResult = useCallback(async () => {
+  const handleValidateLastMeshOperationResult = useScopedCallback(async () => {
     if (meshOperationBusy) return;
     if (cgalHealthState?.ok === false) {
       setMeshOperationError(cgalHealthState.error ?? "Python worker unavailable.");
@@ -63758,7 +63759,7 @@ case "mobius":
     refreshCgalHealthAfterWorkerAction,
   ]);
 
-  const handleBuildDistanceVolume = useCallback(async () => {
+  const handleBuildDistanceVolume = useScopedCallback(async () => {
     if (volumeDistanceBusy) return;
     if (cgalHealthState?.ok === false) {
       setVolumeDistanceError(cgalHealthState.error ?? "Python worker unavailable.");
@@ -67629,7 +67630,7 @@ case "mobius":
     setGeodesicDiskPhiKey(null);
   }, [geodesicDiskMethod]);
 
-  const computeGeodesicHeatResult = useCallback(
+  const computeGeodesicHeatResult = useScopedCallback(
     async (params: {
       start: GeodesicHeatEndpoint | null;
       end: GeodesicHeatEndpoint | null;
@@ -67826,7 +67827,7 @@ case "mobius":
     ]
   );
 
-  const handleRunGeodesicHeat = useCallback(
+  const handleRunGeodesicHeat = useScopedCallback(
     async (override?: { start: GeodesicHeatEndpoint; end: GeodesicHeatEndpoint }) => {
       setGeodesicHeatMessage(null);
       setGeodesicHeatPolylines(null);
@@ -69202,7 +69203,7 @@ case "mobius":
     ]
   );
 
-  const runGeodesicPathOperator = useCallback(
+  const runGeodesicPathOperator = useScopedCallback(
     async (ctx: WorkbookOperatorRunContext): Promise<WorkbookOperatorRunResult> => {
       const safeDelta = (a: number | null, b: number | null) => {
         if (a == null || b == null || !Number.isFinite(a) || !Number.isFinite(b)) {
@@ -70398,7 +70399,7 @@ case "mobius":
     meshOperationUseTargetFaces,
   ]);
 
-  const handleMeshOperationPreviewImplicit = useCallback(async () => {
+  const handleMeshOperationPreviewImplicit = useScopedCallback(async () => {
     if (meshOperationBusy || meshOperationPreviewBusy) return;
     if (cgalHealthState?.ok === false) {
       const msg = cgalHealthState.error ?? "Python worker unavailable.";

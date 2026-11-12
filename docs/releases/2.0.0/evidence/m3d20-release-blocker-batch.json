@@ -1,0 +1,65 @@
+{
+  "schema": "math3d.release20.blocker-batch.v1",
+  "recordedDate": "2026-11-12",
+  "releaseDisposition": "open",
+  "sourceBaseline": {
+    "commit": "cae5e50ad61009c6fdd37a018ceb060da2b0b79a",
+    "version": "2.0.0",
+    "freezeManifest": "m3d20-rc1-cae5e50a-freeze.json",
+    "freezeManifestSha256": "025c53e403b192200c3190ac77d6124e0d74194a31a4bf2417a85de3439bcba4",
+    "rc1Acceptance": "m3d20-rc1-cae5e50a-acceptance.json",
+    "rc1AcceptanceSha256": "16cce154c5d205e080e02bf48e7f383f39966614916aadf4f63086dc7887a53f",
+    "rc1Status": "passed",
+    "rc1ChecksPassed": 12,
+    "fullCi": {
+      "workflow": "CI Build and Worker Smoke",
+      "scope": "Windows source build with worker smoke and slow app E2E enabled",
+      "url": "https://github.com/expert10000/Math3D/actions/runs/43120746631",
+      "status": "success",
+      "jobsPassed": ["app-smoke", "slow-app-e2e", "build-and-test"]
+    }
+  },
+  "memoryPlateau": {
+    "sourceCommit": "5bde394ec3d62d70ae6dcf07e698e10049d3aae8",
+    "status": "failed",
+    "qualifiedTwoHours": false,
+    "elapsedMs": 688467,
+    "stopReason": "The renderer-private and late-growth limits were exceeded; the test process was stopped deliberately after the breach.",
+    "peakProcessTreeRssMiB": 1847.2,
+    "lateProcessTreeGrowthMiB": 146.6,
+    "peakRendererPrivateMiB": 1055.1,
+    "lateRendererPrivateGrowthMiB": 154.1,
+    "peakGpuPrivateMiB": 285.4,
+    "gpuPrivateLateGrowthMiB": 2.3,
+    "sourceBudget": {
+      "peakProcessTreeRssMiB": 2048,
+      "lateProcessTreeGrowthMiB": 64,
+      "peakRendererPrivateMiB": 1024,
+      "lateRendererPrivateGrowthMiB": 32,
+      "peakGpuPrivateMiB": 512,
+      "gpuPrivateLateGrowthMiB": 32
+    },
+    "rawReceipt": "m3d20-long-memory-5bde394e-raw.json",
+    "rawReceiptSha256": "109e92237e32c49bb6c04cc71dce5ed8fb59475a945fbb666f9822635cee2446",
+    "review": "m3d20-long-memory-5bde394e-review.json",
+    "reviewSha256": "1db32f42b67e7ee02be566430c74926a65b6cf7d94edc5ed4381dba1785ab0e8"
+  },
+  "signedCandidate": {
+    "sourceCommit": "cae5e50ad61009c6fdd37a018ceb060da2b0b79a",
+    "workflow": "https://github.com/expert10000/Math3D/actions/runs/43120840246",
+    "status": "blocked-at-preflight",
+    "artifactsPublished": 0,
+    "missingInputs": [
+      "MATH3D_WINDOWS_CSC_LINK",
+      "MATH3D_WINDOWS_CSC_KEY_PASSWORD",
+      "MATH3D_WINDOWS_SIGNER_THUMBPRINT",
+      "MATH3D_WINDOWS_TIMESTAMP_URL"
+    ],
+    "installerSha256": null,
+    "cleanInstall": "not-run",
+    "upgradeFrom17": "not-run",
+    "rollback": "not-run",
+    "integrity": "not-run",
+    "installedMemory": "not-run"
+  }
+}

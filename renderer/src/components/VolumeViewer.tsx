@@ -30,6 +30,7 @@ import {
 import { vtkSmooth } from "../services/vtkMeshClient";
 import { configureOrbitControlsForTouch, installViewerTouchGestures } from "../utils/viewerTouchGestures";
 import AxisGizmo from "./AxisGizmo";
+import { acquireViewerRenderer, releaseViewerRenderer } from "./viewerRendererPool";
 import { applyCameraOrientation, CAMERA_ORIENTATION_LABEL, orbitCameraAroundTarget, type CameraOrientation } from "./cameraOrientation";
 import {
   createVolumeTransferTextureData,
@@ -851,7 +852,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     camera.position.set(2.6, 2.4, 2.8);
     camera.lookAt(0, 0, 0);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    const renderer = acquireViewerRenderer();
     renderer.localClippingEnabled = true;
     renderer.setPixelRatio(window.devicePixelRatio || 1);
     renderer.setSize(mount.clientWidth || 1, mount.clientHeight || 1);
@@ -1129,9 +1130,16 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
         sliceTextureRef.current.dispose();
         sliceTextureRef.current = null;
       }
-      renderer.dispose();
-      renderer.forceContextLoss();
-      renderer.domElement.remove();
+      axes.geometry.dispose();
+      if (Array.isArray(axesMat)) axesMat.forEach((material) => material.dispose());
+      else axesMat.dispose();
+      scene.clear();
+      releaseViewerRenderer(renderer);
+      rendererRef.current = null;
+      sceneRef.current = null;
+      cameraRef.current = null;
+      controlsRef.current = null;
+      axesHelperRef.current = null;
     };
   }, [publishCameraState]);
 

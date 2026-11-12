@@ -1,0 +1,91 @@
+{
+  "schema": "math3d.release20.memory-routes.v1",
+  "sourceCommit": "e6b3b8ce56c89af9ef42a9d772b9be1b7a86b759",
+  "rendererHash": "39b3fe8ab60c04bff2b65a9fdb499020e23234104c9c01f7536598a0ea269907",
+  "profiles": [
+    {
+      "route": "mesh",
+      "receipt": "m3d20-memory-e6b3b8ce-mesh.json",
+      "sha256": "7c7ea8e1a27d720171d6cc7f5874ac6b54671d760d2814214320ab876c493df5",
+      "postGc": [
+        {
+          "rssMiB": 1063.4,
+          "rendererPrivateMiB": 278,
+          "v8UsedMiB": 62,
+          "gpuPrivateMiB": 364,
+          "domNodes": 402
+        },
+        {
+          "rssMiB": 1041.3,
+          "rendererPrivateMiB": 338.8,
+          "v8UsedMiB": 93,
+          "gpuPrivateMiB": 281.1,
+          "domNodes": 402
+        },
+        {
+          "rssMiB": 1084.9,
+          "rendererPrivateMiB": 394,
+          "v8UsedMiB": 126.2,
+          "gpuPrivateMiB": 277.8,
+          "domNodes": 402
+        }
+      ]
+    },
+    {
+      "route": "volume",
+      "receipt": "m3d20-memory-e6b3b8ce-volume.json",
+      "sha256": "da6ef752126a43c9b30d2c612230e904745b14654ced91d3e6aab6be0ccafde1",
+      "postGc": [
+        {
+          "rssMiB": 1006.7,
+          "rendererPrivateMiB": 218.4,
+          "v8UsedMiB": 30.6,
+          "gpuPrivateMiB": 356.2,
+          "domNodes": 645
+        },
+        {
+          "rssMiB": 938.4,
+          "rendererPrivateMiB": 204.7,
+          "v8UsedMiB": 30,
+          "gpuPrivateMiB": 304.3,
+          "domNodes": 645
+        },
+        {
+          "rssMiB": 948.9,
+          "rendererPrivateMiB": 204.2,
+          "v8UsedMiB": 31.6,
+          "gpuPrivateMiB": 312.3,
+          "domNodes": 645
+        }
+      ]
+    },
+    {
+      "route": "mixed",
+      "receipt": "m3d20-memory-e6b3b8ce-mixed.json",
+      "sha256": "d31c49be51dc82298c94c4388797abb16b12645b0949f6fbe7cbf67b2aa23d2a",
+      "postGc": [
+        {
+          "rssMiB": 1245.9,
+          "rendererPrivateMiB": 360.8,
+          "v8UsedMiB": 73.4,
+          "gpuPrivateMiB": 456.3,
+          "domNodes": 666
+        },
+        {
+          "rssMiB": 1420.3,
+          "rendererPrivateMiB": 490.9,
+          "v8UsedMiB": 114.7,
+          "gpuPrivateMiB": 501.4,
+          "domNodes": 666
+        },
+        {
+          "rssMiB": 1499.8,
+          "rendererPrivateMiB": 613.4,
+          "v8UsedMiB": 153.7,
+          "gpuPrivateMiB": 456.1,
+          "domNodes": 666
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "schema": "math3d.release20.viewer-memory-investigation.v1",
+  "status": "diagnostic-only",
+  "host": {
+    "os": "win32 10.0.26200",
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900K",
+    "logicalCpus": 24,
+    "totalMemoryGiB": 127.7
+  },
+  "routeSequence": ["graphs", "surfaces", "mesh", "volume", "projects"],
+  "before": {
+    "sourceCommit": "a0d153ce8b047cf501170daed98971ff50384970",
+    "rendererHash": "dc8f8f4da533a7c897fb0b6d79ba11bb62947def1ca12d13ba4211bbb0f59bd7",
+    "dirty": false,
+    "actions": 300,
+    "elapsedMs": 335453,
+    "peakProcessTreeRssMiB": 1545.6,
+    "cyclePostGcRssMiB": [1084, 1261.4, 1457.5],
+    "rawReceiptSha256": "ba18294d427c3ca63358200d620cc6f88c8b0e2d57388a10b1671bc35bc99db4"
+  },
+  "afterContextPool": {
+    "sourceParentCommit": "a0d153ce8b047cf501170daed98971ff50384970",
+    "rendererHash": "234e3e9cc48dd5c39f1a9554ba38eb3b7f62ba659133d2d15d71f91eae3467af",
+    "dirty": true,
+    "actions": 300,
+    "elapsedMs": 378457,
+    "peakProcessTreeRssMiB": 1570.8,
+    "cyclePostGcRssMiB": [1112.5, 1325.3, 1472.9],
+    "rawReceiptSha256": "1dc87d46882e80f2e6dfa271144eee5a6baa1936cbd19cfa10c880358ae4487f"
+  },
+  "nativeCounterSmoke": {
+    "sourceParentCommit": "a0d153ce8b047cf501170daed98971ff50384970",
+    "rendererHash": "234e3e9cc48dd5c39f1a9554ba38eb3b7f62ba659133d2d15d71f91eae3467af",
+    "dirty": true,
+    "actions": 100,
+    "elapsedMs": 113612,
+    "rendererPrivateMiB": [195.2, 450.9],
+    "gpuPrivateMiB": [155, 268],
+    "contextLosses": 0,
+    "rawReceiptSha256": "cfae98064db434957774e9843524dba242429bae8c4946828c25bd6690ffed7a"
+  },
+  "conclusion": "WebGL context creation and live GPU object counts are bounded after warm-up, but RSS and native private bytes still rise. The two-hour and installed memory gates are open."
+}

@@ -11,14 +11,17 @@ import { readProjectWorkbook } from "./projectWorkbookBinding";
 import { exportProjectPackage, parseProjectPackage } from "./projectResources";
 import { previewResearchNarrativeImport } from "./projectResearchNarrativeImport";
 import { createPortableResearchNarrative, inspectPortableResearchNarrative } from "../workbook/researchNarrative";
+import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 
 const templateIds = new Set(MATH3D_PROJECT_TEMPLATES.map(item => item.id));
 const builtInJourneys = CURATED_STUDIES.filter(card => card.route.kind === "project");
 
 const editStudySource = (project: Math3DProject, documentId: string): Math3DProject => {
+  const documents = verifyMixedWorkspaceReplay(project.workspace);
   const entries = project.workspace.entries.map(entry => {
     if (entry.expected.id !== documentId) return entry;
-    const old = entry.checkpoint;
+    const old = documents.get(documentId);
+    if (!old) throw new Error("Matrix Note source is unavailable.");
     const checkpoint: MixedWorkspaceDocument["entries"][number]["checkpoint"] = old.format === "math3d.graph2d-document"
       ? createGraph2DDocument({ ...old, stableKey: old.identity.id, title: old.metadata.title,
         source: { ...old.source, objects: old.source.objects.map((object, index) => index === 0 ?
@@ -86,6 +89,10 @@ describe("M3D20-07 built-in flagship narrative matrix", () => {
       expect(unrelatedEdit.evidence.notes.find(item => item.noteId === note.identity.id)?.status).toBe("current");
     }
     const edited = editStudySource(project, noteSourceId!);
+    const noteSource = note.anchor!.researchReference!.source;
+    const editedSource = edited.workspace.entries.find(entry => entry.expected.id === noteSourceId)!;
+    expect(editedSource.expected.revision).toBeGreaterThan(noteSource.revision);
+    expect(editedSource.expected.structuralHash).not.toBe(noteSource.structuralHash);
     const historical = createPortableResearchNarrative(edited, [book], restarted.resources);
     expect(historical.evidence.citations.some(item => item.status === "historical")).toBe(true);
     expect(historical.evidence.notes.find(item => item.noteId === note.identity.id)?.status).not.toBe("current");

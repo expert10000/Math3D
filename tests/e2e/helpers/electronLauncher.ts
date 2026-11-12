@@ -50,7 +50,9 @@ export async function launchRepoElectron(options: ElectronLaunchOptions): Promis
   const cacheDir = path.join(profileRoot, "cache");
   const env: Record<string, string | undefined> = {
     ...(providedEnv ?? process.env),
-    MATH3D_E2E: "1",
+    // Release memory runs explicitly use the production runtime path. Other
+    // E2E launches retain the historical default.
+    MATH3D_E2E: providedEnv?.MATH3D_E2E === "0" ? "0" : "1",
     MATH3D_E2E_USER_DATA_DIR: userDataDir,
   };
   delete env.ELECTRON_RUN_AS_NODE;
