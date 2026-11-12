@@ -46,11 +46,14 @@ try {
     installerSha256: sha('installer binary'), systemDllSha256: candidate.math3d.nsisSystemDllSha256, systemDllBytes: 30208 }));
   const nativeSource = { name: 'CGAL', version: '6.2.1', targets: ['windows', 'native-cgal'],
     filename: 'CGAL-cgal-v6.2.1.tar.gz', sha256: sha('native source bytes') };
-  await write('compliance/public-source-manifest.json', JSON.stringify({ sources: [nativeSource] }));
+  const nativeBinarySource = { name: 'CGAL', version: '6.2', targets: ['windows', 'native-cgal'],
+    filename: 'CGAL-cgal-v6.2.tar.gz', sha256: sha('native binary source bytes') };
+  await write('compliance/public-source-manifest.json', JSON.stringify({ sources: [nativeSource, nativeBinarySource] }));
   await write('release-assets/CGAL-cgal-v6.2.1.tar.gz', 'native source bytes');
+  await write('release-assets/CGAL-cgal-v6.2.tar.gz', 'native binary source bytes');
   await write('release-assets/Math3D-2.0.0-source.zip', 'project source bytes');
   await write('release-assets/SOURCE_MANIFEST-windows.json', JSON.stringify({ math3d: { version: '2.0.0', commit,
-    sourceArchive: 'Math3D-2.0.0-source.zip', releaseBuildPatch: null }, target: 'windows', sources: [nativeSource] }));
+    sourceArchive: 'Math3D-2.0.0-source.zip', releaseBuildPatch: null }, target: 'windows', sources: [nativeSource, nativeBinarySource] }));
   await write('release-assets/Math3D-2.0.0-windows-licenses.md', '# Math3D 2.0.0 windows release inventory\n## Declared package licenses\n');
   const components = [
     ['Math3D.exe', 'app binary'],
@@ -69,7 +72,7 @@ try {
     await copyFile(join(assets, name), join(candidateDir, name));
   for (const name of ['Math3D-2.0.0-windows.cdx.json', 'Math3D-2.0.0-windows-licenses.md'])
     await copyFile(join(assets, name), join(sbomDir, name));
-  for (const name of ['CGAL-cgal-v6.2.1.tar.gz', 'Math3D-2.0.0-source.zip', 'SOURCE_MANIFEST-windows.json'])
+  for (const name of ['CGAL-cgal-v6.2.1.tar.gz', 'CGAL-cgal-v6.2.tar.gz', 'Math3D-2.0.0-source.zip', 'SOURCE_MANIFEST-windows.json'])
     await copyFile(join(assets, name), join(sourceDir, name));
   assert.equal((await stageRelease20CandidateAssets(root, candidateDir, sbomDir, sourceDir, join(root, 'staged'))).unpackedFileCount, 5);
   const uploaded = join(root, 'uploaded');
@@ -118,14 +121,14 @@ try {
   }
   const source = JSON.stringify({ schemaVersion: 1, target: 'windows',
     math3d: { version: '2.0.0', commit, sourceArchive: 'Math3D-2.0.0-source.zip', releaseBuildPatch: null },
-    sources: [nativeSource], nativeCgal: {
+    sources: [nativeSource, nativeBinarySource], nativeCgal: {
       distributionStatus: 'source-bundle-integrated', dependencyManifestSha256: 'b'.repeat(64) } }) + '\n';
   await write('release-assets/SOURCE_MANIFEST-windows.json', source);
   const receipt = { schema: 'math3d.native-cgal-build/v1', target: 'windows', triplet: 'x64-windows',
     sourceManifestSha256: sha(source), sourceCommit: 'a'.repeat(40),
     dependencyManifestSha256: 'b'.repeat(64),
     vcpkgRecipeCommit: '52fd90f2b7798d9fe6fef18fc1787db44574d704',
-    versions: { cgal: '6.2.1', 'boost-core': '1.92.0', gmp: '6.3.0', mpfr: '4.2.2' },
+    versions: { cgal: '6.2', 'boost-core': '1.92.0', gmp: '6.3.0', mpfr: '4.2.2' },
     licenseEvidence: { cgalExpression: 'GPL-3.0-or-later OR LicenseRef-Commercial',
       cgalCorefinementHeaderSha256: 'c'.repeat(64),
       copyrightSha256: Object.fromEntries(['cgal', 'boost-core', 'gmp', 'mpfr'].map(name => [name, 'd'.repeat(64)])) },
@@ -135,6 +138,18 @@ try {
   await write('release-assets/Math3D-2.0.0-windows.cdx.json', JSON.stringify(bom));
   await sums();
   assert.equal((await verifyRelease20Assets(root)).unpackedFileCount, 8);
+  const missingNativeSource = JSON.stringify({ ...JSON.parse(source), sources: [nativeSource] }) + '\n';
+  await write('compliance/public-source-manifest.json', JSON.stringify({ sources: [nativeSource] }));
+  await write('release-assets/SOURCE_MANIFEST-windows.json', missingNativeSource);
+  receipt.sourceManifestSha256 = sha(missingNativeSource);
+  await write('release-assets/NATIVE_BUILD_RECEIPT-windows.json', JSON.stringify(receipt));
+  await sums();
+  await assert.rejects(verifyRelease20Assets(root), /not bound to the released sources/);
+  await write('compliance/public-source-manifest.json', JSON.stringify({ sources: [nativeSource, nativeBinarySource] }));
+  await write('release-assets/SOURCE_MANIFEST-windows.json', source);
+  receipt.sourceManifestSha256 = sha(source);
+  await write('release-assets/NATIVE_BUILD_RECEIPT-windows.json', JSON.stringify(receipt));
+  await sums();
   receipt.licenseEvidence.copyrightSha256.gmp = '';
   await write('release-assets/NATIVE_BUILD_RECEIPT-windows.json', JSON.stringify(receipt));
   await sums();

@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const required = Object.freeze([
-  ["CGAL", "6.2.1"], ["Boost", "1.92.0"], ["GMP", "6.3.0"], ["MPFR", "4.2.2"],
+  ["CGAL", "6.2"], ["CGAL", "6.2.1"], ["Boost", "1.92.0"], ["GMP", "6.3.0"], ["MPFR", "4.2.2"],
 ]);
 const hashFile = filename => {
   const hash = crypto.createHash("sha256"), fd = fs.openSync(filename, "r"), buffer = Buffer.allocUnsafe(1024 * 1024);
@@ -58,7 +58,7 @@ function verifyNativeCgalSourceBundle(directory, materialized, inventory, depend
     throw new TypeError("Native CGAL dependency-manifest bytes changed.");
   const dependencyManifest = JSON.parse(dependencyManifestRaw);
   if (dependencyManifest.windowsReferenceBuild?.triplet !== "x64-windows" ||
-      dependencyManifest.windowsReferenceBuild?.cgal !== "6.2.1" ||
+      dependencyManifest.windowsReferenceBuild?.cgal !== "6.2" ||
       dependencyManifest.windowsReferenceBuild?.["boost-core"] !== "1.92.0" ||
       dependencyManifest.windowsReferenceBuild?.gmp !== "6.3.0" ||
       dependencyManifest.windowsReferenceBuild?.mpfr !== "4.2.2" ||

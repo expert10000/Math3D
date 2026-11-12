@@ -51,10 +51,11 @@ test("source Project and Study navigation releases previews over 80 cycles", asy
       // The source route leaves a compact Project dock. Reopen its Study on the next cycle.
       // E2E hooks retain App render closures; production does not install them.
       await page.evaluate(() => {
-        delete window.__MATH3D_E2E_GEOMETRY_PICK__;
-        delete window.__MATH3D_E2E_MESH_ANALYSIS__;
-        delete window.__MATH3D_E2E_MESH_BENCHMARK__;
-        delete window.__MATH3D_E2E_MESH_OPERATION__;
+        const hooks = window as unknown as Record<string, unknown>;
+        delete hooks.__MATH3D_E2E_GEOMETRY_PICK__;
+        delete hooks.__MATH3D_E2E_MESH_ANALYSIS__;
+        delete hooks.__MATH3D_E2E_MESH_BENCHMARK__;
+        delete hooks.__MATH3D_E2E_MESH_OPERATION__;
       });
       const measureHeap = cycle === cycles || cycle === 20 || cycle % 10 === 0;
       if (measureHeap) await cdp.send("HeapProfiler.collectGarbage");

@@ -36,8 +36,9 @@ if (process.argv[2] === "--plan") {
 }
 if (process.argv[2] !== "--run" || !process.argv[3] || process.argv.length !== 4)
   throw new Error("Usage: node scripts/release20-flagship-journeys.mjs --plan | --run <evidence-json>");
-if (git("status", "--porcelain", "--untracked-files=no"))
-  throw new Error("Flagship evidence requires a clean tracked source tree.");
+const changedTrackedFiles = git("status", "--porcelain", "--untracked-files=no");
+if (changedTrackedFiles)
+  throw new Error(`Flagship evidence requires a clean tracked source tree:\n${changedTrackedFiles}`);
 if (!existsSync(resolve(root, "renderer/dist/index.html")) || !existsSync(resolve(root, "dist/main.js")))
   throw new Error("Build core before source-checkout flagship acceptance.");
 const target = resolve(process.argv[3]);
