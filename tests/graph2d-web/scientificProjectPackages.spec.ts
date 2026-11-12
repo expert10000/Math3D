@@ -2,7 +2,8 @@ import { test, expect, chromium, type BrowserContext, type Page } from "@playwri
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseMath3DProject, parseProjectPackage } from "@math3d/core";
+import { parseMath3DProject } from "@math3d/core";
+import { parseProjectPackage } from "../../renderer/src/projects/projectResources";
 import { portableScientificProjectFixture } from "../fixtures/graph-field/portableScientificProject";
 
 async function projects(page: Page) {
@@ -95,7 +96,7 @@ test("portable scientific Project survives independent browser import, cold rest
     expect(exported.project.workspace.scientificSelections).toEqual(saved.workspace.scientificSelections);
     expect(exported.project.workspace.scientificSelections).toEqual(
       expect.arrayContaining([...(fixture.project.workspace.scientificSelections ?? [])]));
-    expect(exported.project.workspace.results).toHaveLength(1);
+    expect(exported.project.workspace.results).toEqual(saved.workspace.results);
     expect(exported.resources.sidecars().filter(item => item.kind.startsWith("scientific-"))).toHaveLength(4);
     const expectedFields = exported.project.workspace.entries.filter(entry => entry.module === "vector3d").map(entry => entry.checkpoint);
     const expectedSources = exported.resources.sidecars().filter(item => item.kind.startsWith("scientific-"));
