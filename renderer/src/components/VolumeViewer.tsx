@@ -31,6 +31,7 @@ import { vtkSmooth } from "../services/vtkMeshClient";
 import { configureOrbitControlsForTouch, installViewerTouchGestures } from "../utils/viewerTouchGestures";
 import AxisGizmo from "./AxisGizmo";
 import { acquireViewerRenderer, releaseViewerRenderer } from "./viewerRendererPool";
+import { startViewerAnimationLoop } from "./viewerAnimationLoop";
 import { applyCameraOrientation, CAMERA_ORIENTATION_LABEL, orbitCameraAroundTarget, type CameraOrientation } from "./cameraOrientation";
 import {
   createVolumeTransferTextureData,
@@ -128,20 +129,23 @@ const clearGroup = (group: THREE.Group) => {
   const children = [...group.children];
   for (const child of children) {
     group.remove(child);
-    const anyChild = child as any;
-    if (anyChild.geometry) {
-      anyChild.geometry.dispose?.();
-    }
-    if (anyChild.material) {
-      const mat = anyChild.material as THREE.Material | THREE.Material[];
-      const disposeMaterial = (material: THREE.Material) => {
-        const map = (material as THREE.MeshBasicMaterial).map;
-        map?.dispose();
-        material.dispose();
-      };
-      if (Array.isArray(mat)) mat.forEach(disposeMaterial);
-      else disposeMaterial(mat);
-    }
+    child.traverse(disposeVolumeObject3D);
+  }
+};
+
+const disposeVolumeObject3D = (object: THREE.Object3D) => {
+  const renderable = object as THREE.Object3D & {
+    geometry?: THREE.BufferGeometry;
+    material?: THREE.Material | THREE.Material[];
+  };
+  renderable.geometry?.dispose();
+  const materials = renderable.material
+    ? Array.isArray(renderable.material) ? renderable.material : [renderable.material]
+    : [];
+  for (const material of materials) {
+    const map = (material as THREE.MeshBasicMaterial).map;
+    map?.dispose();
+    material.dispose();
   }
 };
 
@@ -1022,10 +1026,8 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
       onDoubleTap: refitCamera,
     });
 
-    let frameId = 0;
     const localCamera = new THREE.Vector3();
-    const animate = () => {
-      frameId = requestAnimationFrame(animate);
+    const stopAnimationLoop = startViewerAnimationLoop(() => {
       controls.update();
       const directMesh = directVolumeMeshRef.current;
       const directMaterial = directVolumeMaterialRef.current;
@@ -1036,11 +1038,10 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
         directMaterial.uniforms.uCameraTexture.value.copy(localCamera);
       }
       renderer.render(scene, camera);
-    };
-    animate();
+    });
 
     return () => {
-      cancelAnimationFrame(frameId);
+      stopAnimationLoop();
       ro.disconnect();
       window.removeEventListener("resize", handleResize);
       disposeTouchGestures();
@@ -1133,6 +1134,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
       axes.geometry.dispose();
       if (Array.isArray(axesMat)) axesMat.forEach((material) => material.dispose());
       else axesMat.dispose();
+      scene.traverse(disposeVolumeObject3D);
       scene.clear();
       releaseViewerRenderer(renderer);
       rendererRef.current = null;
