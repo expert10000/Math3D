@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import * as THREE from "three";
-import { sameSurfaceSampleSet, type SurfaceSampleSet } from "./surfaceSampling";
+import { releaseSurfaceSampleSet, sameSurfaceSampleSet, type SurfaceSampleSet } from "./surfaceSampling";
 
 const sampleSet = (): SurfaceSampleSet => ({
   samples: [{ id: 0, position: new THREE.Vector3(1, 2, 3),
@@ -26,5 +26,13 @@ describe("Surface sample reuse", () => {
     const changedCurvature = sampleSet();
     changedCurvature.curvatures!.K[0] = -1;
     expect(sameSurfaceSampleSet(first, changedCurvature)).toBe(false);
+  });
+  it("drops transient sample and geometry owners when a viewer closes", () => {
+    const closed = sampleSet();
+    releaseSurfaceSampleSet(closed);
+    expect(closed.samples).toHaveLength(0);
+    expect(closed.meshData).toBeUndefined();
+    expect(closed.curvatures).toBeUndefined();
+    expect(sampleSet().samples).toHaveLength(1);
   });
 });
