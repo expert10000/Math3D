@@ -1,0 +1,1297 @@
+{
+  "schema": "math3d.release20.long-memory.v1",
+  "status": "failed",
+  "build": {
+    "version": "2.0.0",
+    "commit": "5bde394ec3d62d70ae6dcf07e698e10049d3aae8",
+    "dirty": false,
+    "builtAt": "2026-11-11T22:43:08.022Z",
+    "rendererHash": "39b3fe8ab60c04bff2b65a9fdb499020e23234104c9c01f7536598a0ea269907"
+  },
+  "host": {
+    "os": "win32 10.0.26200",
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900K",
+    "logicalCpus": 24,
+    "totalMemoryGiB": 127.7
+  },
+  "method": {
+    "host": "source checkout",
+    "packageSha256": null,
+    "routeSequence": [
+      "graphs",
+      "surfaces",
+      "mesh",
+      "volume",
+      "projects"
+    ],
+    "measurement": "same-process process-tree RSS, Electron private bytes, GPU-process RSS and context-loss events; GPU allocations are not measured"
+  },
+  "requestedMinutes": 120,
+  "startedAtUtc": "2026-11-11T22:44:18.423Z",
+  "elapsedMs": 688467,
+  "pid": 33780,
+  "cycles": [
+    {
+      "startedAtMs": 3088,
+      "actions": 100,
+      "samples": [
+        {
+          "action": 0,
+          "elapsedMs": 3651,
+          "rssMiB": 787.5,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 112.3,
+            "python.exe": 147.5,
+            "renderer": 304,
+            "utility": 51.1,
+            "gpu-process": 167.6
+          },
+          "electronPrivateMiB": 441.8,
+          "rendererPrivateMiB": 195.6,
+          "gpuPrivateMiB": 155.1,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 301
+        },
+        {
+          "action": 10,
+          "elapsedMs": 14315,
+          "rssMiB": 986.1,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 116.1,
+            "python.exe": 147.5,
+            "renderer": 448.3,
+            "utility": 51.5,
+            "gpu-process": 217.8
+          },
+          "electronPrivateMiB": 594.2,
+          "rendererPrivateMiB": 301.8,
+          "gpuPrivateMiB": 196,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 20,
+          "elapsedMs": 24606,
+          "rssMiB": 1056.4,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 117,
+            "python.exe": 147.5,
+            "renderer": 504.3,
+            "utility": 51.5,
+            "gpu-process": 231.2
+          },
+          "electronPrivateMiB": 660.1,
+          "rendererPrivateMiB": 354.9,
+          "gpuPrivateMiB": 207.8,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 30,
+          "elapsedMs": 34923,
+          "rssMiB": 1098.6,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 113.4,
+            "python.exe": 147.5,
+            "renderer": 542.6,
+            "utility": 51.5,
+            "gpu-process": 238.7
+          },
+          "electronPrivateMiB": 701.5,
+          "rendererPrivateMiB": 392.4,
+          "gpuPrivateMiB": 216.8,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 40,
+          "elapsedMs": 45366,
+          "rssMiB": 1106.3,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 113.8,
+            "python.exe": 147.5,
+            "renderer": 539.7,
+            "utility": 51.5,
+            "gpu-process": 248.9
+          },
+          "electronPrivateMiB": 706.2,
+          "rendererPrivateMiB": 385.4,
+          "gpuPrivateMiB": 228.2,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 50,
+          "elapsedMs": 56232,
+          "rssMiB": 1135.6,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 114.7,
+            "python.exe": 147.5,
+            "renderer": 564.3,
+            "utility": 51.5,
+            "gpu-process": 252.7
+          },
+          "electronPrivateMiB": 738.7,
+          "rendererPrivateMiB": 405.8,
+          "gpuPrivateMiB": 239.4,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 60,
+          "elapsedMs": 67116,
+          "rssMiB": 1199.2,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 118.6,
+            "python.exe": 147.5,
+            "renderer": 615.5,
+            "utility": 51.3,
+            "gpu-process": 261.5
+          },
+          "electronPrivateMiB": 805,
+          "rendererPrivateMiB": 458.1,
+          "gpuPrivateMiB": 249.4,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 70,
+          "elapsedMs": 78652,
+          "rssMiB": 1175.9,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 119.5,
+            "python.exe": 147.5,
+            "renderer": 587.1,
+            "utility": 51.3,
+            "gpu-process": 265.7
+          },
+          "electronPrivateMiB": 774.7,
+          "rendererPrivateMiB": 422.2,
+          "gpuPrivateMiB": 254.1,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 80,
+          "elapsedMs": 88770,
+          "rssMiB": 1200.1,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 119.4,
+            "python.exe": 147.5,
+            "renderer": 605.7,
+            "utility": 51.3,
+            "gpu-process": 271.4
+          },
+          "electronPrivateMiB": 796.8,
+          "rendererPrivateMiB": 439.7,
+          "gpuPrivateMiB": 258.8,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 90,
+          "elapsedMs": 98891,
+          "rssMiB": 1210.2,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 120.6,
+            "python.exe": 147.5,
+            "renderer": 610,
+            "utility": 51.3,
+            "gpu-process": 276.1
+          },
+          "electronPrivateMiB": 802.7,
+          "rendererPrivateMiB": 440.2,
+          "gpuPrivateMiB": 263.2,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 100,
+          "elapsedMs": 109256,
+          "rssMiB": 1239.8,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 120.2,
+            "python.exe": 147.5,
+            "renderer": 633.9,
+            "utility": 51.3,
+            "gpu-process": 282.1
+          },
+          "electronPrivateMiB": 827.4,
+          "rendererPrivateMiB": 462.9,
+          "gpuPrivateMiB": 265.5,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        }
+      ],
+      "finishedAtMs": 109277
+    },
+    {
+      "startedAtMs": 109278,
+      "actions": 100,
+      "samples": [
+        {
+          "action": 0,
+          "elapsedMs": 109840,
+          "rssMiB": 1230.3,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 120.2,
+            "python.exe": 147.5,
+            "renderer": 632.6,
+            "utility": 51.3,
+            "gpu-process": 273.9
+          },
+          "electronPrivateMiB": 827.4,
+          "rendererPrivateMiB": 462.9,
+          "gpuPrivateMiB": 265.5,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 10,
+          "elapsedMs": 120190,
+          "rssMiB": 1273.6,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 119.8,
+            "python.exe": 147.5,
+            "renderer": 670.9,
+            "utility": 51.3,
+            "gpu-process": 279.2
+          },
+          "electronPrivateMiB": 866.8,
+          "rendererPrivateMiB": 501.4,
+          "gpuPrivateMiB": 266.9,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 20,
+          "elapsedMs": 130655,
+          "rssMiB": 1287.9,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 123.5,
+            "python.exe": 147.5,
+            "renderer": 682.9,
+            "utility": 51.2,
+            "gpu-process": 277.9
+          },
+          "electronPrivateMiB": 881.7,
+          "rendererPrivateMiB": 511.4,
+          "gpuPrivateMiB": 268.3,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 30,
+          "elapsedMs": 141890,
+          "rssMiB": 1314.7,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 123,
+            "python.exe": 147.5,
+            "renderer": 710.1,
+            "utility": 51.2,
+            "gpu-process": 278.1
+          },
+          "electronPrivateMiB": 904.8,
+          "rendererPrivateMiB": 535.1,
+          "gpuPrivateMiB": 268.3,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 40,
+          "elapsedMs": 152974,
+          "rssMiB": 1306.9,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 122.3,
+            "python.exe": 147.5,
+            "renderer": 703.8,
+            "utility": 51.2,
+            "gpu-process": 277.2
+          },
+          "electronPrivateMiB": 892,
+          "rendererPrivateMiB": 522.7,
+          "gpuPrivateMiB": 268.7,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 50,
+          "elapsedMs": 164568,
+          "rssMiB": 1319.1,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 120.5,
+            "python.exe": 147.5,
+            "renderer": 715.2,
+            "utility": 51.2,
+            "gpu-process": 279.9
+          },
+          "electronPrivateMiB": 899.9,
+          "rendererPrivateMiB": 531.9,
+          "gpuPrivateMiB": 269.2,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 60,
+          "elapsedMs": 175954,
+          "rssMiB": 1347.5,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 122.5,
+            "python.exe": 147.5,
+            "renderer": 743.2,
+            "utility": 51.2,
+            "gpu-process": 278.3
+          },
+          "electronPrivateMiB": 927.7,
+          "rendererPrivateMiB": 558.2,
+          "gpuPrivateMiB": 268.8,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 70,
+          "elapsedMs": 187885,
+          "rssMiB": 1377.4,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 122.9,
+            "python.exe": 147.5,
+            "renderer": 770.8,
+            "utility": 51.2,
+            "gpu-process": 280.3
+          },
+          "electronPrivateMiB": 957.2,
+          "rendererPrivateMiB": 585.4,
+          "gpuPrivateMiB": 270.7,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 80,
+          "elapsedMs": 200141,
+          "rssMiB": 1393.1,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 122.9,
+            "python.exe": 147.5,
+            "renderer": 785,
+            "utility": 51.2,
+            "gpu-process": 281.7
+          },
+          "electronPrivateMiB": 975,
+          "rendererPrivateMiB": 597.1,
+          "gpuPrivateMiB": 276.8,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 90,
+          "elapsedMs": 212210,
+          "rssMiB": 1402.7,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 122.9,
+            "python.exe": 147.5,
+            "renderer": 794.8,
+            "utility": 51.2,
+            "gpu-process": 281.4
+          },
+          "electronPrivateMiB": 978.9,
+          "rendererPrivateMiB": 607.4,
+          "gpuPrivateMiB": 270.5,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 100,
+          "elapsedMs": 224481,
+          "rssMiB": 1427.8,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 122.7,
+            "python.exe": 147.5,
+            "renderer": 819.9,
+            "utility": 51.2,
+            "gpu-process": 281.7
+          },
+          "electronPrivateMiB": 1003.4,
+          "rendererPrivateMiB": 630.6,
+          "gpuPrivateMiB": 271.9,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        }
+      ],
+      "finishedAtMs": 224520
+    },
+    {
+      "startedAtMs": 224521,
+      "actions": 100,
+      "samples": [
+        {
+          "action": 0,
+          "elapsedMs": 225233,
+          "rssMiB": 1426.8,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 120.8,
+            "python.exe": 147.5,
+            "renderer": 819.8,
+            "utility": 51.2,
+            "gpu-process": 282.7
+          },
+          "electronPrivateMiB": 1001.8,
+          "rendererPrivateMiB": 630.8,
+          "gpuPrivateMiB": 271.9,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 10,
+          "elapsedMs": 237870,
+          "rssMiB": 1439,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 123,
+            "python.exe": 147.5,
+            "renderer": 829.2,
+            "utility": 51.2,
+            "gpu-process": 283.3
+          },
+          "electronPrivateMiB": 1013.1,
+          "rendererPrivateMiB": 640,
+          "gpuPrivateMiB": 271.9,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 20,
+          "elapsedMs": 250624,
+          "rssMiB": 1459.6,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 123.4,
+            "python.exe": 147.5,
+            "renderer": 848.3,
+            "utility": 51.2,
+            "gpu-process": 284.4
+          },
+          "electronPrivateMiB": 1030.6,
+          "rendererPrivateMiB": 656.9,
+          "gpuPrivateMiB": 272,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 30,
+          "elapsedMs": 263381,
+          "rssMiB": 1469.8,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 123.9,
+            "python.exe": 147.5,
+            "renderer": 857,
+            "utility": 51.2,
+            "gpu-process": 285.3
+          },
+          "electronPrivateMiB": 1039,
+          "rendererPrivateMiB": 664.3,
+          "gpuPrivateMiB": 272.1,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 40,
+          "elapsedMs": 277080,
+          "rssMiB": 1488.9,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 121.9,
+            "python.exe": 147.5,
+            "renderer": 876.9,
+            "utility": 51.2,
+            "gpu-process": 286.5
+          },
+          "electronPrivateMiB": 1057.8,
+          "rendererPrivateMiB": 684.4,
+          "gpuPrivateMiB": 272.8,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 50,
+          "elapsedMs": 290464,
+          "rssMiB": 1498.8,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 124,
+            "python.exe": 147.5,
+            "renderer": 885.5,
+            "utility": 51.2,
+            "gpu-process": 285.7
+          },
+          "electronPrivateMiB": 1068.1,
+          "rendererPrivateMiB": 693.5,
+          "gpuPrivateMiB": 272,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 60,
+          "elapsedMs": 303622,
+          "rssMiB": 1510.1,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 5,
+            "browser": 125.1,
+            "python.exe": 147.6,
+            "renderer": 893.1,
+            "utility": 51.4,
+            "gpu-process": 288
+          },
+          "electronPrivateMiB": 1082.8,
+          "rendererPrivateMiB": 698,
+          "gpuPrivateMiB": 281.3,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 70,
+          "elapsedMs": 316137,
+          "rssMiB": 1539.4,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 5,
+            "browser": 124.9,
+            "python.exe": 147.6,
+            "renderer": 917.8,
+            "utility": 51.4,
+            "gpu-process": 292.9
+          },
+          "electronPrivateMiB": 1090.7,
+          "rendererPrivateMiB": 714,
+          "gpuPrivateMiB": 273.7,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 80,
+          "elapsedMs": 328953,
+          "rssMiB": 1536.7,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 5,
+            "browser": 123,
+            "python.exe": 147.6,
+            "renderer": 920.5,
+            "utility": 51.3,
+            "gpu-process": 289.3
+          },
+          "electronPrivateMiB": 1097.4,
+          "rendererPrivateMiB": 722.9,
+          "gpuPrivateMiB": 273.6,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 90,
+          "elapsedMs": 341572,
+          "rssMiB": 1553.1,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 5,
+            "browser": 125.2,
+            "python.exe": 147.6,
+            "renderer": 934.8,
+            "utility": 51.4,
+            "gpu-process": 289.2
+          },
+          "electronPrivateMiB": 1120.2,
+          "rendererPrivateMiB": 733.8,
+          "gpuPrivateMiB": 283.3,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 100,
+          "elapsedMs": 354204,
+          "rssMiB": 1566.9,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 5,
+            "browser": 125.2,
+            "python.exe": 147.6,
+            "renderer": 946.8,
+            "utility": 51.4,
+            "gpu-process": 291.1
+          },
+          "electronPrivateMiB": 1125.2,
+          "rendererPrivateMiB": 747.7,
+          "gpuPrivateMiB": 274.5,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        }
+      ],
+      "finishedAtMs": 354238
+    },
+    {
+      "startedAtMs": 354239,
+      "actions": 100,
+      "samples": [
+        {
+          "action": 0,
+          "elapsedMs": 354816,
+          "rssMiB": 1566.1,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 5,
+            "browser": 125.2,
+            "python.exe": 147.6,
+            "renderer": 946.3,
+            "utility": 51.4,
+            "gpu-process": 290.7
+          },
+          "electronPrivateMiB": 1125.3,
+          "rendererPrivateMiB": 747.8,
+          "gpuPrivateMiB": 274.5,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 10,
+          "elapsedMs": 368115,
+          "rssMiB": 1570.8,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 5,
+            "browser": 125.5,
+            "python.exe": 147.6,
+            "renderer": 949.8,
+            "utility": 51.4,
+            "gpu-process": 291.7
+          },
+          "electronPrivateMiB": 1140.1,
+          "rendererPrivateMiB": 762.4,
+          "gpuPrivateMiB": 274.5,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 20,
+          "elapsedMs": 383111,
+          "rssMiB": 1581.1,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 5,
+            "browser": 125.3,
+            "python.exe": 147.6,
+            "renderer": 962.6,
+            "utility": 51.3,
+            "gpu-process": 289.3
+          },
+          "electronPrivateMiB": 1151.2,
+          "rendererPrivateMiB": 775.7,
+          "gpuPrivateMiB": 272.3,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 30,
+          "elapsedMs": 397237,
+          "rssMiB": 1606.8,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 5,
+            "browser": 123.7,
+            "python.exe": 147.6,
+            "renderer": 990.1,
+            "utility": 51.4,
+            "gpu-process": 289
+          },
+          "electronPrivateMiB": 1177.3,
+          "rendererPrivateMiB": 802.8,
+          "gpuPrivateMiB": 272.9,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 40,
+          "elapsedMs": 411098,
+          "rssMiB": 1615.8,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 125.6,
+            "python.exe": 147.6,
+            "renderer": 995.3,
+            "utility": 51.4,
+            "gpu-process": 291
+          },
+          "electronPrivateMiB": 1184.6,
+          "rendererPrivateMiB": 808.2,
+          "gpuPrivateMiB": 273,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 50,
+          "elapsedMs": 426273,
+          "rssMiB": 1621.8,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 126.4,
+            "python.exe": 147.6,
+            "renderer": 1002.4,
+            "utility": 51.4,
+            "gpu-process": 289.1
+          },
+          "electronPrivateMiB": 1199.6,
+          "rendererPrivateMiB": 822.9,
+          "gpuPrivateMiB": 272.4,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 60,
+          "elapsedMs": 442362,
+          "rssMiB": 1621.7,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 125.7,
+            "python.exe": 147.6,
+            "renderer": 1002.4,
+            "utility": 51.4,
+            "gpu-process": 289.7
+          },
+          "electronPrivateMiB": 1208.5,
+          "rendererPrivateMiB": 822.1,
+          "gpuPrivateMiB": 282.7,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 70,
+          "elapsedMs": 456607,
+          "rssMiB": 1654.6,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 126,
+            "python.exe": 147.6,
+            "renderer": 1034.6,
+            "utility": 51.4,
+            "gpu-process": 290.1
+          },
+          "electronPrivateMiB": 1227.6,
+          "rendererPrivateMiB": 850.8,
+          "gpuPrivateMiB": 272.8,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 80,
+          "elapsedMs": 472646,
+          "rssMiB": 1660.4,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 126.4,
+            "python.exe": 147.6,
+            "renderer": 1037.8,
+            "utility": 51.4,
+            "gpu-process": 292.3
+          },
+          "electronPrivateMiB": 1235.2,
+          "rendererPrivateMiB": 857.5,
+          "gpuPrivateMiB": 273.3,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 90,
+          "elapsedMs": 487058,
+          "rssMiB": 1678.7,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 126.7,
+            "python.exe": 147.6,
+            "renderer": 1055.6,
+            "utility": 51.4,
+            "gpu-process": 292.5
+          },
+          "electronPrivateMiB": 1268.2,
+          "rendererPrivateMiB": 889.8,
+          "gpuPrivateMiB": 273.6,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 100,
+          "elapsedMs": 501771,
+          "rssMiB": 1689.8,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 124.7,
+            "python.exe": 147.6,
+            "renderer": 1065.1,
+            "utility": 51.4,
+            "gpu-process": 296
+          },
+          "electronPrivateMiB": 1277.3,
+          "rendererPrivateMiB": 901.6,
+          "gpuPrivateMiB": 272.7,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        }
+      ],
+      "finishedAtMs": 501822
+    },
+    {
+      "startedAtMs": 501824,
+      "actions": 100,
+      "samples": [
+        {
+          "action": 0,
+          "elapsedMs": 502498,
+          "rssMiB": 1688.9,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 124.7,
+            "python.exe": 147.6,
+            "renderer": 1064.7,
+            "utility": 51.4,
+            "gpu-process": 295.6
+          },
+          "electronPrivateMiB": 1277.4,
+          "rendererPrivateMiB": 901.6,
+          "gpuPrivateMiB": 272.7,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 10,
+          "elapsedMs": 517480,
+          "rssMiB": 1689.8,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 124.9,
+            "python.exe": 147.6,
+            "renderer": 1067.1,
+            "utility": 51.4,
+            "gpu-process": 293.9
+          },
+          "electronPrivateMiB": 1279.7,
+          "rendererPrivateMiB": 903.1,
+          "gpuPrivateMiB": 273.4,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 20,
+          "elapsedMs": 532285,
+          "rssMiB": 1717.8,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 127.7,
+            "python.exe": 147.6,
+            "renderer": 1090,
+            "utility": 51.4,
+            "gpu-process": 296.1
+          },
+          "electronPrivateMiB": 1302.4,
+          "rendererPrivateMiB": 923.2,
+          "gpuPrivateMiB": 273.2,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 30,
+          "elapsedMs": 547345,
+          "rssMiB": 1721.9,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 127,
+            "python.exe": 147.6,
+            "renderer": 1096,
+            "utility": 51.4,
+            "gpu-process": 295
+          },
+          "electronPrivateMiB": 1311.1,
+          "rendererPrivateMiB": 932.8,
+          "gpuPrivateMiB": 273.1,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 40,
+          "elapsedMs": 561441,
+          "rssMiB": 1745,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 124.9,
+            "python.exe": 147.6,
+            "renderer": 1121.5,
+            "utility": 51.4,
+            "gpu-process": 294.6
+          },
+          "electronPrivateMiB": 1333.7,
+          "rendererPrivateMiB": 956.8,
+          "gpuPrivateMiB": 273.9,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 50,
+          "elapsedMs": 575028,
+          "rssMiB": 1747.4,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 127.1,
+            "python.exe": 147.6,
+            "renderer": 1120.1,
+            "utility": 51.3,
+            "gpu-process": 296.4
+          },
+          "electronPrivateMiB": 1347.2,
+          "rendererPrivateMiB": 956.6,
+          "gpuPrivateMiB": 285.4,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 60,
+          "elapsedMs": 589722,
+          "rssMiB": 1768.9,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 125.1,
+            "python.exe": 147.6,
+            "renderer": 1144.6,
+            "utility": 51.4,
+            "gpu-process": 295.3
+          },
+          "electronPrivateMiB": 1359.4,
+          "rendererPrivateMiB": 981.2,
+          "gpuPrivateMiB": 275,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 70,
+          "elapsedMs": 604178,
+          "rssMiB": 1794.5,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 5,
+            "browser": 127.4,
+            "python.exe": 147.6,
+            "renderer": 1167.3,
+            "utility": 51.4,
+            "gpu-process": 295.9
+          },
+          "electronPrivateMiB": 1384.8,
+          "rendererPrivateMiB": 1004.2,
+          "gpuPrivateMiB": 275.1,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 80,
+          "elapsedMs": 618220,
+          "rssMiB": 1804.5,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 5,
+            "browser": 127.1,
+            "python.exe": 147.6,
+            "renderer": 1174.5,
+            "utility": 51.4,
+            "gpu-process": 298.9
+          },
+          "electronPrivateMiB": 1390.9,
+          "rendererPrivateMiB": 1011.7,
+          "gpuPrivateMiB": 274.1,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 90,
+          "elapsedMs": 632237,
+          "rssMiB": 1819.7,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 5,
+            "browser": 127.3,
+            "python.exe": 147.6,
+            "renderer": 1190.1,
+            "utility": 51.4,
+            "gpu-process": 298.4
+          },
+          "electronPrivateMiB": 1408.4,
+          "rendererPrivateMiB": 1027.1,
+          "gpuPrivateMiB": 275.9,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 100,
+          "elapsedMs": 647862,
+          "rssMiB": 1824.5,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 5,
+            "browser": 127.4,
+            "python.exe": 147.6,
+            "renderer": 1188.5,
+            "utility": 51.4,
+            "gpu-process": 304.6
+          },
+          "electronPrivateMiB": 1408.5,
+          "rendererPrivateMiB": 1025.8,
+          "gpuPrivateMiB": 277.2,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        }
+      ],
+      "finishedAtMs": 647913
+    },
+    {
+      "startedAtMs": 647914,
+      "actions": 25,
+      "samples": [
+        {
+          "action": 0,
+          "elapsedMs": 648514,
+          "rssMiB": 1804.2,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 5,
+            "browser": 127.4,
+            "python.exe": 147.6,
+            "renderer": 1180.2,
+            "utility": 51.4,
+            "gpu-process": 292.6
+          },
+          "electronPrivateMiB": 1407.3,
+          "rendererPrivateMiB": 1025.9,
+          "gpuPrivateMiB": 275.8,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 10,
+          "elapsedMs": 664350,
+          "rssMiB": 1843.9,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 5,
+            "browser": 127.5,
+            "python.exe": 147.6,
+            "renderer": 1211.2,
+            "utility": 51.4,
+            "gpu-process": 301.2
+          },
+          "electronPrivateMiB": 1430.3,
+          "rendererPrivateMiB": 1046.7,
+          "gpuPrivateMiB": 277.9,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        },
+        {
+          "action": 20,
+          "elapsedMs": 679963,
+          "rssMiB": 1847.2,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 127.6,
+            "python.exe": 147.6,
+            "renderer": 1212.4,
+            "utility": 51.4,
+            "gpu-process": 303.3
+          },
+          "electronPrivateMiB": 1438.2,
+          "rendererPrivateMiB": 1055.1,
+          "gpuPrivateMiB": 277.7,
+          "gpuPid": 5992,
+          "contextLosses": 0,
+          "jsHeapMiB": 45.2,
+          "domNodes": 666
+        }
+      ]
+    }
+  ],
+  "pageErrors": [],
+  "peakSampledRssMiB": 1847.2,
+  "failure": "expect.toHaveAttribute: Target page, context or browser has been closed"
+}
