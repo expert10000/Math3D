@@ -448,7 +448,7 @@ test("PRJ08 named project checkpoints survive Electron/mobile transfer, restart 
       await app.page.getByTestId(checkpoint ? "project-export-checkpoint" : "project-export").click();
       await expect.poll(() => { try { projectCore.parseMath3DProject(readFileSync(filename, "utf8")); return true; } catch { return false; } }).toBe(true);
       return readFileSync(filename, "utf8");
-    });
+    }, () => resetSurfaceAppState(app.page));
   } finally { await closeSurfaceApp(ctx); }
 });
 
