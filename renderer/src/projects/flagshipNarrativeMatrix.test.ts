@@ -78,10 +78,19 @@ describe("M3D20-07 built-in flagship narrative matrix", () => {
     expect(independent.preview.project.identity.id).toBe(project.identity.id);
     expect(inspectPortableResearchNarrative(narrative).project.identity.id).toBe(project.identity.id);
 
-    if (!note.anchor || !("source" in note.anchor)) throw new Error("Matrix Note lacks a pinned source.");
-    const noteSource = note.anchor.source;
-    const edited = editStudySource(project, noteSource.documentId);
-    const editedSource = edited.workspace.entries.find(entry => entry.expected.id === noteSource.documentId)!;
+    const noteSourceId = note.anchor?.researchReference?.source.documentId;
+    expect(noteSourceId).toBeTruthy();
+    expect(study.members.some(member => member.documentId === noteSourceId)).toBe(true);
+    // The Catenoid observation pins the recorded Mesh, not the first Surface pane.
+    const firstPaneId = study.members[0]!.documentId;
+    if (firstPaneId !== noteSourceId) {
+      const unrelatedEdit = createPortableResearchNarrative(editStudySource(project, firstPaneId), [book], restarted.resources);
+      expect(unrelatedEdit.evidence.citations.some(item => item.status === "historical")).toBe(true);
+      expect(unrelatedEdit.evidence.notes.find(item => item.noteId === note.identity.id)?.status).toBe("current");
+    }
+    const edited = editStudySource(project, noteSourceId!);
+    const noteSource = note.anchor!.researchReference!.source;
+    const editedSource = edited.workspace.entries.find(entry => entry.expected.id === noteSourceId)!;
     expect(editedSource.expected.revision).toBeGreaterThan(noteSource.revision);
     expect(editedSource.expected.structuralHash).not.toBe(noteSource.structuralHash);
     const historical = createPortableResearchNarrative(edited, [book], restarted.resources);
