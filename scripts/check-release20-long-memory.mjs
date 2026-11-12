@@ -32,14 +32,20 @@ const lateGrowth = values => {
 const lateGrowthMiB = lateGrowth(samples);
 const rendererPrivate = receipt.cycles?.flatMap(cycle => cycle.samples.map(sample => sample.rendererPrivateMiB)) ?? [];
 const gpuPrivate = receipt.cycles?.flatMap(cycle => cycle.samples.map(sample => sample.gpuPrivateMiB)) ?? [];
+const v8Used = receipt.cycles?.flatMap(cycle => cycle.samples.map(sample => sample.v8UsedMiB)) ?? [];
 const peakRendererPrivateMiB = rendererPrivate.length && rendererPrivate.every(Number.isFinite) ? Math.max(...rendererPrivate) : null;
 const peakGpuPrivateMiB = gpuPrivate.length && gpuPrivate.every(Number.isFinite) ? Math.max(...gpuPrivate) : null;
+const peakV8UsedMiB = v8Used.length && v8Used.every(Number.isFinite) ? Math.max(...v8Used) : null;
 const rendererPrivateLateGrowthMiB = lateGrowth(rendererPrivate);
 const gpuPrivateLateGrowthMiB = lateGrowth(gpuPrivate);
+const v8UsedLateGrowthMiB = lateGrowth(v8Used);
 const contextLosses = receipt.cycles?.at(-1)?.samples?.at(-1)?.contextLosses;
 const gpuPids = receipt.cycles?.flatMap(cycle => cycle.samples.map(sample => sample.gpuPid)) ?? [];
 check('sampled peak agrees', peak !== null && peak === receipt.peakSampledRssMiB, { peak, reported: receipt.peakSampledRssMiB });
 check('host class', receipt.method?.host === (modeArg === 'installed' ? 'installed candidate' : 'source checkout'), receipt.method?.host);
+check('production runtime', receipt.method?.runtimeE2e === false, receipt.method?.runtimeE2e);
+check('CDP V8 heap sample coverage', v8Used.length === samples.length && peakV8UsedMiB !== null &&
+  v8Used.every(value => value > 0), { peakV8UsedMiB, v8UsedLateGrowthMiB });
 check('GPU process and context health', gpuPids.length === samples.length && gpuPids.every(pid => Number.isInteger(pid) && pid > 0) &&
   new Set(gpuPids).size === 1 && contextLosses === 0, { gpuPids: [...new Set(gpuPids)], contextLosses });
 if (modeArg === 'source') {
@@ -74,7 +80,7 @@ const result = { schema: 'math3d.release20.long-memory-review.v1', mode: modeArg
   status: checks.every(item => item.pass) ? 'passed' : 'failed',
   plateauQualified: checks.every(item => item.pass),
   peakSampledRssMiB: peak, lateGrowthMiB, peakRendererPrivateMiB, rendererPrivateLateGrowthMiB,
-  peakGpuPrivateMiB, gpuPrivateLateGrowthMiB, checks };
+  peakGpuPrivateMiB, gpuPrivateLateGrowthMiB, peakV8UsedMiB, v8UsedLateGrowthMiB, checks };
 mkdirSync(dirname(resolve(outputArg)), { recursive: true });
 writeFileSync(resolve(outputArg), JSON.stringify(result, null, 2) + '\n');
 console.log(`${result.status}: peak ${peak} MiB, late growth ${lateGrowthMiB} MiB; renderer private peak ${peakRendererPrivateMiB} MiB.`);

@@ -32,13 +32,14 @@ test("one Electron process retains responsive navigation and records long-run me
     method: { host: process.env.MATH3D_PACKAGED_APP_EXE ? "installed candidate" : "source checkout",
       packageSha256: process.env.MATH3D_CANDIDATE_INSTALLER_SHA256 || null,
       routeSequence: routes,
-      measurement: "same-process process-tree RSS, Electron private bytes, GPU-process RSS and context-loss events; GPU allocations are not measured" },
+      measurement: "same-process process-tree RSS, Electron private bytes, CDP V8 heap, GPU-process RSS and context-loss events; GPU allocations are not measured",
+      runtimeE2e: false },
     requestedMinutes: smoke ? 0 : minutes, startedAtUtc: new Date(started).toISOString(), elapsedMs: 0,
     pid: 0, cycles: [] as Array<{ startedAtMs: number; finishedAtMs?: number; actions: number;
       samples: Array<{ action: number; elapsedMs: number; rssMiB: number; processCount: number;
         byRoleMiB: Record<string, number>; electronPrivateMiB: number; rendererPrivateMiB: number;
         gpuPrivateMiB: number; gpuPid: number | null; contextLosses: number;
-        jsHeapMiB: number | null; domNodes: number }> }>, pageErrors: [] as string[],
+        jsHeapMiB: number | null; v8UsedMiB: number; v8TotalMiB: number; domNodes: number }> }>, pageErrors: [] as string[],
     peakSampledRssMiB: 0, failure: null as string | null,
   };
   const save = () => { mkdirSync(path.dirname(reportPath), { recursive: true });
@@ -46,10 +47,13 @@ test("one Electron process retains responsive navigation and records long-run me
   let ctx: LaunchedSurfaceApp | null = null;
   save();
   try {
-    ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
+    ctx = await launchSurfaceApp({ MATH3D_E2E: "0" });
     await resetSurfaceAppState(ctx.page);
     const page = ctx.page, pid = ctx.app.process().pid;
     if (!pid) throw new Error("Electron PID unavailable.");
+    if (await page.evaluate(() => (window as Window & { appRuntime?: { e2e?: boolean } }).appRuntime?.e2e ?? false))
+      throw new Error("Memory soak must run without E2E runtime hooks.");
+    const heapSession = await page.context().newCDPSession(page);
     report.pid = pid;
     page.on("pageerror", error => { report.pageErrors.push(error.message); save(); });
     await page.evaluate(() => {
@@ -62,6 +66,7 @@ test("one Electron process retains responsive navigation and records long-run me
       if (value.error || value.rssBytes <= 0) throw new Error(value.error || "Process-tree RSS sample unavailable.");
       const rssMiB = Number(bytesToMiB(value.rssBytes).toFixed(1));
       const appMetrics = await ctx!.app.evaluate(({ app }) => app.getAppMetrics());
+      const heap = await heapSession.send("Runtime.getHeapUsage");
       const privateMiB = (type: string) => Number((appMetrics.filter(metric => metric.type === type)
         .reduce((sum, metric) => sum + Number(metric.memory?.privateBytes ?? 0), 0) / 1024).toFixed(1));
       const renderer = await page.evaluate(() => ({
@@ -78,6 +83,8 @@ test("one Electron process retains responsive navigation and records long-run me
         gpuPid: value.processes.find(entry => entry.role === "gpu-process")?.pid ?? null,
         contextLosses: renderer.contextLosses,
         jsHeapMiB: renderer.jsHeapBytes === null ? null : Number(bytesToMiB(renderer.jsHeapBytes).toFixed(1)),
+        v8UsedMiB: Number(bytesToMiB(heap.usedSize).toFixed(1)),
+        v8TotalMiB: Number(bytesToMiB(heap.totalSize).toFixed(1)),
         domNodes: renderer.domNodes };
     };
     do {
@@ -85,7 +92,7 @@ test("one Electron process retains responsive navigation and records long-run me
         samples: [] as Array<{ action: number; elapsedMs: number; rssMiB: number; processCount: number;
           byRoleMiB: Record<string, number>; electronPrivateMiB: number; rendererPrivateMiB: number;
           gpuPrivateMiB: number; gpuPid: number | null; contextLosses: number;
-          jsHeapMiB: number | null; domNodes: number }>, finishedAtMs: undefined as number | undefined };
+          jsHeapMiB: number | null; v8UsedMiB: number; v8TotalMiB: number; domNodes: number }>, finishedAtMs: undefined as number | undefined };
       report.cycles.push(cycle);
       cycle.samples.push(await sample(0)); save();
       for (let action = 1; action <= 100; action++) {
@@ -106,9 +113,7 @@ test("one Electron process retains responsive navigation and records long-run me
       }
       await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
       if (smoke && process.env.MATH3D_MEMORY_SOAK_FORCE_GC === "1") {
-        const cdp = await page.context().newCDPSession(page);
-        try { await cdp.send("HeapProfiler.collectGarbage"); }
-        finally { await cdp.detach(); }
+        await heapSession.send("HeapProfiler.collectGarbage");
         await page.waitForTimeout(2_000);
         cycle.samples.push(await sample(101));
       }
