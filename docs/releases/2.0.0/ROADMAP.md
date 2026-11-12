@@ -1167,6 +1167,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **17c reliability preparation:** The [source reliability soak](RC2_SOAK_GATE.md) covers Projects, scientific results, quantum, first-use Study restart, hard-exit recovery, and a same-process memory run. Its source run on `5bde394e` passed the preliminary scientific and recovery checks, but renderer private bytes crossed the predeclared budget after about 11.5 minutes. The run was stopped, so it does not establish a two-hour plateau or qualify an installed candidate.
 
+**Memory closure status (2026-11-12):** Production-mode CDP profiling distinguishes a flat Volume route from growing Mesh and mixed routes. The [route receipts and retainer analysis](PERFORMANCE_RESILIENCE_GATE.md) show that a small set of scoped callbacks does not stop the mixed-route rise: 672 reused callback names connect 814 sampled App render contexts. The 800-switch test now fails closed on post-GC V8, renderer-private, and GPU-process budgets. A cohesive App scope split and a passing 800-switch mixed-route receipt are required before the two-hour source memory gate can be signed off. No installed memory claim exists without a verified signed installer.
+
 **17d release rehearsal:** The [exact-candidate rehearsal gate](RC2_REHEARSAL_GATE.md) checks that the source freeze, signed Windows install and upgrade receipts, source soak, verified assets, three gallery captures, public license metadata, and locally staged site all refer to one 2.0 commit and installer hash. It remains pending real candidate artifacts and installed evidence.
 
 - Fresh-machine installer and upgrade pass.

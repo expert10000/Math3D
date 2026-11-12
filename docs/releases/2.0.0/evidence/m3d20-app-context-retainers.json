@@ -1,0 +1,99 @@
+{
+  "schema": "math3d.release20.app-retainers.v1",
+  "diagnosticBuild": {
+    "version": "2.0.0",
+    "commit": "34e8a02c4df619dd06e44d54eaa84ce2de7e3d5e",
+    "dirty": false,
+    "builtAt": "2026-11-12T12:36:02.330Z",
+    "rendererHash": "3fa85ea8c753f3e622c52aa9be47289cc670d4b0341f4cdc69b8f6fefb3dce5c"
+  },
+  "method": "V8 nonminified heap snapshot; identify App contexts through applyWorkbookWorkspace closure; count strong context-to-callback-to-other-App-context links",
+  "snapshotName": "release20-retainer-unminified-34e8a02c.heapsnapshot",
+  "snapshotSha256": "5545dc1643bfb471c608735167d815113d5c1515ac54c509ee0105e4527a9fdd",
+  "nodeCount": 2387439,
+  "appContextCount": 814,
+  "reusedCallbackNames": 672,
+  "callbacksLinkingEveryObservedContext": 400,
+  "mostFrequentLinks": [
+    {
+      "name": "abortLargeMeshFullForMemoryPressure",
+      "contexts": 813
+    },
+    {
+      "name": "accentGeometryMeshInfo",
+      "contexts": 813
+    },
+    {
+      "name": "activateGeometryRecentConstructionTool",
+      "contexts": 813
+    },
+    {
+      "name": "activateOtherComplexCoveringExample",
+      "contexts": 813
+    },
+    {
+      "name": "addUnifiedDerivedNode",
+      "contexts": 813
+    },
+    {
+      "name": "allocateUniqueGeometryObjectId",
+      "contexts": 813
+    },
+    {
+      "name": "appendComputeSavedRun",
+      "contexts": 813
+    },
+    {
+      "name": "appendDerivedConstruction",
+      "contexts": 813
+    },
+    {
+      "name": "appendGeometryDerivedRelationConstraint",
+      "contexts": 813
+    },
+    {
+      "name": "appendGeometryMathConstruction",
+      "contexts": 813
+    },
+    {
+      "name": "appendGeometryMathConstructionRelationship",
+      "contexts": 813
+    },
+    {
+      "name": "appendMeshPromotionOperation",
+      "contexts": 813
+    },
+    {
+      "name": "applyComplexMapPreset",
+      "contexts": 813
+    },
+    {
+      "name": "applyDefaultPorts",
+      "contexts": 813
+    },
+    {
+      "name": "applyGeodesicPathResult",
+      "contexts": 813
+    },
+    {
+      "name": "applyGeometryConstructionOperationNodeParameters",
+      "contexts": 813
+    },
+    {
+      "name": "applyGeometryOperationNodeParameters",
+      "contexts": 813
+    },
+    {
+      "name": "applyGeometrySceneGalleryTimelineAction",
+      "contexts": 813
+    },
+    {
+      "name": "applyGraphDomainPreset",
+      "contexts": 813
+    },
+    {
+      "name": "applyImplicitDomainPreset",
+      "contexts": 813
+    }
+  ]
+}
