@@ -161,23 +161,26 @@ export const mergeProjectLiveWorkspace = (retained: MixedWorkspaceDocument, live
       ...retained.activeDocumentIds.filter((id) => quantum.some((entry) => entry.expected.id === id))])] }) :
     createMixedWorkspaceDocument({ ...live, ...studyFields, ...quantumStudyFields });
   const previousGraphs = retained.entries.filter((entry) => entry.module === "graph2d"), liveGraphs = combined.entries.filter((entry) => entry.module === "graph2d");
+  const merge = <T>(saved: readonly T[], current: readonly T[], key: (item: T) => string): T[] =>
+    [...new Map([...saved, ...current].map((item) => [key(item), item])).values()];
+  const retainedEvidence = {
+    results: merge(retained.results, combined.results, result => result.resultId),
+    artifacts: merge(retained.artifacts, combined.artifacts, artifact => artifact.handle.artifactId),
+    relations: merge(retained.relations, combined.relations, relation => relation.relationId),
+    constructions: merge(retained.constructions, combined.constructions, canonicalJsonStringify),
+  };
   if (previousGraphs.length !== 1 || liveGraphs.length !== 1 || previousGraphs[0]!.expected.id !== liveGraphs[0]!.expected.id) {
     // A Project may be visible while its editor module has not loaded. The live
     // capture is then incomplete, not an instruction to delete saved documents.
     // Explicit Project deletion uses deleteProjectDocument instead.
     const liveIds = new Set(combined.entries.map((entry) => entry.expected.id));
     const missing = retained.entries.filter((entry) => !liveIds.has(entry.expected.id));
-    if (!missing.length) return createMixedWorkspaceDocument({ ...combined, ...selectionFields, ...derivedFieldsField });
+    if (!missing.length) return createMixedWorkspaceDocument({ ...combined, ...selectionFields, ...derivedFieldsField, ...retainedEvidence });
     const missingIds = new Set<string>(missing.map((entry) => entry.expected.id));
-    const merge = <T>(saved: readonly T[], current: readonly T[], key: (item: T) => string): T[] =>
-      [...new Map([...saved, ...current].map((item) => [key(item), item])).values()];
     return createMixedWorkspaceDocument({ ...combined, ...selectionFields, ...derivedFieldsField,
       entries: [...combined.entries, ...missing],
       activeDocumentIds: [...new Set([...combined.activeDocumentIds, ...retained.activeDocumentIds.filter((id) => missingIds.has(id))])],
-      results: merge(retained.results, combined.results, (result) => result.resultId),
-      artifacts: merge(retained.artifacts, combined.artifacts, (artifact) => artifact.handle.artifactId),
-      relations: merge(retained.relations, combined.relations, (relation) => relation.relationId),
-      constructions: merge(retained.constructions, combined.constructions, canonicalJsonStringify),
+      ...retainedEvidence,
     });
   }
   const merged = mergeGraph2DHandoffCheckpoint(projectCheckpoint(retained), projectCheckpoint(combined));
