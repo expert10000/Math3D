@@ -14,7 +14,7 @@ import time
 from fractions import Fraction
 from pathlib import Path
 
-from sage.all import ChainComplex, GF, I, QQ, SR, ZZ, PolynomialRing, cos, e, exp, gcd, identity_matrix, inverse_mod, latex, log, matrix, pi, sin, solve, sqrt, tan, var
+from sage.all import AA, ChainComplex, GF, I, QQ, SR, ZZ, PolynomialRing, cos, e, exp, gcd, identity_matrix, inverse_mod, latex, log, matrix, pi, sin, solve, sqrt, tan, var
 from sage.env import SAGE_VERSION
 if __package__:
     from .algebra_reconstruction import reconstruct_algebra, inspect_algebra_domains
@@ -169,6 +169,59 @@ def _symbolic_solve(operation, params):
 
 
 def _surface_calculus(operation, params):
+    if operation == "sage.symbolic.singularities" and "equations" in params:
+        if set(params) != {"equations", "variables"}:
+            raise SageRequestError("Ideal singularities require exact equations and variables fields.")
+        variables = params["variables"]
+        equations = params["equations"]
+        if not isinstance(variables, list) or not 2 <= len(variables) <= 3 or \
+                len(set(variables)) != len(variables) or any(not isinstance(name, str) or
+                not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,31}", name) for name in variables) or \
+                not isinstance(equations, list) or not 2 <= len(equations) <= 3 or \
+                len(set(equations)) != len(equations):
+            raise SageRequestError("Ideal singularities require two or three distinct bounded generators and ambient variables.")
+        ring = PolynomialRing(QQ, variables, order="degrevlex")
+        def polynomial(source):
+            if not isinstance(source, str) or len(source) > 128 or "**" in source or \
+                    not re.fullmatch(r"[A-Za-z0-9_()+*^/\-]+", source) or \
+                    any(token not in variables for token in re.findall(r"[A-Za-z][A-Za-z0-9_]*", source)) or \
+                    any(len(number) > 18 for number in re.findall(r"[0-9]+", source)) or \
+                    any(int(power) > 8 for power in re.findall(r"\^([0-9]+)", source)):
+                raise SageRequestError("Invalid or unbounded polynomial in the ideal locus.")
+            try:
+                value = ring(source)
+            except (TypeError, ValueError, ArithmeticError) as error:
+                raise SageRequestError("Generator does not belong to the ambient QQ polynomial ring.") from error
+            if value.total_degree() > 8 or len(value.monomials()) > 64:
+                raise SageRequestError("Ideal generator degree or term budget exceeded.")
+            return value
+        polys = [polynomial(source) for source in equations]
+        ideal = ring.ideal(polys)
+        dimension = int(ideal.dimension())
+        if dimension < 0:
+            return _success(operation, {"points": [], "dimension": dimension,
+                "codimension": len(variables), "criterion": "ideal has empty locus"})
+        codimension = len(variables) - dimension
+        if codimension < 1 or codimension > min(len(variables), len(polys)):
+            raise SageRequestError("Ideal codimension is outside the supported Jacobian-minor range.")
+        jacobian = matrix(ring, [[polynomial.derivative(axis) for axis in ring.gens()] for polynomial in polys])
+        minors = jacobian.minors(codimension)
+        singular = ring.ideal(polys + minors)
+        singular_dimension = int(singular.dimension())
+        if singular_dimension > 0:
+            raise SageRequestError("The singular locus is positive-dimensional; this route accepts isolated points only.")
+        points = [] if singular_dimension < 0 else singular.variety(AA)
+        if len(points) > 64:
+            raise SageRequestError("More than 64 isolated real singularities; narrow the ideal.")
+        try:
+            coordinates = [{name: str(QQ(point[axis])) for name, axis in zip(variables, ring.gens())}
+                for point in points]
+        except (TypeError, ValueError) as error:
+            raise SageRequestError("An isolated real singularity has nonrational coordinates; this exact output supports rational points only.") from error
+        return _success(operation, {"points": coordinates, "dimension": dimension,
+            "codimension": codimension, "jacobianMinors": [str(item) for item in minors],
+            "criterion": "all generators vanish and Jacobian rank is below codimension",
+            "field": "QQ rational points, real-locus completeness checked over AA", "text": str(coordinates)}, latex(coordinates))
     variables = _variables(params, ("x", "y", "z"))
     if set(variables) != {"x", "y", "z"} or len(variables) != 3:
         raise SageRequestError("Surface calculus requires x, y, z as the three variables.")

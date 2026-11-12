@@ -22,5 +22,7 @@ try {
   if (previous === undefined) delete process.env.MATH3D_BUNDLE_NATIVE_CGAL;
   else process.env.MATH3D_BUNDLE_NATIVE_CGAL = previous;
 }
-verifyLocalReferenceBuild();
-console.log("Native CGAL distribution gate rejects bundle paths without public source assets and matches local dependency metadata.");
+if (!process.argv.includes("--policy")) verifyLocalReferenceBuild();
+console.log(process.argv.includes("--policy") ?
+  "Native CGAL distribution policy refuses unqualified bundle paths and missing source receipts." :
+  "Native CGAL distribution policy and local dependency metadata passed.");

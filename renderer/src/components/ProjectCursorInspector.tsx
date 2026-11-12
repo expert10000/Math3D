@@ -34,8 +34,8 @@ export function projectPointCursorFrame(project: Math3DProject, selection: Scien
     const reason = vectorPointCursorAvailability(project, selection);
     return reason ? { frame: null, reason } : { frame: VECTOR3D_CURSOR_FRAME, reason: null };
   }
-  if (entry.module !== "mesh" && entry.module !== "surface")
-    return { frame: null, reason: "Only Field, Surface and Mesh points are supported here." };
+  if (!["graph2d", "curve", "mesh", "surface"].includes(entry.module))
+    return { frame: null, reason: "This module has no saved point cursor reader." };
   if (selection.identity.kind !== "authored" || selection.geometry.kind !== "point" || !selection.source.checkpoint)
     return { frame: null, reason: "Point selection and pinned source checkpoint required." };
   const document = verifyMixedWorkspaceReplay(project.workspace).get(entry.expected.id);
@@ -44,6 +44,17 @@ export function projectPointCursorFrame(project: Math3DProject, selection: Scien
     selection.source.checkpoint.revision !== document.identity.revision ||
     selection.source.checkpoint.structuralHash !== document.identity.structuralHash)
     return { frame: null, reason: "Saved point source checkpoint is stale or unavailable." };
+  if (entry.module === "graph2d" || entry.module === "curve") {
+    const axes = selection.frame.axes;
+    const names = entry.module === "graph2d" ? ["x", "y"] :
+      selection.geometry.position.length === 3 ? ["x", "y", "z"] : ["x", "y"];
+    if (selection.geometry.position.length !== names.length || axes.length !== names.length ||
+      axes.some((axis, index) => axis.name !== names[index] || !axis.unit) ||
+      !selection.geometry.position.every(Number.isFinite))
+      return { frame: null, reason: "Saved point axes or units differ from the native document." };
+    return { frame: { kind: "cartesian", frameId: `project:${entry.module}:${document.identity.id}`,
+      axes: axes.map(axis => ({ name: axis.name!, dimension: "coordinate", unit: axis.unit! })) }, reason: null };
+  }
   const declaration = readProjectCoordinateFrame(document);
   if (declaration.status !== "declared" || !declaration.value)
     return { frame: null, reason: "Source has no valid declared coordinate frame." };
@@ -69,7 +80,7 @@ export function ProjectCursorInspector({ project }: { project: Math3DProject }) 
     if (item.identity.kind !== "authored" || item.geometry.kind !== "point" || item.source?.kind !== "document") return false;
     const documentId = item.source.documentId;
     return project.workspace.entries.some(entry => entry.expected.id === documentId &&
-      ["vector3d", "surface", "mesh"].includes(entry.module));
+      ["graph2d", "curve", "vector3d", "surface", "mesh"].includes(entry.module));
   }), [project]);
   useEffect(() => {
     if (!linked) return;

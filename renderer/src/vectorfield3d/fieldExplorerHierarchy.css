@@ -47,3 +47,27 @@
   .scientific-field-explorer[data-layout="viewer-focus"] .scientific-field-explorer-inspector { grid-row: 2; }
   .scientific-field-explorer[data-layout="viewer-focus"] .scientific-field-explorer-viewer { grid-row: 3; }
 }
+
+/* Keep the native theme while bringing the prototype's compact contextual workflow across. */
+.field-explorer-inspector-nav { display: flex; flex-wrap: wrap; gap: 4px;
+  padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.field-explorer-inspector-nav button { flex: 1 0 auto; padding: 6px 7px; font-size: 11px; }
+.field-explorer-baseline-views { height: 100%; overflow: auto; padding: 12px; }
+.field-explorer-baseline-views > header { display: flex; align-items: flex-start;
+  justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.field-explorer-baseline-views p { font-size: 12px; max-width: 70ch; }
+.field-explorer-baseline-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.field-explorer-baseline-grid > section { min-width: 0; padding: 10px;
+  border: 1px solid var(--border); border-radius: 8px; }
+.field-explorer-baseline-grid h4 { margin: 0 0 5px; }
+.field-explorer-baseline-grid small { overflow-wrap: anywhere; }
+@media (max-width: 1100px) { .field-explorer-baseline-grid { grid-template-columns: 1fr; } }
+
+.field-explorer-baseline-views { color: #d6e2ed; }
+.field-explorer-baseline-views > header strong,
+.field-explorer-baseline-grid > section > h4 { color: #e2e8f0; }
+.field-explorer-baseline-views > header p,
+.field-explorer-baseline-grid > section > small { color: #9eb2c4; }
+.field-explorer-baseline-grid > section { border-color: #40546b; }
+
+.scientific-field-explorer-inspector [data-testid="gf18-field-comparison"] { overflow-wrap: anywhere; }

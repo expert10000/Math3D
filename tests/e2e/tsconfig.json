@@ -4,19 +4,33 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "allowImportingTsExtensions": true,
     "paths": {
-      "@math3d/core": ["../../packages/core/src/index.ts"],
-      "@math3d/core/*": ["../../packages/core/src/*"],
-      "@math3d/kernel": ["../../packages/kernel/src/index.ts"],
-      "@math3d/kernel/*": ["../../packages/kernel/src/*"]
+      "@math3d/core": [
+        "../../packages/core/src/index.ts"
+      ],
+      "@math3d/core/*": [
+        "../../packages/core/src/*"
+      ],
+      "@math3d/kernel": [
+        "../../packages/kernel/src/index.ts"
+      ],
+      "@math3d/kernel/*": [
+        "../../packages/kernel/src/*"
+      ]
     },
     "strict": true,
     "strictNullChecks": true,
     "noImplicitAny": false,
     "noEmit": true,
-    "types": ["node"],
+    "types": [
+      "node"
+    ],
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "skipLibCheck": true,
@@ -24,11 +38,14 @@
     "checkJs": false
   },
   "include": [
+    "../../renderer/src/global.d.ts",
+    "../../renderer/node_modules/vite/client.d.ts",
     "../../playwright.config.ts",
     "./**/*.ts",
     "../graph2d-web/**/*.ts",
     "../../playwright.graph2d.config.ts",
     "../../playwright.projects.config.ts",
-    "../../scripts/**/*.mjs"
+    "../../scripts/**/*.mjs",
+    "../../renderer/src/global.d.ts"
   ]
 }

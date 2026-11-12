@@ -27,12 +27,16 @@ module.exports = async function signRelease20Worker(context) {
   }
   const worker = join(context.appOutDir, "resources", "python-worker", "worker.exe");
   if (!existsSync(worker)) throw new Error(`Frozen worker missing before signing: ${worker}`);
+  const native = join(context.appOutDir, "resources", "native-cgal", "math3d-cgal-worker.exe");
+  if (process.env.MATH3D_BUNDLE_NATIVE_CGAL === "1" && !existsSync(native))
+    throw new Error(`Optional native CGAL worker missing before signing: ${native}`);
   const scratch = mkdtempSync(join(process.env.RUNNER_TEMP || tmpdir(), "math3d-release20-sign-"));
   try {
     const certificate = join(scratch, "certificate.pfx");
     writeFileSync(certificate, Buffer.from(encoded, "base64"), { mode: 0o600 });
-    execFileSync(locateSignTool(), ["sign", "/fd", "SHA256", "/tr", timestamp, "/td", "SHA256",
-      "/f", certificate, "/p", password, worker], { stdio: "pipe" });
+    for (const executable of [worker, ...(existsSync(native) ? [native] : [])])
+      execFileSync(locateSignTool(), ["sign", "/fd", "SHA256", "/tr", timestamp, "/td", "SHA256",
+        "/f", certificate, "/p", password, executable], { stdio: "pipe" });
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }

@@ -94,6 +94,7 @@ import type { SymbolicResultRecord } from "../features/sageLab/SageSymbolicPanel
 import { graphSageSource } from "../features/sageLab/graphSageSource";
 import { Graph2DPlot } from "./Graph2DPlot";
 import { scientificCursorBus, type ProjectScientificCursor } from "../components/scientificCursor";
+import { NativeProjectCursorInspector } from "../components/NativeProjectCursorInspector";
 import { graphAnalyticRowCursorDraft, projectFieldCursorToAnalyticLine } from "./fieldGraphCursor";
 import { currentGraphCurvePair, graphProbeCurveCursorDraft, projectCurveParameterToGraph } from "./graphCurveCursor";
 import { ScientificFieldPlane } from "./ScientificFieldPlane";
@@ -260,6 +261,7 @@ type Props = {
   savedVectorField3D?: VectorField3DDocument | null;
   openVectorField3DRequest?: { document: VectorField3DDocument; token: number } | null;
   onSaveVectorField3D?: (document: VectorField3DDocument) => void;
+  onPinVectorField3DBaseline?: (document: VectorField3DDocument) => VectorField3DDocument;
   savedVectorField3DPointResults?: readonly import("@math3d/core").AnalysisResultEnvelope[];
   onSaveVectorField3DPointResult?: (document: VectorField3DDocument,
     result: import("@math3d/core").AnalysisResultEnvelope) => void;
@@ -341,7 +343,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   onGridModeCommit, onAxesCommit, onProbesCommit, onAuthoringCommit, onConstructionCommit, onConstructionBatchCommit, onSelectionCommit, onUndo, onRedo, promotions = [],
   onPromotionCreate, onPromotionLocate, onPromotionRegenerate, onComplexContourPlace, onOpenPreset, onResumeCheckpoint, onCopyProject,
   onExportPersonalProject, onCopyGraphDefinition, onPreviewPersonalImport, onImportPersonalProject,
-  savedVectorField3D, openVectorField3DRequest, onSaveVectorField3D,
+  savedVectorField3D, openVectorField3DRequest, onSaveVectorField3D, onPinVectorField3DBaseline,
   savedVectorField3DPointResults, onSaveVectorField3DPointResult,
   savedVectorField3DRegionResults, vectorField3DRegionStatuses,
   onSaveVectorField3DRegionResult, onOpenVectorField3DProjectResults,
@@ -4639,6 +4641,9 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           onOpenFieldDetails={() => { if (explorerFieldLayer) {
             setScientificFieldDocument(explorerFieldLayer); setScientificFieldOpen(true);
           } }}
+          onPinBaseline={onPinVectorField3DBaseline ? field => {
+            const next = onPinVectorField3DBaseline(field); setVectorField3DDocument(next); return next;
+          } : undefined}
           onSaveDocument={field => { setVectorField3DDocument(field); onSaveVectorField3D?.(field); }}
           onClose={() => { window.sessionStorage.removeItem(fieldExplorerSessionKey);
             setVectorField3DOpen(false); setLinkedRegionFocus(null);
@@ -4993,6 +4998,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
       </div>
       {showRight && <aside className="graph2d-panel graph2d-right" aria-label="Graph inspector">
         <h2>Inspector</h2>
+        <NativeProjectCursorInspector project={project} document={document} module="graph2d" />
         {sageRecord && <SageSymbolicAnalysisCard record={sageRecord} sourceStatus={sageSourceStatus}
           onSaveWorkbook={onSaveSageResult ? () => onSaveSageResult(sageRecord) : undefined} />}
         {guided && <details className="graph2d-guided-panel" data-testid="graph2d-guided-panel">

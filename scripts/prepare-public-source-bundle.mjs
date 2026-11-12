@@ -6,10 +6,13 @@ import path from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const require = createRequire(import.meta.url);
+const { selectPublicSources } = require("./native-cgal-source-contract.cjs");
 const args = process.argv.slice(2);
 const option = (name, fallback) => {
   const index = args.indexOf(name);
@@ -88,7 +91,9 @@ const releasePatch = run("git", ["diff", "HEAD", "--",
   "scripts/prepare-public-source-bundle.mjs", "compliance/public-source-manifest.json",
   "scripts/generate-release-sbom.mjs", "scripts/generate-android-release-sbom.mjs",
   "scripts/release-python-sbom-inventory.py", "compliance/cyclonedx-android.init.gradle",
-  "scripts/test-release-sbom.mjs",
+  "scripts/test-release-sbom.mjs", "scripts/native-cgal-source-contract.cjs",
+  "scripts/verify-native-cgal-source-bundle.mjs", "native/cgal-worker/dependency-manifest.json",
+  "THIRD_PARTY_NOTICES.md", "SOURCE_OFFER.md",
 ]);
 let releasePatchName = null;
 if (releasePatch) {
@@ -96,7 +101,7 @@ if (releasePatch) {
   fs.writeFileSync(path.join(outDir, releasePatchName), `${releasePatch}\n`, "utf8");
 }
 
-const selected = sourceManifest.sources.filter((source) => source.targets.includes(target));
+const selected = selectPublicSources(sourceManifest, target);
 for (const source of selected) {
   console.log(`Fetching corresponding source: ${source.name} ${source.version}`);
   await download(source);
@@ -129,10 +134,13 @@ const materialized = {
   schemaVersion: 1,
   distributionLicense: sourceManifest.distributionLicense,
   math3d: { version, commit, buildRecipeCommit: process.env.GITHUB_WORKFLOW_SHA || commit,
-    sourceArchive: path.basename(sourceZip), releaseBuildPatch: releasePatchName },
+    sourceArchive: path.basename(sourceZip), sourceArchiveSha256: await sha256File(sourceZip),
+    releaseBuildPatch: releasePatchName },
   target,
   pythonPackages,
   sources: selected,
+  ...(target === "windows" ? { nativeCgal: { distributionStatus: "source-bundle-integrated",
+    dependencyManifestSha256: await sha256File(path.join(root, "native/cgal-worker/dependency-manifest.json")) } } : {}),
 };
 fs.writeFileSync(
   path.join(outDir, `SOURCE_MANIFEST-${target}.json`),

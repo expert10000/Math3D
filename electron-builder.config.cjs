@@ -145,5 +145,9 @@ if (!isDevChannel && require("./package.json").version === "2.0.0") {
   config.afterPack = require("./scripts/release20-sign-worker.cjs");
 }
 
+if (process.env.MATH3D_BUNDLE_NATIVE_CGAL === "1") {
+  config.extraResources.push({ from: "build/native/cgal-worker/Release", to: "native-cgal" });
+}
+
 assertNativeCgalPackagingPolicy(config);
 module.exports = config;

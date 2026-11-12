@@ -123,7 +123,7 @@ Result shape:
 - `sage.symbolic.solve`
 - `sage.symbolic.gradient` (exact derivatives of a three-variable surface equation)
 - `sage.symbolic.hessian` (exact second derivatives)
-- `sage.symbolic.singularities` (isolated solutions of F = 0 and grad F = 0, at most 64)
+- `sage.symbolic.singularities` (isolated solutions of F = 0 and grad F = 0, at most 64; or bounded two-generator ideals in three variables, with Jacobian minors and at most 64 isolated rational real singular points)
 - `sage.matrix.eigen_exact`
 - `sage.matrix.charpoly`
 - `sage.matrix.linear_dossier` (bounded exact `QQ` RREF, kernel and image bases, and square-matrix minimal polynomial)

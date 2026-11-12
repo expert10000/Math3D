@@ -14,6 +14,7 @@ distributions and the per-release SBOM/source manifest remain authoritative.
 | pygalmesh | 0.10.7 | GPL-3.0-or-later or a separately purchased commercial license. |
 | GNU MP (GMP) | 6.3.0 reference baseline | LGPL-3.0-or-later or GPL-2.0-or-later, at the recipient's option. |
 | GNU MPFR | 4.2.2 reference baseline | LGPL-3.0-or-later. |
+| Boost | 1.92.0 native CGAL reference baseline | BSL-1.0; complete release source is offered with the Windows source assets. |
 
 Corresponding source archives for the versions used by each release are
 published beside the release binaries. URLs and SHA-256 values are defined in

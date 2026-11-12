@@ -82,6 +82,13 @@ try {
   fs.rmSync(path.join(app, "resources/apparmor-profile"));
   fs.rmSync(path.join(app, "resources/package-type"));
 
+  write("resources/native-cgal/math3d-cgal-worker.exe", "native fixture");
+  const unqualifiedNative = run();
+  assert.notEqual(unqualifiedNative.status, 0);
+  assert.match(unqualifiedNative.stderr, /Packaged native CGAL worker has no corresponding-source receipt/);
+  fs.rmSync(path.join(app, "resources/native-cgal/math3d-cgal-worker.exe"));
+  fs.rmdirSync(path.join(app, "resources/native-cgal"));
+
   write("resources/unknown.exe", "unexpected binary");
   const unknown = run();
   assert.notEqual(unknown.status, 0);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createProjectStudyFromDocuments, deleteProjectDocument, forkProjectStudy,
+import { configureProjectStudy, createProjectStudyFromDocuments, deleteProjectDocument, forkProjectStudy,
   inspectProjectDocumentDelete, inspectProjectStudyMembers, instantiateMath3DProjectTemplate,
   parseMath3DProject, renameProjectStudy, serializeMath3DProject } from "@math3d/core";
 
@@ -26,6 +26,22 @@ describe("Project Study operations", () => {
     expect(forked.workspace.studies).toHaveLength(2);
     expect(forked.workspace.entries).toEqual(project.workspace.entries);
     expect(new Set(forked.workspace.studies!.map(item => item.id)).size).toBe(2);
+  });
+  it("saves a question and reordered layout without changing source pins or pane identities", () => {
+    const saved = createProjectStudyFromDocuments(project, "pair", "Graph and Curve", ids);
+    const original = saved.workspace.studies![0]!;
+    const configured = configureProjectStudy(saved, original.id, { description: "How does the curve follow the graph?",
+      mode: "tabs", paneIds: ["pane-2", "pane-1"] });
+    const reopened = parseMath3DProject(serializeMath3DProject(configured));
+    const study = reopened.workspace.studies![0]!;
+    expect(study.description).toBe("How does the curve follow the graph?");
+    expect(study.layout).toEqual({ mode: "tabs", panes: [original.layout.panes[1], original.layout.panes[0]] });
+    expect(study.members).toEqual(original.members);
+    expect(reopened.workspace.entries).toEqual(project.workspace.entries);
+    expect(() => configureProjectStudy(saved, original.id, { description: "", mode: "tabs",
+      paneIds: ["pane-1", "pane-1"] })).toThrow(/retain every saved pane/);
+    expect(() => configureProjectStudy(saved, original.id, { description: "", mode: "quad",
+      paneIds: ["pane-1", "pane-2"] })).toThrow(/layout/);
   });
   it("classifies changed and missing members without rewriting their pinned identity", () => {
     const saved = createProjectStudyFromDocuments(project, "pair", "Graph and Curve", ids);

@@ -1,0 +1,54 @@
+name: Field Explorer native workflow
+on:
+  pull_request:
+    paths:
+      - 'packages/core/src/fieldExplorerWorkflow.ts'
+      - 'packages/core/src/vectorField3DDocument.ts'
+      - 'renderer/src/vectorfield3d/**'
+      - 'tests/e2e/field-explorer-native-workflow.spec.ts'
+      - 'tests/e2e/field-explorer-scientific-workflow.spec.ts'
+      - 'renderer/src/projects/scientificFieldAdmission.ts'
+      - 'renderer/src/components/ProjectWorkspacePanel.tsx'
+      - '.github/workflows/field-explorer-native-workflow.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: field-explorer-native-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  native-workflow:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.19.0'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            renderer/package-lock.json
+      - name: Install locked dependencies
+        shell: bash
+        run: npm ci && npm --prefix renderer ci
+      - name: Targeted scientific and workflow regressions
+        run: node renderer/node_modules/vitest/vitest.mjs run --config renderer/vite.config.ts renderer/src/vectorfield3d/fieldExplorerWorkflow.test.tsx renderer/src/vectorfield3d/fieldExplorerScientificWorkflow.test.ts renderer/src/vectorfield3d/FieldExplorerProjectHierarchy.test.tsx renderer/src/vectorfield3d/vectorField3DGolden.test.ts renderer/src/vectorfield3d/vectorField3DSlices.test.ts tests/unit/vectorField3DLocalComparison.test.ts tests/unit/gf24ScientificComparison.test.ts renderer/src/projects/projectJourneyCapabilities.test.ts renderer/src/projects/flagshipNarrativeMatrix.test.ts renderer/src/surfaceAnalysis/derivedSurfaceMesh.test.ts --maxWorkers=2
+      - name: Type check and build
+        shell: bash
+        run: npm run typecheck:noemit && npm run build:core
+      - name: Desktop cold reopen and existing Inspector/comparison journeys
+        run: npx playwright test tests/e2e/surface-functional.spec.ts tests/e2e/unified-projects.spec.ts tests/e2e/field-explorer-native-workflow.spec.ts tests/e2e/field-explorer-scientific-workflow.spec.ts tests/e2e/field-explorer-gf06.spec.ts tests/e2e/graph-field-gf17-gf19.spec.ts --grep "Test 7 — provenance-linked|Test 8 — live mesh|PRJ08 named project|native Field Explorer|scientific Field Explorer transfers|GF-06 opens|GF-17/18 local" --reporter=list
+      - name: Upload source-bound evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-field-explorer-${{ github.sha }}
+          path: |
+            test-results/
+            dist/build-identity.json
+          retention-days: 14

@@ -23,6 +23,39 @@ export type SurfaceSampleSet = {
   };
 };
 
+/** Reuse an unchanged viewer sample set across Project returns without retaining another point graph. */
+export function sameSurfaceSampleSet(left: SurfaceSampleSet, right: SurfaceSampleSet): boolean {
+  const sameArray = (a: ArrayLike<number> | null | undefined, b: ArrayLike<number> | null | undefined) => {
+    if (a === b) return true;
+    if (!a || !b || a.length !== b.length) return false;
+    for (let index = 0; index < a.length; index++) if (!Object.is(a[index], b[index])) return false;
+    return true;
+  };
+  const sameVector = (a: THREE.Vector3 | undefined, b: THREE.Vector3 | undefined) =>
+    a === b || !!a && !!b && Object.is(a.x, b.x) && Object.is(a.y, b.y) && Object.is(a.z, b.z);
+  if (left.samples.length !== right.samples.length ||
+      !sameVector(left.center, right.center) ||
+      !sameVector(left.bbox?.min, right.bbox?.min) ||
+      !sameVector(left.bbox?.max, right.bbox?.max)) return false;
+  for (let index = 0; index < left.samples.length; index++) {
+    const a = left.samples[index]!, b = right.samples[index]!;
+    if (a.id !== b.id || a.meshKey !== b.meshKey || a.vertexIndex !== b.vertexIndex ||
+        a.meta?.surfaceKind !== b.meta?.surfaceKind || !sameVector(a.position, b.position) ||
+        !sameVector(a.normal, b.normal) || !Object.is(a.uv?.u, b.uv?.u) ||
+        !Object.is(a.uv?.v, b.uv?.v)) return false;
+  }
+  const leftMeshes = left.meshData ?? [], rightMeshes = right.meshData ?? [];
+  if (leftMeshes.length !== rightMeshes.length) return false;
+  for (let index = 0; index < leftMeshes.length; index++) {
+    const a = leftMeshes[index]!, b = rightMeshes[index]!;
+    if (a.key !== b.key || !sameArray(a.positions, b.positions) ||
+        !sameArray(a.indices, b.indices)) return false;
+  }
+  for (const kind of ["K", "H", "k1", "k2"] as const)
+    if (!sameArray(left.curvatures?.[kind], right.curvatures?.[kind])) return false;
+  return true;
+}
+
 export type SurfaceSampleBuildOptions = {
   geometry: THREE.BufferGeometry;
   worldMatrix: THREE.Matrix4;
