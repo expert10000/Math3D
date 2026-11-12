@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { captureProjectResources, createGraph2DFieldReference, createMath3DProject,
   createMixedWorkspaceDocument, createVectorField3DDocument, defaultVectorField3DWorkspace,
@@ -8,10 +8,14 @@ import { captureProjectResources, createGraph2DFieldReference, createMath3DProje
 
 /** Real component bytes, with a deliberately unavailable original host path. */
 export function portableScientificProjectFixture() {
-  const directory = resolve("tests/fixtures/scientific-scene/vortex-volume.sscene");
+  // Both the repository Playwright command and `npm --prefix renderer test` use this fixture.
+  const fixtures = [resolve("tests/fixtures"), resolve("../tests/fixtures")].find(root =>
+    existsSync(join(root, "graph-field/gf23-bundled-profile.math3d")));
+  if (!fixtures) throw new Error("Run scientific Project tests from the repository or renderer directory.");
+  const directory = join(fixtures, "scientific-scene/vortex-volume.sscene");
   const manifestBytes = new Uint8Array(readFileSync(join(directory, "manifest.json")));
   const manifestJson = new TextDecoder().decode(manifestBytes), fingerprint = sha256Checksum(manifestBytes).slice(7);
-  const legacy = parseMath3DProject(readFileSync(resolve("tests/fixtures/graph-field/gf23-bundled-profile.math3d"), "utf8"));
+  const legacy = parseMath3DProject(readFileSync(join(fixtures, "graph-field/gf23-bundled-profile.math3d"), "utf8"));
   const original = legacy.workspace.entries[0]!.checkpoint as VectorField3DDocument;
   if (original.source.field.kind !== "scientific-bundle") throw new Error("Expected the vector fixture.");
   const relink = (reference: typeof original.source.field.references[number]) => createGraph2DFieldReference(

@@ -2,7 +2,7 @@ import { test, expect, chromium, type BrowserContext, type Page } from "@playwri
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseProjectPackage } from "@math3d/core";
+import { parseMath3DProject, parseProjectPackage } from "@math3d/core";
 import { portableScientificProjectFixture } from "../fixtures/graph-field/portableScientificProject";
 
 async function projects(page: Page) {
@@ -83,6 +83,7 @@ test("portable scientific Project survives independent browser import, cold rest
     let panel = await projects(page);
     await panel.getByTestId("project-save").click();
     await expect(panel.getByTestId("project-message")).toContainText("Saved");
+    const saved = parseMath3DProject(await page.evaluate(() => localStorage.getItem("math3d.project.v1")!));
     const raw = await downloadPackage(page), exported = parseProjectPackage(raw);
     const active = exported.project.workspace.entries.find(entry => entry.expected.id === fixture.document.identity.id)!.checkpoint;
     expect(active.format).toBe("math3d.vector-field3d-document");
@@ -90,7 +91,10 @@ test("portable scientific Project survives independent browser import, cold rest
     expect(active.identity).toEqual(fixture.document.identity);
     expect(active.workspace!.probe![0]).toBeCloseTo(-0.4);
     expect(active.workspace!.probe![1]).toBeCloseTo(0.4);
-    expect(exported.project.workspace.scientificSelections).toEqual(fixture.project.workspace.scientificSelections);
+    // Probe and baseline edits add ordinary migrated selections; export must retain the full saved state.
+    expect(exported.project.workspace.scientificSelections).toEqual(saved.workspace.scientificSelections);
+    for (const authored of fixture.project.workspace.scientificSelections ?? [])
+      expect(exported.project.workspace.scientificSelections?.find(item => item.identity.id === authored.identity.id)).toEqual(authored);
     expect(exported.project.workspace.results).toHaveLength(1);
     expect(exported.resources.sidecars().filter(item => item.kind.startsWith("scientific-"))).toHaveLength(4);
     const expectedFields = exported.project.workspace.entries.filter(entry => entry.module === "vector3d").map(entry => entry.checkpoint);
