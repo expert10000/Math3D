@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { acceptGraph2DComplexContour, applyGraph2DAuthoring, createEmptyGraph2DDocument, createGraph2DDocument,
-  createMath3DProject, createMixedWorkspaceDocument, instantiateMath3DProjectTemplate,
+  createMath3DProject, createMixedWorkspaceDocument, createProjectStudyFromDocuments,
+  instantiateMath3DProjectTemplate, parseMath3DProject,
   reviewGraph2DComplexContour, serializeMath3DProject } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { buildMobileProjectExplorer } from "../../apps/mobile/src/models/mobileProjectExplorer";
@@ -30,6 +33,21 @@ describe("PRJ21 read-only named-project explorer", () => {
     expect(citations.every(item => item?.status === "current")).toBe(true);
     expect(explorer.notes.find(note => note.title.endsWith("observation"))?.status).toBe("current");
     expect(buildMobileProjectExplorer(serializeMath3DProject(made.project)).workbooks[0]?.available).toBe(false);
+    expect(explorer.studies).toHaveLength(1);
+    expect(explorer.studies[0]?.panes.length).toBeGreaterThan(0);
+    expect(explorer.studies[0]?.panes.every(pane => pane.status === "current")).toBe(true);
+    expect(explorer.studies[0]?.citations.length).toBeGreaterThan(0);
+  });
+  it("withholds external Field Explorer values in a saved mobile Study", () => {
+    const project = parseMath3DProject(readFileSync(resolve(
+      "tests/fixtures/graph-field/gf23-bundled-profile.math3d"), "utf8"));
+    const field = project.workspace.entries.find(entry => entry.module === "vector3d")!;
+    const studied = createProjectStudyFromDocuments(project, "mobile-field-study",
+      "Bundle Study", [field.expected.id]);
+    const explorer = buildMobileProjectExplorer(serializeMath3DProject(studied));
+    expect(explorer.studies).toHaveLength(1);
+    expect(explorer.studies[0]?.panes[0]?.status).toBe("desktop-verification-required");
+    expect(explorer.studies[0]?.panes[0]?.reason).toMatch(/desktop verification/);
   });
   it("shows all companions, revisions, relations and analysis without modifying the saved project", () => {
     const project = instantiateMath3DProjectTemplate("catenary-study", "mobile-explorer");

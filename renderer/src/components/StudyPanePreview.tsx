@@ -10,6 +10,7 @@ import { qualifyStudyGraphCurveLink, studyHasQualifiedGraphCurveLink } from "../
 import { projectCurveParameterToGraph } from "../graph2d/graphCurveCursor";
 import { scientificCursorBus } from "./scientificCursor";
 import { StudyQuantumPanePreview } from "./StudyQuantumPanePreview";
+import { StudyVectorFieldPanePreview } from "./StudyVectorFieldPanePreview";
 
 const plotSize = { width: 360, height: 280 };
 
@@ -39,6 +40,8 @@ export function StudyPanePreview({ project, study, paneId, resources }: {
           ...plotSize, interaction: false, timeBudgetMs: 120 });
         return { kind: "graph" as const, display: document.display, series };
       }
+      if (document.format === "math3d.vector-field3d-document")
+        return { kind: "field" as const, document };
       if (["math3d.curve-document", "math3d.surface-document", "math3d.geometry-document",
         "math3d.topology-document"].includes(document.format)) {
         const view = additionalRepresentationView(document as Parameters<typeof additionalRepresentationView>[0],
@@ -62,7 +65,10 @@ export function StudyPanePreview({ project, study, paneId, resources }: {
   if (preview.kind === "withheld") return <p role="status" data-testid="project-study-preview-withheld">{preview.reason}</p>;
   return <div data-testid="project-study-pane-preview" data-kind={preview.kind}
     style={{ position: "relative", height: 320, minWidth: 0, overflow: "hidden" }}>
-    {preview.kind === "graph" ? <Graph2DPlot display={preview.display} size={plotSize} series={preview.series}
+    {preview.kind === "field" ? <StudyVectorFieldPanePreview
+      key={`${preview.document.identity.id}:${preview.document.identity.revision}:${preview.document.identity.structuralHash}`}
+      document={preview.document} /> :
+      preview.kind === "graph" ? <Graph2DPlot display={preview.display} size={plotSize} series={preview.series}
       linkedCursorProbe={linkedProbe} /> : preview.kind === "geometry" ?
       <GeometryViewer scene={preview.view.scene} meshOverrides={preview.view.meshes} /> :
       <StudyQuantumPanePreview project={project} document={preview.document} role={preview.role}

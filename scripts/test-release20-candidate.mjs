@@ -25,9 +25,10 @@ try {
   await put('python/worker/requirements.freeze.txt', 'vtk==9.7.0\n');
   await put('python/worker/build-requirements.freeze.txt', 'pyinstaller==6.19.0\n');
   await put('native/cgal-worker/dependency-manifest.json', JSON.stringify({
-    distributionStatus: 'blocked-pending-public-source-bundle-integration', windowsReferenceBuild: { cgal: '6.2.1' } }));
+    distributionStatus: 'source-bundle-integrated-not-bundled', windowsReferenceBuild: { cgal: '6.2' } }));
   await put('compliance/public-source-manifest.json', JSON.stringify({ sources: [
     { name: 'CGAL', version: '6.2.1', sha256: 'c'.repeat(64), targets: ['windows', 'native-cgal'] },
+    { name: 'CGAL', version: '6.2', sha256: 'd'.repeat(64), targets: ['windows', 'native-cgal'] },
     ...['GMP', 'MPFR'].map(name => ({ name, targets: ['windows', 'native-cgal'] }))] }));
   for (const [path, expected] of Object.entries(freezeContracts)) await put(path,
     `${expected.format ? `export const ${expected.format[0]} = "${expected.format[1]}" as const;` : ''}\n` +

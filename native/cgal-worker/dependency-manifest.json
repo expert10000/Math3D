@@ -5,7 +5,7 @@
   "meshResourceFormat": "math3d.mesh.v1",
   "windowsReferenceBuild": {
     "triplet": "x64-windows",
-    "cgal": "6.2.1",
+    "cgal": "6.2",
     "gmp": "6.3.0",
     "mpfr": "4.2.2",
     "boost-core": "1.92.0",

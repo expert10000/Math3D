@@ -3,9 +3,9 @@ import * as THREE from "three";
 // Module navigation used to allocate a new WebGL context for every Mesh and
 // Volume visit. Chromium can retain the native allocations of lost contexts
 // long after their JavaScript owners are collected. Reuse one idle context for
-// route changes. Concurrent Study panes hold their own active renderers; their
-// count does not justify retaining four idle GPU contexts after they close.
-const MAX_IDLE_RENDERERS = 1;
+// route changes. The Volume workspace mounts four viewers at once, so keep
+// their contexts warm across route changes instead of recreating three per visit.
+const MAX_IDLE_RENDERERS = 4;
 const idleRenderers: THREE.WebGLRenderer[] = [];
 let pageUnloading = false;
 

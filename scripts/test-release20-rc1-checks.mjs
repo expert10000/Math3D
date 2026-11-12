@@ -7,7 +7,8 @@ assert.doesNotThrow(() => assertRelease20Source({ version: '2.0.0' }, { version:
 assert.deepEqual(rc1Checks.map(check => check.id), [
   'types', 'project-contracts', 'saved-result-goldens', 'quantum-baseline',
   'sage-gateway-unit', 'release-sbom', 'site-and-gallery', 'core-build',
-  'renderer-build', 'kernel-acceptance', 'project-desktop', 'first-use-study',
+  'renderer-build', 'flagship-source', 'kernel-acceptance', 'mobile-study-preview', 'project-desktop',
+  'first-use-study', 'field-study-desktop',
 ]);
 assert(!rc1Checks.some(check => /installer|dist:|publish/.test([check.id, check.command, ...check.args].join(' '))));
 const plan = spawnSync(process.execPath, ['scripts/release20-rc1-checks.mjs', '--plan'], { encoding: 'utf8' });

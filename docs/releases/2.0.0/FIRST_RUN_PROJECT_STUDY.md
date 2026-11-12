@@ -1,6 +1,6 @@
 # First run: a Project and a scientific study
 
-This guide follows the Windows desktop source build's **Minimal Surface Study** starter. The 2.0 installed candidate has not yet passed its [first-use gate](INSTALL_UPGRADE_GATE.md), so use the exact release installer only after that gate is recorded as passed. The steps describe the current Project interface; a separately saved multi-pane `StudyDocument` is still a 2.0 roadmap item.
+This guide follows the Windows desktop source build's **Minimal Surface Study** starter. The 2.0 installed candidate has not yet passed its [first-use gate](INSTALL_UPGRADE_GATE.md), so use the exact release installer only after that gate is recorded as passed. The steps describe the current Project interface; a Project-owned multi-pane Study can also save participating document references and layout.
 
 ## Open the starter
 
@@ -19,7 +19,7 @@ Close Math3D, launch it again, open **Projects**, and choose **Open** on your sa
 | **Project** | The saved owner of related documents, exact revisions, recorded relationships, results, Notes, and optional Workbooks. A saved copy has its own identity and can be reopened from the Project library. |
 | **Document** | An editable or viewable scientific object such as the starter's Graph, Curve, or Surface. Its revision and source identity matter when results are checked. |
 | **Result** | A saved analysis output tied to a specific source generation. Read the source and freshness status with the value; a similar title or shape does not establish provenance. |
-| **Study** | A scientific question explored through several linked Project documents and evidence. **Minimal Surface Study** is a starter Project title. The planned `StudyDocument` will save a linked view arrangement inside a Project; it will not own duplicate source documents or results. |
+| **Study** | A scientific question explored through several linked Project documents and evidence. **Minimal Surface Study** is a starter Project title. A saved Project-owned Study records a linked view arrangement and exact source references; it does not own duplicate source documents or results. |
 
 ## Keep and share your work
 
