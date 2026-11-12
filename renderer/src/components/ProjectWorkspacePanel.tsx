@@ -123,6 +123,7 @@ import { createProjectStudySelectionNoteAnchor, pinProjectStudyScientificSelecti
 import { resolveProjectNoteValues } from "../projects/projectNoteValues";
 import { projectAnalysisAvailability, type ProjectAnalysisRoute } from "../projects/projectAnalysisAvailability";
 import { verifyProjectVectorFieldSources } from "../projects/scientificFieldAdmission";
+import { capturePortableProjectResources } from "../projects/scientificProjectPackage";
 import { verifyProjectQuantumSceneDocuments } from "../projects/quantumSceneAdmission";
 import { quantumSceneDocumentFromVerifiedOpen } from "../projects/quantumSceneAdmission";
 import { promoteQuantumNative, type QuantumNativeTarget } from "../projects/quantumNativePromotion";
@@ -1507,7 +1508,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       // Preview-only JSON may deliberately lack resources. Preserve that explicit state.
       const resources = candidate.resources ?? await loadProjectResources(prepared.project);
       if (openWorkspace) await verifyProjectQuantumSceneDocuments(prepared.project, onVerifyQuantumSceneDocument);
-      if (openWorkspace) await verifyProjectVectorFieldSources(prepared.project);
+      if (openWorkspace) await verifyProjectVectorFieldSources(prepared.project, undefined, item => resources.bytes(item));
       if (activationToken !== importSequence.current || inputToken !== workspaceInputSequence.current ||
         previous && canonicalJsonStringify(currentCapture.current()) !== canonicalJsonStringify(previous))
         throw new Error("The workspace changed during source verification. Retry opening the Project.");
@@ -1712,7 +1713,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       let next = managed?.project() ?? (preview ? project : liveProject());
       if (!preview || managed) next = updateMath3DProjectMetadata(next, { ...next.metadata, title: title.trim(), description, tags: [...new Set(tags.split(",").map((tag) => tag.trim()).filter(Boolean))] });
       const storedResources = withResources && (preview || managed || resourceSessionId.current !== next.identity.id) ? await loadProjectResources(localStorage.getItem(`math3d.project.v1.payload.${next.identity.id}`) ? loadLibraryProject(localStorage, next.identity.id) : project) : resourceSession.current;
-      const bytes = withResources ? exportProjectPackage(next, collectResources(next, storedResources)) : checkpointOnly ? exportProjectCheckpointFile(next) : exportProjectFile(next);
+      const bytes = withResources ? exportProjectPackage(next, await capturePortableProjectResources(next, resourceBytes(storedResources))) : checkpointOnly ? exportProjectCheckpointFile(next) : exportProjectFile(next);
       const url = URL.createObjectURL(new Blob([bytes], { type: "application/json" })), link = document.createElement("a");
       link.href = url; link.download = `${next.metadata.title.replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 80) || "Project"}${withResources ? ".resources" : checkpointOnly ? ".checkpoint" : ""}.math3d.project.json`; link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000); setMessage(withResources ? "Exported project with verified source resources and undo/redo buffers. Optional analysis caches and thumbnails remain local." : checkpointOnly ? "Exported verified document checkpoints. Scientific identities and records are retained; undo history is not transferred. Mobile editing supports one Graph with Curve/Surface companions; sidecars transfer separately." : "Exported verified project JSON with original identities and replay. Sidecar bytes and thumbnails transfer separately.");
@@ -2809,7 +2810,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           <small>Choose a JSON file, then review its sources, citations and omissions before importing or opening it.</small>
           <div className="project-workspace-transfer-options">
             {project?.workspace.entries.some(entry => entry.checkpoint.format === "math3d.vector-field3d-document" &&
-              entry.checkpoint.source.field.kind === "scientific-bundle") && <p>Scientific fields retain external bundle references. Copy those bundle files separately; opening verifies them again.</p>}
+              entry.checkpoint.source.field.kind === "scientific-bundle") && <p>Download with resources includes the scientific field data needed to reopen small vector fields in a browser. Opening verifies the packaged data again.</p>}
             <button type="button" className="project-gallery-primary" data-testid="project-export-resources" disabled={!project || busy} onClick={() => { void exportFile(false, true); }}>Download with resources</button>
             <small>Includes available source data and workbooks. Best for moving a project to another device.</small>
             <button type="button" data-testid="project-export" disabled={!project || busy} onClick={() => exportFile()}>Download project JSON</button>

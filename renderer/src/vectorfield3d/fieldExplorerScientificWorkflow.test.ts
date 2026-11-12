@@ -42,10 +42,12 @@ describe("verified scientific Field Explorer workflow", () => {
       .toThrow(/matching sample lattices/);
   });
 
-  it("packages exact checkpoints and selections, then freshly verifies both sources after import", async () => {
+  it("retains legacy reference-only packages and freshly verifies their native sources", async () => {
     const pinned = fixture();
     const resources = captureProjectResources(pinned.project, () => null);
-    const imported = parseProjectPackage(exportProjectPackage(pinned.project, resources));
+    expect(() => exportProjectPackage(pinned.project, resources)).toThrow(/manifest.*missing/i);
+    const imported = parseProjectPackage(JSON.stringify({ format: "math3d.project-package", schemaVersion: 1,
+      project: pinned.project, resources: resources.sidecars() }));
     expect(imported.project).toEqual(pinned.project);
     expect(imported.project.workspace.scientificSelections).toEqual(pinned.project.workspace.scientificSelections);
     expect(resolveFieldExplorerBaseline(imported.project, pinned.document)).toEqual(pinned.baseline);

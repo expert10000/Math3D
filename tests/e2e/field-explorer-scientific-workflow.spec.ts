@@ -112,7 +112,7 @@ test("scientific Field Explorer transfers a Project package to a fresh profile a
     explorer = await openExplorer(ctx.page);
     await expect(explorer.getByRole("region", { name: "Linked A/B field views" })).toContainText("Both scientific sources verified");
     await expect(explorer.getByRole("region", { name: "Line profile through probe" })).toHaveCount(2);
-    const profile = ctx.profileDir;
+    let profile = ctx.profileDir;
     await ctx.app.close(); ctx = await launchSurfaceApp({}, profile);
     await openLastSavedProject(ctx.page);
     await expect(ctx.page.getByTestId("project-explorer-panel").getByTestId("project-message")).toContainText("Opened");
@@ -129,6 +129,25 @@ test("scientific Field Explorer transfers a Project package to a fresh profile a
     expect(restored.workspace.scientificSelections).toEqual(saved.workspace.scientificSelections);
 
     const componentPath = join(directory, "north.f64"), correct = await readFile(componentPath);
+    // A complete package owns the source bytes independently of the original directory.
+    const outsideChange = Buffer.from(correct); outsideChange[0] ^= 1; await writeFile(componentPath, outsideChange);
+    await reopenedPair.getByRole("button", { name: "Reverify A/B sources" }).click();
+    await expect(reopenedPair).toContainText("Both scientific sources verified");
+    await expect(reopenedPair.getByRole("img", { name: /^magnitude map/ })).toHaveCount(2);
+    await writeFile(componentPath, correct);
+
+    // Keep the previous external-file recovery contract for legacy v1 packages.
+    const legacy = JSON.parse(raw);
+    legacy.schemaVersion = 1;
+    legacy.resources = legacy.resources.filter((item: { kind: string }) => !item.kind.startsWith("scientific-"));
+    await closeSurfaceApp(ctx); ctx = null;
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    await importFile(ctx.page, JSON.stringify(legacy));
+    explorer = await openExplorer(ctx.page);
+    reopenedPair = explorer.getByRole("region", { name: "Linked A/B field views" });
+    await expect(reopenedPair).toContainText("Both scientific sources verified");
+    comparison = explorer.getByTestId("gf18-field-comparison");
+    profile = ctx.profileDir;
     const corrupt = Buffer.from(correct); corrupt[0] ^= 1; await writeFile(componentPath, corrupt);
     await reopenedPair.getByRole("button", { name: "Reverify A/B sources" }).click();
     await expect(reopenedPair).toContainText("Values withheld");
