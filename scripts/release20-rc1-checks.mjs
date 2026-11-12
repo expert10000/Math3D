@@ -16,9 +16,12 @@ export const rc1Checks = Object.freeze([
   { id: 'site-and-gallery', command: 'npm', args: ['--prefix', 'apps/public-site', 'run', 'build'] },
   { id: 'core-build', command: 'npm', args: ['run', 'build:core'] },
   { id: 'renderer-build', command: 'npm', args: ['run', 'build:renderer'] },
+  { id: 'flagship-source', command: 'node', args: ['scripts/release20-flagship-journeys.mjs', '--run', 'output/release20-rc1-flagship-source.json'] },
   { id: 'kernel-acceptance', command: 'npm', args: ['run', 'test:kernel:gk20'] },
+  { id: 'mobile-study-preview', command: 'npx', args: ['vitest', 'run', 'tests/unit/mobileProjectExplorer.test.ts'] },
   { id: 'project-desktop', command: 'npm', args: ['run', 'test:projects:desktop'] },
   { id: 'first-use-study', command: 'npx', args: ['playwright', 'test', 'tests/e2e/release20-first-use-study.spec.ts', '--reporter=list'] },
+  { id: 'field-study-desktop', command: 'npx', args: ['playwright', 'test', 'tests/e2e/project-study-field-explorer.spec.ts', '--reporter=list'] },
 ]);
 export function assertRelease20Source(app, renderer) {
   if (app.version !== '2.0.0' || renderer.version !== '2.0.0')

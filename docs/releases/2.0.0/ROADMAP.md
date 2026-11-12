@@ -2,7 +2,7 @@
 
 **Product roadmap · Architecture / UX / Scientific interoperability / Release engineering**<br>
 **Prepared:** 2026-11-05<br>
-**Updated:** 2026-11-11<br>
+**Updated:** 2026-11-12<br>
 **Target:** Math3D 2.0.0 General Availability (GA)<br>
 **Status:** The source tree identifies 2.0.0 and includes bounded Project-owned Studies, qualified cursor links, source recovery, and flagship desktop journeys. RC1, RC2, and GA are not declared; no `v2.0.0` tag exists. Candidate and installed qualification remain open.<br>
 **Primary product claim:** *Construct, compute, analyze, compare, document, and publish connected mathematical objects in one scientific workspace.*
@@ -11,9 +11,9 @@
 
 ---
 
-## Delivery snapshot — 2026-11-11
+## Delivery snapshot — 2026-11-12
 
-| Milestone | On `main` | Still required for 2.0 acceptance |
+| Milestone | In the combined 2.0 source branch | Still required for 2.0 acceptance |
 |---|---|---|
 | 01–02 · Contracts and handoffs | Adapter registry, compatibility fixtures, bounded `Open in…` actions, and saved return navigation | Review exact flagship acceptance and unsupported mapping limits |
 | 03–10 · Integrated product | Project-owned Study records, qualified cursor links, missing-resource recovery, Workbook evidence, and bounded flagship source journeys | Cross-module Inspector gaps, independent CI evidence, broader navigation memory plateau, and installed acceptance |
@@ -39,6 +39,8 @@ The gate scripts and source tests are **preparation**, not evidence that a 2.0 i
 
 **Study resource recovery (2026-11-11):** Saved Study previews now enforce the same pinned source-resource qualification as their owning-document navigation. A missing or changed sidecar displays its kind and identifier beside the affected pane, and the source action is disabled. Focused transfer tests cover Graph, Curve, Surface, Geometry, Topology and Mesh references; desktop acceptance cold-reopens the guided Study, returns to its owning source, and imports a resource-bearing Project package into a clean profile. Quantum scene package and restart coverage remains in the QWZ journey.
 
+**Field Explorer Study hosts (2026-11-12):** A saved Field Explorer document now has a read-only Study plane. Expression values come from the saved document; scientific bundle values are displayed only after the desktop source verifier reopens the exact producer bytes. Desktop acceptance covers a cold Project reopen, a verified preset bundle, and refusal to activate a Project whose bundle locator is unavailable. Mobile lists Study panes, pin status, Notes, and direct Workbook citations, while marking external bundle values as requiring desktop verification. Installed-host and changed-byte acceptance remain open.
+
 **Bounded Catenoid publication (2026-11-11):** The guided cosh-revolution Project now saves a sampled waist Curve, exact analytic waist reference, one local discrete Mesh curvature estimate with its error, a pinned comparison result, and a Workbook reference. Desktop acceptance exports the comparison after a cold reopen, withholds it when the Surface generation changes, and blocks opening when saved Mesh source bytes are missing. The comparison is explicitly a local sampled estimate, not a convergence proof or a general ridge detector. Native Surface ridge selection and installed-candidate evidence remain open.
 
 **Saved revolution ridge publication (2026-11-11):** Projects can now select a sampled interior maximum of absolute Gaussian curvature on a saved full Surface revolution, use its saved tessellated Mesh and discrete curvature result, and publish a promoted Curve, local absolute error with spatial offset, and a Workbook citation. A shifted-profile unit journey confirms the route is not tied to the Catenoid; desktop acceptance saves, cold-reopens, and withholds the result after a Surface revision. The sampling criterion does not certify a continuous ridge or convergence. Broader Surface representations and installed-host qualification remain open.
@@ -56,6 +58,8 @@ The gate scripts and source tests are **preparation**, not evidence that a 2.0 i
 **Project/Study source memory gate (2026-11-11):** Study source, result, Note, Workbook and QWZ navigation now unmounts the active read-only pane before leaving it, releasing geometry previews and their WebGL contexts from the still-open Project dock. Reopening an unchanged Surface reuses its exact sampled point set and derived mesh candidate, and skips duplicate result publication; changed chart coordinates, mesh bytes, and curvature still refresh. Routine preview events no longer accumulate in the production mesh debug monitor state. A separate Windows source-build CI job repeats Catenoid Study preview and owning-Surface navigation for 80 cycles, removes test-only App hooks absent from production, records closed canvas counts and forced-GC renderer heap every tenth cycle, and requires no more than 3 MiB growth between the mean of cycles 20/30/40 and the mean of cycles 60/70/80. The receipt also reports the raw cycle-20-to-80 growth. The stricter installed-candidate QI-40 measurement remains for final qualification.
 
 **Broader navigation memory follow-up (2026-11-11):** The separate [800-switch diagnostic](evidence/m3d20-candidate-memory-diagnostic.json) still blocks a plateau claim. Mesh and Volume now cancel remaining animation work and release nested scene resources and WebGL contexts on navigation; a focused desktop lifetime test passes. A [two-cycle cleanup smoke](evidence/m3d20-navigation-cleanup-source-smoke.json) remained responsive but post-GC process RSS rose 1,037.9 → 1,173.9 MiB. Renderer and canvas pooling trials did not improve the slope and were rejected. The full clean source soak and installed-candidate memory limit remain open.
+
+**Navigation retention diagnosis (2026-11-12):** A production-mode source profiler now records forced-GC renderer heap, backing storage, DOM counters, and process roles across repeated routes. Closed Surface sample graphs and geodesic adjacency owners are released; the derived Mesh cache prunes absent records; Mesh diagnostics stop outside the Mesh workspace. The post-fix 180-action Mesh/Volume diagnostic still rose 43.1 → 55.9 → 72.9 MiB in renderer heap (29.8 → 37.1 → 44.4 MiB backing storage), with stable DOM nodes. Heap snapshots trace older Mesh arrays through callbacks from the large App render scope. This is a measured open blocker, not a source plateau or installed-candidate pass.
 
 **Commit-pinned flagship CI (2026-11-11):** A focused workflow runs the Surface, QWZ and algebra desktop journeys on one exact checkout and the live Docker Sage suite on the same SHA, retaining partial test and service artifacts. Its joined receipt refuses missing, failed or stale-source evidence. The receipt verifier's matching, changed-source and failed-job fixtures pass locally; the new workflow still needs a passing remote run on the final baseline before the three journeys are certified in CI.
 
