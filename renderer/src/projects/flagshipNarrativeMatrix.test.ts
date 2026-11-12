@@ -11,15 +11,17 @@ import { readProjectWorkbook } from "./projectWorkbookBinding";
 import { exportProjectPackage, parseProjectPackage } from "./projectResources";
 import { previewResearchNarrativeImport } from "./projectResearchNarrativeImport";
 import { createPortableResearchNarrative, inspectPortableResearchNarrative } from "../workbook/researchNarrative";
+import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 
 const templateIds = new Set(MATH3D_PROJECT_TEMPLATES.map(item => item.id));
 const builtInJourneys = CURATED_STUDIES.filter(card => card.route.kind === "project");
 
-const editStudySource = (project: Math3DProject, documentId =
-  project.workspace.studies![0]!.members[0]!.documentId): Math3DProject => {
+const editStudySource = (project: Math3DProject, documentId: string): Math3DProject => {
+  const documents = verifyMixedWorkspaceReplay(project.workspace);
   const entries = project.workspace.entries.map(entry => {
     if (entry.expected.id !== documentId) return entry;
-    const old = entry.checkpoint;
+    const old = documents.get(documentId);
+    if (!old) throw new Error("Matrix Note source is unavailable.");
     const checkpoint: MixedWorkspaceDocument["entries"][number]["checkpoint"] = old.format === "math3d.graph2d-document"
       ? createGraph2DDocument({ ...old, stableKey: old.identity.id, title: old.metadata.title,
         source: { ...old.source, objects: old.source.objects.map((object, index) => index === 0 ?
@@ -76,20 +78,24 @@ describe("M3D20-07 built-in flagship narrative matrix", () => {
     expect(independent.preview.project.identity.id).toBe(project.identity.id);
     expect(inspectPortableResearchNarrative(narrative).project.identity.id).toBe(project.identity.id);
 
-    const edited = editStudySource(project);
+    const noteSourceId = note.anchor?.researchReference?.source.documentId;
+    expect(noteSourceId).toBeTruthy();
+    expect(study.members.some(member => member.documentId === noteSourceId)).toBe(true);
+    // The Catenoid observation pins the recorded Mesh, not the first Surface pane.
+    const firstPaneId = study.members[0]!.documentId;
+    if (firstPaneId !== noteSourceId) {
+      const unrelatedEdit = createPortableResearchNarrative(editStudySource(project, firstPaneId), [book], restarted.resources);
+      expect(unrelatedEdit.evidence.citations.some(item => item.status === "historical")).toBe(true);
+      expect(unrelatedEdit.evidence.notes.find(item => item.noteId === note.identity.id)?.status).toBe("current");
+    }
+    const edited = editStudySource(project, noteSourceId!);
+    const noteSource = note.anchor!.researchReference!.source;
+    const editedSource = edited.workspace.entries.find(entry => entry.expected.id === noteSourceId)!;
+    expect(editedSource.expected.revision).toBeGreaterThan(noteSource.revision);
+    expect(editedSource.expected.structuralHash).not.toBe(noteSource.structuralHash);
     const historical = createPortableResearchNarrative(edited, [book], restarted.resources);
     expect(historical.evidence.citations.some(item => item.status === "historical")).toBe(true);
-    const noteSourceId = note.anchor && "source" in note.anchor ? note.anchor.source.documentId : null;
-    expect(noteSourceId).toBeTruthy();
-    const noteStatus = historical.evidence.notes.find(item => item.noteId === note.identity.id)?.status;
-    if (noteSourceId === study.members[0]!.documentId) expect(noteStatus).not.toBe("current");
-    else {
-      // Catenoid's Note is anchored to Mesh evidence, so editing its Surface must not stale it.
-      expect(noteStatus).toBe("current");
-      const noteEdited = editStudySource(project, noteSourceId!);
-      const staleNote = createPortableResearchNarrative(noteEdited, [book], restarted.resources);
-      expect(staleNote.evidence.notes.find(item => item.noteId === note.identity.id)?.status).not.toBe("current");
-    }
+    expect(historical.evidence.notes.find(item => item.noteId === note.identity.id)?.status).not.toBe("current");
     expect(inspectPortableResearchNarrative(historical).project.identity.id).toBe(project.identity.id);
 
     const packageValue = JSON.parse(narrative.packageJson) as { resources: { kind: string }[] };

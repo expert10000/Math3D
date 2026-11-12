@@ -122,6 +122,7 @@ import { createProjectNoteSelectionAnchor, projectNoteSourceResolver, type NoteS
 import { createProjectStudySelectionNoteAnchor, pinProjectStudyScientificSelection } from "../projects/projectStudyNoteAnchor";
 import { resolveProjectNoteValues } from "../projects/projectNoteValues";
 import { projectAnalysisAvailability, type ProjectAnalysisRoute } from "../projects/projectAnalysisAvailability";
+import { verifyProjectVectorFieldSources } from "../projects/scientificFieldAdmission";
 import { verifyProjectQuantumSceneDocuments } from "../projects/quantumSceneAdmission";
 import { quantumSceneDocumentFromVerifiedOpen } from "../projects/quantumSceneAdmission";
 import { promoteQuantumNative, type QuantumNativeTarget } from "../projects/quantumNativePromotion";
@@ -1506,6 +1507,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       // Preview-only JSON may deliberately lack resources. Preserve that explicit state.
       const resources = candidate.resources ?? await loadProjectResources(prepared.project);
       if (openWorkspace) await verifyProjectQuantumSceneDocuments(prepared.project, onVerifyQuantumSceneDocument);
+      if (openWorkspace) await verifyProjectVectorFieldSources(prepared.project);
       if (activationToken !== importSequence.current || inputToken !== workspaceInputSequence.current ||
         previous && canonicalJsonStringify(currentCapture.current()) !== canonicalJsonStringify(previous))
         throw new Error("The workspace changed during source verification. Retry opening the Project.");
@@ -2806,6 +2808,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           </label>
           <small>Choose a JSON file, then review its sources, citations and omissions before importing or opening it.</small>
           <div className="project-workspace-transfer-options">
+            {project?.workspace.entries.some(entry => entry.checkpoint.format === "math3d.vector-field3d-document" &&
+              entry.checkpoint.source.field.kind === "scientific-bundle") && <p>Scientific fields retain external bundle references. Copy those bundle files separately; opening verifies them again.</p>}
             <button type="button" className="project-gallery-primary" data-testid="project-export-resources" disabled={!project || busy} onClick={() => { void exportFile(false, true); }}>Download with resources</button>
             <small>Includes available source data and workbooks. Best for moving a project to another device.</small>
             <button type="button" data-testid="project-export" disabled={!project || busy} onClick={() => exportFile()}>Download project JSON</button>

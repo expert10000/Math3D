@@ -4,7 +4,8 @@ import { transferNamedProjectThroughMobile } from "./namedProjectMobileTransfer"
 const core = require(resolve("packages/core/src/index.ts"));
 
 /** Same real Projects UI journey runs in Electron and two browser locales. */
-export async function runNamedProjectRoundTrip(page: Page, exportJson: (checkpoint: boolean) => Promise<string>) {
+export async function runNamedProjectRoundTrip(page: Page, exportJson: (checkpoint: boolean) => Promise<string>,
+  resetDestination?: () => Promise<void>) {
   await page.getByTestId("projects-toggle").click();
   const panel = page.getByTestId("project-explorer-panel");
   await panel.getByTestId("project-template-preview").click(); await panel.getByTestId("project-import-save").click();
@@ -32,14 +33,17 @@ export async function runNamedProjectRoundTrip(page: Page, exportJson: (checkpoi
   expect(await projectStorage()).toEqual(before);
 
   // Independent destination-host storage; the source library above was protected.
-  await page.evaluate(() => {
-    // Electron restores a disk-synced Project checkpoint as well as localStorage.
-    (window as Window & { projectDurability?: { clearForTest?: () => void } })
-      .projectDurability?.clearForTest?.();
-    localStorage.clear();
-    localStorage.setItem("math3d.computeEngines.firstLaunchSeen", "1");
-  });
-  await page.reload(); await page.getByTestId("projects-toggle").click();
+  // Electron must also reset its durable journal; browsers own local storage only.
+  if (resetDestination) await resetDestination();
+  else {
+    await page.evaluate(() => { window.projectDurability?.clearForTest?.(); localStorage.clear(); localStorage.setItem("math3d.computeEngines.firstLaunchSeen", "1"); });
+    await page.reload();
+  }
+  expect(Object.keys(await projectStorage())).not.toContain(`math3d.project.v1.payload.${original.identity.id}`);
+  await page.getByTestId("projects-toggle").click();
+  const destination = await projectStorage();
+  expect(destination["math3d.project-library.v1"]).toBeUndefined();
+  expect(Object.keys(destination).some(key => key.startsWith("math3d.project.v1.payload."))).toBe(false);
   await panel.getByTestId("project-import-file").setInputFiles(upload);
   await panel.getByTestId("project-import-save").click();
   await expect(panel.getByTestId("project-message")).toContainText("Imported into the library");
