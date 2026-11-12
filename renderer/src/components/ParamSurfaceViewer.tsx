@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { disposeOrbitControls } from "../utils/disposeOrbitControls";
 import { ParametricGeometry } from "three/examples/jsm/geometries/ParametricGeometry.js";
+import { startViewerAnimationLoop } from "./viewerAnimationLoop";
 
 import DomainDirectionPicker from "./DomainDirectionPicker";
 import { integrateGeodesic } from "../math/geodesic";
@@ -3846,16 +3847,14 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
 
     renderer.domElement.addEventListener("pointerdown", handlePointerDown);
 
-    const animate = () => {
-      requestAnimationFrame(animate);
+    const stopAnimationLoop = startViewerAnimationLoop(() => {
       if (sliceDirtyRef.current && surfaceObjRef.current) {
         updateSlice(surfaceObjRef.current);
         sliceDirtyRef.current = false;
       }
       controls.update();
       renderer.render(scene, camera);
-    };
-    animate();
+    });
 
     const syncRendererSize = (reframe = false) => {
       const { width: rawWidth, height: rawHeight } = getSize();
@@ -3924,6 +3923,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     emitViewportDebug("init");
 
       return () => {
+        stopAnimationLoop();
         // dispose geodesic line if present
         if (geodesicLineRef.current) {
           scene.remove(geodesicLineRef.current);
