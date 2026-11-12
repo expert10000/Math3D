@@ -38,7 +38,8 @@
       "peakRendererPrivateMiB": 1024,
       "rendererPrivateLateGrowthMiB": 32,
       "peakGpuPrivateMiB": 512,
-      "gpuPrivateLateGrowthMiB": 32
+      "gpuPrivateLateGrowthMiB": 32,
+      "v8PostGcLateSpanMiB": 16
     }
   },
   "installed": {

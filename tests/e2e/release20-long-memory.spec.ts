@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createWriteStream, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { once } from "node:events";
 import os from "node:os";
 import path from "node:path";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
@@ -121,6 +122,16 @@ test("one Electron process retains responsive navigation and records long-run me
       cycle.finishedAtMs = Date.now() - started;
       report.elapsedMs = cycle.finishedAtMs; save();
     } while (smoke ? report.cycles.length < smokeCycles : Date.now() < deadline);
+    if (smoke && process.env.MATH3D_MEMORY_SOAK_HEAP_SNAPSHOT_PATH) {
+      const snapshotPath = path.resolve(process.env.MATH3D_MEMORY_SOAK_HEAP_SNAPSHOT_PATH);
+      mkdirSync(path.dirname(snapshotPath), { recursive: true });
+      const stream = createWriteStream(snapshotPath);
+      const onChunk = ({ chunk }: { chunk: string }) => stream.write(chunk);
+      heapSession.on("HeapProfiler.addHeapSnapshotChunk", onChunk);
+      try { await heapSession.send("HeapProfiler.takeHeapSnapshot", { reportProgress: false }); }
+      finally { heapSession.off("HeapProfiler.addHeapSnapshotChunk", onChunk); stream.end(); }
+      await once(stream, "finish");
+    }
     report.status = smoke ? "smoke" : "completed";
   } catch (error) { report.status = "failed"; report.failure = (error as Error).message; throw error; }
   finally {
