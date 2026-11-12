@@ -3,14 +3,15 @@ import { createGraph2DFieldReference } from "./graph2dFieldReference";
 import { createMath3DProject } from "./math3dProject";
 import { createMixedWorkspaceDocument } from "./mixedWorkspace";
 import { captureProjectResources } from "./projectResources";
-import { parseScientificSceneManifest, MAX_SCIENTIFIC_SCENE_MANIFEST_BYTES } from "./scientificSceneManifest";
+import { parseScientificSceneManifest, parseScientificSceneBundleEnvelope,
+  MAX_SCIENTIFIC_SCENE_MANIFEST_BYTES, MAX_SCIENTIFIC_SCENE_BUNDLE_BYTES } from "./scientificSceneManifest";
 import { assertScientificProjectResources, PORTABLE_SCIENTIFIC_AXIS_LIMIT } from "./scientificProjectResources";
 import { scientificVelocityUnit } from "./scientificDatasetCoordinates";
 import { createVectorField3DDocument, defaultVectorField3DWorkspace, reviseVectorField3DWorkspace,
   type VectorField3DSource } from "./vectorField3DDocument";
 
 export const MAX_SCIENTIFIC_BUNDLE_IMPORT_BYTES = 4 * 1024 * 1024;
-export const MAX_SCIENTIFIC_BUNDLE_IMPORT_FILES = 17;
+export const MAX_SCIENTIFIC_BUNDLE_IMPORT_FILES = 18;
 export type ScientificBundleFile = Readonly<{ path: string; bytes: Uint8Array }>;
 
 /** File names are opaque relative names; importing never follows a path or link. */
@@ -24,7 +25,7 @@ export function scientificBundleImportPath(path: string): string {
 /** Create ordinary Project documents and resources only after checking the complete upload. */
 export function createScientificBundleProject(files: readonly ScientificBundleFile[], projectKey: string) {
   if (!files.length || files.length > MAX_SCIENTIFIC_BUNDLE_IMPORT_FILES)
-    throw new TypeError("A scientific bundle must contain one manifest and at most 16 components.");
+    throw new TypeError("A scientific bundle must contain bundle.json, one manifest and at most 16 components.");
   const paths = new Map<string, Uint8Array>();
   let total = 0;
   for (const file of files) {
@@ -38,19 +39,30 @@ export function createScientificBundleProject(files: readonly ScientificBundleFi
   if (manifests.length !== 1) throw new TypeError("Choose a bundle containing exactly one manifest.json.");
   const manifestPath = manifests[0]!, prefix = manifestPath.slice(0, -"manifest.json".length);
   const manifestBytes = paths.get(manifestPath)!;
+  const bundleBytes = paths.get(prefix + "bundle.json");
+  if (!bundleBytes) throw new TypeError("Required scientific bundle.json descriptor is missing.");
+  if (bundleBytes.byteLength > MAX_SCIENTIFIC_SCENE_BUNDLE_BYTES)
+    throw new TypeError("Scientific bundle envelope exceeds its metadata limit.");
+  const envelope = parseScientificSceneBundleEnvelope(new TextDecoder("utf-8", { fatal: true }).decode(bundleBytes));
+  if (!envelope.ok) throw new TypeError(envelope.errors.join(" "));
+  if (manifestBytes.byteLength !== envelope.value.manifest.bytes ||
+      sha256Checksum(manifestBytes) !== `sha256:${envelope.value.manifest.sha256}`)
+    throw new TypeError("Scientific manifest checksum or byte length differs from bundle.json.");
   if (manifestBytes.byteLength > MAX_SCIENTIFIC_SCENE_MANIFEST_BYTES)
     throw new TypeError("Scientific manifest exceeds its metadata limit.");
   const manifestJson = new TextDecoder("utf-8", { fatal: true }).decode(manifestBytes);
   const checked = parseScientificSceneManifest(manifestJson);
   if (!checked.ok) throw new TypeError(checked.errors.join(" "));
   const manifest = checked.value;
+  if (envelope.value.schema !== manifest.schema.replace("scientific-scene/", "scientific-scene-bundle/"))
+    throw new TypeError("Scientific bundle and manifest versions disagree.");
   if (manifest.schema !== "scientific-scene/v1" || manifest.datasets.some(dataset =>
       dataset.semanticType !== "vector-field" || dataset.shape.length !== 3 || dataset.components?.length !== 3 ||
       dataset.shape.some(size => size < 2 || size > PORTABLE_SCIENTIFIC_AXIS_LIMIT)))
     throw new TypeError("Browser import supports complete v1 vector bundles with 2–32 samples per axis.");
-  const expected = new Set([manifestPath, ...manifest.resources.map(resource => prefix + resource.path)]);
+  const expected = new Set([prefix + "bundle.json", manifestPath, ...manifest.resources.map(resource => prefix + resource.path)]);
   for (const path of paths.keys()) if (!expected.has(path))
-    throw new TypeError(`Unexpected scientific file '${path}'. Choose only the bundle's manifest and components.`);
+    throw new TypeError(`Unexpected scientific file '${path}'. Choose only the bundle's descriptor, manifest and components.`);
   const used = new Set(manifest.datasets.flatMap(dataset => dataset.components!.map(component => component.resource)));
   if (manifest.resources.some(resource => !used.has(resource.id)))
     throw new TypeError("The bundle contains components not used by its vector datasets.");

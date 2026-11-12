@@ -11,14 +11,20 @@ function bundle(): ScientificBundleFile[] {
   const manifest = fixture.read({ kind: "scientific-manifest", id: field.references[0].sceneFingerprint })!;
   return [{ path: "vortex.sscene/manifest.json", bytes: manifest }, ...JSON.parse(new TextDecoder().decode(manifest)).resources.map(
     (resource: { path: string; sha256: string }) => ({ path: `vortex.sscene/${resource.path}`,
-      bytes: fixture.read({ kind: "scientific-component", id: resource.sha256 })! }))];
+      bytes: fixture.read({ kind: "scientific-component", id: resource.sha256 })! })),
+    { path: "vortex.sscene/bundle.json", bytes: new TextEncoder().encode(JSON.stringify({
+      schema: "scientific-scene-bundle/v1", manifest: { path: "manifest.json", bytes: manifest.length,
+        sha256: sha256Checksum(manifest).slice(7) } })) }];
 }
 const upload = ({ path, bytes }: ScientificBundleFile) => ({ name: path.split("/").at(-1)!,
   webkitRelativePath: path, size: bytes.length, arrayBuffer: async () => new Uint8Array(bytes).buffer });
 const zip = (files: ScientificBundleFile[]) => zipSync(Object.fromEntries(files.map(file => [file.path, file.bytes])));
 function changeManifest(files: ScientificBundleFile[], update: (manifest: any) => void) {
   const parsed = JSON.parse(new TextDecoder().decode(files[0]!.bytes)); update(parsed);
-  files[0] = { ...files[0]!, bytes: new TextEncoder().encode(JSON.stringify(parsed)) }; return files;
+  files[0] = { ...files[0]!, bytes: new TextEncoder().encode(JSON.stringify(parsed)) };
+  const envelope = JSON.parse(new TextDecoder().decode(files.at(-1)!.bytes));
+  envelope.manifest.bytes = files[0].bytes.length; envelope.manifest.sha256 = sha256Checksum(files[0].bytes).slice(7);
+  files[files.length - 1] = { ...files.at(-1)!, bytes: new TextEncoder().encode(JSON.stringify(envelope)) }; return files;
 }
 function streamedZip(entries: { name: string; bytes: Uint8Array; deflate?: boolean }[]) {
   const chunks: Uint8Array[] = [];
@@ -62,7 +68,7 @@ describe("direct scientific folder and ZIP import", () => {
 
   it.each(["missing", "corrupt"])("rejects a %s component before producing a Project", mode => {
     const files = bundle();
-    if (mode === "missing") files.pop(); else files[1]!.bytes[0] ^= 1;
+    if (mode === "missing") files.splice(1, 1); else files[1]!.bytes[0] ^= 1;
     expect(() => createScientificBundleProject(files, "bad")).toThrow(/missing|checksum/i);
   });
 
@@ -70,6 +76,14 @@ describe("direct scientific folder and ZIP import", () => {
     const files = bundle(); new DataView(files[1]!.bytes.buffer).setFloat64(0, NaN, true);
     changeManifest(files, manifest => { manifest.resources[0].sha256 = sha256Checksum(files[1]!.bytes).slice(7); });
     expect(() => createScientificBundleProject(files, "non-finite")).toThrow(/non-finite/i);
+  });
+
+  it("requires the native bundle descriptor and its exact manifest checksum", () => {
+    const files = bundle();
+    expect(() => createScientificBundleProject(files.slice(0, -1), "missing-envelope")).toThrow(/bundle.json.*missing/i);
+    const changed = new TextDecoder().decode(files[0]!.bytes).replace("Swirling flow", "Changed flow");
+    files[0] = { ...files[0]!, bytes: new TextEncoder().encode(changed) };
+    expect(() => createScientificBundleProject(files, "changed-manifest")).toThrow(/manifest checksum/i);
   });
 
   it.each(["../north.f64", "/north.f64", "C:/north.f64", "vortex.sscene/./north.f64", "vortex.sscene\\north.f64"])("rejects ambiguous path %s", path => {
