@@ -94,7 +94,7 @@ test("portable scientific Project survives independent browser import, cold rest
     // Probe and baseline edits add ordinary migrated selections; export must retain the full saved state.
     expect(exported.project.workspace.scientificSelections).toEqual(saved.workspace.scientificSelections);
     expect(exported.project.workspace.scientificSelections).toEqual(
-      expect.arrayContaining(fixture.project.workspace.scientificSelections ?? []));
+      expect.arrayContaining([...(fixture.project.workspace.scientificSelections ?? [])]));
     expect(exported.project.workspace.results).toHaveLength(1);
     expect(exported.resources.sidecars().filter(item => item.kind.startsWith("scientific-"))).toHaveLength(4);
     const expectedFields = exported.project.workspace.entries.filter(entry => entry.module === "vector3d").map(entry => entry.checkpoint);
