@@ -19,7 +19,7 @@ export default function appCallbackScopes({ types: t }) {
         const app = declaration?.isVariableDeclarator() ? declaration.get("init") : null;
         if (!app?.isFunction()) return;
         const factories = [];
-        let skippedForward = 0;
+        let scopedForward = 0;
         let transformed = 0;
         app.traverse({
           CallExpression(call) {
@@ -35,9 +35,11 @@ export default function appCallbackScopes({ types: t }) {
               },
             });
             // Reading a later const at the factory call would introduce TDZ.
-            // Those callbacks remain in App until their declarations move.
+            // Keep delayed reads in App, but hand descendants the scoped hook's
+            // proxy so old App renders are not retained by these callbacks.
             if ([...captures.values()].some(binding => binding.node.start > call.node.start)) {
-              skippedForward++;
+              call.get("callee").replaceWith(t.identifier("useScopedCallback"));
+              scopedForward++;
               return;
             }
             const factoryId = program.scope.generateUidIdentifier("appCallback");
@@ -51,7 +53,7 @@ export default function appCallbackScopes({ types: t }) {
           },
         });
         if (factories.length) declaration.parentPath.insertBefore(factories);
-        state.file.metadata.math3dAppCallbackScopes = { transformed, skippedForward };
+        state.file.metadata.math3dAppCallbackScopes = { transformed, scopedForward };
       },
     },
   };

@@ -22,9 +22,10 @@ const result = transformSync(source, {
   configFile: false,
   plugins: [appCallbackScopes],
 });
-assert.deepEqual(result.metadata.math3dAppCallbackScopes, { transformed: 1, skippedForward: 1 });
+assert.deepEqual(result.metadata.math3dAppCallbackScopes, { transformed: 1, scopedForward: 1 });
 assert.match(result.code, /function _appCallback\(source\)/);
-const context = { useCallback: callback => callback };
+assert.match(result.code, /useScopedCallback\(\(\) => later/);
+const context = { useCallback: callback => callback, useScopedCallback: callback => callback };
 vm.runInNewContext(result.code, context);
 assert.equal(context.result.read(), 7);
 assert.equal(context.result.readLater(), 9);
