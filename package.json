@@ -139,6 +139,7 @@
     "test:release20:perf": "playwright test tests/e2e/release20-performance.spec.ts --reporter=list",
     "test:release20:perf:check": "node scripts/check-release20-performance.mjs",
     "test:release20:stress": "playwright test tests/e2e/release20-resilience.spec.ts tests/e2e/project-startup-resume.spec.ts --reporter=list",
+    "test:release20:app-callback-scopes": "node scripts/test-app-callback-scopes.mjs",
     "test:release20:memory:800": "node scripts/run-release20-800-switch.mjs",
     "test:app:e2e:memory-profile:compare": "powershell -ExecutionPolicy Bypass -File scripts/run-memory-profile-comparison.ps1",
     "test:app:e2e:memory-profile:module-clicks": "powershell -ExecutionPolicy Bypass -File scripts/run-memory-profile-module-clicks.ps1",

@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import type { ProxyOptions } from "vite";
 import react from "@vitejs/plugin-react";
+import appCallbackScopes from "./appCallbackScopes.mjs";
 import fs from "node:fs";
 import type { ServerResponse } from "node:http";
 import path from "node:path";
@@ -124,7 +125,7 @@ const galleryImagesDevServer = () => ({
 // https://vitejs.dev/config/
 export default defineConfig({
   base: "./",        // 👈 IMPORTANT for Electron / file://
-  plugins: [threeTextureCleanup(), react(), galleryImagesDevServer()],
+  plugins: [threeTextureCleanup(), react({ babel: { plugins: [appCallbackScopes] } }), galleryImagesDevServer()],
   optimizeDeps: { exclude: ["three"] },
   build: {
     chunkSizeWarningLimit: 2400,
