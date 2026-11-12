@@ -38,6 +38,12 @@ The next source slice limits Mesh/Volume WebGL context reuse to four idle render
 
 ## Reproduce and decide
 
+### Production renderer retention baseline
+
+The [clean `e6b3b8ce` route profile](evidence/m3d20-memory-routes-e6b3b8ce-baseline.json) used the production renderer (`runtimeE2e: false`), one Electron process per route, 3 × 100 switches, and forced GC before each final CDP sample. Mesh V8 used heap rose **62.0 → 93.0 → 126.2 MiB** and renderer private bytes **278.0 → 338.8 → 394.0 MiB**. The Volume control held at **30.6 → 30.0 → 31.6 MiB** and **218.4 → 204.7 → 204.2 MiB**. Mixed route rose **73.4 → 114.7 → 153.7 MiB** and **360.8 → 490.9 → 613.4 MiB**. Its GPU-process private bytes reached 501.4 MiB in the second cycle. These are failing diagnostic profiles, not a plateau or installed result. The six App callbacks isolated in the next source change were selected from the retained-context heap paths, not from a blanket transformation of all callbacks.
+
+The scoped callback proxy keeps the latest committed implementation in a ref and recreates the function passed to children on the same dependency changes as before. It addresses retention of old App render scopes without installing the earlier broad wrapper prototype, which failed mixed-route stress. The 800-switch mixed-route and GPU gate still determine whether this is sufficient.
+
 From the repository root in PowerShell on the reference host:
 
 ```powershell

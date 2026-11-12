@@ -73,6 +73,7 @@ import type { NotebookReference, NotebookArtifactReader } from "@math3d/workbook
 import { captureProjectViewThumbnail } from "./projects/projectViewThumbnail";
 import { supportsSavedSurfaceResolution, type SurfaceStudyResolution } from "./projects/surfaceStudyResolution";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useScopedCallback } from "./hooks/useScopedCallback";
 import * as THREE from "three";
 import { ConvexGeometry } from "three/examples/jsm/geometries/ConvexGeometry.js";
 import { ADDITION, Brush, Evaluator, INTERSECTION, REVERSE_SUBTRACTION, SUBTRACTION } from "three-bvh-csg";
@@ -41689,7 +41690,7 @@ const App: React.FC = () => {
     }
     pushSurfacesCameraTourCommand({ action: "stop" });
   }, [surfacesCameraTourStatus, surfacesCameraTourCaptureStatus, pushSurfacesCameraTourCommand]);
-  const playSurfacesTour = useCallback(
+  const playSurfacesTour = useScopedCallback(
     (captureVideo: boolean) => {
       if (mode !== "surfaces" || !isSurfaceDatasetKind(datasetKind)) return;
       const stamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -51226,7 +51227,7 @@ case "mobius":
     setInspectIdx(first); setSelectionMaskOverride({ selected, count }); setSelectionMask({ selected, count });
     setSelectRegionEnabled(true); setSelectionOverlayVisible(true); setCameraResetToken((token) => token + 1);
   }, [surfaceSampleSet?.samples.length]);
-  const handleSelectSurfaceChartRegion = useCallback((region: "degenerate" | "nearDegenerate" | "orientationFlip") => {
+  const handleSelectSurfaceChartRegion = useScopedCallback((region: "degenerate" | "nearDegenerate" | "orientationFlip") => {
     if (activeSurfaceChart) selectSurfaceChartIndices(activeSurfaceChart.regions[region]);
   }, [activeSurfaceChart, selectSurfaceChartIndices]);
   const handleToggleSurfaceChartOverlay = useCallback((kind: "boundary" | "seam" | "orientation-flip" | "degenerate") => {
@@ -51647,7 +51648,7 @@ case "mobius":
     setVolumeDerivedResults((previous) => previous.map((result) => result.id === id ? detachVolumeDerivedResult(result) : result));
   }, []);
 
-  const openVolumeDerivedResult = useCallback((id: string, destination: "mesh" | "geometry" | "analysis") => {
+  const openVolumeDerivedResult = useScopedCallback((id: string, destination: "mesh" | "geometry" | "analysis") => {
     const result = volumeDerivedResults.find((entry) => entry.id === id);
     const geometry = volumeDerivedGeometryRef.current.get(id);
     if (!result?.isosurface || !geometry || !qualifyVolumeDerivedResult(result, canonicalVolumeObject, { isoValue: volumeIsoValue }, true).canTransfer) return;
@@ -54608,7 +54609,7 @@ case "mobius":
     ]
   );
 
-  const buildWorkbookWorkspaceState = useCallback(
+  const buildWorkbookWorkspaceState = useScopedCallback(
     (embedAssets = true): WorkbookWorkspaceState => {
     const now = Date.now();
     const graphDomainCopy: Record<string, GraphDomain> = {};
@@ -62016,7 +62017,7 @@ case "mobius":
     refreshCgalHealthAfterWorkerAction,
   ]);
 
-  const handleValidateLastMeshOperationResult = useCallback(async () => {
+  const handleValidateLastMeshOperationResult = useScopedCallback(async () => {
     if (meshOperationBusy) return;
     if (cgalHealthState?.ok === false) {
       setMeshOperationError(cgalHealthState.error ?? "Python worker unavailable.");
@@ -67762,7 +67763,7 @@ case "mobius":
     ]
   );
 
-  const handleRunGeodesicHeat = useCallback(
+  const handleRunGeodesicHeat = useScopedCallback(
     async (override?: { start: GeodesicHeatEndpoint; end: GeodesicHeatEndpoint }) => {
       setGeodesicHeatMessage(null);
       setGeodesicHeatPolylines(null);
