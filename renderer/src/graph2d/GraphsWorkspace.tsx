@@ -393,7 +393,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
         item.checkpoint as VectorField3DDocument) ?? [];
       const results = await Promise.allSettled(sources.map(async source =>
         [comparisonSourceKey(source), vectorField3DComparisonTransferKey(
-          await loadVerifiedVectorFieldTransfer(source))] as const));
+          await loadVerifiedVectorFieldTransfer(source, undefined, project ? { project } : undefined))] as const));
       if (active) setComparisonVerified(Object.fromEntries(results.flatMap(item =>
         item.status === "fulfilled" ? [item.value] : [])));
     };
@@ -463,7 +463,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
         if (source?.format === "math3d.vector-field3d-document" &&
             source.source.field.kind === "scientific-bundle")
           updates[comparisonSourceKey(source)] = vectorField3DComparisonTransferKey(
-            await loadVerifiedVectorFieldTransfer(source));
+            await loadVerifiedVectorFieldTransfer(source, undefined, project ? { project } : undefined));
       }
       const checked = (source: VectorField3DDocument) =>
         updates[comparisonSourceKey(source)] ?? verifiedComparisonSource(source);
@@ -495,7 +495,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
         if (field?.format !== "math3d.vector-field3d-document")
           throw new TypeError("A pinned temporal frame is missing.");
         if (field.source.field.kind === "scientific-bundle")
-          transfers.set(frame.documentId, await loadVerifiedVectorFieldTransfer(field));
+          transfers.set(frame.documentId, await loadVerifiedVectorFieldTransfer(field, undefined, project ? { project } : undefined));
       }
       return transfers;
     };
@@ -556,7 +556,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
         if (source?.format !== "math3d.vector-field3d-document")
           throw new TypeError("An FTLE frame is missing.");
         if (source.source.field.kind === "scientific-bundle")
-          transfers.set(frame.documentId, await loadVerifiedVectorFieldTransfer(source));
+          transfers.set(frame.documentId, await loadVerifiedVectorFieldTransfer(source, undefined, project ? { project } : undefined));
       }
       return transfers;
     };

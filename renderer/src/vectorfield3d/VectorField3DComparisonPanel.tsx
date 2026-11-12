@@ -41,7 +41,7 @@ export function VectorField3DComparisonPanel({ document, project, onSave, onOpen
   }, [document.identity.id, document.identity.revision, document.identity.structuralHash,
     selectedSource?.identity.revision, selectedSource?.identity.structuralHash,
     secondId, resolution, alignment, JSON.stringify(overlapBounds)]);
-  const load = loadVerifiedVectorFieldTransfer;
+  const load = (source: VectorField3DDocument) => loadVerifiedVectorFieldTransfer(source, undefined, project ? { project } : undefined);
   const key = (source: VectorField3DDocument) =>
     `${source.identity.id}:${source.identity.revision}:${source.identity.structuralHash}`;
   const verifiedTransfer = (source: VectorField3DDocument) => verified[key(source)] ?? null;

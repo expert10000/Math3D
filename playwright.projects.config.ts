@@ -1,8 +1,9 @@
 import { defineConfig } from "@playwright/test";
 export default defineConfig({
-  testDir: "./tests/graph2d-web", testMatch: ["unifiedProjects.spec.ts", "workbookCoordinateReview.spec.ts", "pc29ComparisonRelease.spec.ts"], timeout: 120_000, workers: 1,
+  testDir: "./tests/graph2d-web", testMatch: ["unifiedProjects.spec.ts", "workbookCoordinateReview.spec.ts", "pc29ComparisonRelease.spec.ts", "scientificProjectPackages.spec.ts"], timeout: 120_000, workers: 1,
   outputDir: "test-results/projects-web", reporter: "list",
   use: { baseURL: "http://127.0.0.1:4187", browserName: "chromium", viewport: { width: 1280, height: 844 }, actionTimeout: 30_000,
+    launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH },
     trace: "retain-on-failure", screenshot: "only-on-failure" },
   projects: [{ name: "en-US-UTC", use: { locale: "en-US", timezoneId: "UTC" } },
     { name: "pl-PL-Auckland", use: { locale: "pl-PL", timezoneId: "Pacific/Auckland" } }],

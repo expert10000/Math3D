@@ -1,20 +1,21 @@
 import { useEffect, useMemo, useState, type ComponentProps } from "react";
-import { defaultVectorField3DWorkspace, type VectorField3DDocument, type VectorField3DComparisonTransfers } from "@math3d/core";
+import { defaultVectorField3DWorkspace, type Math3DProject, type VectorField3DDocument, type VectorField3DComparisonTransfers } from "@math3d/core";
 import { VectorField3DSliceView } from "./VectorField3DSliceView";
 import { fieldExplorerBaselineSlices } from "./fieldExplorerBaselineSlices";
 import { loadVerifiedVectorFieldTransfer, SCIENTIFIC_FIELD_REVERIFY_EVENT } from "./loadVerifiedVectorFieldTransfer";
 
 type SliceProps = ComponentProps<typeof VectorField3DSliceView>;
-export function FieldExplorerBaselineViews({ document, baseline, onProbeSelect, onClose,
+export function FieldExplorerBaselineViews({ document, baseline, project, onProbeSelect, onClose,
   onSendLineToGraphs, onSendDerivedLineToGraphs }: {
   document: VectorField3DDocument; baseline: VectorField3DDocument | null;
+  project?: Math3DProject | null;
   onProbeSelect: NonNullable<SliceProps["onProbeSelect"]>; onClose: () => void;
   onSendLineToGraphs?: SliceProps["onSendLineToGraphs"];
   onSendDerivedLineToGraphs?: SliceProps["onSendDerivedLineToGraphs"];
 }) {
   const view = document.workspace ?? defaultVectorField3DWorkspace(document.source);
   const scientific = document.source.field.kind === "scientific-bundle" || baseline?.source.field.kind === "scientific-bundle";
-  const pairKey = JSON.stringify([document.identity, baseline?.identity]);
+  const pairKey = JSON.stringify([project?.identity, document.identity, baseline?.identity]);
   const [verification, setVerification] = useState<{ key: string; transfers: VectorField3DComparisonTransfers | null; error: string } | null>(null);
   useEffect(() => {
     if (!scientific || !baseline) return;
@@ -23,7 +24,8 @@ export function FieldExplorerBaselineViews({ document, baseline, onProbeSelect, 
       const run = ++epoch;
       setVerification(null);
       try {
-        const [a, b] = await Promise.all([loadVerifiedVectorFieldTransfer(document), loadVerifiedVectorFieldTransfer(baseline)]);
+        const context = project ? { project } : undefined;
+        const [a, b] = await Promise.all([loadVerifiedVectorFieldTransfer(document, undefined, context), loadVerifiedVectorFieldTransfer(baseline, undefined, context)]);
         if (active && run === epoch) setVerification({ key: pairKey, transfers: { a, b }, error: "" });
       } catch (cause) {
         if (active && run === epoch) setVerification({ key: pairKey, transfers: null,
@@ -49,7 +51,7 @@ export function FieldExplorerBaselineViews({ document, baseline, onProbeSelect, 
       Select a cell in either view to update both profiles. Profiles use native sampled grid points.</p></div>
       <button type="button" onClick={onClose}>Return to single field</button></header>
     {scientific && <div>
-      <p role="status">{sampled.slices ? "Both scientific sources verified. External bundle files remain required after Project transfer." :
+      <p role="status">{sampled.slices ? "Both scientific sources verified." :
         sampled.error ? "Scientific views withheld." : "Verifying both scientific sources…"}</p>
       <button type="button" onClick={() => window.dispatchEvent(new Event(SCIENTIFIC_FIELD_REVERIFY_EVENT))}>Reverify A/B sources</button>
     </div>}
