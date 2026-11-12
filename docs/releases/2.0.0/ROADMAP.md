@@ -15,7 +15,7 @@
 
 | Milestone | On `main` | Still required for 2.0 acceptance |
 |---|---|---|
-| 01–02 · Contracts and handoffs | Adapter registry, compatibility fixtures, bounded `Open in…` actions, and saved return navigation | Architecture approval and all three complete flagship journeys |
+| 01–02 · Contracts and handoffs | Adapter registry, compatibility fixtures, bounded `Open in…` actions, and saved return navigation | Architecture approval and exact-candidate evidence for the advertised bounded journey; the other two long-form flagship targets have conditional scope below |
 | 03–10 · Integrated product | Existing module, selection, Project, Workbook, runtime, and gallery capabilities described below | General shared cursor and Study model, coherent result/runtime UI, flagship evidence, and performance acceptance where advertised |
 | 11–12 · Migration and hosts | Source-format migration/transfer fixtures and scoped Windows, local-browser, and mobile-model tests | Published 1.x corpus and installed/hosted/device/package evidence for each claimed host |
 | 13–15 · Distribution and communication | Pinning and integrity checks, clean-install/upgrade scripts, user guides, capability page, and source gallery provenance | Exact signed 2.0 candidate, installed tests, candidate captures, and matching public claims |
@@ -27,7 +27,15 @@
 
 **Assessment basis:** `main` at `69f90f748`, the delivery records below, the [Guided Study Gallery matrix](CURATED_STUDY_GALLERY.md), and the [cross-module acceptance matrix](#19-cross-module-acceptance-matrix). “Implemented” below means a bounded source-checkout capability with the cited tests or receipts; it does not mean the full roadmap journey, every supported host, or a signed 2.0 distribution has passed. A proposed demonstration without a completion record is **unverified for 2.0 integration**, not necessarily absent from every module.
 
-The principal 2.0 product is a connected scientific workflow: create or import a mathematical source, derive and analyze related representations, inspect source and method evidence, save the relationship in one Project/Study, then reopen or publish it without inventing fresh results. The three flagship journeys are the minimum product story:
+The principal 2.0 product is a connected scientific workflow: create or import a mathematical source, derive and analyze related representations, inspect source and method evidence, save the relationship in one Project/Study, then reopen or publish it without inventing fresh results. The three long-form flagship targets and the narrower 2.0 advertising decision are recorded here:
+
+### Advertised 2.0 journey scope
+
+The candidate's public story is the **bounded, source-backed Surface/Curve/Mesh comparison** demonstrated by the Catenary and Catenoid evidence Studies. It may describe sampled derivatives, tessellated Mesh results, local analytic/discrete curvature comparison, and pinned Workbook evidence. It must not promise a continuous ridge, convergence proof, or unrestricted native-module interoperability. This journey still needs exact-candidate installation and restart evidence before GA advertising.
+
+The **CAS polynomial/ideal → locus → Geometry/Curve** route is a conditional demonstration only when the current host verifies a compatible Sage operation. Describe its qualified real sample, exact equations, contour and source pins; do not advertise general algebraic visualization or singularity resolution. The **QWZ → Graph** route is an optional external-scene demonstration, available only after independently verified producer-created `.qscene` bundles are supplied. Neither conditional route counts as a complete bundled flagship journey for 2.0 GA without its outstanding release-candidate receipt. The larger end-to-end claims remain deferred from the advertised core scope.
+
+The Gallery advertises **11 built-in guided Project copies** with saved Study, Workbook and Note paths on supported desktop source builds, subject to installed-candidate qualification. The remaining four cards are entry points: QWZ, SSH and hydrogen require verified external bundles, while Algebra structures opens saved definition examples and is not a live Sage computation. Browser research previews are read-only where the host cannot safely edit; hosted browser, Android device, installed Linux, and unsigned-source screenshots are not evidence of installed Windows parity. The [Gallery acceptance matrix](CURATED_STUDY_GALLERY.md) is the card-by-card authority. Green/Stokes, Fourier, Galois, vector-field flow, and Volume→Mesh remain proposed content outside this 2.0 advertised scope.
 
 | Flagship journey | Bounded source capability on `main` | Remaining product acceptance |
 |---|---|---|
@@ -944,7 +952,7 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **Integration evidence (2026-11-07):** The CAS locus handoff reached `main` in PR #33. Focused core checks passed (9 tests across the Open-in, locus-scene and sampling suites), and the locus and singularity desktop journeys passed (2 tests). After merging remote `main` into the local checkout, `npm run build:core` completed the main TypeScript build, renderer bundle and build-identity step. That build ran with pre-existing local working-tree changes, so it is development evidence rather than a clean release-candidate gate.
 
-**Exit:** at least the three flagship journeys use the same action pattern; missing/incompatible capability never silently executes.
+**Original milestone exit:** all three long-form flagship targets use the same action pattern; missing/incompatible capability never silently executes. The 2.0 release scope above advertises only the bounded Surface/Curve/Mesh path unconditionally and keeps the other two conditional pending their external evidence.
 
 ### M3D20-03 — Scientific Cursor (P0)
 
@@ -1188,7 +1196,7 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **14d guide prepared:** The [1.x migration guide](MIGRATION_1X_TO_2X.md) covers backup, compatibility preview, source packages, recovery, and explicit remaining artifact and host limits. It does not claim an unrun 2.0 upgrade passed.
 
-**Exit:** a new user can complete flagship journeys without reading source-code architecture documents.
+**Exit for advertised 2.0 scope:** a new user can complete the bounded Surface/Curve/Mesh path without reading source-code architecture documents; conditional routes explain their prerequisites and limits.
 
 ### M3D20-15 — Release Gallery and communication (P0)
 
@@ -1196,7 +1204,7 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 - `M3D20-15b docs(site): accurate platform and runtime capability claims`.
 - `M3D20-15c test(site): screenshots tied to release build and scene evidence`.
 
-**15a source prepared:** The public-site home page now presents the Surface, Quantum, and Algebra flagship journeys with existing-source imagery or an explicit diagram and labels the unfinished 2.0 release gates. It does not publish a 2.0 download or claim candidate screenshots.
+**15a source prepared:** The public-site home page presents the bounded Surface path and labels the Quantum and Algebra routes conditional on external evidence. Its source imagery and diagram do not claim a signed 2.0 candidate, completed bundled QWZ journey, or general Sage visualization.
 
 **15b source prepared:** The public site's capability page scopes journeys by host and operation, separates source-build tests from installer qualification, and removes broad desktop/browser parity claims from the home-page feature panel.
 
@@ -1334,7 +1342,7 @@ flowchart TD
 
 ### Project and workflow integrity
 
-- [ ] All three flagship journeys pass through native modules.
+- [ ] Every advertised flagship journey passes on the exact candidate through its supported native modules; QWZ and CAS remain conditional until their external-scene and live-route receipts exist.
 - [ ] Study/Project cold restart and independent import work.
 - [ ] Saved selection and backlinks retain original meaning.
 - [ ] Workbook/Notes evidence links remain reproducible.
@@ -1487,7 +1495,7 @@ The release should be known for **three visible innovations**:
 
 Surround these with one coherent Project Center, shared Results/Inspector language, a truthful Runtime Center, Workbook publication, a high-quality Study Gallery, dependable migration, and rigorous install/reliability gates.
 
-**Operational decision:** Freeze broad new 2.0 feature work after these contracts and three flagship journeys pass. Spend the remaining release effort on convergence, scientific integrity, performance, documentation and packaging. Move nonessential extensions to 2.1 rather than weakening GA confidence.
+**Operational decision:** Freeze broad new 2.0 feature work after the advertised bounded journey and explicit dispositions for the QWZ and CAS targets are reviewed. Spend the remaining release effort on convergence, scientific integrity, performance, documentation and packaging. Move nonessential extensions to 2.1 rather than weakening GA confidence.
 
 > **Math3D 2.0 succeeds when a user no longer experiences a collection of separate powerful modules, but one mathematical environment in which sources, computations, representations, results, explanations and publications remain connected.**
 
