@@ -11,8 +11,10 @@ const source = `
     const source = { value: 7 };
     const read = useCallback(() => source.value, [source]);
     const readLater = useCallback(() => later, []);
+    const memo = useMemo(() => ({ value: source.value }), [source]);
+    useEffect(() => { globalThis.effect = source.value; }, [source]);
     const later = 9;
-    return { read, readLater };
+    return { read, readLater, memo };
   };
   globalThis.result = App();
 `;
@@ -22,13 +24,20 @@ const result = transformSync(source, {
   configFile: false,
   plugins: [appCallbackScopes],
 });
-assert.deepEqual(result.metadata.math3dAppCallbackScopes, { transformed: 1, scopedForward: 1 });
+assert.deepEqual(result.metadata.math3dAppCallbackScopes, {
+  transformed: { useCallback: 1, useMemo: 1, useEffect: 1, useLayoutEffect: 0 },
+  scopedForward: 1,
+  skippedForward: 0,
+});
 assert.match(result.code, /function _appCallback\(source\)/);
 assert.match(result.code, /useScopedCallback\(\(\) => later/);
-const context = { useCallback: callback => callback, useScopedCallback: callback => callback };
+const context = { useCallback: callback => callback, useScopedCallback: callback => callback,
+  useMemo: callback => callback(), useEffect: callback => callback() };
 vm.runInNewContext(result.code, context);
 assert.equal(context.result.read(), 7);
 assert.equal(context.result.readLater(), 9);
+assert.equal(context.result.memo.value, 7);
+assert.equal(context.effect, 7);
 
 const unrelated = transformSync(source, {
   filename: resolve('renderer/src/Other.tsx'),

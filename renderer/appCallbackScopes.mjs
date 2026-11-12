@@ -1,7 +1,7 @@
 // App has a very large render scope. A memoized callback created inside that
 // scope can retain an older render, including hundreds of unrelated closures.
-// Move each eligible callback body to a module-level factory with explicit
-// captures. React still owns the original useCallback and dependency list.
+// Move eligible hook bodies to module-level factories with explicit captures.
+// React still owns the original hook call and dependency list.
 const inPath = (path, ancestor) => {
   for (let current = path; current; current = current.parentPath) {
     if (current === ancestor) return true;
@@ -20,10 +20,13 @@ export default function appCallbackScopes({ types: t }) {
         if (!app?.isFunction()) return;
         const factories = [];
         let scopedForward = 0;
-        let transformed = 0;
+        let skippedForward = 0;
+        const transformed = { useCallback: 0, useMemo: 0, useEffect: 0, useLayoutEffect: 0 };
         app.traverse({
           CallExpression(call) {
-            if (!call.get("callee").isIdentifier({ name: "useCallback" })) return;
+            const callee = call.get("callee");
+            if (!callee.isIdentifier() || !(callee.node.name in transformed)) return;
+            const hook = callee.node.name;
             const callback = call.get("arguments.0");
             if (!callback?.isFunction()) return;
             const captures = new Map();
@@ -38,8 +41,10 @@ export default function appCallbackScopes({ types: t }) {
             // Keep delayed reads in App, but hand descendants the scoped hook's
             // proxy so old App renders are not retained by these callbacks.
             if ([...captures.values()].some(binding => binding.node.start > call.node.start)) {
-              call.get("callee").replaceWith(t.identifier("useScopedCallback"));
-              scopedForward++;
+              if (hook === "useCallback") {
+                callee.replaceWith(t.identifier("useScopedCallback"));
+                scopedForward++;
+              } else skippedForward++;
               return;
             }
             const factoryId = program.scope.generateUidIdentifier("appCallback");
@@ -49,11 +54,11 @@ export default function appCallbackScopes({ types: t }) {
               t.blockStatement([t.returnStatement(t.cloneNode(callback.node, true))]));
             factories.push(factory);
             callback.replaceWith(t.callExpression(t.cloneNode(factoryId), captureNames.map(name => t.identifier(name))));
-            transformed++;
+            transformed[hook]++;
           },
         });
         if (factories.length) declaration.parentPath.insertBefore(factories);
-        state.file.metadata.math3dAppCallbackScopes = { transformed, scopedForward };
+        state.file.metadata.math3dAppCallbackScopes = { transformed, scopedForward, skippedForward };
       },
     },
   };

@@ -11548,6 +11548,14 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = props => <React.Susp
 const LazySurfacesRightPanel = React.lazy(() => import("./surfacePanels").then(module => ({ default: module.SurfacesRightPanel })));
 const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = props => <React.Suspense fallback={<div role="status">Loading surface controls…</div>}><LazySurfacesRightPanel {...props} /></React.Suspense>;
 
+const tokenizeCommand = (input: string): string[] => {
+  const out: string[] = [];
+  const re = /"([^"]*)"|'([^']*)'|(\S+)/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(input))) out.push(match[1] ?? match[2] ?? match[3]);
+  return out;
+};
+
 const App: React.FC = () => {
   const meshFaceActionDescriptors = getContextualActionDescriptors("mesh", "face");
   const meshEdgeActionDescriptors = getContextualActionDescriptors("mesh", "edge");
@@ -71044,16 +71052,6 @@ case "mobius":
   const pushCommandResult = useCallback((cmd: string, out: string) => {
     setCommandHistory((prev) => [{ cmd, out }, ...prev].slice(0, 12));
   }, []);
-
-  const tokenizeCommand = (input: string) => {
-    const out: string[] = [];
-    const re = /"([^"]*)"|'([^']*)'|(\S+)/g;
-    let match: RegExpExecArray | null;
-    while ((match = re.exec(input))) {
-      out.push(match[1] ?? match[2] ?? match[3]);
-    }
-    return out;
-  };
 
   const runSurfaceCommand = useCallback(
     (raw: string) => {
