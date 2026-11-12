@@ -1,0 +1,136 @@
+{
+  "schema": "math3d.release20.long-memory-review.v1",
+  "mode": "source",
+  "status": "failed",
+  "plateauQualified": false,
+  "peakSampledRssMiB": 1847.2,
+  "lateGrowthMiB": 146.6,
+  "peakRendererPrivateMiB": 1055.1,
+  "rendererPrivateLateGrowthMiB": 154.1,
+  "peakGpuPrivateMiB": 285.4,
+  "gpuPrivateLateGrowthMiB": 2.3,
+  "checks": [
+    {
+      "name": "receipt completed",
+      "pass": false,
+      "observed": "failed"
+    },
+    {
+      "name": "identified clean 2.0 build",
+      "pass": true,
+      "observed": {
+        "version": "2.0.0",
+        "commit": "5bde394ec3d62d70ae6dcf07e698e10049d3aae8",
+        "dirty": false,
+        "builtAt": "2026-11-11T22:43:08.022Z",
+        "rendererHash": "39b3fe8ab60c04bff2b65a9fdb499020e23234104c9c01f7536598a0ea269907"
+      }
+    },
+    {
+      "name": "two-hour elapsed duration",
+      "pass": false,
+      "observed": {
+        "requestedMinutes": 120,
+        "elapsedMs": 688467
+      }
+    },
+    {
+      "name": "one app process and completed cycles",
+      "pass": false,
+      "observed": {
+        "pid": 33780,
+        "cycles": 6
+      }
+    },
+    {
+      "name": "no page errors",
+      "pass": true,
+      "observed": []
+    },
+    {
+      "name": "sampled peak agrees",
+      "pass": true,
+      "observed": {
+        "peak": 1847.2,
+        "reported": 1847.2
+      }
+    },
+    {
+      "name": "host class",
+      "pass": true,
+      "observed": "source checkout"
+    },
+    {
+      "name": "GPU process and context health",
+      "pass": true,
+      "observed": {
+        "gpuPids": [
+          5992
+        ],
+        "contextLosses": 0
+      }
+    },
+    {
+      "name": "predeclared source long-run budget",
+      "pass": true,
+      "observed": {
+        "reference": "Windows i9-12900K source build, continuous 100-action cycles for at least two hours",
+        "derivation": "The short-run 1500 MiB ceiling plus 548 MiB headroom, with at most 64 MiB late-window growth; GPU and renderer-private ceilings are separate native-memory safeguards. This is a predeclared acceptance target, not a measurement or installed budget.",
+        "peakRssMiB": 2048,
+        "lateGrowthMiB": 64,
+        "peakRendererPrivateMiB": 1024,
+        "rendererPrivateLateGrowthMiB": 32,
+        "peakGpuPrivateMiB": 512,
+        "gpuPrivateLateGrowthMiB": 32
+      }
+    },
+    {
+      "name": "source peak RSS ceiling",
+      "pass": true,
+      "observed": {
+        "peak": 1847.2,
+        "limit": 2048
+      }
+    },
+    {
+      "name": "source late RSS plateau",
+      "pass": false,
+      "observed": {
+        "lateGrowthMiB": 146.6,
+        "limit": 64
+      }
+    },
+    {
+      "name": "source renderer private ceiling",
+      "pass": false,
+      "observed": {
+        "peakRendererPrivateMiB": 1055.1,
+        "limit": 1024
+      }
+    },
+    {
+      "name": "source renderer private plateau",
+      "pass": false,
+      "observed": {
+        "rendererPrivateLateGrowthMiB": 154.1,
+        "limit": 32
+      }
+    },
+    {
+      "name": "source GPU private ceiling",
+      "pass": true,
+      "observed": {
+        "peakGpuPrivateMiB": 285.4,
+        "limit": 512
+      }
+    },
+    {
+      "name": "source GPU private plateau",
+      "pass": true,
+      "observed": {
+        "gpuPrivateLateGrowthMiB": 2.3,
+        "limit": 32
+      }
+    }
+  ]
+}

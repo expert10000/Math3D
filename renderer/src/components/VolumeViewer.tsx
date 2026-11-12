@@ -30,6 +30,7 @@ import {
 import { vtkSmooth } from "../services/vtkMeshClient";
 import { configureOrbitControlsForTouch, installViewerTouchGestures } from "../utils/viewerTouchGestures";
 import AxisGizmo from "./AxisGizmo";
+import { acquireViewerRenderer, releaseViewerRenderer } from "./viewerRendererPool";
 import { applyCameraOrientation, CAMERA_ORIENTATION_LABEL, orbitCameraAroundTarget, type CameraOrientation } from "./cameraOrientation";
 import {
   createVolumeTransferTextureData,
@@ -123,26 +124,24 @@ const disposeMesh = (mesh: THREE.Mesh) => {
   }
 };
 
-const disposeSceneObject = (object: THREE.Object3D) => {
-  const drawable = object as THREE.Object3D & {
-    geometry?: THREE.BufferGeometry;
-    material?: THREE.Material | THREE.Material[];
-  };
-  drawable.geometry?.dispose();
-  const materials = drawable.material
-    ? Array.isArray(drawable.material) ? drawable.material : [drawable.material]
-    : [];
-  for (const material of materials) {
-    (material as THREE.Material & { map?: THREE.Texture }).map?.dispose();
-    material.dispose();
-  }
-};
-
 const clearGroup = (group: THREE.Group) => {
   const children = [...group.children];
   for (const child of children) {
     group.remove(child);
-    child.traverse(disposeSceneObject);
+    const anyChild = child as any;
+    if (anyChild.geometry) {
+      anyChild.geometry.dispose?.();
+    }
+    if (anyChild.material) {
+      const mat = anyChild.material as THREE.Material | THREE.Material[];
+      const disposeMaterial = (material: THREE.Material) => {
+        const map = (material as THREE.MeshBasicMaterial).map;
+        map?.dispose();
+        material.dispose();
+      };
+      if (Array.isArray(mat)) mat.forEach(disposeMaterial);
+      else disposeMaterial(mat);
+    }
   }
 };
 
@@ -853,7 +852,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     camera.position.set(2.6, 2.4, 2.8);
     camera.lookAt(0, 0, 0);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    const renderer = acquireViewerRenderer();
     renderer.localClippingEnabled = true;
     renderer.setPixelRatio(window.devicePixelRatio || 1);
     renderer.setSize(mount.clientWidth || 1, mount.clientHeight || 1);
@@ -1131,10 +1130,16 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
         sliceTextureRef.current.dispose();
         sliceTextureRef.current = null;
       }
-      scene.traverse(disposeSceneObject);
-      renderer.dispose();
-      renderer.forceContextLoss();
-      renderer.domElement.remove();
+      axes.geometry.dispose();
+      if (Array.isArray(axesMat)) axesMat.forEach((material) => material.dispose());
+      else axesMat.dispose();
+      scene.clear();
+      releaseViewerRenderer(renderer);
+      rendererRef.current = null;
+      sceneRef.current = null;
+      cameraRef.current = null;
+      controlsRef.current = null;
+      axesHelperRef.current = null;
     };
   }, [publishCameraState]);
 

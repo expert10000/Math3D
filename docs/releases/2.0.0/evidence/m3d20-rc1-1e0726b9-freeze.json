@@ -1,0 +1,41 @@
+{
+  "schema": "math3d/release20-rc1-freeze/v1",
+  "status": "frozen",
+  "version": "2.0.0",
+  "sourceCommit": "1e0726b97cd81682561513a6670a7abd92c47878",
+  "lockfiles": {
+    "package-lock.json": "7ac7d72459e61cd1e20a48c581970d6642bc4fe6b7df373eecdd132d138f7cab",
+    "renderer/package-lock.json": "27a9c0c7562b890b9cdd618c4d5085205ba26bb626fe78edd166d4482ab44931",
+    "python/worker/requirements.freeze.txt": "5b21626b8a059545167bfcd1c811cf1b29de8c2df57d16874b4f67663e96bc3a",
+    "python/worker/build-requirements.freeze.txt": "976cb2b814d9ee7e63f4e1a7c49862955208d8f70aa30a5ccfeddeb749eecd9c"
+  },
+  "dependencies": {
+    "electron": "39.2.6",
+    "electron-builder": "26.0.12",
+    "better-sqlite3": "12.10.0"
+  },
+  "contracts": {
+    "packages/core/src/math3dProject.ts": {
+      "sha256": "898d5637f59692c4c684b86c4de0730ae0e55e4fbc86475df4b304e8a9f12f60",
+      "format": "math3d.project",
+      "schemaVersion": 1
+    },
+    "packages/core/src/mixedWorkspace.ts": {
+      "sha256": "ef581120996c25f2b726941321cab84b8dfe2e627fb5e397e688c3e7358ae00f",
+      "format": "math3d.mixed-workspace",
+      "schemaVersion": 1
+    },
+    "packages/core/src/analysisResults.ts": {
+      "sha256": "6e2e8fa94007a3a6042e51d13a5cfb0477e540733d67f084edc173549dd7571a",
+      "format": null,
+      "schemaVersion": 1
+    }
+  },
+  "nativeSources": {
+    "dependencyManifestSha256": "0a3afd0e7c785491b7fee50a80f794f3d3a54e89a02082833e89fadb2919e21e",
+    "publicSourceManifestSha256": "ef3c3ce034438cb01bf8472eb093debeda3820e114976c90a54b55c84870e38e",
+    "distributionStatus": "blocked-pending-public-source-bundle-integration",
+    "windowsCgalVersion": "6.2.1",
+    "windowsCgalSourceSha256": "4a0713351882989dda8b6bbfa942d5013b994f297fbebe1096ce664a92aff1a0"
+  }
+}

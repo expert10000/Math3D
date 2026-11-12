@@ -39,6 +39,7 @@ import {
 import { debugLog } from "../utils/debugLog";
 import { configureOrbitControlsForTouch, installViewerTouchGestures } from "../utils/viewerTouchGestures";
 import { readFullMeshPreviewBuffer, type FullMeshPreviewBufferPayload } from "../mesh/fullMeshPreviewBufferStore";
+import { acquireViewerRenderer, releaseViewerRenderer } from "./viewerRendererPool";
 
 export type ColorMode = CoreColorMode;
 
@@ -3923,7 +3924,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     const { width, height } = getSize();
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    const renderer = acquireViewerRenderer();
     const heavySurface = surfaceId === "surface_mesh" || surfaceId === "torus_implicit";
     const maxPixelRatio =
       renderQuality === "performance"
@@ -6335,14 +6336,20 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
       sliceGroupRef.current = null;
 
-      // Scene overlays include Lines and texture-backed Sprites as well as Meshes.
-      scene.traverse(disposeObject3D);
+      scene.traverse((obj) => {
+        const anyO = obj as any;
+        if (anyO?.isMesh) {
+          const mesh = obj as THREE.Mesh;
+          if (mesh.geometry) mesh.geometry.dispose();
+          const matAny = (mesh as any).material as THREE.Material | THREE.Material[] | undefined;
+          if (matAny) {
+            if (Array.isArray(matAny)) matAny.forEach((m) => m.dispose());
+            else matAny.dispose();
+          }
+        }
+      });
 
-      renderer.setAnimationLoop(null);
-      renderer.renderLists.dispose();
-      renderer.dispose();
-      renderer.forceContextLoss();
-      renderer.domElement.remove();
+      releaseViewerRenderer(renderer);
       rendererRef.current = null;
       applyProbeFromDomainRef.current = null;
 

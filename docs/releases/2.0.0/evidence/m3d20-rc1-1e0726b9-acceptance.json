@@ -1,0 +1,159 @@
+{
+  "schema": "math3d/release20-rc1-source-acceptance/v1",
+  "status": "passed",
+  "version": "2.0.0",
+  "sourceCommit": "1e0726b97cd81682561513a6670a7abd92c47878",
+  "freezeManifestSha256": "6b91c87ac26096f09b1db6bb90da841d238c438f8cfcd7530023da5c59a63dff",
+  "startedAtUtc": "2026-11-12T12:43:33.823Z",
+  "checks": [
+    {
+      "id": "types",
+      "command": [
+        "npm",
+        "run",
+        "typecheck:noemit"
+      ],
+      "status": "passed",
+      "exitCode": 0,
+      "durationMs": 270867,
+      "error": null
+    },
+    {
+      "id": "project-contracts",
+      "command": [
+        "npm",
+        "run",
+        "test:projects:contracts"
+      ],
+      "status": "passed",
+      "exitCode": 0,
+      "durationMs": 84377,
+      "error": null
+    },
+    {
+      "id": "saved-result-goldens",
+      "command": [
+        "npm",
+        "run",
+        "test:scientific:golden"
+      ],
+      "status": "passed",
+      "exitCode": 0,
+      "durationMs": 12930,
+      "error": null
+    },
+    {
+      "id": "quantum-baseline",
+      "command": [
+        "npm",
+        "run",
+        "test:quantum:qwz-baseline"
+      ],
+      "status": "passed",
+      "exitCode": 0,
+      "durationMs": 3130,
+      "error": null
+    },
+    {
+      "id": "sage-gateway-unit",
+      "command": [
+        "npm",
+        "run",
+        "test:sage:gateway:unit"
+      ],
+      "status": "passed",
+      "exitCode": 0,
+      "durationMs": 2569,
+      "error": null
+    },
+    {
+      "id": "release-sbom",
+      "command": [
+        "npm",
+        "run",
+        "test:release:sbom"
+      ],
+      "status": "passed",
+      "exitCode": 0,
+      "durationMs": 1634,
+      "error": null
+    },
+    {
+      "id": "site-and-gallery",
+      "command": [
+        "npm",
+        "--prefix",
+        "apps/public-site",
+        "run",
+        "build"
+      ],
+      "status": "passed",
+      "exitCode": 0,
+      "durationMs": 1049,
+      "error": null
+    },
+    {
+      "id": "core-build",
+      "command": [
+        "npm",
+        "run",
+        "build:core"
+      ],
+      "status": "passed",
+      "exitCode": 0,
+      "durationMs": 53752,
+      "error": null
+    },
+    {
+      "id": "renderer-build",
+      "command": [
+        "npm",
+        "run",
+        "build:renderer"
+      ],
+      "status": "passed",
+      "exitCode": 0,
+      "durationMs": 64975,
+      "error": null
+    },
+    {
+      "id": "kernel-acceptance",
+      "command": [
+        "npm",
+        "run",
+        "test:kernel:gk20"
+      ],
+      "status": "passed",
+      "exitCode": 0,
+      "durationMs": 372602,
+      "error": null
+    },
+    {
+      "id": "project-desktop",
+      "command": [
+        "npm",
+        "run",
+        "test:projects:desktop"
+      ],
+      "status": "passed",
+      "exitCode": 0,
+      "durationMs": 743175,
+      "error": null
+    },
+    {
+      "id": "first-use-study",
+      "command": [
+        "npx",
+        "playwright",
+        "test",
+        "tests/e2e/release20-first-use-study.spec.ts",
+        "--reporter=list"
+      ],
+      "status": "passed",
+      "exitCode": 0,
+      "durationMs": 14918,
+      "error": null
+    }
+  ],
+  "finishedAtUtc": "2026-11-12T13:10:39.817Z"
+}

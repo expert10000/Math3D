@@ -53,8 +53,7 @@ export async function closeSurfaceApp(ctx: LaunchedSurfaceApp | null): Promise<v
 
 export async function resetSurfaceAppState(page: Page): Promise<void> {
   await page.evaluate((firstLaunchKey) => {
-    (window as Window & { projectDurability?: { clearForTest?: () => void } })
-      .projectDurability?.clearForTest?.();
+    (window as Window & { projectDurability?: { clearForTest?: () => void } }).projectDurability?.clearForTest?.();
     localStorage.clear();
     localStorage.setItem(firstLaunchKey, "1");
   }, COMPUTE_ENGINE_FIRST_LAUNCH_KEY);
