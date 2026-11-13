@@ -21,19 +21,20 @@ vi.mock("three", () => ({
 import { acquireViewerRenderer, releaseViewerRenderer } from "./viewerRendererPool";
 
 describe("viewer renderer pool", () => {
-  it("reuses a compatible context and destroys an incompatible idle context", () => {
-    const sharp = acquireViewerRenderer();
-    releaseViewerRenderer(sharp);
-    expect((sharp as unknown as { size: [number, number] }).size).toEqual([1, 1]);
-    expect((sharp as unknown as { pixelRatio: number }).pixelRatio).toBe(1);
-    expect(acquireViewerRenderer()).toBe(sharp);
-    releaseViewerRenderer(sharp);
+  it("retains the four compatible Volume contexts and bounds extra idle contexts", () => {
+    const slices = Array.from({ length: 3 }, () => acquireViewerRenderer(false));
+    const spatial = acquireViewerRenderer(true);
+    for (const renderer of [...slices, spatial]) releaseViewerRenderer(renderer);
 
-    const performance = acquireViewerRenderer(false);
-    expect(performance).not.toBe(sharp);
-    expect((sharp as unknown as { disposed: boolean }).disposed).toBe(true);
-    releaseViewerRenderer(performance);
-    expect(acquireViewerRenderer(false)).toBe(performance);
-    releaseViewerRenderer(performance);
+    const reusedSlices = Array.from({ length: 3 }, () => acquireViewerRenderer(false));
+    const reusedSpatial = acquireViewerRenderer(true);
+    expect(reusedSlices).toEqual(slices);
+    expect(reusedSpatial).toBe(spatial);
+    expect([...slices, spatial].every(renderer => !(renderer as unknown as { disposed: boolean }).disposed)).toBe(true);
+
+    const overflow = acquireViewerRenderer(false);
+    for (const renderer of [...reusedSlices, reusedSpatial]) releaseViewerRenderer(renderer);
+    releaseViewerRenderer(overflow);
+    expect((overflow as unknown as { disposed: boolean }).disposed).toBe(true);
   });
 });
