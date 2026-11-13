@@ -1,0 +1,1768 @@
+{
+  "format": "math3d.integration-evidence",
+  "version": 1,
+  "observedAt": "2026-11-13T17:03:39.471484+00:00",
+  "tests": [
+    {
+      "id": "TST-LAB-CI",
+      "name": "GitHub workflow source observation",
+      "description": "Integration evidence assignment; does not silently certify every linked acceptance check.",
+      "notes": "",
+      "revision": 1,
+      "updatedAt": "2026-11-13T17:03:39.471484+00:00",
+      "archived": false,
+      "location": ".github/workflows",
+      "command": "See exact recorded workflow or command.",
+      "environment": "source-bound",
+      "status": "implemented",
+      "behaviorVersion": 1,
+      "blockingReason": "",
+      "recoveryCondition": ""
+    },
+    {
+      "id": "TST-LAB-NATIVE",
+      "name": "Native Volume Job lifecycle and cold reopen",
+      "description": "Integration evidence assignment; does not silently certify every linked acceptance check.",
+      "notes": "",
+      "revision": 1,
+      "updatedAt": "2026-11-13T17:03:39.471484+00:00",
+      "archived": false,
+      "location": "tests/e2e/m3d20-native-job-lifecycle.spec.ts",
+      "command": "See exact recorded workflow or command.",
+      "environment": "source-bound",
+      "status": "implemented",
+      "behaviorVersion": 1,
+      "blockingReason": "",
+      "recoveryCondition": ""
+    },
+    {
+      "id": "TST-LAB-OWNER",
+      "name": "Source-bound owner regression suites",
+      "description": "Integration evidence assignment; does not silently certify every linked acceptance check.",
+      "notes": "",
+      "revision": 1,
+      "updatedAt": "2026-11-13T17:03:39.471484+00:00",
+      "archived": false,
+      "location": "renderer/src/kernel/scientificJobService.test.ts",
+      "command": "See exact recorded workflow or command.",
+      "environment": "source-bound",
+      "status": "implemented",
+      "behaviorVersion": 1,
+      "blockingReason": "",
+      "recoveryCondition": ""
+    }
+  ],
+  "changesets": [
+    {
+      "id": "CS-GH-48",
+      "name": "PR #48 \u00b7 Owner integration and post-merge evidence",
+      "description": "",
+      "notes": "",
+      "revision": 1,
+      "updatedAt": "2026-11-13T17:03:39.471484+00:00",
+      "archived": false,
+      "repository": "expert10000/Math3D",
+      "prUrl": "https://github.com/expert10000/Math3D/pull/48",
+      "headCommit": "4c8728bce5f257465070042489cb457c5079dac2",
+      "mergeCommit": "bb3ce6c5663b498db7fad341bee5da5efd63060c",
+      "requiredEnvironments": [
+        "windows-2022-node24.15.0-python3.11"
+      ],
+      "contractIds": [
+        "CTR-01",
+        "CTR-03",
+        "CTR-04",
+        "CTR-05"
+      ],
+      "adapterIds": [],
+      "taskIds": [
+        "M3D20-01b.1",
+        "M3D20-01b.3",
+        "M3D20-01b.4",
+        "M3D20-01b.5"
+      ],
+      "checkIds": [
+        "AC-01",
+        "AC-02",
+        "AC-03",
+        "AC-04",
+        "AC-05",
+        "AC-06",
+        "AC-07",
+        "AC-08"
+      ],
+      "behaviorChanges": "Owner integration and post-merge evidence",
+      "prState": "merged",
+      "milestone": "M3D20-01b"
+    },
+    {
+      "id": "CS-GH-50",
+      "name": "PR #50 \u00b7 Native UI Job lifecycle and Mesh resource recovery",
+      "description": "",
+      "notes": "",
+      "revision": 1,
+      "updatedAt": "2026-11-13T17:03:39.471484+00:00",
+      "archived": false,
+      "repository": "expert10000/Math3D",
+      "prUrl": "https://github.com/expert10000/Math3D/pull/50",
+      "headCommit": "6eb869860df30e1ee7e81ff8e6aea72d0a7c6a0e",
+      "mergeCommit": "",
+      "requiredEnvironments": [
+        "windows-2022-node24.15.0-python3.11"
+      ],
+      "contractIds": [
+        "CTR-01",
+        "CTR-03",
+        "CTR-04",
+        "CTR-05"
+      ],
+      "adapterIds": [],
+      "taskIds": [
+        "M3D20-01b.1",
+        "M3D20-01b.3",
+        "M3D20-01b.4",
+        "M3D20-01b.5"
+      ],
+      "checkIds": [
+        "AC-01",
+        "AC-02",
+        "AC-03",
+        "AC-04",
+        "AC-05",
+        "AC-06",
+        "AC-07",
+        "AC-08"
+      ],
+      "behaviorChanges": "Native UI Job lifecycle and Mesh resource recovery",
+      "prState": "open",
+      "milestone": "M3D20-01b"
+    }
+  ],
+  "runs": [
+    {
+      "id": "RUN-LAB-48-HEAD-43202040349",
+      "name": "PR48 head \u00b7 scoped",
+      "description": "",
+      "notes": "Candidate CI is not relabelled onto the newer merge commit. Assertion report details remain in retained historical evidence.",
+      "revision": 1,
+      "updatedAt": "2026-11-13T17:03:39.471484+00:00",
+      "archived": false,
+      "checkId": "AC-01",
+      "testId": "TST-LAB-CI",
+      "result": "passed",
+      "repository": "expert10000/Math3D",
+      "commit": "4c8728bce5f257465070042489cb457c5079dac2",
+      "environment": "github-actions",
+      "executedAt": "2026-11-12T11:01:04Z",
+      "evidenceUrl": "https://github.com/expert10000/Math3D/actions/runs/43202040349",
+      "configurationIds": [],
+      "adapterIds": [],
+      "scopeNote": "Exact source-bound scope only. Architecture semantic applicability remains unreviewed.",
+      "snapshot": [],
+      "changeSetId": "CS-GH-48",
+      "sourceKind": "ci_report",
+      "versionBinding": "unknown",
+      "supersedesRunId": null,
+      "recordedSequence": 1,
+      "recordedAt": "2026-11-13T17:03:39.471484+00:00",
+      "integration": {
+        "version": 1,
+        "target": "head",
+        "targetCommit": "4c8728bce5f257465070042489cb457c5079dac2",
+        "coverage": "observation",
+        "workflow": "scoped",
+        "scopeKey": "scoped",
+        "attempt": 1,
+        "checkIds": [
+          "AC-01"
+        ],
+        "testIds": [
+          "TST-LAB-CI"
+        ],
+        "taskIds": [
+          "M3D20-01b.1"
+        ],
+        "scopeTests": [
+          "scoped"
+        ],
+        "tags": [],
+        "counts": null,
+        "attachments": [],
+        "ciRunId": 43202040349,
+        "observedAt": "2026-11-13T17:03:39.471484+00:00",
+        "timestampBasis": "GitHub workflow updated_at"
+      }
+    },
+    {
+      "id": "RUN-LAB-48-HEAD-43202040416",
+      "name": "PR48 head \u00b7 buildWorker",
+      "description": "",
+      "notes": "Candidate CI is not relabelled onto the newer merge commit. Assertion report details remain in retained historical evidence.",
+      "revision": 1,
+      "updatedAt": "2026-11-13T17:03:39.471484+00:00",
+      "archived": false,
+      "checkId": "AC-01",
+      "testId": "TST-LAB-CI",
+      "result": "passed",
+      "repository": "expert10000/Math3D",
+      "commit": "4c8728bce5f257465070042489cb457c5079dac2",
+      "environment": "github-actions",
+      "executedAt": "2026-11-12T11:19:05Z",
+      "evidenceUrl": "https://github.com/expert10000/Math3D/actions/runs/43202040416",
+      "configurationIds": [],
+      "adapterIds": [],
+      "scopeNote": "Exact source-bound scope only. Architecture semantic applicability remains unreviewed.",
+      "snapshot": [],
+      "changeSetId": "CS-GH-48",
+      "sourceKind": "ci_report",
+      "versionBinding": "unknown",
+      "supersedesRunId": null,
+      "recordedSequence": 2,
+      "recordedAt": "2026-11-13T17:03:39.471484+00:00",
+      "integration": {
+        "version": 1,
+        "target": "head",
+        "targetCommit": "4c8728bce5f257465070042489cb457c5079dac2",
+        "coverage": "observation",
+        "workflow": "buildWorker",
+        "scopeKey": "buildWorker",
+        "attempt": 1,
+        "checkIds": [
+          "AC-01"
+        ],
+        "testIds": [
+          "TST-LAB-CI"
+        ],
+        "taskIds": [
+          "M3D20-01b.1"
+        ],
+        "scopeTests": [
+          "buildWorker"
+        ],
+        "tags": [],
+        "counts": null,
+        "attachments": [],
+        "ciRunId": 43202040416,
+        "observedAt": "2026-11-13T17:03:39.471484+00:00",
+        "timestampBasis": "GitHub workflow updated_at"
+      }
+    },
+    {
+      "id": "RUN-LAB-48-HEAD-43202040322",
+      "name": "PR48 head \u00b7 unifiedProjects",
+      "description": "",
+      "notes": "Candidate CI is not relabelled onto the newer merge commit. Assertion report details remain in retained historical evidence.",
+      "revision": 1,
+      "updatedAt": "2026-11-13T17:03:39.471484+00:00",
+      "archived": false,
+      "checkId": "AC-01",
+      "testId": "TST-LAB-CI",
+      "result": "passed",
+      "repository": "expert10000/Math3D",
+      "commit": "4c8728bce5f257465070042489cb457c5079dac2",
+      "environment": "github-actions",
+      "executedAt": "2026-11-12T11:09:27Z",
+      "evidenceUrl": "https://github.com/expert10000/Math3D/actions/runs/43202040322",
+      "configurationIds": [],
+      "adapterIds": [],
+      "scopeNote": "Exact source-bound scope only. Architecture semantic applicability remains unreviewed.",
+      "snapshot": [],
+      "changeSetId": "CS-GH-48",
+      "sourceKind": "ci_report",
+      "versionBinding": "unknown",
+      "supersedesRunId": null,
+      "recordedSequence": 3,
+      "recordedAt": "2026-11-13T17:03:39.471484+00:00",
+      "integration": {
+        "version": 1,
+        "target": "head",
+        "targetCommit": "4c8728bce5f257465070042489cb457c5079dac2",
+        "coverage": "observation",
+        "workflow": "unifiedProjects",
+        "scopeKey": "unifiedProjects",
+        "attempt": 1,
+        "checkIds": [
+          "AC-01"
+        ],
+        "testIds": [
+          "TST-LAB-CI"
+        ],
+        "taskIds": [
+          "M3D20-01b.1"
+        ],
+        "scopeTests": [
+          "unifiedProjects"
+        ],
+        "tags": [],
+        "counts": null,
+        "attachments": [],
+        "ciRunId": 43202040322,
+        "observedAt": "2026-11-13T17:03:39.471484+00:00",
+        "timestampBasis": "GitHub workflow updated_at"
+      }
+    },
+    {
+      "id": "RUN-LAB-48-HEAD-43202040578",
+      "name": "PR48 head \u00b7 graph2d",
+      "description": "",
+      "notes": "Candidate CI is not relabelled onto the newer merge commit. Assertion report details remain in retained historical evidence.",
+      "revision": 1,
+      "updatedAt": "2026-11-13T17:03:39.471484+00:00",
+      "archived": false,
+      "checkId": "AC-01",
+      "testId": "TST-LAB-CI",
+      "result": "passed",
+      "repository": "expert10000/Math3D",
+      "commit": "4c8728bce5f257465070042489cb457c5079dac2",
+      "environment": "github-actions",
+      "executedAt": "2026-11-12T11:30:34Z",
+      "evidenceUrl": "https://github.com/expert10000/Math3D/actions/runs/43202040578",
+      "configurationIds": [],
+      "adapterIds": [],
+      "scopeNote": "Exact source-bound scope only. Architecture semantic applicability remains unreviewed.",
+      "snapshot": [],
+      "changeSetId": "CS-GH-48",
+      "sourceKind": "ci_report",
+      "versionBinding": "unknown",
+      "supersedesRunId": null,
+      "recordedSequence": 4,
+      "recordedAt": "2026-11-13T17:03:39.471484+00:00",
+      "integration": {
+        "version": 1,
+        "target": "head",
+        "targetCommit": "4c8728bce5f257465070042489cb457c5079dac2",
+        "coverage": "observation",
+        "workflow": "graph2d",
+        "scopeKey": "graph2d",
+        "attempt": 1,
+        "checkIds": [
+          "AC-01"
+        ],
+        "testIds": [
+          "TST-LAB-CI"
+        ],
+        "taskIds": [
+          "M3D20-01b.1"
+        ],
+        "scopeTests": [
+          "graph2d"
+        ],
+        "tags": [],
+        "counts": null,
+        "attachments": [],
+        "ciRunId": 43202040578,
+        "observedAt": "2026-11-13T17:03:39.471484+00:00",
+        "timestampBasis": "GitHub workflow updated_at"
+      }
+    },
+    {
+      "id": "RUN-LAB-48-HEAD-43202040332",
+      "name": "PR48 head \u00b7 android",
+      "description": "",
+      "notes": "Candidate CI is not relabelled onto the newer merge commit. Assertion report details remain in retained historical evidence.",
+      "revision": 1,
+      "updatedAt": "2026-11-13T17:03:39.471484+00:00",
+      "archived": false,
+      "checkId": "AC-01",
+      "testId": "TST-LAB-CI",
+      "result": "passed",
+      "repository": "expert10000/Math3D",
+      "commit": "4c8728bce5f257465070042489cb457c5079dac2",
+      "environment": "github-actions",
+      "executedAt": "2026-11-12T10:53:57Z",
+      "evidenceUrl": "https://github.com/expert10000/Math3D/actions/runs/43202040332",
+      "configurationIds": [],
+      "adapterIds": [],
+      "scopeNote": "Exact source-bound scope only. Architecture semantic applicability remains unreviewed.",
+      "snapshot": [],
+      "changeSetId": "CS-GH-48",
+      "sourceKind": "ci_report",
+      "versionBinding": "unknown",
+      "supersedesRunId": null,
+      "recordedSequence": 5,
+      "recordedAt": "2026-11-13T17:03:39.471484+00:00",
+      "integration": {
+        "version": 1,
+        "target": "head",
+        "targetCommit": "4c8728bce5f257465070042489cb457c5079dac2",
+        "coverage": "observation",
+        "workflow": "android",
+        "scopeKey": "android",
+        "attempt": 1,
+        "checkIds": [
+          "AC-01"
+        ],
+        "testIds": [
+          "TST-LAB-CI"
+        ],
+        "taskIds": [
+          "M3D20-01b.1"
+        ],
+        "scopeTests": [
+          "android"
+        ],
+        "tags": [],
+        "counts": null,
+        "attachments": [],
+        "ciRunId": 43202040332,
+        "observedAt": "2026-11-13T17:03:39.471484+00:00",
+        "timestampBasis": "GitHub workflow updated_at"
+      }
+    },
+    {
+      "id": "RUN-LAB-48-HEAD-43202040328",
+      "name": "PR48 head \u00b7 gallery",
+      "description": "",
+      "notes": "Candidate CI is not relabelled onto the newer merge commit. Assertion report details remain in retained historical evidence.",
+      "revision": 1,
+      "updatedAt": "2026-11-13T17:03:39.471484+00:00",
+      "archived": false,
+      "checkId": "AC-01",
+      "testId": "TST-LAB-CI",
+      "result": "passed",
+      "repository": "expert10000/Math3D",
+      "commit": "4c8728bce5f257465070042489cb457c5079dac2",
+      "environment": "github-actions",
+      "executedAt": "2026-11-12T10:49:47Z",
+      "evidenceUrl": "https://github.com/expert10000/Math3D/actions/runs/43202040328",
+      "configurationIds": [],
+      "adapterIds": [],
+      "scopeNote": "Exact source-bound scope only. Architecture semantic applicability remains unreviewed.",
+      "snapshot": [],
+      "changeSetId": "CS-GH-48",
+      "sourceKind": "ci_report",
+      "versionBinding": "unknown",
+      "supersedesRunId": null,
+      "recordedSequence": 6,
+      "recordedAt": "2026-11-13T17:03:39.471484+00:00",
+      "integration": {
+        "version": 1,
+        "target": "head",
+        "targetCommit": "4c8728bce5f257465070042489cb457c5079dac2",
+        "coverage": "observation",
+        "workflow": "gallery",
+        "scopeKey": "gallery",
+        "attempt": 1,
+        "checkIds": [
+          "AC-01"
+        ],
+        "testIds": [
+          "TST-LAB-CI"
+        ],
+        "taskIds": [
+          "M3D20-01b.1"
+        ],
+        "scopeTests": [
+          "gallery"
+        ],
+        "tags": [],
+        "counts": null,
+        "attachments": [],
+        "ciRunId": 43202040328,
+        "observedAt": "2026-11-13T17:03:39.471484+00:00",
+        "timestampBasis": "GitHub workflow updated_at"
+      }
+    },
+    {
+      "id": "RUN-LAB-48-MERGE-43321952592",
+      "name": "Graph2D Professional Software Acceptance",
+      "description": "",
+      "notes": "",
+      "revision": 1,
+      "updatedAt": "2026-11-13T17:03:39.471484+00:00",
+      "archived": false,
+      "checkId": "AC-01",
+      "testId": "TST-LAB-CI",
+      "result": "cancelled",
+      "repository": "expert10000/Math3D",
+      "commit": "bb3ce6c5663b498db7fad341bee5da5efd63060c",
+      "environment": "github-actions",
+      "executedAt": "2026-11-12T23:01:14Z",
+      "evidenceUrl": "https://github.com/expert10000/Math3D/actions/runs/43321952592",
+      "configurationIds": [],
+      "adapterIds": [],
+      "scopeNote": "Exact source-bound scope only. Architecture semantic applicability remains unreviewed.",
+      "snapshot": [],
+      "changeSetId": "CS-GH-48",
+      "sourceKind": "ci_report",
+      "versionBinding": "unknown",
+      "supersedesRunId": null,
+      "recordedSequence": 7,
+      "recordedAt": "2026-11-13T17:03:39.471484+00:00",
+      "integration": {
+        "version": 1,
+        "target": "merge",
+        "targetCommit": "bb3ce6c5663b498db7fad341bee5da5efd63060c",
+        "coverage": "observation",
+        "workflow": "Graph2D Professional Software Acceptance",
+        "scopeKey": "Graph2D Professional Software Acceptance",
+        "attempt": 1,
+        "checkIds": [
+          "AC-01"
+        ],
+        "testIds": [
+          "TST-LAB-CI"
+        ],
+        "taskIds": [
+          "M3D20-01b.1"
+        ],
+        "scopeTests": [
+          "Graph2D Professional Software Acceptance"
+        ],
+        "tags": [
+          "post-merge"
+        ],
+        "counts": null,
+        "attachments": [],
+        "ciRunId": 43321952592,
+        "observedAt": "2026-11-13T17:03:39.471484+00:00",
+        "timestampBasis": "GitHub workflow updated_at"
+      }
+    },
+    {
+      "id": "RUN-LAB-48-MERGE-43321952719",
+      "name": "Unified Projects Software Acceptance",
+      "description": "",
+      "notes": "",
+      "revision": 1,
+      "updatedAt": "2026-11-13T17:03:39.471484+00:00",
+      "archived": false,
+      "checkId": "AC-01",
+      "testId": "TST-LAB-CI",
+      "result": "cancelled",
+      "repository": "expert10000/Math3D",
+      "commit": "bb3ce6c5663b498db7fad341bee5da5efd63060c",
+      "environment": "github-actions",
+      "executedAt": "2026-11-12T23:01:16Z",
+      "evidenceUrl": "https://github.com/expert10000/Math3D/actions/runs/43321952719",
+      "configurationIds": [],
+      "adapterIds": [],
+      "scopeNote": "Exact source-bound scope only. Architecture semantic applicability remains unreviewed.",
+      "snapshot": [],
+      "changeSetId": "CS-GH-48",
+      "sourceKind": "ci_report",
+      "versionBinding": "unknown",
+      "supersedesRunId": null,
+      "recordedSequence": 8,
+      "recordedAt": "2026-11-13T17:03:39.471484+00:00",
+      "integration": {
+        "version": 1,
+        "target": "merge",
+        "targetCommit": "bb3ce6c5663b498db7fad341bee5da5efd63060c",
+        "coverage": "observation",
+        "workflow": "Unified Projects Software Acceptance",
+        "scopeKey": "Unified Projects Software Acceptance",
+        "attempt": 1,
+        "checkIds": [
+          "AC-01"
+        ],
+        "testIds": [
+          "TST-LAB-CI"
+        ],
+        "taskIds": [
+          "M3D20-01b.1"
+        ],
+        "scopeTests": [
+          "Unified Projects Software Acceptance"
+        ],
+        "tags": [
+          "post-merge"
+        ],
+        "counts": null,
+        "attachments": [],
+        "ciRunId": 43321952719,
+        "observedAt": "2026-11-13T17:03:39.471484+00:00",
+        "timestampBasis": "GitHub workflow updated_at"
+      }
+    },
+    {
+      "id": "RUN-LAB-48-MERGE-43321952584",
+      "name": "CI Build and Worker Smoke",
+      "description": "",
+      "notes": "",
+      "revision": 1,
+      "updatedAt": "2026-11-13T17:03:39.471484+00:00",
+      "archived": false,
+      "checkId": "AC-01",
+      "testId": "TST-LAB-CI",
+      "result": "passed",
+      "repository": "expert10000/Math3D",
+      "commit": "bb3ce6c5663b498db7fad341bee5da5efd63060c",
+      "environment": "github-actions",
+      "executedAt": "2026-11-12T22:59:55Z",
+      "evidenceUrl": "https://github.com/expert10000/Math3D/actions/runs/43321952584",
+      "configurationIds": [],
+      "adapterIds": [],
+      "scopeNote": "Exact source-bound scope only. Architecture semantic applicability remains unreviewed.",
+      "snapshot": [],
+      "changeSetId": "CS-GH-48",
+      "sourceKind": "ci_report",
+      "versionBinding": "unknown",
+      "supersedesRunId": null,
+      "recordedSequence": 9,
+      "recordedAt": "2026-11-13T17:03:39.471484+00:00",
+      "integration": {
+        "version": 1,
+        "target": "merge",
+        "targetCommit": "bb3ce6c5663b498db7fad341bee5da5efd63060c",
+        "coverage": "observation",
+        "workflow": "CI Build and Worker Smoke",
+        "scopeKey": "CI Build and Worker Smoke",
+        "attempt": 1,
+        "checkIds": [
+          "AC-01"
+        ],
+        "testIds": [
+          "TST-LAB-CI"
+        ],
+        "taskIds": [
+          "M3D20-01b.1"
+        ],
+        "scopeTests": [
+          "CI Build and Worker Smoke"
+        ],
+        "tags": [
+          "post-merge"
+        ],
+        "counts": null,
+        "attachments": [],
+        "ciRunId": 43321952584,
+        "observedAt": "2026-11-13T17:03:39.471484+00:00",
+        "timestampBasis": "GitHub workflow updated_at"
+      }
+    },
+    {
+      "id": "RUN-LAB-48-MERGE-43321952713",
+      "name": "Windows Installer Smoke",
+      "description": "",
+      "notes": "",
+      "revision": 1,
+      "updatedAt": "2026-11-13T17:03:39.471484+00:00",
+      "archived": false,
+      "checkId": "AC-01",
+      "testId": "TST-LAB-CI",
+      "result": "failed",
+      "repository": "expert10000/Math3D",
+      "commit": "bb3ce6c5663b498db7fad341bee5da5efd63060c",
+      "environment": "github-actions",
+      "executedAt": "2026-11-12T22:53:35Z",
+      "evidenceUrl": "https://github.com/expert10000/Math3D/actions/runs/43321952713",
+      "configurationIds": [],
+      "adapterIds": [],
+      "scopeNote": "Exact source-bound scope only. Architecture semantic applicability remains unreviewed.",
+      "snapshot": [],
+      "changeSetId": "CS-GH-48",
+      "sourceKind": "ci_report",
+      "versionBinding": "unknown",
+      "supersedesRunId": null,
+      "recordedSequence": 10,
+      "recordedAt": "2026-11-13T17:03:39.471484+00:00",
+      "integration": {
+        "version": 1,
+        "target": "merge",
+        "targetCommit": "bb3ce6c5663b498db7fad341bee5da5efd63060c",
+        "coverage": "observation",
+        "workflow": "Windows Installer Smoke",
+        "scopeKey": "Windows Installer Smoke",
+        "attempt": 1,
+        "checkIds": [
+          "AC-01"
+        ],
+        "testIds": [
+          "TST-LAB-CI"
+        ],
+        "taskIds": [
+          "M3D20-01b.1"
+        ],
+        "scopeTests": [
+          "Windows Installer Smoke"
+        ],
+        "tags": [
+          "post-merge"
+        ],
+        "counts": null,
+        "attachments": [],
+        "gate": "windows-signing",
+        "recoveryCondition": "Configure the signed release candidate with the required certificate, key password and timestamp URL; run the real signed installer gate. No unsigned bypass.",
+        "ciRunId": 43321952713,
+        "observedAt": "2026-11-13T17:03:39.471484+00:00",
+        "timestampBasis": "GitHub workflow updated_at"
+      }
+    },
+    {
+      "id": "RUN-LAB-48-MERGE-43321952716",
+      "name": "Docs Pages",
+      "description": "",
+      "notes": "",
+      "revision": 1,
+      "updatedAt": "2026-11-13T17:03:39.471484+00:00",
+      "archived": false,
+      "checkId": "AC-01",
+      "testId": "TST-LAB-CI",
+      "result": "passed",
+      "repository": "expert10000/Math3D",
+      "commit": "bb3ce6c5663b498db7fad341bee5da5efd63060c",
+      "environment": "github-actions",
+      "executedAt": "2026-11-12T22:42:30Z",
+      "evidenceUrl": "https://github.com/expert10000/Math3D/actions/runs/43321952716",
+      "configurationIds": [],
+      "adapterIds": [],
+      "scopeNote": "Exact source-bound scope only. Architecture semantic applicability remains unreviewed.",
+      "snapshot": [],
+      "changeSetId": "CS-GH-48",
+      "sourceKind": "ci_report",
+      "versionBinding": "unknown",
+      "supersedesRunId": null,
+      "recordedSequence": 11,
+      "recordedAt": "2026-11-13T17:03:39.471484+00:00",
+      "integration": {
+        "version": 1,
+        "target": "merge",
+        "targetCommit": "bb3ce6c5663b498db7fad341bee5da5efd63060c",
+        "coverage": "observation",
+        "workflow": "Docs Pages",
+        "scopeKey": "Docs Pages",
+        "attempt": 1,
+        "checkIds": [
+          "AC-01"
+        ],
+        "testIds": [
+          "TST-LAB-CI"
+        ],
+        "taskIds": [
+          "M3D20-01b.1"
+        ],
+        "scopeTests": [
+          "Docs Pages"
+        ],
+        "tags": [
+          "post-merge"
+        ],
+        "counts": null,
+        "attachments": [],
+        "ciRunId": 43321952716,
+        "observedAt": "2026-11-13T17:03:39.471484+00:00",
+        "timestampBasis": "GitHub workflow updated_at"
+      }
+    },
+    {
+      "id": "RUN-LAB-48-MERGE-43321952601",
+      "name": "Gallery Quality",
+      "description": "",
+      "notes": "",
+      "revision": 1,
+      "updatedAt": "2026-11-13T17:03:39.471484+00:00",
+      "archived": false,
+      "checkId": "AC-01",
+      "testId": "TST-LAB-CI",
+      "result": "passed",
+      "repository": "expert10000/Math3D",
+      "commit": "bb3ce6c5663b498db7fad341bee5da5efd63060c",
+      "environment": "github-actions",
+      "executedAt": "2026-11-12T22:43:02Z",
+      "evidenceUrl": "https://github.com/expert10000/Math3D/actions/runs/43321952601",
+      "configurationIds": [],
+      "adapterIds": [],
+      "scopeNote": "Exact source-bound scope only. Architecture semantic applicability remains unreviewed.",
+      "snapshot": [],
+      "changeSetId": "CS-GH-48",
+      "sourceKind": "ci_report",
+      "versionBinding": "unknown",
+      "supersedesRunId": null,
+      "recordedSequence": 12,
+      "recordedAt": "2026-11-13T17:03:39.471484+00:00",
+      "integration": {
+        "version": 1,
+        "target": "merge",
+        "targetCommit": "bb3ce6c5663b498db7fad341bee5da5efd63060c",
+        "coverage": "observation",
+        "workflow": "Gallery Quality",
+        "scopeKey": "Gallery Quality",
+        "attempt": 1,
+        "checkIds": [
+          "AC-01"
+        ],
+        "testIds": [
+          "TST-LAB-CI"
+        ],
+        "taskIds": [
+          "M3D20-01b.1"
+        ],
+        "scopeTests": [
+          "Gallery Quality"
+        ],
+        "tags": [
+          "post-merge"
+        ],
+        "counts": null,
+        "attachments": [],
+        "ciRunId": 43321952601,
+        "observedAt": "2026-11-13T17:03:39.471484+00:00",
+        "timestampBasis": "GitHub workflow updated_at"
+      }
+    },
+    {
+      "id": "RUN-LAB-48-MERGE-43321952661",
+      "name": "Linux Package Smoke",
+      "description": "",
+      "notes": "",
+      "revision": 1,
+      "updatedAt": "2026-11-13T17:03:39.471484+00:00",
+      "archived": false,
+      "checkId": "AC-01",
+      "testId": "TST-LAB-CI",
+      "result": "passed",
+      "repository": "expert10000/Math3D",
+      "commit": "bb3ce6c5663b498db7fad341bee5da5efd63060c",
+      "environment": "github-actions",
+      "executedAt": "2026-11-12T22:58:50Z",
+      "evidenceUrl": "https://github.com/expert10000/Math3D/actions/runs/43321952661",
+      "configurationIds": [],
+      "adapterIds": [],
+      "scopeNote": "Exact source-bound scope only. Architecture semantic applicability remains unreviewed.",
+      "snapshot": [],
+      "changeSetId": "CS-GH-48",
+      "sourceKind": "ci_report",
+      "versionBinding": "unknown",
+      "supersedesRunId": null,
+      "recordedSequence": 13,
+      "recordedAt": "2026-11-13T17:03:39.471484+00:00",
+      "integration": {
+        "version": 1,
+        "target": "merge",
+        "targetCommit": "bb3ce6c5663b498db7fad341bee5da5efd63060c",
+        "coverage": "observation",
+        "workflow": "Linux Package Smoke",
+        "scopeKey": "Linux Package Smoke",
+        "attempt": 1,
+        "checkIds": [
+          "AC-01"
+        ],
+        "testIds": [
+          "TST-LAB-CI"
+        ],
+        "taskIds": [
+          "M3D20-01b.1"
+        ],
+        "scopeTests": [
+          "Linux Package Smoke"
+        ],
+        "tags": [
+          "post-merge"
+        ],
+        "counts": null,
+        "attachments": [],
+        "ciRunId": 43321952661,
+        "observedAt": "2026-11-13T17:03:39.471484+00:00",
+        "timestampBasis": "GitHub workflow updated_at"
+      }
+    },
+    {
+      "id": "RUN-LAB-48-MERGE-43321952692",
+      "name": "Mobile Android Gate",
+      "description": "",
+      "notes": "",
+      "revision": 1,
+      "updatedAt": "2026-11-13T17:03:39.471484+00:00",
+      "archived": false,
+      "checkId": "AC-01",
+      "testId": "TST-LAB-CI",
+      "result": "passed",
+      "repository": "expert10000/Math3D",
+      "commit": "bb3ce6c5663b498db7fad341bee5da5efd63060c",
+      "environment": "github-actions",
+      "executedAt": "2026-11-12T22:55:18Z",
+      "evidenceUrl": "https://github.com/expert10000/Math3D/actions/runs/43321952692",
+      "configurationIds": [],
+      "adapterIds": [],
+      "scopeNote": "Exact source-bound scope only. Architecture semantic applicability remains unreviewed.",
+      "snapshot": [],
+      "changeSetId": "CS-GH-48",
+      "sourceKind": "ci_report",
+      "versionBinding": "unknown",
+      "supersedesRunId": null,
+      "recordedSequence": 14,
+      "recordedAt": "2026-11-13T17:03:39.471484+00:00",
+      "integration": {
+        "version": 1,
+        "target": "merge",
+        "targetCommit": "bb3ce6c5663b498db7fad341bee5da5efd63060c",
+        "coverage": "observation",
+        "workflow": "Mobile Android Gate",
+        "scopeKey": "Mobile Android Gate",
+        "attempt": 1,
+        "checkIds": [
+          "AC-01"
+        ],
+        "testIds": [
+          "TST-LAB-CI"
+        ],
+        "taskIds": [
+          "M3D20-01b.1"
+        ],
+        "scopeTests": [
+          "Mobile Android Gate"
+        ],
+        "tags": [
+          "post-merge"
+        ],
+        "counts": null,
+        "attachments": [],
+        "ciRunId": 43321952692,
+        "observedAt": "2026-11-13T17:03:39.471484+00:00",
+        "timestampBasis": "GitHub workflow updated_at"
+      }
+    },
+    {
+      "id": "RUN-LAB-50-HEAD-43410550469",
+      "name": "Gallery Quality",
+      "description": "",
+      "notes": "Workflow result observed from GitHub. Attach its exact assertion report for complete execution evidence.",
+      "revision": 1,
+      "updatedAt": "2026-11-13T17:03:39.471484+00:00",
+      "archived": false,
+      "checkId": "AC-01",
+      "testId": "TST-LAB-CI",
+      "result": "passed",
+      "repository": "expert10000/Math3D",
+      "commit": "6eb869860df30e1ee7e81ff8e6aea72d0a7c6a0e",
+      "environment": "github-actions",
+      "executedAt": "2026-11-13T10:40:58Z",
+      "evidenceUrl": "https://github.com/expert10000/Math3D/actions/runs/43410550469",
+      "configurationIds": [],
+      "adapterIds": [],
+      "scopeNote": "Exact source-bound scope only. Architecture semantic applicability remains unreviewed.",
+      "snapshot": [],
+      "changeSetId": "CS-GH-50",
+      "sourceKind": "ci_report",
+      "versionBinding": "unknown",
+      "supersedesRunId": null,
+      "recordedSequence": 15,
+      "recordedAt": "2026-11-13T17:03:39.471484+00:00",
+      "integration": {
+        "version": 1,
+        "target": "head",
+        "targetCommit": "6eb869860df30e1ee7e81ff8e6aea72d0a7c6a0e",
+        "coverage": "observation",
+        "workflow": "Gallery Quality",
+        "scopeKey": "Gallery Quality",
+        "attempt": 1,
+        "checkIds": [
+          "AC-01"
+        ],
+        "testIds": [
+          "TST-LAB-CI"
+        ],
+        "taskIds": [
+          "M3D20-01b.1"
+        ],
+        "scopeTests": [
+          "Gallery Quality"
+        ],
+        "tags": [],
+        "counts": null,
+        "attachments": [],
+        "ciRunId": 43410550469,
+        "observedAt": "2026-11-13T17:03:39.471484+00:00",
+        "timestampBasis": "GitHub workflow updated_at"
+      }
+    },
+    {
+      "id": "RUN-LAB-50-HEAD-43410550579",
+      "name": "Graph2D Professional Software Acceptance",
+      "description": "",
+      "notes": "Workflow result observed from GitHub. Attach its exact assertion report for complete execution evidence.",
+      "revision": 1,
+      "updatedAt": "2026-11-13T17:03:39.471484+00:00",
+      "archived": false,
+      "checkId": "AC-01",
+      "testId": "TST-LAB-CI",
+      "result": "passed",
+      "repository": "expert10000/Math3D",
+      "commit": "6eb869860df30e1ee7e81ff8e6aea72d0a7c6a0e",
+      "environment": "github-actions",
+      "executedAt": "2026-11-13T11:28:52Z",
+      "evidenceUrl": "https://github.com/expert10000/Math3D/actions/runs/43410550579",
+      "configurationIds": [],
+      "adapterIds": [],
+      "scopeNote": "Exact source-bound scope only. Architecture semantic applicability remains unreviewed.",
+      "snapshot": [],
+      "changeSetId": "CS-GH-50",
+      "sourceKind": "ci_report",
+      "versionBinding": "unknown",
+      "supersedesRunId": null,
+      "recordedSequence": 16,
+      "recordedAt": "2026-11-13T17:03:39.471484+00:00",
+      "integration": {
+        "version": 1,
+        "target": "head",
+        "targetCommit": "6eb869860df30e1ee7e81ff8e6aea72d0a7c6a0e",
+        "coverage": "observation",
+        "workflow": "Graph2D Professional Software Acceptance",
+        "scopeKey": "Graph2D Professional Software Acceptance",
+        "attempt": 1,
+        "checkIds": [
+          "AC-01"
+        ],
+        "testIds": [
+          "TST-LAB-CI"
+        ],
+        "taskIds": [
+          "M3D20-01b.1"
+        ],
+        "scopeTests": [
+          "Graph2D Professional Software Acceptance"
+        ],
+        "tags": [],
+        "counts": null,
+        "attachments": [],
+        "ciRunId": 43410550579,
+        "observedAt": "2026-11-13T17:03:39.471484+00:00",
+        "timestampBasis": "GitHub workflow updated_at"
+      }
+    },
+    {
+      "id": "RUN-LAB-50-HEAD-43410550604",
+      "name": "M3D20 acceptance batch 01 regressions",
+      "description": "",
+      "notes": "Workflow result observed from GitHub. Attach its exact assertion report for complete execution evidence.",
+      "revision": 1,
+      "updatedAt": "2026-11-13T17:03:39.471484+00:00",
+      "archived": false,
+      "checkId": "AC-01",
+      "testId": "TST-LAB-CI",
+      "result": "passed",
+      "repository": "expert10000/Math3D",
+      "commit": "6eb869860df30e1ee7e81ff8e6aea72d0a7c6a0e",
+      "environment": "github-actions",
+      "executedAt": "2026-11-13T10:49:43Z",
+      "evidenceUrl": "https://github.com/expert10000/Math3D/actions/runs/43410550604",
+      "configurationIds": [],
+      "adapterIds": [],
+      "scopeNote": "Exact source-bound scope only. Architecture semantic applicability remains unreviewed.",
+      "snapshot": [],
+      "changeSetId": "CS-GH-50",
+      "sourceKind": "ci_report",
+      "versionBinding": "unknown",
+      "supersedesRunId": null,
+      "recordedSequence": 17,
+      "recordedAt": "2026-11-13T17:03:39.471484+00:00",
+      "integration": {
+        "version": 1,
+        "target": "head",
+        "targetCommit": "6eb869860df30e1ee7e81ff8e6aea72d0a7c6a0e",
+        "coverage": "observation",
+        "workflow": "M3D20 acceptance batch 01 regressions",
+        "scopeKey": "M3D20 acceptance batch 01 regressions",
+        "attempt": 1,
+        "checkIds": [
+          "AC-01"
+        ],
+        "testIds": [
+          "TST-LAB-CI"
+        ],
+        "taskIds": [
+          "M3D20-01b.1"
+        ],
+        "scopeTests": [
+          "M3D20 acceptance batch 01 regressions"
+        ],
+        "tags": [],
+        "counts": null,
+        "attachments": [],
+        "ciRunId": 43410550604,
+        "observedAt": "2026-11-13T17:03:39.471484+00:00",
+        "timestampBasis": "GitHub workflow updated_at"
+      }
+    },
+    {
+      "id": "RUN-LAB-50-HEAD-43410550582",
+      "name": "Unified Projects Software Acceptance",
+      "description": "",
+      "notes": "Workflow result observed from GitHub. Attach its exact assertion report for complete execution evidence.",
+      "revision": 1,
+      "updatedAt": "2026-11-13T17:03:39.471484+00:00",
+      "archived": false,
+      "checkId": "AC-01",
+      "testId": "TST-LAB-CI",
+      "result": "passed",
+      "repository": "expert10000/Math3D",
+      "commit": "6eb869860df30e1ee7e81ff8e6aea72d0a7c6a0e",
+      "environment": "github-actions",
+      "executedAt": "2026-11-13T11:21:36Z",
+      "evidenceUrl": "https://github.com/expert10000/Math3D/actions/runs/43410550582",
+      "configurationIds": [],
+      "adapterIds": [],
+      "scopeNote": "Exact source-bound scope only. Architecture semantic applicability remains unreviewed.",
+      "snapshot": [],
+      "changeSetId": "CS-GH-50",
+      "sourceKind": "ci_report",
+      "versionBinding": "unknown",
+      "supersedesRunId": null,
+      "recordedSequence": 18,
+      "recordedAt": "2026-11-13T17:03:39.471484+00:00",
+      "integration": {
+        "version": 1,
+        "target": "head",
+        "targetCommit": "6eb869860df30e1ee7e81ff8e6aea72d0a7c6a0e",
+        "coverage": "observation",
+        "workflow": "Unified Projects Software Acceptance",
+        "scopeKey": "Unified Projects Software Acceptance",
+        "attempt": 1,
+        "checkIds": [
+          "AC-01"
+        ],
+        "testIds": [
+          "TST-LAB-CI"
+        ],
+        "taskIds": [
+          "M3D20-01b.1"
+        ],
+        "scopeTests": [
+          "Unified Projects Software Acceptance"
+        ],
+        "tags": [],
+        "counts": null,
+        "attachments": [],
+        "ciRunId": 43410550582,
+        "observedAt": "2026-11-13T17:03:39.471484+00:00",
+        "timestampBasis": "GitHub workflow updated_at"
+      }
+    },
+    {
+      "id": "RUN-LAB-50-HEAD-43410550534",
+      "name": "Release 2.0 Flagship Source Evidence",
+      "description": "",
+      "notes": "Workflow result observed from GitHub. Attach its exact assertion report for complete execution evidence.",
+      "revision": 1,
+      "updatedAt": "2026-11-13T17:03:39.471484+00:00",
+      "archived": false,
+      "checkId": "AC-01",
+      "testId": "TST-LAB-CI",
+      "result": "passed",
+      "repository": "expert10000/Math3D",
+      "commit": "6eb869860df30e1ee7e81ff8e6aea72d0a7c6a0e",
+      "environment": "github-actions",
+      "executedAt": "2026-11-13T10:48:05Z",
+      "evidenceUrl": "https://github.com/expert10000/Math3D/actions/runs/43410550534",
+      "configurationIds": [],
+      "adapterIds": [],
+      "scopeNote": "Exact source-bound scope only. Architecture semantic applicability remains unreviewed.",
+      "snapshot": [],
+      "changeSetId": "CS-GH-50",
+      "sourceKind": "ci_report",
+      "versionBinding": "unknown",
+      "supersedesRunId": null,
+      "recordedSequence": 19,
+      "recordedAt": "2026-11-13T17:03:39.471484+00:00",
+      "integration": {
+        "version": 1,
+        "target": "head",
+        "targetCommit": "6eb869860df30e1ee7e81ff8e6aea72d0a7c6a0e",
+        "coverage": "observation",
+        "workflow": "Release 2.0 Flagship Source Evidence",
+        "scopeKey": "Release 2.0 Flagship Source Evidence",
+        "attempt": 1,
+        "checkIds": [
+          "AC-01"
+        ],
+        "testIds": [
+          "TST-LAB-CI"
+        ],
+        "taskIds": [
+          "M3D20-01b.1"
+        ],
+        "scopeTests": [
+          "Release 2.0 Flagship Source Evidence"
+        ],
+        "tags": [],
+        "counts": null,
+        "attachments": [],
+        "ciRunId": 43410550534,
+        "observedAt": "2026-11-13T17:03:39.471484+00:00",
+        "timestampBasis": "GitHub workflow updated_at"
+      }
+    },
+    {
+      "id": "RUN-LAB-50-HEAD-43410550650",
+      "name": "CI Build and Worker Smoke",
+      "description": "",
+      "notes": "Workflow result observed from GitHub. Attach its exact assertion report for complete execution evidence.",
+      "revision": 1,
+      "updatedAt": "2026-11-13T17:03:39.471484+00:00",
+      "archived": false,
+      "checkId": "AC-01",
+      "testId": "TST-LAB-CI",
+      "result": "passed",
+      "repository": "expert10000/Math3D",
+      "commit": "6eb869860df30e1ee7e81ff8e6aea72d0a7c6a0e",
+      "environment": "github-actions",
+      "executedAt": "2026-11-13T11:09:39Z",
+      "evidenceUrl": "https://github.com/expert10000/Math3D/actions/runs/43410550650",
+      "configurationIds": [],
+      "adapterIds": [],
+      "scopeNote": "Exact source-bound scope only. Architecture semantic applicability remains unreviewed.",
+      "snapshot": [],
+      "changeSetId": "CS-GH-50",
+      "sourceKind": "ci_report",
+      "versionBinding": "unknown",
+      "supersedesRunId": null,
+      "recordedSequence": 20,
+      "recordedAt": "2026-11-13T17:03:39.471484+00:00",
+      "integration": {
+        "version": 1,
+        "target": "head",
+        "targetCommit": "6eb869860df30e1ee7e81ff8e6aea72d0a7c6a0e",
+        "coverage": "observation",
+        "workflow": "CI Build and Worker Smoke",
+        "scopeKey": "CI Build and Worker Smoke",
+        "attempt": 1,
+        "checkIds": [
+          "AC-01"
+        ],
+        "testIds": [
+          "TST-LAB-CI"
+        ],
+        "taskIds": [
+          "M3D20-01b.1"
+        ],
+        "scopeTests": [
+          "CI Build and Worker Smoke"
+        ],
+        "tags": [],
+        "counts": null,
+        "attachments": [],
+        "ciRunId": 43410550650,
+        "observedAt": "2026-11-13T17:03:39.471484+00:00",
+        "timestampBasis": "GitHub workflow updated_at"
+      }
+    },
+    {
+      "id": "RUN-LAB-50-HEAD-43410550584",
+      "name": "Mobile Android Gate",
+      "description": "",
+      "notes": "Workflow result observed from GitHub. Attach its exact assertion report for complete execution evidence.",
+      "revision": 1,
+      "updatedAt": "2026-11-13T17:03:39.471484+00:00",
+      "archived": false,
+      "checkId": "AC-01",
+      "testId": "TST-LAB-CI",
+      "result": "passed",
+      "repository": "expert10000/Math3D",
+      "commit": "6eb869860df30e1ee7e81ff8e6aea72d0a7c6a0e",
+      "environment": "github-actions",
+      "executedAt": "2026-11-13T10:52:53Z",
+      "evidenceUrl": "https://github.com/expert10000/Math3D/actions/runs/43410550584",
+      "configurationIds": [],
+      "adapterIds": [],
+      "scopeNote": "Exact source-bound scope only. Architecture semantic applicability remains unreviewed.",
+      "snapshot": [],
+      "changeSetId": "CS-GH-50",
+      "sourceKind": "ci_report",
+      "versionBinding": "unknown",
+      "supersedesRunId": null,
+      "recordedSequence": 21,
+      "recordedAt": "2026-11-13T17:03:39.471484+00:00",
+      "integration": {
+        "version": 1,
+        "target": "head",
+        "targetCommit": "6eb869860df30e1ee7e81ff8e6aea72d0a7c6a0e",
+        "coverage": "observation",
+        "workflow": "Mobile Android Gate",
+        "scopeKey": "Mobile Android Gate",
+        "attempt": 1,
+        "checkIds": [
+          "AC-01"
+        ],
+        "testIds": [
+          "TST-LAB-CI"
+        ],
+        "taskIds": [
+          "M3D20-01b.1"
+        ],
+        "scopeTests": [
+          "Mobile Android Gate"
+        ],
+        "tags": [],
+        "counts": null,
+        "attachments": [],
+        "ciRunId": 43410550584,
+        "observedAt": "2026-11-13T17:03:39.471484+00:00",
+        "timestampBasis": "GitHub workflow updated_at"
+      }
+    },
+    {
+      "id": "RUN-LAB-50-NATIVE",
+      "name": "Native UI: source edit, stale result, late rejection and cold reopen",
+      "description": "",
+      "notes": "48.560s; zero retries/skips/flaky outcomes. Successful open explicitly asserted. Three document identities and all historical results/references preserved. Mesh sidecar 189192 bytes; SHA256 fea832cc3ef6cc4031060bc6a5a76394bce6b48080725dd5df53950a855e415d verified before and after restart.",
+      "revision": 1,
+      "updatedAt": "2026-11-13T17:03:39.471484+00:00",
+      "archived": false,
+      "checkId": "AC-04",
+      "testId": "TST-LAB-NATIVE",
+      "result": "passed",
+      "repository": "expert10000/Math3D",
+      "commit": "6eb869860df30e1ee7e81ff8e6aea72d0a7c6a0e",
+      "environment": "windows-2022-node24.15.0-python3.11",
+      "executedAt": "2026-11-13T10:48:37.126Z",
+      "evidenceUrl": "https://github.com/expert10000/Math3D/actions/runs/43410550604",
+      "configurationIds": [],
+      "adapterIds": [],
+      "scopeNote": "Exact source-bound scope only. Architecture semantic applicability remains unreviewed.",
+      "snapshot": [],
+      "changeSetId": "CS-GH-50",
+      "sourceKind": "ci_report",
+      "versionBinding": "unknown",
+      "supersedesRunId": null,
+      "recordedSequence": 22,
+      "recordedAt": "2026-11-13T17:03:39.471484+00:00",
+      "integration": {
+        "version": 1,
+        "target": "head",
+        "targetCommit": "6eb869860df30e1ee7e81ff8e6aea72d0a7c6a0e",
+        "coverage": "scoped",
+        "workflow": "M3D20 native acceptance",
+        "scopeKey": "tests/e2e/m3d20-native-job-lifecycle.spec.ts",
+        "attempt": 1,
+        "checkIds": [
+          "AC-01",
+          "AC-03",
+          "AC-04",
+          "AC-05"
+        ],
+        "testIds": [
+          "TST-LAB-NATIVE"
+        ],
+        "taskIds": [
+          "M3D20-01b.5"
+        ],
+        "scopeTests": [
+          "tests/e2e/m3d20-native-job-lifecycle.spec.ts"
+        ],
+        "tags": [
+          "native-ui",
+          "stale-result",
+          "late-output",
+          "cold-reopen"
+        ],
+        "counts": {
+          "expected": 1,
+          "passed": 1,
+          "failed": 0,
+          "skipped": 0,
+          "missing": 0,
+          "cancelled": 0,
+          "incomplete": 0
+        },
+        "attachments": [],
+        "ciRunId": 43410550604,
+        "observedAt": "2026-11-13T17:03:39.471484+00:00",
+        "timestampBasis": "Playwright report startTime",
+        "artifact": {
+          "id": 14030161686,
+          "sha256": "749ddd07c3dbafdecc0e0e6521222b0cb37609de40e75a4fe02a520c8438c369",
+          "independentlyVerified": true
+        }
+      }
+    },
+    {
+      "id": "RUN-LAB-50-FIRST-FAILURE",
+      "name": "Initial native cold-reopen blocker",
+      "description": "",
+      "notes": "Compatibility preview safely blocked opening: extracted Surface had no matching Mesh/buffers. LocalStorage equality alone was not actual restoration.",
+      "revision": 1,
+      "updatedAt": "2026-11-13T17:03:39.471484+00:00",
+      "archived": false,
+      "checkId": "AC-04",
+      "testId": "TST-LAB-NATIVE",
+      "result": "failed",
+      "repository": "expert10000/Math3D",
+      "commit": "51ff9a3e20dd3f7d1e0de54f2f7d9fd4ea4bb650",
+      "environment": "github-actions",
+      "executedAt": "2026-11-13T10:31:55Z",
+      "evidenceUrl": "https://github.com/expert10000/Math3D/actions/runs/43408585178",
+      "configurationIds": [],
+      "adapterIds": [],
+      "scopeNote": "Exact source-bound scope only. Architecture semantic applicability remains unreviewed.",
+      "snapshot": [],
+      "changeSetId": "CS-GH-50",
+      "sourceKind": "ci_report",
+      "versionBinding": "unknown",
+      "supersedesRunId": null,
+      "recordedSequence": 23,
+      "recordedAt": "2026-11-13T17:03:39.471484+00:00",
+      "integration": {
+        "version": 1,
+        "target": "head",
+        "targetCommit": "51ff9a3e20dd3f7d1e0de54f2f7d9fd4ea4bb650",
+        "coverage": "scoped",
+        "workflow": "M3D20 native acceptance",
+        "scopeKey": "tests/e2e/m3d20-native-job-lifecycle.spec.ts",
+        "attempt": 1,
+        "checkIds": [
+          "AC-04"
+        ],
+        "testIds": [
+          "TST-LAB-NATIVE"
+        ],
+        "taskIds": [
+          "M3D20-01b.5"
+        ],
+        "scopeTests": [
+          "tests/e2e/m3d20-native-job-lifecycle.spec.ts"
+        ],
+        "tags": [
+          "native-ui",
+          "cold-reopen"
+        ],
+        "counts": {
+          "expected": 1,
+          "passed": 0,
+          "failed": 1,
+          "skipped": 0,
+          "missing": 0,
+          "cancelled": 0,
+          "incomplete": 0
+        },
+        "attachments": [],
+        "ciRunId": 43408585178,
+        "observedAt": "2026-11-13T17:03:39.471484+00:00",
+        "timestampBasis": "GitHub workflow updated_at"
+      }
+    },
+    {
+      "id": "RUN-LAB-50-playwright",
+      "name": "Three legacy/resource cold reopen journeys",
+      "description": "",
+      "notes": "",
+      "revision": 1,
+      "updatedAt": "2026-11-13T17:03:39.471484+00:00",
+      "archived": false,
+      "checkId": "AC-02",
+      "testId": "TST-LAB-NATIVE",
+      "result": "passed",
+      "repository": "expert10000/Math3D",
+      "commit": "6eb869860df30e1ee7e81ff8e6aea72d0a7c6a0e",
+      "environment": "windows-2022-node24.15.0-python3.11",
+      "executedAt": "2026-11-13T10:49:43Z",
+      "evidenceUrl": "https://github.com/expert10000/Math3D/actions/runs/43410550604",
+      "configurationIds": [],
+      "adapterIds": [],
+      "scopeNote": "Exact source-bound scope only. Architecture semantic applicability remains unreviewed.",
+      "snapshot": [],
+      "changeSetId": "CS-GH-50",
+      "sourceKind": "ci_report",
+      "versionBinding": "unknown",
+      "supersedesRunId": null,
+      "recordedSequence": 24,
+      "recordedAt": "2026-11-13T17:03:39.471484+00:00",
+      "integration": {
+        "version": 1,
+        "target": "head",
+        "targetCommit": "6eb869860df30e1ee7e81ff8e6aea72d0a7c6a0e",
+        "coverage": "scoped",
+        "workflow": "M3D20 native acceptance",
+        "scopeKey": "m3d20-legacy-reopen.spec.ts :: M3D20 AC02 AC07 legacy nullable selections survive library import and cold reopen|m3d20-legacy-reopen.spec.ts :: M3D20 AC03 metadata-only artifact remains unavailable after cold Project reopen|m3d20-legacy-reopen.spec.ts :: M3D20 mixed legacy Project package transfers real sidecars and recovers after rejected resources",
+        "attempt": 1,
+        "checkIds": [
+          "AC-02"
+        ],
+        "testIds": [
+          "TST-LAB-NATIVE"
+        ],
+        "taskIds": [
+          "M3D20-01b.1"
+        ],
+        "scopeTests": [
+          "m3d20-legacy-reopen.spec.ts :: M3D20 AC02 AC07 legacy nullable selections survive library import and cold reopen",
+          "m3d20-legacy-reopen.spec.ts :: M3D20 AC03 metadata-only artifact remains unavailable after cold Project reopen",
+          "m3d20-legacy-reopen.spec.ts :: M3D20 mixed legacy Project package transfers real sidecars and recovers after rejected resources"
+        ],
+        "tags": [
+          "cold-reopen"
+        ],
+        "counts": {
+          "expected": 3,
+          "passed": 3,
+          "failed": 0,
+          "skipped": 0,
+          "missing": 0,
+          "cancelled": 0,
+          "incomplete": 0
+        },
+        "attachments": [],
+        "ciRunId": 43410550604,
+        "observedAt": "2026-11-13T17:03:39.471484+00:00",
+        "timestampBasis": "GitHub workflow updated_at"
+      }
+    },
+    {
+      "id": "RUN-LAB-50-prj08",
+      "name": "PRJ08 saved Project transfer and history",
+      "description": "",
+      "notes": "",
+      "revision": 1,
+      "updatedAt": "2026-11-13T17:03:39.471484+00:00",
+      "archived": false,
+      "checkId": "AC-01",
+      "testId": "TST-LAB-NATIVE",
+      "result": "passed",
+      "repository": "expert10000/Math3D",
+      "commit": "6eb869860df30e1ee7e81ff8e6aea72d0a7c6a0e",
+      "environment": "windows-2022-node24.15.0-python3.11",
+      "executedAt": "2026-11-13T10:49:43Z",
+      "evidenceUrl": "https://github.com/expert10000/Math3D/actions/runs/43410550604",
+      "configurationIds": [],
+      "adapterIds": [],
+      "scopeNote": "Exact source-bound scope only. Architecture semantic applicability remains unreviewed.",
+      "snapshot": [],
+      "changeSetId": "CS-GH-50",
+      "sourceKind": "ci_report",
+      "versionBinding": "unknown",
+      "supersedesRunId": null,
+      "recordedSequence": 25,
+      "recordedAt": "2026-11-13T17:03:39.471484+00:00",
+      "integration": {
+        "version": 1,
+        "target": "head",
+        "targetCommit": "6eb869860df30e1ee7e81ff8e6aea72d0a7c6a0e",
+        "coverage": "scoped",
+        "workflow": "M3D20 native acceptance",
+        "scopeKey": "unified-projects.spec.ts :: PRJ08 named project checkpoints survive Electron/mobile transfer, restart and managed history",
+        "attempt": 1,
+        "checkIds": [
+          "AC-01"
+        ],
+        "testIds": [
+          "TST-LAB-NATIVE"
+        ],
+        "taskIds": [
+          "M3D20-01b.1"
+        ],
+        "scopeTests": [
+          "unified-projects.spec.ts :: PRJ08 named project checkpoints survive Electron/mobile transfer, restart and managed history"
+        ],
+        "tags": [
+          "cold-reopen"
+        ],
+        "counts": {
+          "expected": 1,
+          "passed": 1,
+          "failed": 0,
+          "skipped": 0,
+          "missing": 0,
+          "cancelled": 0,
+          "incomplete": 0
+        },
+        "attachments": [],
+        "ciRunId": 43410550604,
+        "observedAt": "2026-11-13T17:03:39.471484+00:00",
+        "timestampBasis": "GitHub workflow updated_at"
+      }
+    },
+    {
+      "id": "RUN-LAB-50-surface-snapshots",
+      "name": "SurfaceMesh selection and mapped return",
+      "description": "",
+      "notes": "",
+      "revision": 1,
+      "updatedAt": "2026-11-13T17:03:39.471484+00:00",
+      "archived": false,
+      "checkId": "AC-04",
+      "testId": "TST-LAB-NATIVE",
+      "result": "passed",
+      "repository": "expert10000/Math3D",
+      "commit": "6eb869860df30e1ee7e81ff8e6aea72d0a7c6a0e",
+      "environment": "windows-2022-node24.15.0-python3.11",
+      "executedAt": "2026-11-13T10:49:43Z",
+      "evidenceUrl": "https://github.com/expert10000/Math3D/actions/runs/43410550604",
+      "configurationIds": [],
+      "adapterIds": [],
+      "scopeNote": "Exact source-bound scope only. Architecture semantic applicability remains unreviewed.",
+      "snapshot": [],
+      "changeSetId": "CS-GH-50",
+      "sourceKind": "ci_report",
+      "versionBinding": "unknown",
+      "supersedesRunId": null,
+      "recordedSequence": 26,
+      "recordedAt": "2026-11-13T17:03:39.471484+00:00",
+      "integration": {
+        "version": 1,
+        "target": "head",
+        "targetCommit": "6eb869860df30e1ee7e81ff8e6aea72d0a7c6a0e",
+        "coverage": "scoped",
+        "workflow": "M3D20 native acceptance",
+        "scopeKey": "surface-functional.spec.ts :: Test 7 \u2014 provenance-linked derived SurfaceMesh lifecycle|surface-functional.spec.ts :: Test 8 \u2014 live mesh, baked snapshot, Mesh Analysis and mapped return",
+        "attempt": 1,
+        "checkIds": [
+          "AC-04"
+        ],
+        "testIds": [
+          "TST-LAB-NATIVE"
+        ],
+        "taskIds": [
+          "M3D20-01b.5"
+        ],
+        "scopeTests": [
+          "surface-functional.spec.ts :: Test 7 \u2014 provenance-linked derived SurfaceMesh lifecycle",
+          "surface-functional.spec.ts :: Test 8 \u2014 live mesh, baked snapshot, Mesh Analysis and mapped return"
+        ],
+        "tags": [
+          "native-ui"
+        ],
+        "counts": {
+          "expected": 2,
+          "passed": 2,
+          "failed": 0,
+          "skipped": 0,
+          "missing": 0,
+          "cancelled": 0,
+          "incomplete": 0
+        },
+        "attachments": [],
+        "ciRunId": 43410550604,
+        "observedAt": "2026-11-13T17:03:39.471484+00:00",
+        "timestampBasis": "GitHub workflow updated_at"
+      }
+    },
+    {
+      "id": "RUN-LAB-50-vitest",
+      "name": "Twelve owner suites",
+      "description": "",
+      "notes": "",
+      "revision": 1,
+      "updatedAt": "2026-11-13T17:03:39.471484+00:00",
+      "archived": false,
+      "checkId": "AC-04",
+      "testId": "TST-LAB-OWNER",
+      "result": "passed",
+      "repository": "expert10000/Math3D",
+      "commit": "6eb869860df30e1ee7e81ff8e6aea72d0a7c6a0e",
+      "environment": "github-actions",
+      "executedAt": "2026-11-13T10:49:43Z",
+      "evidenceUrl": "https://github.com/expert10000/Math3D/actions/runs/43410550604",
+      "configurationIds": [],
+      "adapterIds": [],
+      "scopeNote": "Exact source-bound scope only. Architecture semantic applicability remains unreviewed.",
+      "snapshot": [],
+      "changeSetId": "CS-GH-50",
+      "sourceKind": "ci_report",
+      "versionBinding": "unknown",
+      "supersedesRunId": null,
+      "recordedSequence": 27,
+      "recordedAt": "2026-11-13T17:03:39.471484+00:00",
+      "integration": {
+        "version": 1,
+        "target": "head",
+        "targetCommit": "6eb869860df30e1ee7e81ff8e6aea72d0a7c6a0e",
+        "coverage": "scoped",
+        "workflow": "M3D20 owner regressions",
+        "scopeKey": "tests/unit/crossModuleAdapterRegistry.test.ts|tests/unit/projectAlgebraOpenIn.test.ts|tests/unit/projectMeshGeometry.test.ts|tests/unit/projectOpenIn.test.ts|tests/unit/projectOpenInField.test.ts|tests/unit/scientificSelection.test.ts|renderer/src/core/analysisResults.test.ts|renderer/src/core/platformCapabilities.test.ts|renderer/src/geometry/analysisResultWorkflow.test.ts|renderer/src/kernel/artifactRegistry.test.ts|renderer/src/kernel/scientificJobService.test.ts|renderer/src/mesh/analysisResultStore.test.ts",
+        "attempt": 1,
+        "checkIds": [
+          "AC-04"
+        ],
+        "testIds": [
+          "TST-LAB-OWNER"
+        ],
+        "taskIds": [
+          "M3D20-01b.5"
+        ],
+        "scopeTests": [
+          "tests/unit/crossModuleAdapterRegistry.test.ts",
+          "tests/unit/projectAlgebraOpenIn.test.ts",
+          "tests/unit/projectMeshGeometry.test.ts",
+          "tests/unit/projectOpenIn.test.ts",
+          "tests/unit/projectOpenInField.test.ts",
+          "tests/unit/scientificSelection.test.ts",
+          "renderer/src/core/analysisResults.test.ts",
+          "renderer/src/core/platformCapabilities.test.ts",
+          "renderer/src/geometry/analysisResultWorkflow.test.ts",
+          "renderer/src/kernel/artifactRegistry.test.ts",
+          "renderer/src/kernel/scientificJobService.test.ts",
+          "renderer/src/mesh/analysisResultStore.test.ts"
+        ],
+        "tags": [],
+        "counts": {
+          "expected": 87,
+          "passed": 87,
+          "failed": 0,
+          "skipped": 0,
+          "missing": 0,
+          "cancelled": 0,
+          "incomplete": 0
+        },
+        "attachments": [],
+        "ciRunId": 43410550604,
+        "observedAt": "2026-11-13T17:03:39.471484+00:00",
+        "timestampBasis": "GitHub workflow updated_at"
+      }
+    },
+    {
+      "id": "RUN-LAB-50-volume-restore",
+      "name": "Four Volume / restore suites",
+      "description": "",
+      "notes": "",
+      "revision": 1,
+      "updatedAt": "2026-11-13T17:03:39.471484+00:00",
+      "archived": false,
+      "checkId": "AC-04",
+      "testId": "TST-LAB-OWNER",
+      "result": "passed",
+      "repository": "expert10000/Math3D",
+      "commit": "6eb869860df30e1ee7e81ff8e6aea72d0a7c6a0e",
+      "environment": "github-actions",
+      "executedAt": "2026-11-13T10:49:43Z",
+      "evidenceUrl": "https://github.com/expert10000/Math3D/actions/runs/43410550604",
+      "configurationIds": [],
+      "adapterIds": [],
+      "scopeNote": "Exact source-bound scope only. Architecture semantic applicability remains unreviewed.",
+      "snapshot": [],
+      "changeSetId": "CS-GH-50",
+      "sourceKind": "ci_report",
+      "versionBinding": "unknown",
+      "supersedesRunId": null,
+      "recordedSequence": 28,
+      "recordedAt": "2026-11-13T17:03:39.471484+00:00",
+      "integration": {
+        "version": 1,
+        "target": "head",
+        "targetCommit": "6eb869860df30e1ee7e81ff8e6aea72d0a7c6a0e",
+        "coverage": "scoped",
+        "workflow": "M3D20 owner regressions",
+        "scopeKey": "renderer/src/kernel/scientificJobService.test.ts|renderer/src/projects/additionalProjectRepresentations.test.ts|renderer/src/projects/projectTransfer.test.ts|renderer/src/volume/volumeExtractionKernel.test.ts",
+        "attempt": 1,
+        "checkIds": [
+          "AC-04"
+        ],
+        "testIds": [
+          "TST-LAB-OWNER"
+        ],
+        "taskIds": [
+          "M3D20-01b.5"
+        ],
+        "scopeTests": [
+          "renderer/src/kernel/scientificJobService.test.ts",
+          "renderer/src/projects/additionalProjectRepresentations.test.ts",
+          "renderer/src/projects/projectTransfer.test.ts",
+          "renderer/src/volume/volumeExtractionKernel.test.ts"
+        ],
+        "tags": [],
+        "counts": {
+          "expected": 59,
+          "passed": 59,
+          "failed": 0,
+          "skipped": 0,
+          "missing": 0,
+          "cancelled": 0,
+          "incomplete": 0
+        },
+        "attachments": [],
+        "ciRunId": 43410550604,
+        "observedAt": "2026-11-13T17:03:39.471484+00:00",
+        "timestampBasis": "GitHub workflow updated_at"
+      }
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+node_modules/
+dist/
+worker/
+.sites-runtime/
+*.tar.gz
