@@ -48,6 +48,13 @@ export const releaseViewerRenderer = (renderer: THREE.WebGLRenderer): void => {
   if (pageUnloading || idleRenderers.length >= MAX_IDLE_RENDERERS) {
     destroyRenderer(renderer);
   } else {
-    idleRenderers.push({ renderer, antialias: rendererAntialias.get(renderer) ?? true });
+    const antialias = rendererAntialias.get(renderer) ?? true;
+    // The shared spatial/Surface/Mesh context can have a full-window backing
+    // buffer. Orthogonal slices keep their smaller, stable buffers between visits.
+    if (antialias) {
+      renderer.setSize(1, 1, false);
+      renderer.setPixelRatio(1);
+    }
+    idleRenderers.push({ renderer, antialias });
   }
 };

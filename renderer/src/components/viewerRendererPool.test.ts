@@ -25,6 +25,9 @@ describe("viewer renderer pool", () => {
     const slices = Array.from({ length: 3 }, () => acquireViewerRenderer(false));
     const spatial = acquireViewerRenderer(true);
     for (const renderer of [...slices, spatial]) releaseViewerRenderer(renderer);
+    expect((spatial as unknown as { size: [number, number] }).size).toEqual([1, 1]);
+    expect((spatial as unknown as { pixelRatio: number }).pixelRatio).toBe(1);
+    expect(slices.every(renderer => (renderer as unknown as { size: null }).size === null)).toBe(true);
 
     const reusedSlices = Array.from({ length: 3 }, () => acquireViewerRenderer(false));
     const reusedSpatial = acquireViewerRenderer(true);
