@@ -7,11 +7,14 @@ on:
       - .github/workflows/m3d20-acceptance-batch01.yml
       - tests/unit/crossModuleAdapterRegistry.test.ts
       - tests/e2e/m3d20-legacy-reopen.spec.ts
+      - tests/e2e/m3d20-native-job-lifecycle.spec.ts
       - tests/e2e/helpers/namedProjectRoundTrip.ts
       - tests/e2e/unified-projects.spec.ts
       - tests/e2e/surface-functional.spec.ts
       - renderer/src/App.tsx
       - renderer/src/kernel/scientificJobService.test.ts
+      - renderer/src/volume/volumeExtractionKernel.ts
+      - renderer/src/volume/volumeExtractionKernel.test.ts
   workflow_dispatch:
     inputs:
       source_sha:
@@ -111,6 +114,10 @@ jobs:
             acceptanceCertified:false},null,2));
           NODE
 
+      - name: Volume extraction and native restore regressions
+        shell: bash
+        run: npm --prefix renderer test -- src/volume/volumeExtractionKernel.test.ts src/kernel/scientificJobService.test.ts src/projects/projectTransfer.test.ts src/projects/additionalProjectRepresentations.test.ts --reporter=json --outputFile=../integration-evidence/volume-restore.json
+
       - name: Upload source-bound test evidence
         if: always()
         uses: actions/upload-artifact@v7
@@ -122,6 +129,7 @@ jobs:
 
   desktop-reopen:
     env:
+      TEST_SOURCE_SHA: ${{ inputs.source_sha || github.event.pull_request.head.sha || github.sha }}
       electron_config_cache: '${{ github.workspace }}\\.cache\\electron'
       MATH3D_ELECTRON_DOWNLOAD_TIMEOUT_MS: '600000'
       MATH3D_ELECTRON_EXTRACT_TIMEOUT_MS: '180000'
@@ -175,6 +183,11 @@ jobs:
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: acceptance-reopen/surface-snapshots.json
         run: npx playwright test tests/e2e/surface-functional.spec.ts --grep "Test [78] —" --output=test-results/surface-snapshots --workers=1 --retries=0 --reporter=list,json
+      - name: Native Project source edit, late Job rejection and cold reopen
+        shell: bash
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: acceptance-reopen/native-job.json
+        run: npx playwright test tests/e2e/m3d20-native-job-lifecycle.spec.ts --output=test-results/native-job --workers=1 --retries=0 --reporter=list,json
       - uses: actions/upload-artifact@v7
         if: always()
         with:
