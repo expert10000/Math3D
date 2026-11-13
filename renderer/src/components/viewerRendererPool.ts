@@ -47,6 +47,10 @@ export const releaseViewerRenderer = (renderer: THREE.WebGLRenderer): void => {
   if (pageUnloading || idleRenderers.length >= MAX_IDLE_RENDERERS) {
     destroyRenderer(renderer);
   } else {
+    // Keep the WebGL context warm without retaining the previous viewport's
+    // multisampled drawing buffer while no viewer owns the canvas.
+    renderer.setSize(1, 1, false);
+    renderer.setPixelRatio(1);
     idleRenderers.push({ renderer, antialias: rendererAntialias.get(renderer) ?? true });
   }
 };
