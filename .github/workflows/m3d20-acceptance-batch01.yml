@@ -5,10 +5,16 @@ on:
     branches: [main]
     paths:
       - .github/workflows/m3d20-acceptance-batch01.yml
+      - tests/unit/crossModuleAdapterRegistry.test.ts
+      - tests/e2e/m3d20-legacy-reopen.spec.ts
+      - tests/e2e/m3d20-native-job-lifecycle.spec.ts
+      - tests/e2e/helpers/namedProjectRoundTrip.ts
+      - tests/e2e/unified-projects.spec.ts
+      - tests/e2e/surface-functional.spec.ts
+      - renderer/src/App.tsx
+      - renderer/src/kernel/scientificJobService.test.ts
       - renderer/src/volume/volumeExtractionKernel.ts
       - renderer/src/volume/volumeExtractionKernel.test.ts
-      - tests/e2e/m3d20-native-job-lifecycle.spec.ts
-      - tests/e2e/m3d20-legacy-reopen.spec.ts
   pull_request:
     branches: [main]
     paths:
