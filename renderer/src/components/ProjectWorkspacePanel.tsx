@@ -56,6 +56,7 @@ import { addQualifiedStudyCurveSurfaceLink } from "../projects/studyCurveSurface
 import { addQualifiedStudySurfaceMeshLink } from "../projects/studySurfaceMeshLink";
 import { deriveQwzBandProfile } from "../projects/qwzBandProfile";
 import { prepareCuratedStudyBundle } from "../projects/curatedStudyProject";
+import { prepareVolumeMeshStudy } from "../projects/volumeMeshStudy";
 import { curatedStudy } from "../projects/curatedStudyCatalog";
 import { qualifyCuratedStudy } from "../projects/curatedStudyQualification";
 import { resolveProjectJourneys } from "../projects/projectJourneyCapabilities";
@@ -1900,6 +1901,22 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     try { setProject(change(project)); setMessage(`${success} Save Project to keep it.`); }
     catch (error) { setMessage(`Study change refused: ${(error as Error).message}`); }
   };
+  const stageVolumeMeshStudy = (resultId: string) => {
+    const source = projectStateRef.current;
+    if (!source || busy || preview || managed) return;
+    try {
+      // Verify the Volume payload and retained Mesh before creating any citation.
+      const currentResources = collectResources(source, resourceSession.current, false);
+      const prepared = prepareVolumeMeshStudy(source, resultId);
+      const resources = collectResources(prepared.project, currentResources, false,
+        { id: prepared.workbookId, bytes: prepared.workbookBytes });
+      if (projectStateRef.current !== source) throw new TypeError("Project changed during Volume Study creation.");
+      resourceSession.current = resources; resourceSessionId.current = source.identity.id;
+      setResourceVersion(version => version + 1);
+      setProject(prepared.project);
+      setMessage("Volume, retained Mesh, Study and Workbook staged. Save Project to keep them.");
+    } catch (error) { setMessage(`Volume Study refused: ${(error as Error).message}`); }
+  };
   const stageSurfaceRidgeComparison = async (surfaceId: string, meshId: string, ridgeIndex: number) => {
     const source = projectStateRef.current;
     if (!source || busy || preview || managed) throw new TypeError("Project is not editable.");
@@ -2317,6 +2334,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                 "QWZ k selection removed from Study.")}
               onDeriveQwzProfile={stageQwzBandProfile}
               onPublishSurfaceRidge={stageSurfaceRidgeComparison}
+              onPublishVolumeMesh={stageVolumeMeshStudy}
               onPinScientificSelection={(id, selectionId) => stageStudy(source =>
                 pinProjectStudyScientificSelection(source, id, selectionId), "Scientific selection pinned in Study.")}
               onCapturePinnedNote={(studyId, memberId, selectionId) => {
