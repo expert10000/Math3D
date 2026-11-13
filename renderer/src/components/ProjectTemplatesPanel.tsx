@@ -43,6 +43,7 @@ export const PROJECT_STARTER_MODULES: Record<ProjectStarterId, readonly string[]
   "mesh-geometry-probe": ["Mesh", "Geometry", "Notes"],
   "surface-mesh-probe": ["Surface", "Mesh", "Notes"],
   "surface-geometry-probe": ["Surface", "Geometry", "Notes"],
+  "volume-isosurface-study": ["Volume", "Mesh", "Analysis", "Workbook"],
 };
 
 export const StarterArtwork: React.FC<{ id: ProjectStarterId }> = ({ id }) => <svg viewBox="0 0 320 152" aria-hidden="true" focusable="false">

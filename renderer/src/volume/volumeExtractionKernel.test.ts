@@ -158,4 +158,20 @@ describe("GK15 Volume extraction kernel", () => {
     expect(() => jobs.submit({ ...request, dimensions: [10_000, 10_000, 10_000] })).toThrow();
     jobs.dispose();
   });
+
+  it("does not retain a Mesh resource after a cancelled isosurface extraction", async () => {
+    const adapter = new VolumeDocumentAdapter(volumeDocumentFromLegacyObject(volume));
+    const coordinator = new VolumeWorkerCoordinator(() => new InlineWorker(), undefined,
+      () => ({ volumeRevision: volume.identity.volumeRevision, sampledGridRevision: volume.identity.sampledGridRevision }));
+    const jobs = new VolumeIsosurfaceScientificJob(() => adapter, coordinator);
+    const request = createVolumeJobRequest({ requestId: "volume-gk15-cancel", operation: "marchingCubes", volume,
+      grid, parameters: { isoValue: 0 }, backend: "native-worker", algorithmVersion: "marching-cubes-v1" });
+    const handle = jobs.submit(request);
+    handle.cancel();
+    const outcome = await handle.promise;
+    expect(outcome.broker.ok).toBe(false);
+    expect(outcome.artifact).toBeNull();
+    expect(jobs.resources()).toEqual([]);
+    jobs.dispose();
+  });
 });
