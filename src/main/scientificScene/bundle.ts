@@ -27,6 +27,12 @@ const { scientificTileLayout } = require("../../shared/scientificSceneManifest.j
     { index: number; start: [number, number, number]; size: [number, number, number];
       offsetBytes: number; bytes: number }[];
 };
+const { normalizeScientificSceneBundleEnvelope } = require("../../shared/scientificSceneManifest.js") as {
+  normalizeScientificSceneBundleEnvelope: (value: unknown) => { ok: true; value: {
+    schema: ScientificSceneBundleMetadata["bundleSchema"];
+    manifest: { path: "manifest.json"; bytes: number; sha256: string };
+  } } | { ok: false; errors: string[] };
+};
 
 const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 const MAX_MANIFEST = 64 * 1024;
@@ -79,20 +85,9 @@ export async function readScientificSceneBundleMetadata(directory: string): Prom
   const root = await lstat(directory);
   if (!root.isDirectory() || root.isSymbolicLink()) throw new Error("Scientific bundle root must be a directory");
   const bundle: unknown = JSON.parse((await boundedRead(join(directory, "bundle.json"), 8192)).toString("utf8"));
-  if (!bundle || typeof bundle !== "object" || Array.isArray(bundle)) throw new Error("Invalid scientific bundle envelope");
-  const envelope = bundle as Record<string, unknown>;
-  const ref = envelope.manifest;
-  if (Object.keys(envelope).sort().join(",") !== "manifest,schema" ||
-      !["scientific-scene-bundle/v1", "scientific-scene-bundle/v2",
-        "scientific-scene-bundle/v3"].includes(String(envelope.schema)) ||
-      !ref || typeof ref !== "object" || Array.isArray(ref))
-    throw new Error("Invalid scientific bundle envelope");
-  const descriptor = ref as Record<string, unknown>;
-  if (Object.keys(descriptor).sort().join(",") !== "bytes,path,sha256" || descriptor.path !== "manifest.json" ||
-      !Number.isSafeInteger(descriptor.bytes) || (descriptor.bytes as number) < 1 ||
-      (descriptor.bytes as number) > MAX_MANIFEST ||
-      typeof descriptor.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(descriptor.sha256))
-    throw new Error("Invalid scientific manifest reference");
+  const checkedEnvelope = normalizeScientificSceneBundleEnvelope(bundle);
+  if (!checkedEnvelope.ok) throw new Error(checkedEnvelope.errors.join(" "));
+  const envelope = checkedEnvelope.value, descriptor = envelope.manifest;
   const bytes = await boundedRead(join(directory, "manifest.json"), MAX_MANIFEST, descriptor.bytes as number);
   if (hash(bytes) !== descriptor.sha256) throw new Error("Scientific manifest integrity failed");
   const checked = normalizeScientificSceneManifest(JSON.parse(bytes.toString("utf8")));

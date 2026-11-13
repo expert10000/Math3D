@@ -124,6 +124,8 @@ import { resolveProjectNoteValues } from "../projects/projectNoteValues";
 import { projectAnalysisAvailability, type ProjectAnalysisRoute } from "../projects/projectAnalysisAvailability";
 import { verifyProjectVectorFieldSources } from "../projects/scientificFieldAdmission";
 import { capturePortableProjectResources } from "../projects/scientificProjectPackage";
+import { readBrowserScientificProjectPackage } from "../projects/scientificBundleImport";
+import { ScientificBundleImport } from "./ScientificBundleImport";
 import { verifyProjectQuantumSceneDocuments } from "../projects/quantumSceneAdmission";
 import { quantumSceneDocumentFromVerifiedOpen } from "../projects/quantumSceneAdmission";
 import { promoteQuantumNative, type QuantumNativeTarget } from "../projects/quantumNativePromotion";
@@ -1360,15 +1362,14 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     catch (error) { setLibraryMessage(`Favorite unavailable: ${(error as Error).message}`); }
   };
   const transferOptions = (resources = resourceSession.current) => ({ artifactAvailable, resources, tableAvailable: (reference: Parameters<typeof pointTableStore.resolve>[0]) => pointTableStore.resolve(reference) !== null });
-  const importFile = async (file: File | undefined) => {
-    if (!file) return;
+  const importProjectBytes = async (read: () => Promise<Uint8Array>) => {
     const sequence = ++importSequence.current;
     setIncoming(null);
     setIncomingNarrative(null);
     setIncomingHostLimit(null);
     try {
-      if (file.size > MAX_RESEARCH_NARRATIVE_FILE_BYTES) throw new Error("Import exceeds its size limit.");
-      const bytes = new Uint8Array(await file.arrayBuffer());
+      const bytes = await read();
+      if (bytes.byteLength > MAX_RESEARCH_NARRATIVE_FILE_BYTES) throw new Error("Import exceeds its size limit.");
       const raw = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
       const header = JSON.parse(raw) as { format?: string };
       const research = header?.format === RESEARCH_NARRATIVE_FORMAT ?
@@ -1391,6 +1392,13 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       }
       setIncoming(prepared); setMessage("Project validated. Review compatibility before importing or opening.");
     } catch (error) { if (sequence === importSequence.current) setMessage(`Project import rejected: ${(error as Error).message}`); }
+  };
+  const importFile = async (file: File | undefined) => {
+    if (!file) return;
+    await importProjectBytes(async () => {
+      if (file.size > MAX_RESEARCH_NARRATIVE_FILE_BYTES) throw new Error("Import exceeds its size limit.");
+      return new Uint8Array(await file.arrayBuffer());
+    });
   };
   const exportPortableQuantumProject = async () => {
     if (!project || busy || !window.quantumScenes?.exportPortableProject) return;
@@ -2808,6 +2816,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
             <input type="file" data-testid="project-import-file" disabled={busy} accept="application/json,.json" onChange={(event) => { void importFile(event.target.files?.[0]); event.target.value = ""; }} />
           </label>
           <small>Choose a JSON file, then review its sources, citations and omissions before importing or opening it.</small>
+          <ScientificBundleImport disabled={busy} onImport={(files, kind) =>
+            importProjectBytes(() => readBrowserScientificProjectPackage(files, kind))} />
           <div className="project-workspace-transfer-options">
             {project?.workspace.entries.some(entry => entry.checkpoint.format === "math3d.vector-field3d-document" &&
               entry.checkpoint.source.field.kind === "scientific-bundle") && <p>Download with resources includes the scientific field data needed to reopen small vector fields in a browser. Opening verifies the packaged data again.</p>}
