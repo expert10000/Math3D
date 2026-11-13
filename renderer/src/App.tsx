@@ -78116,7 +78116,10 @@ case "mobius":
     for (const promotion of graph2dPromotions) add(promotion.document.format === "math3d.curve-document" ? "curve" : promotion.document.format === "math3d.geometry-document" ? "geometry" : "surface", promotion.document);
     const activeDocumentIds = entries.map((entry) => entry.expected.id);
     const surfaceHandoffs = surfaceMeshKernelHandoff.records();
-    for (const record of volumeExtractionRecords) add("surface", record.surface);
+    for (const record of volumeExtractionRecords) {
+      add("surface", record.surface);
+      if (record.mesh) add("mesh", record.mesh);
+    }
     for (const record of surfaceHandoffs) add("mesh", record.meshDocument);
     if (openedCurveConstruction) {
       for (const source of openedCurveConstruction.record.sourceDocuments) add("curve", source);
@@ -78173,6 +78176,8 @@ case "mobius":
     if (saved) return saved;
     if (item.kind === "mesh-buffers") {
       const reference = item.reference as import("@math3d/core").MeshResourceReference;
+      const extracted = volumeExtractionBridgeRef.current?.meshResources().bytes(reference);
+      if (extracted) return extracted;
       for (const adapter of [meshDocumentAdapterRef.current, ...restoredProjectRef.current?.meshes.values() ?? []]) {
         const bytes = adapter?.resources.bytes(reference);
         if (bytes) return bytes;
@@ -80956,6 +80961,8 @@ case "mobius":
         resourceReader={(item: ProjectResourceRequirement) => {
           if (item.kind === "mesh-buffers") {
             const reference = item.reference as import("@math3d/core").MeshResourceReference;
+            const extracted = volumeExtractionBridgeRef.current?.meshResources().bytes(reference);
+            if (extracted) return extracted;
             for (const adapter of [meshDocumentAdapterRef.current, ...restoredProjectRef.current?.meshes.values() ?? []]) { const bytes = adapter?.resources.bytes(reference); if (bytes) return bytes; }
             for (const record of surfaceMeshKernelHandoff.records()) if (record.meshDocument?.source.resource.id === item.id) return surfaceMeshKernelHandoff.resolvePromoted(record.meshId);
           }

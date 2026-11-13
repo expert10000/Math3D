@@ -1,0 +1,30 @@
+name: Integration Lab source and evidence guards
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/integration-lab/**
+      - .github/workflows/integration-lab.yml
+  push:
+    branches: [main]
+    paths:
+      - tools/integration-lab/**
+      - .github/workflows/integration-lab.yml
+permissions:
+  contents: read
+jobs:
+  lab:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+      - name: Build the shared portable source
+        working-directory: tools/integration-lab
+        run: npm run build
+      - name: Check evidence guards and baseline acceptance
+        working-directory: tools/integration-lab
+        run: npm test

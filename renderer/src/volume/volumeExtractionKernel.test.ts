@@ -1,3 +1,6 @@
+import { createMath3DProject, createMixedWorkspaceDocument, parseMath3DProject, serializeMath3DProject, sha256Checksum } from "@math3d/core";
+import { inspectProjectCompatibility } from "../projects/projectTransfer";
+import { captureProjectResources, exportProjectPackage, parseProjectPackage } from "../projects/projectResources";
 import { describe, expect, it } from "vitest";
 import { adaptAnalyticVolume } from "./infrastructure";
 import { createVolumeJobRequest, executeVolumeJobRequest, type VolumeWorkerInbound, type VolumeWorkerOutbound } from "./computation";
@@ -58,7 +61,9 @@ describe("GK15 Volume extraction kernel", () => {
     const record = bridge.publish(request, artifact, geometry, source, "iso:volume-gk15:1:0")!;
     expect(record.surface.source.representation).toBe("mesh-backed");
     expect(record.result.status).toBe("numerical");
-    expect(record.relations).toHaveLength(3);
+    expect(record.relations).toHaveLength(4);
+    expect(record.mesh?.source.resource.id).toBe(record.surface.source.definition.meshId);
+    expect(bridge.meshResources().bytes(record.mesh!.source.resource)).not.toBeNull();
     expect(record.relations.every((relation) => relation.sources[0].structuralHash === source.structuralHash)).toBe(true);
     expect(locateVolumeExtractionVertex(record, geometry, 0)).toMatchObject({ state: "mapped", source });
     expect(bridge.artifacts().resolve(record.result.artifacts[0], source).ok).toBe(true);
@@ -74,6 +79,28 @@ describe("GK15 Volume extraction kernel", () => {
     adapter.commitSource({ ...adapter.document().source, recipe: { ...adapter.document().source.recipe, expression: "x+y+z" } });
     bridge.invalidate();
     expect(jobs.resources()).toEqual([]);
+    // Historical geometry uses normal Mesh sidecars, never stale analysis bytes.
+    const saved = createMath3DProject(createMixedWorkspaceDocument({
+      entries: [
+        { module: "volume", checkpoint: adapter.document(), expected: adapter.document().identity, replay: null },
+        { module: "surface", checkpoint: record.surface, expected: record.surface.identity, replay: null },
+        { module: "mesh", checkpoint: record.mesh!, expected: record.mesh!.identity, replay: null },
+      ], activeDocumentIds: [adapter.document().identity.id], results: [record.result],
+      artifacts: [{ handle: record.result.artifacts[0], contentHash: record.contentHash, byteLength: record.byteLength }],
+      relations: [...record.relations], constructions: [], committedSelection: null,
+    }), { stableKey: "volume-extraction-reopen" });
+    expect(inspectProjectCompatibility(saved).canOpenWorkspace).toBe(false);
+    const retainedBytes = bridge.meshResources().bytes(record.mesh!.source.resource)!;
+    expect(sha256Checksum(retainedBytes)).toBe(record.mesh!.source.resource.checksum);
+    const resources = captureProjectResources(saved, item => item.kind === "mesh-buffers" ? retainedBytes : null);
+    const transferred = parseProjectPackage(exportProjectPackage(saved, resources));
+    expect(transferred.project).toEqual(parseMath3DProject(serializeMath3DProject(saved)));
+    expect(inspectProjectCompatibility(transferred.project, { resources: transferred.resources }).canOpenWorkspace).toBe(true);
+    expect(transferred.resources.bytes({ kind: "mesh-buffers", id: record.mesh!.source.resource.id })).toEqual(retainedBytes);
+    const corrupt = retainedBytes.slice(); corrupt[corrupt.length - 1] ^= 1;
+    expect(() => captureProjectResources(saved, () => corrupt)).toThrow();
+    const legacy = { ...record }; delete legacy.mesh;
+    expect(parseVolumeExtraction(serializeVolumeExtraction(legacy))).toEqual(legacy);
     expect(volumeExtractionStatus(record, adapter.sourceGeneration())).toBe("stale");
     expect(volumeExtractionStatus(snapshot, adapter.sourceGeneration())).toBe("snapshot");
     expect(bridge.artifacts().resolve(record.result.artifacts[0], source).ok).toBe(false);

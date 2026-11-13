@@ -1,0 +1,10 @@
+import {readFile,mkdir,writeFile,copyFile} from 'node:fs/promises';
+const read=p=>readFile(p,'utf8');
+const domain=(await Promise.all(['app/english-defaults.js','app/domain.js','app/integration-lab-domain.js'].map(read))).join('\n');
+let page=await read('app/index.html');for(const [marker,path] of [['__DOMAIN__',null],['__CLIENT_PHASE1__','app/client-phase1.js'],['__CLIENT_PHASE2__','app/client-phase2.js'],['__CLIENT_PHASE3__','app/client-phase3.js'],['__CLIENT_PHASE4__','app/client-integration-lab.js']])page=page.replace(marker,path?await read(path):domain);
+const history='Historical source-bound evidence is retained at the existing private Integration Lab: https://math3d-integration-lab.frizzylinden.chatgpt.site/acceptance/batch01.md . Import a workspace export to continue its private records locally.';
+const texts=['phase0Report','phase1Report','phase2Report','phase3Report','pr33Report','performanceReport','ciNarrowingReport','remainingBlockerReport','acceptanceBatchReport'];
+const objects=['phase0Audit','phase1Verification','phase2Verification','phase3Verification','pr33Evidence','pr33ExtendedEvidence','workbookAuditEvidence','performanceEvidence','ciNarrowingEvidence','remainingBlockerEvidence','acceptanceBatchEvidence'];
+let out=domain+'\nconst page='+JSON.stringify(page)+';\n'+texts.map(k=>'const '+k+'='+JSON.stringify(history)+';').join('\n')+'\n'+objects.map(k=>'const '+k+'='+JSON.stringify({historicalEvidenceUrl:'https://math3d-integration-lab.frizzylinden.chatgpt.site/acceptance/batch01.json',message:history})+';').join('\n');
+out+='\nconst integrationLabSeed='+await read('docs/integration-lab-seed.json')+';\n'+await read('app/server.js');
+await mkdir('worker',{recursive:true});await writeFile('worker/index.js',out);await mkdir('dist/server',{recursive:true});await mkdir('dist/.openai',{recursive:true});await writeFile('dist/server/index.js',out);await copyFile('.openai/hosting.json','dist/.openai/hosting.json');console.log('Built portable Integration Lab from the same app/domain/server source. No private runtime data bundled.');
