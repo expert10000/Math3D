@@ -3,9 +3,11 @@ import {
   matchesScientificSourceGeneration, normalizeDocumentRelation, normalizeSurfaceDocument,
   normalizeVolumeDocument, structuralHash,
   type AnalysisResultEnvelope, type CanonicalJsonValue, type DocumentRelation,
-  type ScientificSourceGeneration, type SurfaceDocument, type VolumeDocument,
+  type ScientificSourceGeneration, type SurfaceDocument, type VolumeDocument, type MeshDocument, normalizeMeshDocument,
 } from "@math3d/core";
 import { createInMemoryArtifactRegistry } from "@math3d/kernel";
+import { MeshDocumentAdapter } from "../mesh/meshDocumentAdapter";
+import { MeshResourceStore } from "../mesh/meshResourceStore";
 import type { VolumeIsosurfaceGeometry } from "./isosurface";
 import type { VolumeJobArtifact, VolumeJobRequest } from "./computation";
 import type { VolumeDocumentAdapter } from "./volumeDocumentAdapter";
@@ -19,6 +21,8 @@ export type VolumeExtractionRecord = Readonly<{
   source: ScientificSourceGeneration;
   legacyVolumeRevision: number;
   surface: SurfaceDocument;
+  /** Absent on legacy records whose analysis bytes may no longer be available. */
+  mesh?: MeshDocument;
   result: AnalysisResultEnvelope;
   relations: readonly DocumentRelation[];
   artifactId: string;
@@ -28,7 +32,7 @@ export type VolumeExtractionRecord = Readonly<{
   promoted: boolean;
 }>;
 
-const generation = (document: SurfaceDocument): ScientificSourceGeneration => ({
+const generation = (document: SurfaceDocument | MeshDocument): ScientificSourceGeneration => ({
   documentId: document.identity.id, revision: document.identity.revision,
   structuralHash: document.identity.structuralHash, generation: document.identity.revision,
 });
@@ -68,7 +72,7 @@ export const parseVolumeExtraction = (serialized: string): VolumeExtractionRecor
   const record = JSON.parse(serialized) as VolumeExtractionRecord;
   const source = normalizeVolumeDocument(record?.sourceDocument);
   const surface = normalizeSurfaceDocument(record?.surface);
-  if (record?.version !== 1 || !record.recordId || !record.derivedResultId || !source.ok || !surface.ok || !record.result || !Array.isArray(record.relations) ||
+  if (record?.version !== 1 || !record.recordId || !record.derivedResultId || !source.ok || !surface.ok || (record.mesh !== undefined && !normalizeMeshDocument(record.mesh).ok) || !record.result || !Array.isArray(record.relations) ||
       !record.relations.every((relation) => normalizeDocumentRelation(relation).ok) || !record.artifactId ||
       !Number.isFinite(record.parameters?.isoValue) || typeof record.promoted !== "boolean" ||
       !Number.isSafeInteger(record.legacyVolumeRevision) || record.legacyVolumeRevision < 1 ||
@@ -89,6 +93,8 @@ export class VolumeExtractionKernelBridge {
     },
     maxArtifactBytes: 1024 * 1024 * 1024,
   });
+  readonly #meshResources = new MeshResourceStore();
+  meshResources() { return this.#meshResources; }
   readonly #records = new Map<string, VolumeExtractionRecord>();
   constructor(adapter: () => VolumeDocumentAdapter | null) { this.#adapter = adapter; }
   source(): ScientificSourceGeneration | null { return this.#adapter()?.sourceGeneration() ?? null; }
@@ -122,12 +128,15 @@ export class VolumeExtractionKernelBridge {
       warnings: artifact.warnings, diagnostics: [], artifacts: [handle],
     });
     const sourceDocument = adapter.document();
+    // Retain extracted geometry as a native Mesh sidecar independently of the
+    // optional analysis artifact; both documents use existing Project owners.
+    const mesh = MeshDocumentAdapter.fromMesh({ ...geometry, label: `${sourceDocument.metadata.title} iso ${parameters.isoValue}`, source: { kind: "bakedFromImplicit" } }, this.#meshResources).document();
     const surface = createSurfaceDocument({
       stableKey: { volume: current, operation: "isosurface", parameters },
       source: {
         representation: "mesh-backed", domain: { kind: "volume-boundary", isoValue: parameters.isoValue },
         units: { length: sourceDocument.source.spatial.positionUnits }, orientation: { convention: "extracted-boundary" },
-        definition: { familyId: "volume-isosurface", meshId: artifactId, sourceIds: [current.documentId] },
+        definition: { familyId: "volume-isosurface", meshId: mesh.source.resource.id, sourceIds: [current.documentId] },
         parameters, branchPolicy: null,
       },
       metadata: { title: `${sourceDocument.metadata.title} iso ${parameters.isoValue}`, legacySurfaceId: null, analysisSettings: {} },
@@ -139,8 +148,9 @@ export class VolumeExtractionKernelBridge {
       createCurrentDocumentRelation({ ...relationBase, kind: "analysis-of", target: { type: "result", resultId: result.resultId, resultType: "volume-isosurface" } }, resolveSource),
       createCurrentDocumentRelation({ ...relationBase, kind: "generated-by", target: { type: "artifact", artifactId, artifactKind: "binary", role: handle.role } }, resolveSource),
       createCurrentDocumentRelation({ ...relationBase, kind: "derived-from", target: { type: "document", generation: generation(surface) } }, resolveSource),
+      createCurrentDocumentRelation({ ...relationBase, kind: "derived-from", target: { type: "document", generation: generation(mesh) } }, resolveSource),
     ];
-    const record: VolumeExtractionRecord = { version: 1, recordId: `volume-extraction:${derivedResultId}`, derivedResultId, sourceDocument, source: current, legacyVolumeRevision: request.volumeRevision, surface, result, relations, artifactId, byteLength: bytes.byteLength, contentHash: hashBytes(bytes), parameters, promoted: false };
+    const record: VolumeExtractionRecord = { version: 1, recordId: `volume-extraction:${derivedResultId}`, derivedResultId, sourceDocument, source: current, legacyVolumeRevision: request.volumeRevision, surface, mesh, result, relations, artifactId, byteLength: bytes.byteLength, contentHash: hashBytes(bytes), parameters, promoted: false };
     this.#records.set(artifactId, record);
     return record;
   }

@@ -13,6 +13,8 @@ on:
       - tests/e2e/surface-functional.spec.ts
       - renderer/src/App.tsx
       - renderer/src/kernel/scientificJobService.test.ts
+      - renderer/src/volume/volumeExtractionKernel.ts
+      - renderer/src/volume/volumeExtractionKernel.test.ts
   workflow_dispatch:
     inputs:
       source_sha:
@@ -112,6 +114,10 @@ jobs:
             acceptanceCertified:false},null,2));
           NODE
 
+      - name: Volume extraction and native restore regressions
+        shell: bash
+        run: npm --prefix renderer test -- src/volume/volumeExtractionKernel.test.ts src/kernel/scientificJobService.test.ts src/projects/projectTransfer.test.ts src/projects/additionalProjectRepresentations.test.ts --reporter=json --outputFile=../integration-evidence/volume-restore.json
+
       - name: Upload source-bound test evidence
         if: always()
         uses: actions/upload-artifact@v7
@@ -123,6 +129,7 @@ jobs:
 
   desktop-reopen:
     env:
+      TEST_SOURCE_SHA: ${{ inputs.source_sha || github.event.pull_request.head.sha || github.sha }}
       electron_config_cache: '${{ github.workspace }}\\.cache\\electron'
       MATH3D_ELECTRON_DOWNLOAD_TIMEOUT_MS: '600000'
       MATH3D_ELECTRON_EXTRACT_TIMEOUT_MS: '180000'

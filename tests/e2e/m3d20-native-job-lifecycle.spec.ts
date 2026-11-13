@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { resolve } from "node:path";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
 import { freezeControls } from "./helpers/projectFreeze";
 const core = require(resolve("packages/core/src/index.ts"));
@@ -118,8 +118,22 @@ test("M3D20 AC04 native Project rejects a late Volume Job and cold-reopens histo
     expect(saved.identity.id).toBe(fixture.identity.id);
     expect(saved.workspace.results.filter((item: any) => item.provenance.operation.type === "volume.extract.isosurface")).toEqual(historical);
     expect(saved.workspace.artifacts).toEqual(expect.arrayContaining(baseline.workspace.artifacts));
+    const exportResources = async (name: string) => {
+      const full = await fullProjectPanel(page), path = test.info().outputPath(name);
+      await ctx!.app.evaluate(({ session }, savePath) => session.defaultSession.once("will-download", (_event, item) => item.setSavePath(savePath)), path);
+      await full.panel.getByTestId("project-export-resources").click();
+      await expect(full.panel.getByTestId("project-message")).toContainText("Exported project with verified");
+      await expect.poll(() => { try { return JSON.parse(readFileSync(path, "utf8")).format; } catch { return null; } }).toBe("math3d.project-package");
+      const pack = JSON.parse(readFileSync(path, "utf8"));
+      expect(pack.resources.length).toBeGreaterThan(0);
+      for (const resource of pack.resources) expect(core.sha256Checksum(Buffer.from(resource.data, "base64"))).toBe(resource.checksum);
+      return pack.resources;
+    };
+    const savedResources = await exportResources("native-job-outbound.json");
     const profile = ctx.profileDir; await ctx.app.close(); ctx = await launchSurfaceApp({}, profile); page = ctx.page;
     controls = await fullProjectPanel(page); await controls.panel.getByTestId(`project-open-saved-${saved.identity.id}`).click();
+    await expect(controls.panel.getByTestId("project-message")).toContainText("Opened supported project workspace");
+    await expect(page.getByTestId("project-import-preview")).toHaveCount(0);
     await expect.poll(async () => (await readProject(page))?.identity?.id).toBe(saved.identity.id);
     const reopened = await readProject(page);
     expect(reopened.identity).toEqual(saved.identity);
@@ -129,9 +143,11 @@ test("M3D20 AC04 native Project rejects a late Volume Job and cold-reopens histo
     controls = await fullProjectPanel(page); await controls.panel.getByTestId("project-inspect-relations").click();
     await expect(controls.panel.getByTestId(`project-result-status-${historical[0].resultId}`)).toContainText("source stale");
     await expect(controls.panel.getByTestId(`project-artifact-${missing.handle.artifactId}`)).toContainText("missing or unverified");
+    const reopenedResources = await exportResources("native-job-returned.json");
+    expect(reopenedResources).toEqual(savedResources);
     writeFileSync(test.info().outputPath("native-job-receipt.json"), JSON.stringify({ sourceCommit: process.env.TEST_SOURCE_SHA,
       projectId: saved.identity.id, originalSource, editedSource: edited, historicalResults: historical,
-      held, rejectedJobText, savedIdentity: saved.identity, reopenedIdentity: reopened.identity, missingArtifact: missing,
+      held, rejectedJobText, resources: savedResources.map(({data, ...reference}: any) => reference), savedIdentity: saved.identity, reopenedIdentity: reopened.identity, missingArtifact: missing,
       savedDocumentIdentities: saved.workspace.entries.map((item: any) => item.expected), reopenedDocumentIdentities: reopened.workspace.entries.map((item: any) => item.expected) }, null, 2));
     writeFileSync(test.info().outputPath("native-job-before.json"), JSON.stringify(baseline));
     writeFileSync(test.info().outputPath("native-job-saved.json"), JSON.stringify(saved));
