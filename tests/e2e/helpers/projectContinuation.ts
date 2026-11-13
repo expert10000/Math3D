@@ -54,6 +54,17 @@ export async function checkMultipleGraphHistory(page: Page, saved: any, reopen =
     if (await panel.getByTestId("project-gallery-layout-toggle").isVisible()) await panel.getByTestId("project-gallery-layout-toggle").click();
     await panel.getByTestId("project-view-saved").click(); await panel.getByTestId("project-restore-saved").click();
     await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+    await expect.poll(async () => {
+      if ((await panel.getByTestId("project-view-mode").innerText()).includes("Current workspace")) return "opened";
+      const message = await panel.getByTestId("project-message").innerText();
+      return message.startsWith("Project import failed:") ? "failed" : "pending";
+    }, { timeout: 60_000 }).not.toBe("pending");
+    if ((await panel.getByTestId("project-view-mode").innerText()).includes("Saved project preview")) {
+      const message = await panel.getByTestId("project-message").innerText();
+      if (!/Project import failed:.*(workspace changed|superseded)/i.test(message)) throw new Error(message);
+      await panel.getByTestId("project-import-open").click();
+      await expect(panel.getByTestId("project-view-mode")).toContainText("Current workspace", { timeout: 60_000 });
+    }
   }
   await select(page, saved.workspace.entries[1].expected.id); await expect(expression(page)).toContainText("x^2");
   await history(page, "Control+y"); await expect(expression(page)).toContainText("3*x");

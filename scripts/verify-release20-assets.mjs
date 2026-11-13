@@ -126,7 +126,7 @@ export async function verifyRelease20Assets(root, version = '2.0.0', assetsOverr
     const receipt = JSON.parse(await readFile(join(assets, receiptName), 'utf8'));
     const sourceReceipt = JSON.parse(await readFile(join(assets, 'SOURCE_MANIFEST-windows.json'), 'utf8'));
     const build = sourceReceipt.nativeCgal;
-    const expectedVersions = { cgal: '6.2.1', 'boost-core': '1.92.0', gmp: '6.3.0', mpfr: '4.2.2' };
+    const expectedVersions = { cgal: '6.2', 'boost-core': '1.92.0', gmp: '6.3.0', mpfr: '4.2.2' };
     const licenseHashes = receipt.licenseEvidence?.copyrightSha256;
     requireCondition(receipt.schema === 'math3d.native-cgal-build/v1' &&
       receipt.target === 'windows' && receipt.triplet === 'x64-windows' &&
@@ -137,6 +137,8 @@ export async function verifyRelease20Assets(root, version = '2.0.0', assetsOverr
       receipt.dependencyManifestSha256 === build?.dependencyManifestSha256 &&
       receipt.vcpkgRecipeCommit === '52fd90f2b7798d9fe6fef18fc1787db44574d704' &&
       Object.entries(expectedVersions).every(([name, version]) => receipt.versions?.[name] === version) &&
+      sourceReceipt.sources?.some(item => item.name === 'CGAL' && item.version === receipt.versions.cgal &&
+        item.targets?.includes('native-cgal')) &&
       receipt.licenseEvidence?.cgalExpression === 'GPL-3.0-or-later OR LicenseRef-Commercial' &&
       /^[0-9a-f]{64}$/.test(receipt.licenseEvidence?.cgalCorefinementHeaderSha256 ?? '') &&
       Object.keys(expectedVersions).every(name => /^[0-9a-f]{64}$/.test(licenseHashes?.[name] ?? '') &&

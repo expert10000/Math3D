@@ -9,15 +9,20 @@ import type { Graph2DDocument, Graph2DPointTableReference } from "./graph2dDocum
 import type { MeshResourceReference } from "./meshDocument";
 import type { VolumeDocument } from "./volumeDocument";
 import { decodeMeshBuffers } from "./meshBufferCodec";
+import type { Graph2DFieldReference } from "./graph2dFieldReference";
+import { scientificManifestResource, scientificComponentResource, SCIENTIFIC_MANIFEST_ENCODING,
+  SCIENTIFIC_COMPONENT_ENCODING, verifyScientificManifestResource, verifyScientificComponentResource,
+  projectHasScientificFields, assertScientificProjectResources } from "./scientificProjectResources";
 type ResourceHistory = { transactions: readonly { commands: readonly CommandEnvelope[]; inverseCommands: readonly CommandEnvelope[] }[] };
 
 export type ProjectResourceContext = { resolveWorkspace?: (workspace: MixedWorkspaceDocument) => ReadonlyMap<string, KernelWorkspaceDocument>; volumePayloadRequired?: (document: VolumeDocument) => boolean };
 export const MAX_PROJECT_RESOURCE_BYTES = 64 * 1024 * 1024;
 export const MAX_PROJECT_PACKAGE_BYTES = 112 * 1024 * 1024;
-export type ProjectResourceKind = "mesh-buffers" | "graph-point-table" | "volume-payload" | "workbook-payload";
+export type ProjectResourceKind = "mesh-buffers" | "graph-point-table" | "volume-payload" | "workbook-payload" |
+  "scientific-manifest" | "scientific-component";
 export type ProjectResourceRequirement = {
   id: string; kind: ProjectResourceKind; checksum: string | null; encoding: string; shape: readonly number[];
-  owners: string[]; required: boolean; reference: MeshResourceReference | Graph2DPointTableReference | NonNullable<VolumeDocument["source"]["payload"]> | ProjectWorkbookReference;
+  owners: string[]; required: boolean; reference: MeshResourceReference | Graph2DPointTableReference | NonNullable<VolumeDocument["source"]["payload"]> | ProjectWorkbookReference | Graph2DFieldReference;
 };
 export type ProjectResourceSidecar = Omit<ProjectResourceRequirement, "required" | "reference"> & { checksum: string; byteLength: number; data: string };
 /** Structured-clone storage keeps source bytes binary until a portable export is requested. */
@@ -67,6 +72,14 @@ export const projectResourceInventory = (project: Math3DProject, context: Projec
       } else if (document.format === "math3d.volume-document" && document.source.payload) {
         const reference = document.source.payload;
         add(entry.expected.id, { id: reference.handle, kind: "volume-payload", checksum: null, encoding: `math3d.volume-${reference.scalarType}.le.v1`, shape: [...document.source.spatial.dimensions, reference.components], reference, required: (context.volumePayloadRequired ?? (() => true))(document) });
+      } else if (document.format === "math3d.vector-field3d-document" && document.source.field.kind === "scientific-bundle") {
+        for (const reference of document.source.field.references) {
+          // External-only legacy Projects remain valid. Portable package v2 requires these bytes.
+          add(entry.expected.id, { ...scientificManifestResource(reference), checksum: `sha256:${reference.sceneFingerprint}`,
+            encoding: SCIENTIFIC_MANIFEST_ENCODING, shape: [], reference, required: false });
+          add(entry.expected.id, { ...scientificComponentResource(reference), checksum: `sha256:${reference.resourceSha256}`,
+            encoding: SCIENTIFIC_COMPONENT_ENCODING, shape: [...reference.shape], reference, required: false });
+        }
       }
     }
   }
@@ -119,6 +132,10 @@ export const verifyProjectResourceBytes = (item: ProjectResourceRequirement, byt
       workbook.stages.some((stage: unknown) => !stage || typeof stage !== "object" || !Array.isArray((stage as { blocks?: unknown }).blocks)) ||
       canonicalJsonStringify(workbook) !== content)
       throw new TypeError("Workbook payload is not a canonical Workbook for this Project reference.");
+  } else if (item.kind === "scientific-manifest") {
+    verifyScientificManifestResource(item.reference as Graph2DFieldReference, bytes);
+  } else if (item.kind === "scientific-component") {
+    verifyScientificComponentResource(item.reference as Graph2DFieldReference, bytes);
   } else {
     const reference = item.reference as NonNullable<VolumeDocument["source"]["payload"]>;
     if (!item.shape.every((value) => Number.isSafeInteger(value) && value > 0)) throw new TypeError("Volume dimensions and components must be positive integers.");
@@ -224,16 +241,19 @@ export const exportProjectPackage = (project: Math3DProject, resources: Verified
   for (const workbook of checked.workbooks ?? []) if (!resources.bytes({ kind: "workbook-payload", id: workbook.id }))
     throw new TypeError(`Workbook resource '${workbook.id}' is missing from this Project package.`);
   const sidecars = new VerifiedProjectResources(checked, resources.sidecars(), context).sidecars();
-  const raw = JSON.stringify({ format: "math3d.project-package", schemaVersion: 1, project: checked, resources: sidecars });
+  const schemaVersion = projectHasScientificFields(checked) ? 2 : 1;
+  if (schemaVersion === 2) assertScientificProjectResources(checked, item => resources.bytes(item));
+  const raw = JSON.stringify({ format: "math3d.project-package", schemaVersion, project: checked, resources: sidecars });
   if (new TextEncoder().encode(raw).length > MAX_PROJECT_PACKAGE_BYTES) throw new TypeError("Project package exceeds its size limit.");
   return raw;
 };
 export const parseProjectPackage = (raw: string, context: ProjectResourceContext = {}) => {
   if (new TextEncoder().encode(raw).length > MAX_PROJECT_PACKAGE_BYTES) throw new TypeError("Project package exceeds its size limit.");
   const value = JSON.parse(raw);
-  if (!value || Object.keys(value).sort().join() !== ["format", "schemaVersion", "project", "resources"].sort().join() || value.format !== "math3d.project-package" || value.schemaVersion !== 1) throw new TypeError("Unsupported project package.");
+  if (!value || Object.keys(value).sort().join() !== ["format", "schemaVersion", "project", "resources"].sort().join() || value.format !== "math3d.project-package" || ![1, 2].includes(value.schemaVersion)) throw new TypeError("Unsupported project package.");
   const project = parseMath3DProject(JSON.stringify(value.project));
   const resources = new VerifiedProjectResources(project, value.resources, context);
+  if (value.schemaVersion === 2) assertScientificProjectResources(project, item => resources.bytes(item));
   for (const workbook of project.workbooks ?? []) if (!resources.bytes({ kind: "workbook-payload", id: workbook.id }))
     throw new TypeError(`Workbook resource '${workbook.id}' is missing from this Project package.`);
   return { project, resources };

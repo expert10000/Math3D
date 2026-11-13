@@ -1433,8 +1433,13 @@ function disposeObject3D(obj: THREE.Object3D) {
   }
   const mat = anyObj.material as THREE.Material | THREE.Material[] | undefined;
   if (mat) {
-    if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
-    else mat.dispose();
+    const disposeMaterial = (m: THREE.Material) => {
+      const map = (m as THREE.Material & { map?: THREE.Texture }).map;
+      map?.dispose();
+      m.dispose();
+    };
+    if (Array.isArray(mat)) mat.forEach(disposeMaterial);
+    else disposeMaterial(mat);
   }
 }
 
@@ -4011,9 +4016,6 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
         probeLabelRef.current = null;
       }
 
-      scene.traverse(disposeObject3D);
-      scene.clear();
-      releaseViewerRenderer(renderer);
       rendererRef.current = null;
 
       sampleSetRef.current = null;
@@ -4121,6 +4123,9 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       sceneRef.current = null;
       cameraRef.current = null;
       controlsRef.current = null;
+      scene.traverse(disposeObject3D);
+      scene.clear();
+      releaseViewerRenderer(renderer);
     };
   }, [
     surfaceId,

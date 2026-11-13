@@ -1,18 +1,21 @@
 import { verifyVectorField3DVolumes, type VectorField3DDocument,
   type VerifiedVectorFieldTransfer } from "@math3d/core";
+import { projectScientificSourceVerifier, type ProjectScientificSourceContext,
+  type ScientificVectorSourceVerifier } from "./projectScientificSourceVerifier";
 
 export const SCIENTIFIC_FIELD_REVERIFY_EVENT = "math3d:field-sources-reverify";
 
-/** Reopen pinned resources through the desktop verifier before using sampled values. */
+/** Reopen pinned Project bytes or native sources before using sampled values. */
 export async function loadVerifiedVectorFieldTransfer(source: VectorField3DDocument,
-  verifier?: Window["scientificScenes"]):
+  verifier?: ScientificVectorSourceVerifier, context?: ProjectScientificSourceContext):
   Promise<VerifiedVectorFieldTransfer> {
   if (source.source.field.kind !== "scientific-bundle")
     throw new TypeError("A scientific vector bundle is required.");
-  const bridge = verifier ?? (typeof window !== "undefined" ? window.scientificScenes : undefined);
+  const bridge = projectScientificSourceVerifier(source, context,
+    verifier ?? (typeof window !== "undefined" ? window.scientificScenes : undefined));
   if (!bridge?.openGraphDatasetReference || !bridge.previewVectorVolume ||
       !bridge.closeGraphDataset)
-    throw new TypeError("Desktop scientific source verifier is unavailable.");
+    throw new TypeError("Scientific source verifier is unavailable.");
   const first = source.source.field.references[0];
   const opened = await bridge.openGraphDatasetReference({ locator: first.locator,
     sceneFingerprint: first.sceneFingerprint });

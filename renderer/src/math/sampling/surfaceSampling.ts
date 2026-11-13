@@ -23,6 +23,16 @@ export type SurfaceSampleSet = {
   };
 };
 
+/** A closed viewer must not leave its large transient sample graph in old App render closures. */
+export function releaseSurfaceSampleSet(set: SurfaceSampleSet): void {
+  set.samples.length = 0;
+  if (set.meshData) set.meshData.length = 0;
+  delete set.meshData;
+  delete set.curvatures;
+  delete set.bbox;
+  delete set.center;
+}
+
 /** Reuse an unchanged viewer sample set across Project returns without retaining another point graph. */
 export function sameSurfaceSampleSet(left: SurfaceSampleSet, right: SurfaceSampleSet): boolean {
   const sameArray = (a: ArrayLike<number> | null | undefined, b: ArrayLike<number> | null | undefined) => {

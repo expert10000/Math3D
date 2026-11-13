@@ -19,6 +19,14 @@ const store = () => {
   return { values, getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); }, removeItem: (key: string) => { values.delete(key); } };
 };
 describe("PRJ06 project transfer and compatibility", () => {
+  it("keeps staged Project evidence when the live capture has all documents but no results", () => {
+    const { project } = fixture();
+    const live = createMixedWorkspaceDocument({ ...project.workspace, results: [], relations: [] });
+    const merged = mergeProjectLiveWorkspace(project.workspace, live);
+    expect(merged.entries).toEqual(project.workspace.entries);
+    expect(merged.results).toEqual(project.workspace.results);
+    expect(merged.relations).toEqual(project.workspace.relations);
+  });
   it("retains Project Study references when live module capture omits them", () => {
     const { project } = fixture();
     const saved = createProjectStudyFromDocuments(project, "study", "Graph and Curve",

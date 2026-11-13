@@ -15,5 +15,7 @@ describe("on-demand geodesic adjacency", () => {
     expect(build).toHaveBeenCalledTimes(1);
     createMeshAdjacencyLookup([{ key: "mesh", positions: new Float32Array(positions), indices }], cache, build).get("mesh");
     expect(build).toHaveBeenCalledTimes(2);
+    lookup.dispose();
+    expect(lookup.get("mesh")).toBeUndefined();
   });
 });

@@ -32,13 +32,24 @@ permissions:
 jobs:
   pinned-source-build:
     runs-on: windows-2022
-    timeout-minutes: 120
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
       - uses: actions/setup-node@v7
         with:
           node-version: "24.19.0"
           cache: npm
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Require clean pinned source checkout
+        shell: pwsh
+        run: |
+          if (git status --porcelain --untracked-files=no) { throw "Native chain requires clean tracked source" }
+          git rev-parse HEAD | Out-File -FilePath native-chain-source.txt -Encoding utf8
       - name: Install pinned public build recipes
         shell: pwsh
         run: |
@@ -49,13 +60,26 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Pinned vcpkg checkout failed" }
           & .deps/vcpkg/bootstrap-vcpkg.bat -disableMetrics
           if ($LASTEXITCODE -ne 0) { throw "vcpkg bootstrap failed" }
-          & .deps/vcpkg/vcpkg.exe install cgal:x64-windows --binarysource=clear
+          & .deps/vcpkg/vcpkg.exe install cgal:x64-windows eigen3:x64-windows --binarysource=clear
           if ($LASTEXITCODE -ne 0) { throw "Pinned CGAL dependency build failed" }
+      - name: Build frozen Python CGAL worker from matching public sources
+        shell: pwsh
+        run: |
+          ./scripts/setup-cgal-python-worker.ps1 -Python (Get-Command python).Source -VcpkgCommit 52fd90f2b7798d9fe6fef18fc1787db44574d704 -FrozenRequirements -SkipVcpkgInstall
+          if ($LASTEXITCODE -ne 0) { throw "Frozen CGAL worker build failed" }
+          $workerPython = Join-Path $PWD ".venv-worker/Scripts/python.exe"
+          & $workerPython -m pip install -r python/worker/build-requirements.freeze.txt -r python/worker/requirements.freeze.txt
+          if ($LASTEXITCODE -ne 0) { throw "Frozen worker dependency verification failed" }
+          "MATH3D_PYTHON=$workerPython" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          (Join-Path $PWD ".venv-worker/Scripts") | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          (Join-Path $PWD ".deps/vcpkg/installed/x64-windows/bin") | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - name: Build native worker and prepare corresponding sources
         shell: pwsh
         run: |
           npm ci
           if ($LASTEXITCODE -ne 0) { throw "npm ci failed" }
+          npm --prefix renderer ci
+          if ($LASTEXITCODE -ne 0) { throw "Renderer npm ci failed" }
           npm run build:main
           if ($LASTEXITCODE -ne 0) { throw "Main build failed" }
           npm run build:cgal-native-worker
@@ -78,6 +102,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Native distribution gate failed" }
           node scripts/test-native-cgal-build-receipt.mjs
           if ($LASTEXITCODE -ne 0) { throw "Native receipt tamper tests failed" }
+      - name: Exercise SBOM and release asset fixtures
+        shell: pwsh
+        run: |
           node scripts/test-release-sbom.mjs
           if ($LASTEXITCODE -ne 0) { throw "SBOM ownership fixtures failed" }
           node scripts/test-release20-assets.mjs
@@ -89,7 +116,8 @@ jobs:
           name: native-cgal-source-binary-chain
           if-no-files-found: ignore
           path: |
-            release-source/SOURCE_MANIFEST-windows.json
+            native-chain-source.txt
+            release-source/**
             build/native/cgal-worker/NATIVE_BUILD_RECEIPT-windows.json
             build/native/cgal-worker/Release/math3d-cgal-worker.exe
             build/native/cgal-worker/Release/gmp-10.dll

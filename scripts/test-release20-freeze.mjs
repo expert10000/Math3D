@@ -21,9 +21,9 @@ try {
   await write('renderer/package-lock.json', JSON.stringify({ version: '2.0.0', packages: { '': { version: '2.0.0' } } }));
   for (const path of freezeLockfiles.slice(2)) await write(path, `${path} pinned\n`);
   const native = { distributionStatus: 'source-bundle-integrated-not-bundled',
-    windowsReferenceBuild: { cgal: '6.2.1', 'boost-core': '1.92.0', gmp: '6.3.0', mpfr: '4.2.2' } };
+    windowsReferenceBuild: { cgal: '6.2', 'boost-core': '1.92.0', gmp: '6.3.0', mpfr: '4.2.2' } };
   const publicSources = { sources: [
-    { name: 'CGAL', version: '6.2.1', sha256: 'b'.repeat(64), targets: ['windows', 'native-cgal'] },
+    { name: 'CGAL', version: '6.2', sha256: 'b'.repeat(64), targets: ['windows', 'native-cgal'] },
     { name: 'Boost', version: '1.92.0', sha256: 'c'.repeat(64), targets: ['native-cgal'] },
     { name: 'GMP', version: '6.3.0', sha256: 'd'.repeat(64), targets: ['windows', 'native-cgal'] },
     { name: 'MPFR', version: '4.2.2', sha256: 'e'.repeat(64), targets: ['windows', 'native-cgal'] },
@@ -41,7 +41,7 @@ try {
   const manifest = { schema: 'math3d/release20-rc1-freeze/v1', status: 'frozen', version: '2.0.0',
     sourceCommit: commit, lockfiles, dependencies: deps, contracts,
     nativeSources: { dependencyManifestSha256: sha(JSON.stringify(native)), publicSourceManifestSha256: sha(JSON.stringify(publicSources)),
-      distributionStatus: native.distributionStatus, windowsCgalVersion: '6.2.1', windowsCgalSourceSha256: 'b'.repeat(64) } };
+      distributionStatus: native.distributionStatus, windowsCgalVersion: '6.2', windowsCgalSourceSha256: 'b'.repeat(64) } };
   const manifestPath = join(root, 'freeze.json');
   await write('freeze.json', JSON.stringify(manifest));
   const args = { root, manifestPath, expectedCommit: commit };
@@ -50,10 +50,14 @@ try {
   await write('compliance/public-source-manifest.json', JSON.stringify({ sources: publicSources.sources.filter(item => item.name !== 'Boost') }));
   await assert.rejects(verifyRelease20Freeze(args), /source inventory is incomplete/);
   await write('compliance/public-source-manifest.json', JSON.stringify(publicSources));
+  await write('native/cgal-worker/dependency-manifest.json', JSON.stringify({
+    ...native, distributionStatus: 'blocked-pending-public-source-bundle-integration' }));
+  await assert.rejects(verifyRelease20Freeze(args), /Pinned Windows native source inventory/);
+  await write('native/cgal-worker/dependency-manifest.json', JSON.stringify(native));
   await write('python/worker/requirements.freeze.txt', 'drift\n');
   await assert.rejects(verifyRelease20Freeze(args), /Frozen bytes changed/);
   await write('python/worker/requirements.freeze.txt', 'python/worker/requirements.freeze.txt pinned\n');
   await write('renderer/package.json', JSON.stringify({ version: '1.7.0' }));
   await assert.rejects(verifyRelease20Freeze(args), /all identify 2.0.0/);
-  console.log('RC1 freeze fixture accepts exact 2.0 inputs and rejects lockfile drift and 1.7 identity.');
+  console.log('RC1 freeze fixture accepts current native sources and rejects old status, lockfile drift and 1.7 identity.');
 } finally { await rm(root, { recursive: true, force: true }); }

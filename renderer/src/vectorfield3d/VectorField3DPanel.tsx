@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { canonicalJsonStringify, createVectorField3DDocument, defaultVectorField3DWorkspace,
   parseVectorField3DDocument, reviseVectorField3DDocument, reviseVectorField3DWorkspace,
@@ -102,6 +102,7 @@ import { VectorField3DTopologyStudiesPanel } from "./VectorField3DTopologyStudie
 import { VectorField3DAdvancedTopologyPanel } from "./VectorField3DAdvancedTopologyPanel";
 import { VectorField3DTensorGlyphPanel } from "./VectorField3DTensorGlyphPanel";
 import { FieldExplorerBaselineViews } from "./FieldExplorerBaselineViews";
+import { projectScientificSourceVerifier } from "./projectScientificSourceVerifier";
 import { VectorField3DComparisonPanel } from "./VectorField3DComparisonPanel";
 import { VectorField3DFrameUnitPanel } from "./VectorField3DFrameUnitPanel";
 import { VectorField3DTimeSourcePanel } from "./VectorField3DTimeSourcePanel";
@@ -329,6 +330,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
     if (event.key === "Escape") { event.stopPropagation(); onClose(); return; }
   };
   const [document, setDocument] = useState(initialDocument ?? createDefaultVectorField3DDocument);
+  const scientificVerifier = useMemo(() => projectScientificSourceVerifier(document,
+    project ? { project } : undefined, window.scientificScenes), [document, project]);
   const inspectorSection = fieldExplorerWorkflow(document).inspectorSection;
   const setInspectorSection = (section: FieldExplorerInspectorSection) =>
     setDocument(current => reviseFieldExplorerWorkflow(current, { inspectorSection: section }));
@@ -918,7 +921,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
         setDocument(next); return;
       }
       const refs = next.source.field.references;
-      const bridge = window.scientificScenes;
+      const bridge = scientificVerifier;
       if (!bridge?.openGraphDatasetReference || !bridge.previewVectorVolume)
         throw new Error("Scientific vector fields require the desktop source verifier.");
       const opened = await bridge.openGraphDatasetReference({ locator: refs[0].locator,
@@ -937,7 +940,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
     } catch (cause) { if (epoch === previewEpoch.current) {
       setArtifact(null); setSourceVerification("failed");
       setError(cause instanceof Error ? cause.message : String(cause)); } }
-    finally { if (fingerprint) await window.scientificScenes?.closeGraphDataset(fingerprint);
+    finally { if (fingerprint) await scientificVerifier?.closeGraphDataset(fingerprint);
       if (previewReady && epoch === previewEpoch.current && overlayVisible)
         setOverlayReadGeneration(value => value + 1);
       if (epoch === previewEpoch.current) { setBusy(false); setBusyAction(null); } }
@@ -984,7 +987,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
         if (next.workspace?.probe) setProbeArtifact(sampleVectorField3DProbe(next, next.workspace.probe));
         setDocument(next); return;
       }
-      const refs = next.source.field.references, bridge = window.scientificScenes;
+      const refs = next.source.field.references, bridge = scientificVerifier;
       if (!bridge?.openGraphDatasetReference || !bridge.previewVectorVolume)
         throw new Error("Scientific slices require the desktop source verifier.");
       const opened = await bridge.openGraphDatasetReference({ locator: refs[0].locator,
@@ -992,9 +995,11 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
       if (!opened.ok) throw new Error(`Saved source ${opened.status}: ${opened.error}`);
       fingerprint = opened.source.fingerprint;
       if (isChunked(opened.source.manifestJson)) {
+        const previewSamples = bridge.previewVectorSamples;
+        if (!previewSamples) throw new Error("Verified sparse scientific samples are unavailable on this host.");
         const channel = next.workspace?.sliceChannel ?? "component";
         const tiled = JSON.parse(opened.source.manifestJson).schema === "scientific-scene/v3";
-        const samples = await bridge.previewVectorSamples({ fingerprint, datasetId: refs[0].datasetId,
+        const samples = await previewSamples({ fingerprint, datasetId: refs[0].datasetId,
           components: componentNames(next), selection: { kind: channel === "component" ? "slice" :
             tiled ? "source-stencil-slice" : "stencil-slice", normalAxis,
             fixedIndex: sourceIndex(next, normalAxis, coordinate) } });
@@ -1002,7 +1007,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
         const result = cachedVerifiedVectorField3DSlice(next, normalAxis, coordinate, channel, scientific);
         if (hasVisibleSliceOverlay(next.workspace)) {
           const arrowSamples = samples.selection.kind === "slice" ? samples :
-            await bridge.previewVectorSamples({ fingerprint, datasetId: refs[0].datasetId,
+            await previewSamples({ fingerprint, datasetId: refs[0].datasetId,
               components: componentNames(next), selection: { kind: "slice", normalAxis,
                 fixedIndex: sourceIndex(next, normalAxis, coordinate) } });
           const plane = sampleSliceOverlayVectorPlane(next, result,
@@ -1017,7 +1022,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
         previewReady = true;
         if (next.workspace?.probe) {
           const position = next.workspace.probe;
-          const probeSamples = await bridge.previewVectorSamples({ fingerprint, datasetId: refs[0].datasetId,
+          const probeSamples = await previewSamples({ fingerprint, datasetId: refs[0].datasetId,
             components: componentNames(next), selection: { kind: "probe",
               indices: position.map((value, axis) => sourceIndex(next, axis, value)) as [number, number, number] } });
           setProbeArtifact(sampleVectorField3DSparseProbe(next, position,
@@ -1046,7 +1051,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
     } catch (cause) { previewReady = false; setSlice(null); setOverlayVectorArrows({}); setOverlayVectorPlanes({});
       setOverlayVectorSamples({});
       setError(cause instanceof Error ? cause.message : String(cause)); }
-    finally { if (fingerprint) await window.scientificScenes?.closeGraphDataset(fingerprint);
+    finally { if (fingerprint) await scientificVerifier?.closeGraphDataset(fingerprint);
       if (previewReady && overlayVisible)
         setOverlayReadGeneration(value => value + 1);
       setBusy(false); }
@@ -1088,7 +1093,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
         previewReady = true;
         return;
       }
-      const refs = next.source.field.references, bridge = window.scientificScenes;
+      const refs = next.source.field.references, bridge = scientificVerifier;
       if (!bridge?.openGraphDatasetReference || !bridge.previewVectorVolume)
         throw new Error("Linked scientific views require the desktop source verifier.");
       const opened = await bridge.openGraphDatasetReference({ locator: refs[0].locator,
@@ -1096,19 +1101,21 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
       if (!opened.ok) throw new Error(`Saved source ${opened.status}: ${opened.error}`);
       fingerprint = opened.source.fingerprint;
       if (isChunked(opened.source.manifestJson)) {
+        const previewSamples = bridge.previewVectorSamples;
+        if (!previewSamples) throw new Error("Verified sparse scientific samples are unavailable on this host.");
         const channel = next.workspace?.sliceChannel ?? "component";
         const tiled = JSON.parse(opened.source.manifestJson).schema === "scientific-scene/v3";
         const axes = [2, 1, 0] as const;
         const slices = await Promise.all(axes.map(async axis => {
           const coordinate = next.workspace!.sliceCoordinates[axis];
-          const samples = await bridge.previewVectorSamples({ fingerprint: fingerprint!, datasetId: refs[0].datasetId,
+          const samples = await previewSamples({ fingerprint: fingerprint!, datasetId: refs[0].datasetId,
             components: componentNames(next), selection: { kind: channel === "component" ? "slice" :
               tiled ? "source-stencil-slice" : "stencil-slice", normalAxis: axis,
               fixedIndex: sourceIndex(next, axis, coordinate) } });
           const scientific = { manifestJson: opened.source.manifestJson, fingerprint: fingerprint!, samples };
           const slice = cachedVerifiedVectorField3DSlice(next, axis, coordinate, channel, scientific);
           const arrowSamples = hasVisibleSliceOverlay(next.workspace) && samples.selection.kind !== "slice" ?
-            await bridge.previewVectorSamples({ fingerprint: fingerprint!, datasetId: refs[0].datasetId,
+            await previewSamples({ fingerprint: fingerprint!, datasetId: refs[0].datasetId,
               components: componentNames(next), selection: { kind: "slice", normalAxis: axis,
                 fixedIndex: sourceIndex(next, axis, coordinate) } }) : samples;
           const plane = hasVisibleSliceOverlay(next.workspace) ? sampleSliceOverlayVectorPlane(next,
@@ -1129,7 +1136,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
         setDocument(next);
         if (next.workspace?.probe) {
           const position = next.workspace.probe;
-          const samples = await bridge.previewVectorSamples({ fingerprint, datasetId: refs[0].datasetId,
+          const samples = await previewSamples({ fingerprint, datasetId: refs[0].datasetId,
             components: componentNames(next), selection: { kind: "probe",
               indices: position.map((value, axis) => sourceIndex(next, axis, value)) as [number, number, number] } });
           if (epoch === previewEpoch.current) setProbeArtifact(sampleVectorField3DSparseProbe(next, position,
@@ -1173,7 +1180,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
       setArtifact(null); setLinkedSlices({}); setOverlayVectorArrows({}); setOverlayVectorPlanes({});
       setOverlayVectorSamples({});
       setError(cause instanceof Error ? cause.message : String(cause)); } }
-    finally { if (fingerprint) await window.scientificScenes?.closeGraphDataset(fingerprint);
+    finally { if (fingerprint) await scientificVerifier?.closeGraphDataset(fingerprint);
       if (previewReady && epoch === previewEpoch.current && overlayVisible)
         setOverlayReadGeneration(value => value + 1);
       setBusy(false); }
@@ -1205,7 +1212,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
         if (epoch === probeEpoch.current) setProbeArtifact(value);
         return;
       }
-      const refs = next.source.field.references, bridge = window.scientificScenes;
+      const refs = next.source.field.references, bridge = scientificVerifier;
       if (!bridge?.openGraphDatasetReference || !bridge.previewVectorVolume)
         throw new Error("Scientific probes require the desktop source verifier.");
       const opened = await bridge.openGraphDatasetReference({ locator: refs[0].locator,
@@ -1213,7 +1220,9 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
       if (!opened.ok) throw new Error(`Saved source ${opened.status}: ${opened.error}`);
       fingerprint = opened.source.fingerprint;
       if (isChunked(opened.source.manifestJson)) {
-        const samples = await bridge.previewVectorSamples({ fingerprint, datasetId: refs[0].datasetId,
+        const previewSamples = bridge.previewVectorSamples;
+        if (!previewSamples) throw new Error("Verified sparse scientific samples are unavailable on this host.");
+        const samples = await previewSamples({ fingerprint, datasetId: refs[0].datasetId,
           components: componentNames(next), selection: { kind: "probe",
             indices: position.map((value, axis) => sourceIndex(next, axis, value)) as [number, number, number] } });
         const value = sampleVectorField3DSparseProbe(next, position,
@@ -1231,7 +1240,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
       setDifferential(null);
       setError(cause instanceof Error ? cause.message : String(cause));
     } }
-    finally { if (fingerprint) await window.scientificScenes?.closeGraphDataset(fingerprint);
+    finally { if (fingerprint) await scientificVerifier?.closeGraphDataset(fingerprint);
       if (epoch === probeEpoch.current) setBusy(false); }
   };
   const analyzeDifferential = async (saved?: AnalysisResultEnvelope) => {
@@ -1263,7 +1272,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
         accept(result);
         return;
       }
-      const refs = next.source.field.references, bridge = window.scientificScenes;
+      const refs = next.source.field.references, bridge = scientificVerifier;
       if (!bridge?.openGraphDatasetReference)
         throw new Error("Scientific derived analysis requires the desktop source verifier.");
       const opened = await bridge.openGraphDatasetReference({ locator: refs[0].locator,
@@ -1297,7 +1306,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
       setPointResultId(null);
       setError(cause instanceof Error ? cause.message : String(cause));
     } }
-    finally { if (fingerprint) await window.scientificScenes?.closeGraphDataset(fingerprint);
+    finally { if (fingerprint) await scientificVerifier?.closeGraphDataset(fingerprint);
       if (epoch === probeEpoch.current) setBusy(false); }
   };
   const selectProbe = async (position: readonly [number, number, number]) => {
@@ -1699,10 +1708,10 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
             { ok: false; error: string }>) => {
             if ("tileRequest" in event.data) {
               const refs = next.source.field.kind === "scientific-bundle" ? next.source.field.references : null;
-              if (!scientific || !refs || !window.scientificScenes?.previewVectorTile) {
+              if (!scientific || !refs || !scientificVerifier?.previewVectorTile) {
                 finish(); reject(new Error("Verified source tile service is unavailable.")); return;
               }
-              void window.scientificScenes.previewVectorTile({ fingerprint: scientific.fingerprint,
+              void scientificVerifier.previewVectorTile({ fingerprint: scientific.fingerprint,
                 datasetId: refs[0].datasetId, components: refs.map(ref => ref.component) as
                   [string, string, string], indices: event.data.tileRequest.indices })
                 .then(tile => { if (!finished) worker.postMessage({ tileResponse: tile },
@@ -1729,7 +1738,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
         setDocument(next); setArtifact(arrows); setTrajectories(paths); return;
       }
       const refs = next.source.field.references;
-      const bridge = window.scientificScenes;
+      const bridge = scientificVerifier;
       if (!bridge?.openGraphDatasetReference)
         throw new Error("Scientific vector trajectories require the desktop source verifier.");
       const opened = await bridge.openGraphDatasetReference({ locator: refs[0].locator,
@@ -1765,7 +1774,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
       if (cancelRequested.current) setRunStatus("Trajectory integration cancelled; no partial result was published.");
       else setError(message);
     }
-    finally { if (fingerprint) await window.scientificScenes?.closeGraphDataset(fingerprint);
+    finally { if (fingerprint) await scientificVerifier?.closeGraphDataset(fingerprint);
       setBusy(false); setBusyAction(null); if (!cancelRequested.current) setRunStatus(""); }
   };
   const findEquilibria = async () => {
@@ -1781,7 +1790,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
         volumes?: Parameters<typeof integrateVectorField3DScientificTrajectories>[3];
         tileMode?: boolean } | undefined;
       if (next.source.field.kind === "scientific-bundle") {
-        const refs = next.source.field.references, bridge = window.scientificScenes;
+        const refs = next.source.field.references, bridge = scientificVerifier;
         if (!bridge?.openGraphDatasetReference)
           throw new Error("Equilibrium search requires the desktop source verifier.");
         const opened = await bridge.openGraphDatasetReference({ locator: refs[0].locator,
@@ -1812,11 +1821,11 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
           { ok: false; error: string }>) => {
           if ("tileRequests" in event.data) {
             const refs = next.source.field.kind === "scientific-bundle" ? next.source.field.references : null;
-            if (!scientific || !refs || !window.scientificScenes?.previewVectorTiles) {
+            if (!scientific || !refs || !scientificVerifier?.previewVectorTiles) {
               finish(); reject(new Error("Verified source tile service is unavailable.")); return;
             }
             const readStarted = performance.now();
-            void window.scientificScenes.previewVectorTiles({ fingerprint: scientific.fingerprint,
+            void scientificVerifier.previewVectorTiles({ fingerprint: scientific.fingerprint,
               datasetId: refs[0].datasetId, components: refs.map(ref => ref.component) as
                 [string, string, string], indicesBatch: event.data.tileRequests.indices.map(point =>
                   [...point] as [number, number, number]) })
@@ -1851,7 +1860,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
         setError(cause instanceof Error ? cause.message : String(cause));
       }
     } finally {
-      if (fingerprint) await window.scientificScenes?.closeGraphDataset(fingerprint);
+      if (fingerprint) await scientificVerifier?.closeGraphDataset(fingerprint);
       setBusy(false); setBusyAction(null);
       setRunStatus(cancelRequested.current ? "Equilibrium search cancelled; no partial result was published." : "");
     }
@@ -1873,7 +1882,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
         volumes?: Parameters<typeof integrateVectorField3DScientificTrajectories>[3];
         tileMode?: boolean } | undefined;
       if (next.source.field.kind === "scientific-bundle") {
-        const refs = next.source.field.references, bridge = window.scientificScenes;
+        const refs = next.source.field.references, bridge = scientificVerifier;
         if (!bridge?.openGraphDatasetReference)
           throw new Error("Isosurface extraction requires the desktop source verifier.");
         const opened = await bridge.openGraphDatasetReference({ locator: refs[0].locator,
@@ -1900,10 +1909,10 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
           { ok: true; result: VectorField3DIsosurface } | { ok: false; error: string }>) => {
           if ("tileRequests" in event.data) {
             const refs = next.source.field.kind === "scientific-bundle" ? next.source.field.references : null;
-            if (!scientific || !refs || !window.scientificScenes?.previewVectorTiles) {
+            if (!scientific || !refs || !scientificVerifier?.previewVectorTiles) {
               finish(); reject(new Error("Verified source tile service is unavailable.")); return;
             }
-            void window.scientificScenes.previewVectorTiles({ fingerprint: scientific.fingerprint,
+            void scientificVerifier.previewVectorTiles({ fingerprint: scientific.fingerprint,
               datasetId: refs[0].datasetId, components: refs.map(ref => ref.component) as
                 [string, string, string], indicesBatch: event.data.tileRequests.indices.map(point =>
                   [...point] as [number, number, number]) })
@@ -1936,7 +1945,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
     } catch (cause) {
       if (!cancelRequested.current) setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
-      if (fingerprint) await window.scientificScenes?.closeGraphDataset(fingerprint);
+      if (fingerprint) await scientificVerifier?.closeGraphDataset(fingerprint);
       setBusy(false); setBusyAction(null);
       setRunStatus(cancelRequested.current ? "Isosurface extraction cancelled; no partial mesh was published." : "");
     }
@@ -1964,7 +1973,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
           next.identity.revision !== equilibriumSearch.source.revision)
         throw new Error("Field source changed since the search. Search again before saving.");
       if (next.source.field.kind === "scientific-bundle") {
-        const refs = next.source.field.references, bridge = window.scientificScenes;
+        const refs = next.source.field.references, bridge = scientificVerifier;
         if (!bridge?.openGraphDatasetReference || !bridge.previewVectorVolume)
           throw new Error("Saving this equilibrium requires the desktop source verifier.");
         const opened = await bridge.openGraphDatasetReference({ locator: refs[0].locator,
@@ -1994,7 +2003,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
       setProbeArtifact(null);
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
-      if (fingerprint) await window.scientificScenes?.closeGraphDataset(fingerprint);
+      if (fingerprint) await scientificVerifier?.closeGraphDataset(fingerprint);
       setBusy(false);
     }
   };
@@ -3111,7 +3120,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
       {error && <div role="alert" className="scientific-field-explorer-viewer-error"
         data-testid="vector-field3d-viewer-error">{error}</div>}
       {fieldExplorerWorkflow(document).comparisonVisible ? <FieldExplorerBaselineViews
-        document={document} baseline={baseline} onProbeSelect={point => void selectProbe(point)}
+        document={document} baseline={baseline} project={project} onProbeSelect={point => void selectProbe(point)}
         onSendLineToGraphs={sendAnalyticLine} onSendDerivedLineToGraphs={sendDerivedLine}
         onClose={() => setDocument(current => reviseFieldExplorerWorkflow(current,
           { comparisonVisible: false }))} /> : multiView ? <div className={`vector-field3d-linked-grid vector-field3d-linked-grid-${workspace.layout}`}>

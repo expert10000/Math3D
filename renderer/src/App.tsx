@@ -678,7 +678,7 @@ import {
 } from "./geometry/picking";
 
 import type { GaussPoint, GaussColorMode } from "./components/gaussMapUtils";
-import { sameSurfaceSampleSet, type SurfaceSampleSet } from "./math/sampling/surfaceSampling";
+import { releaseSurfaceSampleSet, sameSurfaceSampleSet, type SurfaceSampleSet } from "./math/sampling/surfaceSampling";
 import {
   computeSelectionMask,
   type GaussCapSelection,
@@ -44226,7 +44226,8 @@ const App: React.FC = () => {
     setViewportDebugSecondary(snapshot);
   }, []);
   useEffect(() => {
-    if (!meshDebugMonitor.enabled || typeof window === "undefined") return;
+    if (!meshDebugMonitor.enabled || mode !== "surfaces" || surfaceViewerKind !== "mesh" ||
+        typeof window === "undefined") return;
     let expected = benchmarkNowMs() + 500;
     const interval = window.setInterval(() => {
       const now = benchmarkNowMs();
@@ -44263,7 +44264,8 @@ const App: React.FC = () => {
     surfaceViewerKind,
   ]);
   useEffect(() => {
-    if (!meshDebugMonitor.enabled || typeof window === "undefined") return;
+    if (!meshDebugMonitor.enabled || mode !== "surfaces" || surfaceViewerKind !== "mesh" ||
+        typeof window === "undefined") return;
     let cancelled = false;
     const sampleMemory = async () => {
       const bridge = window.appDiagnostics;
@@ -44328,9 +44330,11 @@ const App: React.FC = () => {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [abortLargeMeshFullForMemoryPressure, meshDebugMonitor.enabled, recordMeshDebugEvent, surfacePerformanceSnapshot]);
+  }, [abortLargeMeshFullForMemoryPressure, meshDebugMonitor.enabled, mode,
+    recordMeshDebugEvent, surfacePerformanceSnapshot, surfaceViewerKind]);
   useEffect(() => {
-    if (!meshDebugMonitor.enabled || typeof window === "undefined") return;
+    if (!meshDebugMonitor.enabled || mode !== "surfaces" || surfaceViewerKind !== "mesh" ||
+        typeof window === "undefined") return;
     const unsubscribe = window.appDiagnostics?.onRendererMemoryPressure?.((packet) => {
       const workingSetGb = Number(packet?.workingSetGb);
       const workingSetBytes = Number(packet?.workingSetBytes);
@@ -44356,7 +44360,8 @@ const App: React.FC = () => {
     return () => {
       unsubscribe?.();
     };
-  }, [abortLargeMeshFullForMemoryPressure, meshDebugMonitor.enabled, recordMeshDebugEvent]);
+  }, [abortLargeMeshFullForMemoryPressure, meshDebugMonitor.enabled, mode,
+    recordMeshDebugEvent, surfaceViewerKind]);
   const beginMeshPipelineProfile = useCallback((label: string, fileName: string | null, options?: { startedAt?: number }) => {
     meshPipelineProfileCounterRef.current += 1;
     const id = `mesh-profile:${meshPipelineProfileCounterRef.current}`;
@@ -45110,7 +45115,15 @@ const App: React.FC = () => {
     sourceKey: string; samples: SurfaceSampleSet["samples"] | undefined;
     settingsKey: string; candidate: DerivedMeshCandidate;
   } | null>(null);
+  const surfaceDerivedMeshCandidateRef = useRef<DerivedMeshCandidate | null>(null);
   const surfaceDerivedMeshPublishedRef = useRef<{ key: string; meshId: string; candidate: DerivedMeshCandidate } | null>(null);
+  useEffect(() => {
+    const retained = new Set(surfaceAnalysisWorkspaceDocument.derivedMeshes.map(record => record.identity.meshId));
+    for (const id of surfaceDerivedMeshPayloadCacheRef.current.keys())
+      if (!retained.has(id)) surfaceDerivedMeshPayloadCacheRef.current.delete(id);
+    for (const id of surfaceDerivedMeshGeometryCacheRef.current.keys())
+      if (!retained.has(id)) surfaceDerivedMeshGeometryCacheRef.current.delete(id);
+  }, [surfaceAnalysisWorkspaceDocument.derivedMeshes]);
   const [surfaceMeshAnalysisHandoff, setSurfaceMeshAnalysisHandoff] = useState<SurfaceMeshAnalysisHandoff | null>(null);
   const [volumeMeshAnalysisHandoff, setVolumeMeshAnalysisHandoff] = useState<VolumeMeshAnalysisHandoff | null>(null);
   const handleSelectSurfaceComputation = useCallback((computation: SurfaceComputationId) => {
@@ -51290,11 +51303,15 @@ case "mobius":
     anchor.click(); URL.revokeObjectURL(url);
   }, [activeSurfaceChartEvidence, activeSurfaceChartPresentation.canUseCurrentValues, activeSurfaceChartResult]);
 
-  const surfaceDerivedMeshCandidate = useMemo(() => {
+  useMemo(() => {
+    const remember = (value: DerivedMeshCandidate | null) => {
+      surfaceDerivedMeshCandidateRef.current = value;
+      return value;
+    };
     const chunk = surfaceViewerKind === "mesh" && surfaceMeshData
       ? { key: activeCanonicalSurfaceDefinition.identity.surfaceId, positions: surfaceMeshData.positions, indices: surfaceMeshData.indices }
       : surfaceSampleSet?.meshData?.[0];
-    if (!chunk?.positions.length) return null;
+    if (!chunk?.positions.length) return remember(null);
     const settings = Object.fromEntries(Object.entries({
       ...activeCanonicalSurfaceDefinition.sampling,
       graphResolution: surfaceViewerKind === "graph" ? graphResolution : undefined,
@@ -51307,14 +51324,14 @@ case "mobius":
     const sameNumbers = (left: ArrayLike<number> | null, right: ArrayLike<number> | null) => {
       if (left === right) return true;
       if (!left || !right || left.length !== right.length) return false;
-      for (let index = 0; index < left.length; index++) if (left[index] !== right[index]) return false;
+      for (let index = 0; index < left.length; index++) if (!Object.is(left[index], right[index])) return false;
       return true;
     };
     if (cached?.sourceKey === activeCanonicalSurfaceDefinition.identity.key &&
         cached.samples === surfaceSampleSet?.samples && cached.settingsKey === settingsKey &&
         cached.candidate.key === chunk.key &&
         sameNumbers(cached.candidate.positions, chunk.positions) &&
-        sameNumbers(cached.candidate.indices, chunk.indices)) return cached.candidate;
+        sameNumbers(cached.candidate.indices, chunk.indices)) return remember(cached.candidate);
     const vertexCount = Math.floor(chunk.positions.length / 3);
     const faceCount = chunk.indices ? Math.floor(chunk.indices.length / 3) : Math.floor(vertexCount / 3);
     const method = surfaceViewerKind === "graph" ? "explicit-grid"
@@ -51342,32 +51359,48 @@ case "mobius":
       indices: chunk.indices, vertexCount, faceCount, settings, method,
       sourceSampleIndices: mapped ? sourceSampleIndices : undefined,
       parameterCoordinates: mapped ? parameterCoordinates : undefined, confidence };
+    if (cached?.sourceKey === activeCanonicalSurfaceDefinition.identity.key &&
+        cached.settingsKey === settingsKey &&
+        cached.candidate.method === candidate.method &&
+        cached.candidate.vertexCount === candidate.vertexCount &&
+        cached.candidate.faceCount === candidate.faceCount &&
+        sameNumbers(cached.candidate.positions, candidate.positions) &&
+        sameNumbers(cached.candidate.indices, candidate.indices) &&
+        sameNumbers(cached.candidate.sourceSampleIndices ?? null, candidate.sourceSampleIndices ?? null) &&
+        sameNumbers(cached.candidate.parameterCoordinates ?? null, candidate.parameterCoordinates ?? null) &&
+        sameNumbers(cached.candidate.confidence ?? null, candidate.confidence ?? null)) {
+      // Three gives an equivalent tessellation a new runtime UUID after remount.
+      // Only this viewer handle changes; the scientific arrays above must match.
+      cached.candidate.key = candidate.key;
+      cached.samples = surfaceSampleSet?.samples;
+      return remember(cached.candidate);
+    }
     surfaceDerivedMeshCandidateCacheRef.current = {
       sourceKey: activeCanonicalSurfaceDefinition.identity.key,
       samples: surfaceSampleSet?.samples, settingsKey, candidate };
-    return candidate;
+    return remember(candidate);
   }, [activeCanonicalSurfaceDefinition, graphResolution, implicitResolution, paramResolution, surfaceMeshData, surfaceSampleSet?.meshData, surfaceSampleSet?.samples, surfaceViewerKind, weierstrassResolution]);
   const buildDerivedSurfaceMeshPayload = useCallback((options?: { state?: "live-current" | "frozen-snapshot" | "robust-variant" | "detached" | "stale"; meshRevision?: number; meshId?: string; createdAt?: number }): SurfaceDerivedMeshPayload | null => {
-    if (!surfaceDerivedMeshCandidate) return null;
+    if (!surfaceDerivedMeshCandidateRef.current) return null;
     return createDerivedSurfaceMeshPayload({
       definition: activeCanonicalSurfaceDefinition,
       label: `${activeCanonicalSurfaceDefinition.identity.label} derived mesh`,
-      vertexCount: surfaceDerivedMeshCandidate.vertexCount,
-      faceCount: surfaceDerivedMeshCandidate.faceCount,
-      method: surfaceDerivedMeshCandidate.method,
-      settings: surfaceDerivedMeshCandidate.settings,
+      vertexCount: surfaceDerivedMeshCandidateRef.current.vertexCount,
+      faceCount: surfaceDerivedMeshCandidateRef.current.faceCount,
+      method: surfaceDerivedMeshCandidateRef.current.method,
+      settings: surfaceDerivedMeshCandidateRef.current.settings,
       backend: { id: "threejs-native", version: THREE.REVISION },
       state: options?.state,
       meshRevision: options?.meshRevision,
       meshId: options?.meshId,
       createdAt: options?.createdAt,
       correspondence: {
-        sourceSampleIndices: surfaceDerivedMeshCandidate.sourceSampleIndices,
-        parameterCoordinates: surfaceDerivedMeshCandidate.parameterCoordinates,
-        confidence: surfaceDerivedMeshCandidate.confidence,
+        sourceSampleIndices: surfaceDerivedMeshCandidateRef.current.sourceSampleIndices,
+        parameterCoordinates: surfaceDerivedMeshCandidateRef.current.parameterCoordinates,
+        confidence: surfaceDerivedMeshCandidateRef.current.confidence,
       },
     });
-  }, [activeCanonicalSurfaceDefinition, surfaceDerivedMeshCandidate]);
+  }, [activeCanonicalSurfaceDefinition]);
   const publishDerivedSurfaceMeshPayload = useCallback((mesh: SurfaceDerivedMeshPayload) => {
     const definition = activeCanonicalSurfaceDefinition;
     const method: SurfaceAnalysisMethod = definition.representation === "mesh-backed" ? "mesh-approximation" : "surface-sampling";
@@ -51380,12 +51413,12 @@ case "mobius":
     const payload = createDerivedSurfaceMeshAnalysisPayload(definition, method, mesh);
     setSurfaceAnalysisResultStore((store) => publishSurfaceAnalysisResult({ store, registry: surfaceAnalysisRegistryRef.current, request, payload, backend: mesh.identity.backend.id }));
   }, [activeCanonicalSurfaceDefinition]);
-  const surfaceDerivedCandidateKey = surfaceDerivedMeshCandidate ? JSON.stringify({ source: activeCanonicalSurfaceDefinition.identity.key, method: surfaceDerivedMeshCandidate.method, settings: surfaceDerivedMeshCandidate.settings, vertices: surfaceDerivedMeshCandidate.vertexCount, faces: surfaceDerivedMeshCandidate.faceCount }) : null;
+  const surfaceDerivedCandidateKey = surfaceDerivedMeshCandidateRef.current ? JSON.stringify({ source: activeCanonicalSurfaceDefinition.identity.key, method: surfaceDerivedMeshCandidateRef.current.method, settings: surfaceDerivedMeshCandidateRef.current.settings, vertices: surfaceDerivedMeshCandidateRef.current.vertexCount, faces: surfaceDerivedMeshCandidateRef.current.faceCount }) : null;
   useEffect(() => {
     if (surfaceMeshAnalysisHandoff) return;
     if (!surfaceDerivedCandidateKey) return;
     if (surfaceDerivedMeshPublishedRef.current?.key === surfaceDerivedCandidateKey &&
-        surfaceDerivedMeshPublishedRef.current.candidate === surfaceDerivedMeshCandidate &&
+        surfaceDerivedMeshPublishedRef.current.candidate === surfaceDerivedMeshCandidateRef.current &&
         activeDerivedSurfaceMeshResult?.payload?.data.kind === "derived-mesh" &&
         activeDerivedSurfaceMeshResult.payload.data.meshId === surfaceDerivedMeshPublishedRef.current.meshId) {
       // Reusing the live publication must preserve an explicitly selected snapshot.
@@ -51394,11 +51427,11 @@ case "mobius":
     const payload = buildDerivedSurfaceMeshPayload();
     if (!payload) return;
     surfaceDerivedMeshPublishedRef.current = { key: surfaceDerivedCandidateKey, meshId: payload.meshId,
-      candidate: surfaceDerivedMeshCandidate! };
+      candidate: surfaceDerivedMeshCandidateRef.current! };
     surfaceDerivedMeshPayloadCacheRef.current.set(payload.meshId, payload);
     surfaceDerivedMeshGeometryCacheRef.current.set(payload.meshId, {
-      positions: surfaceDerivedMeshCandidate!.positions,
-      indices: surfaceDerivedMeshCandidate!.indices,
+      positions: surfaceDerivedMeshCandidateRef.current!.positions,
+      indices: surfaceDerivedMeshCandidateRef.current!.indices,
     });
     // Keep the geometry and correspondence ready, but publish the verified
     // binary artifact only when a user opens or promotes this live Mesh.
@@ -51408,7 +51441,7 @@ case "mobius":
       let changed = false;
       let records = document.derivedMeshes.map((record) => {
         if (record.identity.source.surfaceId !== activeCanonicalSurfaceDefinition.identity.surfaceId) return record;
-        const next = markDerivedSurfaceMeshRecordStale(record, activeCanonicalSurfaceDefinition, surfaceDerivedMeshCandidate!.settings);
+        const next = markDerivedSurfaceMeshRecordStale(record, activeCanonicalSurfaceDefinition, surfaceDerivedMeshCandidateRef.current!.settings);
         if (next !== record) changed = true;
         return next;
       });
@@ -51418,7 +51451,7 @@ case "mobius":
       return changed ? { ...document, derivedMeshes: records.slice(-64) } : document;
     });
     setSurfaceDerivedMeshSelectedId(payload.meshId);
-  }, [activeCanonicalSurfaceDefinition, activeDerivedSurfaceMeshResult, buildDerivedSurfaceMeshPayload, publishDerivedSurfaceMeshPayload, surfaceDerivedCandidateKey, surfaceDerivedMeshCandidate, surfaceMeshAnalysisHandoff]);
+  }, [activeCanonicalSurfaceDefinition, activeDerivedSurfaceMeshResult, buildDerivedSurfaceMeshPayload, publishDerivedSurfaceMeshPayload, surfaceDerivedCandidateKey, surfaceMeshAnalysisHandoff]);
   const activeDerivedSurfaceMeshPayload = activeDerivedSurfaceMeshResult?.state === "ready" && activeDerivedSurfaceMeshResult.payload?.data.kind === "derived-mesh"
     ? activeDerivedSurfaceMeshResult.payload.data
     : null;
@@ -51445,14 +51478,14 @@ case "mobius":
     const record = activeSurfaceDerivedMeshRecord; const payload = buildDerivedSurfaceMeshPayload({ meshId: record?.identity.meshId, meshRevision: (record?.identity.meshRevision ?? 0) + 1, createdAt: Date.now() });
     if (!payload) return;
     surfaceDerivedMeshPayloadCacheRef.current.set(payload.meshId, payload);
-    if (surfaceDerivedMeshCandidate) surfaceDerivedMeshGeometryCacheRef.current.set(payload.meshId, { positions: surfaceDerivedMeshCandidate.positions, indices: surfaceDerivedMeshCandidate.indices });
+    if (surfaceDerivedMeshCandidateRef.current) surfaceDerivedMeshGeometryCacheRef.current.set(payload.meshId, { positions: surfaceDerivedMeshCandidateRef.current.positions, indices: surfaceDerivedMeshCandidateRef.current.indices });
     const sourceDocument = (restoredSurfaceAdapter && surfaceViewerKind === "param" && paramSurfaceId === "custom" ? restoredSurfaceAdapter : surfaceDocumentAdapters.get(activeCanonicalSurfaceDefinition.identity.surfaceId))?.document();
-    if (sourceDocument && surfaceDerivedMeshCandidate) {
+    if (sourceDocument && surfaceDerivedMeshCandidateRef.current) {
       try {
         const handoff = surfaceMeshKernelHandoff.publish({
           record: compactDerivedSurfaceMesh(payload, `${activeCanonicalSurfaceDefinition.identity.label} live tessellation`),
           payload,
-          geometry: { positions: surfaceDerivedMeshCandidate.positions, indices: surfaceDerivedMeshCandidate.indices },
+          geometry: { positions: surfaceDerivedMeshCandidateRef.current.positions, indices: surfaceDerivedMeshCandidateRef.current.indices },
           sources: [sourceDocument],
         });
         setSurfaceAnalysisWorkspaceDocument((document) => ({ ...document, kernelHandoffs: [...document.kernelHandoffs.filter((entry) => entry.meshId !== handoff.meshId), handoff].slice(-64) }));
@@ -51465,7 +51498,7 @@ case "mobius":
     const next = record ? regenerateDerivedSurfaceMeshRecord(record, payload) : compactDerivedSurfaceMesh(payload, `${activeCanonicalSurfaceDefinition.identity.label} live tessellation`);
     setSurfaceAnalysisWorkspaceDocument((document) => ({ ...document, derivedMeshes: [...document.derivedMeshes.filter((entry) => entry.identity.meshId !== next.identity.meshId), next].slice(-64) }));
     setSurfaceDerivedMeshSelectedId(next.identity.meshId); setSurfaceDerivedMeshStatus(`Regenerated mesh revision ${next.identity.meshRevision} from Surface revision ${next.identity.source.surfaceRevision}.`);
-  }, [activeCanonicalSurfaceDefinition.identity.label, activeCanonicalSurfaceDefinition.identity.surfaceId, activeSurfaceDerivedMeshRecord, buildDerivedSurfaceMeshPayload, publishDerivedSurfaceMeshPayload, surfaceDerivedMeshCandidate, surfaceDocumentAdapters, surfaceMeshKernelHandoff]);
+  }, [activeCanonicalSurfaceDefinition.identity.label, activeCanonicalSurfaceDefinition.identity.surfaceId, activeSurfaceDerivedMeshRecord, buildDerivedSurfaceMeshPayload, publishDerivedSurfaceMeshPayload, surfaceDocumentAdapters, surfaceMeshKernelHandoff]);
   const handleTransitionDerivedSurfaceMesh = useCallback((state: "frozen-snapshot" | "detached") => {
     if (!activeSurfaceDerivedMeshRecord) return null;
     if (activeSurfaceDerivedMeshRecord.identity.state === "stale" ||
@@ -56418,6 +56451,11 @@ case "mobius":
 
   const handleSampleSet = useCallback(
     (set: SurfaceSampleSet | null) => {
+      if (!set) {
+        const previous = lastSurfaceSampleSetRef.current;
+        if (previous) releaseSurfaceSampleSet(previous.set);
+        lastSurfaceSampleSetRef.current = null;
+      }
       const nextMeshDataBytes = estimateSurfaceSampleSetMeshDataBytes(set);
       const shouldTraceSampleSet = nextMeshDataBytes != null && nextMeshDataBytes >= 1024 * 1024;
       const largeMeshCache = largeSurfaceMeshResolutionCacheRef.current;
@@ -56455,6 +56493,7 @@ case "mobius":
         const previous = lastSurfaceSampleSetRef.current;
         const retained = set && previous?.sourceKey === activeCanonicalSurfaceDefinition.identity.key &&
           sameSurfaceSampleSet(previous.set, set) ? previous.set : set;
+        if (previous && previous.set !== retained) releaseSurfaceSampleSet(previous.set);
         if (retained) lastSurfaceSampleSetRef.current = {
           sourceKey: activeCanonicalSurfaceDefinition.identity.key, set: retained };
         setSurfaceSampleSet(retained);
@@ -64271,6 +64310,10 @@ case "mobius":
     () => createMeshAdjacencyLookup(surfaceSampleSet?.meshData ?? [], adjacencyCacheRef.current),
     [surfaceSampleSet]
   );
+  useEffect(() => () => {
+    geodesicAdjacency.dispose();
+    adjacencyCacheRef.current.clear();
+  }, [geodesicAdjacency]);
 
   const buildHeatMesh = useCallback(
     (params: {
@@ -79975,10 +80018,10 @@ case "mobius":
                     presetStatus={surfaceAnalysisPresetStatus}
                     onApplyPreset={handleApplySurfaceAnalysisPreset}
                     derivedMesh={{
-                      available: !!surfaceDerivedMeshCandidate,
+                      available: !!surfaceDerivedMeshCandidateRef.current,
                       label: activeSurfaceDerivedMeshRecord?.label ?? `${activeCanonicalSurfaceDefinition.identity.label} live tessellation`,
-                      vertexCount: surfaceDerivedMeshCandidate?.vertexCount ?? 0,
-                      faceCount: surfaceDerivedMeshCandidate?.faceCount ?? 0,
+                      vertexCount: surfaceDerivedMeshCandidateRef.current?.vertexCount ?? 0,
+                      faceCount: surfaceDerivedMeshCandidateRef.current?.faceCount ?? 0,
                     }}
                     derivedMeshLifecycle={{
                       selected: activeSurfaceDerivedMeshRecord ? {

@@ -98,7 +98,13 @@ jobs:
           node-version: '24.19.0'
           cache: npm
       - run: npm ci && npm --prefix renderer ci
-      - run: npx playwright install --with-deps chromium
+      - name: Install Chromium with host mirror retry
+        run: |
+          for attempt in 1 2 3; do
+            if npx playwright install --with-deps chromium; then exit 0; fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep 20
+          done
       - run: npm run build:web
       - name: Record tested source
         run: mkdir -p scope-evidence && git rev-parse HEAD > scope-evidence/source.txt
@@ -128,7 +134,13 @@ jobs:
           node-version: '24.19.0'
           cache: npm
       - run: npm ci && npm --prefix renderer ci
-      - run: npx playwright install --with-deps chromium
+      - name: Install Chromium with host mirror retry
+        run: |
+          for attempt in 1 2 3; do
+            if npx playwright install --with-deps chromium; then exit 0; fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep 20
+          done
       - name: Start the actual Sage Docker service and wait for health
         run: |
           docker compose -f services/sage-worker/docker-compose.yml up -d --build

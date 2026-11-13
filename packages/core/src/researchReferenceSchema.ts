@@ -18,7 +18,7 @@ const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
 const token = (value: unknown): value is string => typeof value === "string" &&
   value.length > 0 && value.length <= 256 && value.trim() === value;
-const resourceKinds = new Set<ProjectResourceKind>(["mesh-buffers", "graph-point-table", "volume-payload", "workbook-payload"]);
+const resourceKinds = new Set<ProjectResourceKind>(["mesh-buffers", "graph-point-table", "volume-payload", "workbook-payload", "scientific-manifest", "scientific-component"]);
 
 export function normalizeResearchReference(value: unknown): ResearchReference | null {
   if (!record(value) || Object.keys(value).sort().join("|") !==

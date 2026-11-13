@@ -1,6 +1,7 @@
 import { canonicalJsonStringify, parseMath3DProject, serializeMath3DProject, sha256Checksum,
   VerifiedProjectResources as SharedVerifiedProjectResources, projectResourceInventory as sharedInventory,
   encodeProjectResourceBytes, verifyProjectResourceBytes, MAX_PROJECT_RESOURCE_BYTES, MAX_PROJECT_PACKAGE_BYTES,
+  projectHasScientificFields, assertScientificProjectResources,
   type Math3DProject, type MeshResourceReference, type ProjectResourceRequirement, type ProjectResourceSidecar, type ProjectResourceBytes, type ProjectResourceCapture } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { MeshResourceStore } from "../mesh/meshResourceStore";
@@ -50,14 +51,18 @@ export const captureProjectResources = (project: Math3DProject, reader: ProjectR
 export const exportProjectPackage = (project: Math3DProject, resources: VerifiedProjectResources): string => {
   const checked = parseMath3DProject(serializeMath3DProject(project));
   const sidecars = new VerifiedProjectResources(checked, resources.sidecars()).sidecars();
-  const raw = JSON.stringify({ format: "math3d.project-package", schemaVersion: 1, project: checked, resources: sidecars });
+  const schemaVersion = projectHasScientificFields(checked) ? 2 : 1;
+  if (schemaVersion === 2) assertScientificProjectResources(checked, item => resources.bytes(item));
+  const raw = JSON.stringify({ format: "math3d.project-package", schemaVersion, project: checked, resources: sidecars });
   if (new TextEncoder().encode(raw).length > MAX_PROJECT_PACKAGE_BYTES) throw new TypeError("Project package exceeds its size limit.");
   return raw;
 };
 export const parseProjectPackage = (raw: string) => {
   if (new TextEncoder().encode(raw).length > MAX_PROJECT_PACKAGE_BYTES) throw new TypeError("Project package exceeds its size limit.");
   const value = JSON.parse(raw);
-  if (!value || Object.keys(value).sort().join() !== ["format", "schemaVersion", "project", "resources"].sort().join() || value.format !== "math3d.project-package" || value.schemaVersion !== 1) throw new TypeError("Unsupported project package.");
+  if (!value || Object.keys(value).sort().join() !== ["format", "schemaVersion", "project", "resources"].sort().join() || value.format !== "math3d.project-package" || ![1, 2].includes(value.schemaVersion)) throw new TypeError("Unsupported project package.");
   const project = parseMath3DProject(JSON.stringify(value.project));
-  return { project, resources: new VerifiedProjectResources(project, value.resources) };
+  const resources = new VerifiedProjectResources(project, value.resources);
+  if (value.schemaVersion === 2) assertScientificProjectResources(project, item => resources.bytes(item));
+  return { project, resources };
 };

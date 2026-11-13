@@ -32,7 +32,7 @@ export function createMeshAdjacencyLookup(
     cache.set(key, { ...adjacency, positions: mesh.positions, indices: mesh.indices });
     while (cache.size > 64) cache.delete(cache.keys().next().value!);
     return adjacency;
-  } };
+  }, dispose() { available.clear(); } };
 }
 
 export type GeodesicParams = {

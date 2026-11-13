@@ -11,6 +11,7 @@ on:
       - tests/e2e/unified-projects.spec.ts
       - tests/e2e/surface-functional.spec.ts
       - renderer/src/App.tsx
+      - renderer/src/kernel/scientificJobService.test.ts
   workflow_dispatch:
     inputs:
       source_sha:

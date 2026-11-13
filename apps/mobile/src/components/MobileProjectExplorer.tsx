@@ -12,6 +12,7 @@ export const MobileProjectExplorer: React.FC<{ raw: string; resources?: readonly
   onSaveNote?: (input: MobileProjectNoteInput) => Promise<boolean> }> = ({ raw, resources, onOpenGraph, onOpenSurface, onOpenCurve, onRefresh, onSaveNote }) => {
   const [refreshing, setRefreshing] = React.useState(false);
   const [workbookId, setWorkbookId] = useState<string | null>(null);
+  const [studyId, setStudyId] = useState<string | null>(null);
   const [noteId, setNoteId] = useState<string | null>(null);
   const [complexId, setComplexId] = useState<string | null>(null);
   const [vector3dId, setVector3dId] = useState<string | null>(null);
@@ -24,15 +25,41 @@ export const MobileProjectExplorer: React.FC<{ raw: string; resources?: readonly
     try { return { explorer: buildMobileProjectExplorer(raw, resources), error: null }; }
     catch (error) { return { explorer: null, error: (error as Error).message }; }
   }, [raw, resources]);
-  useEffect(() => { setWorkbookId(null); setNoteId(null); setComplexId(null); setVector3dId(null); setScientificId(null); setResultId(null); setNoteDraft(null); }, [state.explorer?.projectId]);
+  useEffect(() => { setWorkbookId(null); setStudyId(null); setNoteId(null); setComplexId(null); setVector3dId(null); setScientificId(null); setResultId(null); setNoteDraft(null); }, [state.explorer?.projectId]);
   if (!state.explorer) return <Text accessibilityRole="alert" style={styles.note}>{state.error}</Text>;
-  const { groups, relations, results, workbooks, notes } = state.explorer;
+  const { groups, relations, results, workbooks, notes, studies } = state.explorer;
+  const selectedStudy = studies.find(item => item.id === studyId);
   const selectedWorkbook = workbooks.find(item => item.id === workbookId);
   const selectedNote = notes.find(item => item.id === noteId);
   const titles = new Map(groups.flatMap(group => group.documents.map(document => [document.id, document.title] as const)));
   return <View testID="mobile-project-document-explorer" style={styles.projectEditor}>
     <Text accessibilityRole="header" style={styles.itemTitle}>Project → Workbook → Note</Text>
-    <Text style={styles.note}>{state.explorer.title} · {workbooks.length} {workbooks.length === 1 ? "Workbook" : "Workbooks"} · {notes.length} {notes.length === 1 ? "Note" : "Notes"}</Text>
+    <Text style={styles.note}>{state.explorer.title} · {studies.length} Studies · {workbooks.length} {workbooks.length === 1 ? "Workbook" : "Workbooks"} · {notes.length} {notes.length === 1 ? "Note" : "Notes"}</Text>
+    <Text accessibilityRole="header" style={styles.itemTitle}>Studies ({studies.length})</Text>
+    {studies.map(study => <Pressable key={study.id} testID={`mobile-project-study-${study.id}`}
+      accessibilityRole="button" onPress={() => setStudyId(study.id === studyId ? null : study.id)}
+      style={styles.secondaryBtn}><Text style={styles.secondaryBtnText}>{study.title} · {study.mode}</Text></Pressable>)}
+    {selectedStudy && <View testID="mobile-project-study-detail">
+      <Text accessibilityRole="header" style={styles.itemTitle}>{selectedStudy.title}</Text>
+      {!!selectedStudy.description && <Text style={styles.note}>{selectedStudy.description}</Text>}
+      <Text style={styles.itemMeta}>Pinned selections: {selectedStudy.pinnedSelections}</Text>
+      {selectedStudy.panes.map(pane => <Text key={pane.id}
+        testID={`mobile-project-study-pane-${pane.id}`} style={styles.note}>
+        {pane.role} · {titles.get(pane.documentId) ?? pane.documentId} · {pane.status}. {pane.reason}
+      </Text>)}
+      {selectedStudy.citations.map(citation => <Pressable key={`${citation.workbookId}:${citation.blockId}`}
+        testID={`mobile-project-study-citation-${citation.blockId}`} accessibilityRole="button"
+        onPress={() => setWorkbookId(citation.workbookId)} style={styles.secondaryBtn}>
+        <Text style={styles.secondaryBtnText}>{citation.title} · {citation.status}</Text>
+      </Pressable>)}
+      {selectedStudy.noteIds.map(id => {
+        const note = notes.find(item => item.id === id);
+        return note ? <Pressable key={id} testID={`mobile-project-study-note-${id}`}
+          accessibilityRole="button" onPress={() => setNoteId(id)} style={styles.secondaryBtn}>
+          <Text style={styles.secondaryBtnText}>{note.title} · {note.status}</Text>
+        </Pressable> : null;
+      })}
+    </View>}
     <Text accessibilityRole="header" style={styles.itemTitle}>Workbooks ({workbooks.length})</Text>
     {workbooks.map(workbook => <Pressable key={workbook.id} testID={`mobile-project-workbook-${workbook.id}`}
       accessibilityRole="button" onPress={() => { setWorkbookId(workbook.id === workbookId ? null : workbook.id); setNoteId(null); }} style={styles.secondaryBtn}>

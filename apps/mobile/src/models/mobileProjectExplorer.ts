@@ -1,5 +1,6 @@
 import { buildProjectExplorer, evaluateDocumentRelationStatus, inspectProjectNoteAnchor, inspectResearchReference,
-  normalizeResearchReference, isAnalysisResultCurrent, matchesScientificSourceGeneration, structuralHash,
+  normalizeResearchReference, migrateLegacyStudyPaneResearchReference, inspectProjectStudyMembers,
+  isAnalysisResultCurrent, matchesScientificSourceGeneration, structuralHash,
   parseMath3DProject, replayMixedWorkspaceDocument, viewerSourceFromDocument, projectResourceInventory, VerifiedProjectResources, type ProjectResourceSidecar } from "@math3d/core";
 import { projectVectorField3DTopologyStatus, projectPoincareReturnStatus,
   projectLyapunovStatus, projectLocalManifoldPatchStatus,
@@ -99,6 +100,36 @@ export const buildMobileProjectExplorer = (raw: string, sidecars: readonly Proje
     return { id: note.identity.id, title: note.title, body: note.body, kind: note.kind,
       anchor: note.anchor, status, reason: anchor.status !== "current" ? anchor.reason :
         checked?.reason ?? (verifiedWorkbookAnchor ? anchor.reason : "Note has no saved resource pin.") };
+  });
+  const studies = (project.workspace.studies ?? []).map(study => {
+    const members = new Map(inspectProjectStudyMembers(project, study).map(item => [item.memberId, item]));
+    return { id: study.id, title: study.title, description: study.description ?? "",
+      mode: study.layout.mode, pinnedSelections: study.pinnedSelectionIds.length,
+      noteIds: notes.filter(note => note.anchor?.kind === "study-selection" &&
+        note.anchor.studyId === study.id).map(note => note.id),
+      citations: workbooks.flatMap(book => book.stages.flatMap(stage => stage.blocks.flatMap(block => {
+        const reference = block.notebookReference as Record<string, unknown> | undefined;
+        return reference?.kind === "study" && reference.projectId === project.identity.id &&
+          reference.targetId === study.id ? [{ workbookId: book.id, blockId: block.id,
+            title: `${book.title} / ${block.title}`, status: block.citation?.status ?? "unverified" }] : [];
+      }))),
+      panes: study.layout.panes.map(pane => {
+        const member = study.members.find(item => item.memberId === pane.memberId);
+        const memberStatus = members.get(pane.memberId)?.status ?? "missing-document";
+        const pin = inspectResearchReference(project,
+          study.paneReferences?.find(item => item.paneId === pane.paneId)?.reference ??
+            migrateLegacyStudyPaneResearchReference(study, pane.paneId), item => resources.bytes(item));
+        const document = resolved.get(member?.documentId ?? "");
+        const external = document?.format === "math3d.vector-field3d-document" &&
+          document.source.field.kind === "scientific-bundle";
+        return { id: pane.paneId, documentId: member?.documentId ?? "", role: member?.role ?? "source",
+          status: memberStatus !== "current-reference" ? memberStatus : pin.status !== "current" ? pin.status :
+            external ? "desktop-verification-required" : "current",
+          reason: memberStatus !== "current-reference" ? `Study member ${memberStatus}.` :
+            pin.status !== "current" ? pin.reason : external ?
+              "External vector bundle bytes require desktop verification before sampled values are shown." :
+              "Saved document generation and resource pin match." };
+      }) };
   });
   const rank = { current: 0, stale: 1, unavailable: 2, broken: 3 } as const;
   const merge = (left: keyof typeof rank, right: keyof typeof rank) => rank[left] >= rank[right] ? left : right;
@@ -279,7 +310,7 @@ export const buildMobileProjectExplorer = (raw: string, sidecars: readonly Proje
   return {
     projectId: project.identity.id,
     title: project.metadata.title,
-    workbooks, notes,
+    workbooks, notes, studies,
     scientificContracts: scientificContracts.map(item => ({ ...item,
       spoken: `${item.kind}: ${item.title}. Status ${item.status}. ${item.detail}`,
       spokenSummary: scientificSpeechSummary(item) })),

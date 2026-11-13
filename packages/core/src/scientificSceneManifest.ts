@@ -5,6 +5,7 @@ export const SCIENTIFIC_SCENE_SCHEMA = "scientific-scene/v1" as const;
 export const SCIENTIFIC_SCENE_CHUNKED_SCHEMA = "scientific-scene/v2" as const;
 export const SCIENTIFIC_SCENE_TILED_SCHEMA = "scientific-scene/v3" as const;
 export const MAX_SCIENTIFIC_SCENE_MANIFEST_BYTES = 64 * 1024;
+export const MAX_SCIENTIFIC_SCENE_BUNDLE_BYTES = 8192;
 export const MAX_SCIENTIFIC_SCENE_RESOURCE_BYTES = 16 * 1024 * 1024;
 
 export type ScientificDatasetReference = Readonly<{
@@ -81,6 +82,30 @@ const finite = (value: unknown): value is number => typeof value === "number" &&
 const positiveInteger = (value: unknown, max: number): value is number =>
   typeof value === "number" && Number.isSafeInteger(value) && value >= 1 && value <= max;
 const unique = (values: readonly string[]): boolean => new Set(values).size === values.length;
+
+export type ScientificSceneBundleEnvelope = Readonly<{
+  schema: "scientific-scene-bundle/v1" | "scientific-scene-bundle/v2" | "scientific-scene-bundle/v3";
+  manifest: Readonly<{ path: "manifest.json"; bytes: number; sha256: string }>;
+}>;
+
+/** The same envelope contract is used by filesystem and browser importers. */
+export function normalizeScientificSceneBundleEnvelope(value: unknown): ValidationResult<ScientificSceneBundleEnvelope> {
+  if (!record(value) || !exact(value, ["schema", "manifest"]) ||
+      !["scientific-scene-bundle/v1", "scientific-scene-bundle/v2", "scientific-scene-bundle/v3"].includes(String(value.schema)) ||
+      !record(value.manifest)) return { ok: false, errors: ["Invalid scientific bundle envelope"] };
+  const ref = value.manifest;
+  if (!exact(ref, ["path", "bytes", "sha256"]) || ref.path !== "manifest.json" ||
+      !positiveInteger(ref.bytes, MAX_SCIENTIFIC_SCENE_MANIFEST_BYTES) || !sha(ref.sha256))
+    return { ok: false, errors: ["Invalid scientific manifest reference"] };
+  return { ok: true, value: value as ScientificSceneBundleEnvelope };
+}
+
+export function parseScientificSceneBundleEnvelope(json: string): ValidationResult<ScientificSceneBundleEnvelope> {
+  if (new TextEncoder().encode(json).byteLength > MAX_SCIENTIFIC_SCENE_BUNDLE_BYTES)
+    return { ok: false, errors: ["Scientific bundle envelope exceeds its metadata limit"] };
+  try { return normalizeScientificSceneBundleEnvelope(JSON.parse(json)); }
+  catch { return { ok: false, errors: ["Invalid scientific bundle envelope"] }; }
+}
 
 /** Validates descriptors only; the importer must separately verify every referenced byte/hash. */
 export function normalizeScientificSceneManifest(value: unknown): ValidationResult<ScientificSceneManifest> {
