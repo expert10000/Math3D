@@ -7,7 +7,7 @@ The items are ranked by release risk and dependencies. Estimates are **engineeri
 
 | # | Priority | Closure item and proof | Estimate | Status |
 | --- | --- | --- | --- | --- |
-| 1 | P0 | Freeze the advertised 2.0 journeys and host claims. Give every open defect a blocking, limited, or deferred disposition. | 2–3 d | Open |
+| 1 | P0 | Freeze the advertised 2.0 journeys and host claims. Give every open defect a blocking, limited, or deferred disposition in the [release scope](RELEASE_SCOPE.md). | 2–3 d | Drafted; scope decision pending |
 | 2 | P0 | Fix retained App render contexts and mixed Mesh/Volume memory growth identified in the [memory gate](PERFORMANCE_RESILIENCE_GATE.md). | **10–20 d** | Open |
 | 3 | P0 | Pass the clean-build, 800-switch mixed-route gate for heap, renderer, GPU, context loss, and page errors. | 2–5 d | Open |
 | 4 | P0 | Qualify the complete Surface → Curve → Mesh → comparison → Workbook journey, including cold reopen and changed or missing sources. | **5–8 d** | Open |
