@@ -19,7 +19,9 @@ test("one Electron process retains responsive navigation and records long-run me
   if (diagnosticRoute && (!smoke || !["surfaces", "mesh", "volume", "projects"].includes(diagnosticRoute)))
     throw new Error("A diagnostic route requires smoke mode and one supported target.");
   const routes = diagnosticRoute ? ["graphs", diagnosticRoute] : ["graphs", "surfaces", "mesh", "volume", "projects"];
-  test.setTimeout(smoke ? (smokeCycles * 3 + 5) * 60_000 : (minutes + 45) * 60_000);
+  // A clean 800-switch Windows run can exceed 29 minutes even when all
+  // navigation actions succeed; memory budgets, not this wall clock, qualify it.
+  test.setTimeout(smoke ? (smokeCycles * 5 + 10) * 60_000 : (minutes + 45) * 60_000);
   const reportPath = path.resolve(process.env.MATH3D_MEMORY_SOAK_REPORT || testInfo.outputPath("release20-long-memory.json"));
   const build = JSON.parse(readFileSync("dist/build-identity.json", "utf8"));
   if (!build.commit || !build.rendererHash || !smoke && build.dirty) throw new Error("Memory soak requires a clean, identified source build.");

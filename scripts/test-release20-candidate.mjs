@@ -25,10 +25,13 @@ try {
   await put('python/worker/requirements.freeze.txt', 'vtk==9.7.0\n');
   await put('python/worker/build-requirements.freeze.txt', 'pyinstaller==6.19.0\n');
   await put('native/cgal-worker/dependency-manifest.json', JSON.stringify({
-    distributionStatus: 'blocked-pending-public-source-bundle-integration', windowsReferenceBuild: { cgal: '6.2.1' } }));
+    distributionStatus: 'source-bundle-integrated-not-bundled',
+    windowsReferenceBuild: { cgal: '6.2.1', 'boost-core': '1.92.0', gmp: '6.3.0', mpfr: '4.2.2' } }));
   await put('compliance/public-source-manifest.json', JSON.stringify({ sources: [
     { name: 'CGAL', version: '6.2.1', sha256: 'c'.repeat(64), targets: ['windows', 'native-cgal'] },
-    ...['GMP', 'MPFR'].map(name => ({ name, targets: ['windows', 'native-cgal'] }))] }));
+    { name: 'Boost', version: '1.92.0', sha256: 'd'.repeat(64), targets: ['native-cgal'] },
+    { name: 'GMP', version: '6.3.0', sha256: 'e'.repeat(64), targets: ['windows', 'native-cgal'] },
+    { name: 'MPFR', version: '4.2.2', sha256: 'f'.repeat(64), targets: ['windows', 'native-cgal'] }] }));
   for (const [path, expected] of Object.entries(freezeContracts)) await put(path,
     `${expected.format ? `export const ${expected.format[0]} = "${expected.format[1]}" as const;` : ''}\n` +
     `export const ${expected.version[0]} = ${expected.version[1]} as const;`);

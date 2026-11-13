@@ -5,6 +5,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { disposeOrbitControls } from "../utils/disposeOrbitControls";
 import { ParametricGeometry } from "three/examples/jsm/geometries/ParametricGeometry.js";
 import { startViewerAnimationLoop } from "./viewerAnimationLoop";
+import { acquireViewerRenderer, releaseViewerRenderer } from "./viewerRendererPool";
 
 import DomainDirectionPicker from "./DomainDirectionPicker";
 import { integrateGeodesic } from "../math/geodesic";
@@ -2568,7 +2569,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     camera.position.set(4, 3, 5);
     camera.lookAt(0, 0, 0);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: renderQuality !== "performance", alpha: true });
+    const renderer = acquireViewerRenderer(renderQuality !== "performance");
     const heavySurface = surfaceId === "torus";
     const maxPixelRatio =
       renderQuality === "performance"
@@ -4010,11 +4011,9 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
         probeLabelRef.current = null;
       }
 
-      renderer.dispose();
-      (renderer as { forceContextLoss?: () => void }).forceContextLoss?.();
-      if (renderer.domElement.parentNode === mount) {
-        mount.removeChild(renderer.domElement);
-      }
+      scene.traverse(disposeObject3D);
+      scene.clear();
+      releaseViewerRenderer(renderer);
       rendererRef.current = null;
 
       sampleSetRef.current = null;

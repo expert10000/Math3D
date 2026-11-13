@@ -20,9 +20,14 @@ try {
       Object.entries(deps).map(([name, version]) => [`node_modules/${name}`, { version }])) } }));
   await write('renderer/package-lock.json', JSON.stringify({ version: '2.0.0', packages: { '': { version: '2.0.0' } } }));
   for (const path of freezeLockfiles.slice(2)) await write(path, `${path} pinned\n`);
-  const native = { distributionStatus: 'blocked-pending-public-source-bundle-integration', windowsReferenceBuild: { cgal: '6.2.1' } };
-  const publicSources = { sources: [{ name: 'CGAL', version: '6.2.1', sha256: 'b'.repeat(64), targets: ['windows', 'native-cgal'] },
-    ...['GMP', 'MPFR'].map(name => ({ name, targets: ['windows', 'native-cgal'] }))] };
+  const native = { distributionStatus: 'source-bundle-integrated-not-bundled',
+    windowsReferenceBuild: { cgal: '6.2.1', 'boost-core': '1.92.0', gmp: '6.3.0', mpfr: '4.2.2' } };
+  const publicSources = { sources: [
+    { name: 'CGAL', version: '6.2.1', sha256: 'b'.repeat(64), targets: ['windows', 'native-cgal'] },
+    { name: 'Boost', version: '1.92.0', sha256: 'c'.repeat(64), targets: ['native-cgal'] },
+    { name: 'GMP', version: '6.3.0', sha256: 'd'.repeat(64), targets: ['windows', 'native-cgal'] },
+    { name: 'MPFR', version: '4.2.2', sha256: 'e'.repeat(64), targets: ['windows', 'native-cgal'] },
+  ] };
   await write('native/cgal-worker/dependency-manifest.json', JSON.stringify(native));
   await write('compliance/public-source-manifest.json', JSON.stringify(publicSources));
   const contracts = {};
@@ -42,6 +47,9 @@ try {
   const args = { root, manifestPath, expectedCommit: commit };
   assert.equal((await verifyRelease20Freeze(args)).lockfiles, 4);
   assert.deepEqual(await prepareRelease20Freeze(root, commit), manifest);
+  await write('compliance/public-source-manifest.json', JSON.stringify({ sources: publicSources.sources.filter(item => item.name !== 'Boost') }));
+  await assert.rejects(verifyRelease20Freeze(args), /source inventory is incomplete/);
+  await write('compliance/public-source-manifest.json', JSON.stringify(publicSources));
   await write('python/worker/requirements.freeze.txt', 'drift\n');
   await assert.rejects(verifyRelease20Freeze(args), /Frozen bytes changed/);
   await write('python/worker/requirements.freeze.txt', 'python/worker/requirements.freeze.txt pinned\n');

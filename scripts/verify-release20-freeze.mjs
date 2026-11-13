@@ -67,12 +67,18 @@ export async function verifyRelease20Freeze({ root, manifestPath, expectedCommit
   const publicBytes = await readFile(join(root, publicPath));
   const native = JSON.parse(nativeBytes.toString('utf8'));
   const publicSources = JSON.parse(publicBytes.toString('utf8'));
+  const requiredSources = [
+    ['CGAL', native.windowsReferenceBuild?.cgal, ['windows', 'native-cgal']],
+    ['Boost', native.windowsReferenceBuild?.['boost-core'], ['native-cgal']],
+    ['GMP', native.windowsReferenceBuild?.gmp, ['windows', 'native-cgal']],
+    ['MPFR', native.windowsReferenceBuild?.mpfr, ['windows', 'native-cgal']],
+  ];
   const cgal = publicSources.sources?.find(item => item.name === 'CGAL' &&
     item.version === native.windowsReferenceBuild?.cgal && item.targets?.includes('windows'));
-  requireValue(native.distributionStatus === 'blocked-pending-public-source-bundle-integration' &&
-    cgal?.targets?.includes('native-cgal') && /^[0-9a-f]{64}$/.test(cgal.sha256 ?? '') &&
-    ['GMP', 'MPFR'].every(name => publicSources.sources?.some(item => item.name === name &&
-      item.targets?.includes('windows') && item.targets?.includes('native-cgal'))),
+  requireValue(native.distributionStatus === 'source-bundle-integrated-not-bundled' &&
+    requiredSources.every(([name, version, targets]) => publicSources.sources?.some(item =>
+      item.name === name && item.version === version && /^[0-9a-f]{64}$/.test(item.sha256 ?? '') &&
+      targets.every(target => item.targets?.includes(target)))),
     'Pinned Windows native source inventory is incomplete; standalone native bundling stays blocked.');
   requireValue(exactKeys(manifest.nativeSources, ['dependencyManifestSha256', 'publicSourceManifestSha256',
     'distributionStatus', 'windowsCgalVersion', 'windowsCgalSourceSha256']) &&
