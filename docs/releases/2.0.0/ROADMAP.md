@@ -9,7 +9,7 @@
 
 > **Release principle.** Version 2.0.0 is not another sequence of independent scientific-module expansions. It is the release that makes the already substantial Geometry, Curves, Surfaces, Mesh, Volume, Graphs, Field Explorer, Topology, CAS/Sage, Projects, Workbooks, and Quantum capabilities behave as **one integrated, reproducible scientific application**.
 
-**Active closure checklist:** [Ranked 20-item release closure TODO](RELEASE_CLOSURE_TODO.md).
+**Active closure checklist:** [Ranked release closure TODO](RELEASE_CLOSURE_TODO.md). The [2.0 scope decision](RELEASE_SCOPE.md) adds a fourth bounded Field Explorer → Graph → Field journey to the three original roadmap flagships; Volume → Mesh remains a fifth candidate outside the current GA claim.
 
 ---
 

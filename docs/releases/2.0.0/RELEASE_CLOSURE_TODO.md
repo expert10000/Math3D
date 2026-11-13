@@ -7,12 +7,13 @@ The items are ranked by release risk and dependencies. Estimates are **engineeri
 
 | # | Priority | Closure item and proof | Estimate | Status |
 | --- | --- | --- | --- | --- |
-| 1 | P0 | Freeze the advertised 2.0 journeys and host claims. Give every open defect a blocking, limited, or deferred disposition in the [release scope](RELEASE_SCOPE.md). | 2–3 d | Drafted; scope decision pending |
+| 1 | P0 | Freeze the advertised 2.0 journeys and host claims. Give every open defect a blocking, limited, or deferred disposition in the [release scope](RELEASE_SCOPE.md). | 2–3 d | Four journeys selected; defect review pending |
 | 2 | P0 | Fix retained App render contexts and mixed Mesh/Volume memory growth identified in the [memory gate](PERFORMANCE_RESILIENCE_GATE.md). | **10–20 d** | Open |
 | 3 | P0 | Pass the clean-build, 800-switch mixed-route gate for heap, renderer, GPU, context loss, and page errors. | 2–5 d | Open |
 | 4 | P0 | Qualify the complete Surface → Curve → Mesh → comparison → Workbook journey, including cold reopen and changed or missing sources. | **5–8 d** | Open |
 | 5 | P0 | Qualify QWZ with independently verified producer bundles, reciprocal selection, Graph evidence, return navigation, and stale-source refusal. | **5–8 d** | Open |
 | 6 | P0 | Qualify the bounded CAS → locus → Geometry/Curve journey against a real supported Sage route, including cancellation and offline evidence. | **5–8 d** | Open |
+| 6a | P0 | Qualify the fourth bounded Field Explorer → line profile → Graph → exact Field return journey, with Study/Workbook, cold reopen, transfer, changed/missing source refusal, installed acceptance, and a discoverable Gallery entry. | **5–8 d** | Open |
 | 7 | P0 | Establish the Windows certificate, signer thumbprint, password, and timestamp configuration required by the [candidate gate](INSTALL_UPGRADE_GATE.md). | 1–3 d + external lead time | Open |
 | 8 | P0 | Resolve the red Windows Installer Smoke workflow: supply signing inputs where required or separate source smoke from candidate packaging, while keeping the signed release gate fail-closed. | 2–4 d | Open |
 | 9 | P0 | Re-freeze the **current merged commit**, rerun [RC1 checks](RC1_ACCEPTANCE_GATE.md) and full CI, and record one matching source identity. The earlier RC1 receipt belongs to an older commit. | 2–4 d | Open |
