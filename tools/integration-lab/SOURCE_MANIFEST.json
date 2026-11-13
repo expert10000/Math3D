@@ -6,7 +6,7 @@
   "files": {
     "app/index.html": "c7ca4663b1733526ce9a771782722757bed336e20b8e168052793c701e48da03",
     "app/english-defaults.js": "ff563a04ed2adfccdc31e2644173a19c8c808b64790ad712bab504343d8bb08b",
-    "app/domain.js": "ed6bade499f2a3ebac1fbfbdc5066370441fee408ed4619cde0e78e312a01525",
+    "app/domain.js": "ef94e07a81458ddf9d46eecf4947aeffe247a78cec4f516e2500b79c6409881f",
     "app/integration-lab-domain.js": "955750cb214cc075b7b5d2bc56b0fb64c3622a7cc5e2dd01f0ebc6bc0900ba03",
     "app/client-phase1.js": "3b670ec2d69e2ddd01c921d38d9fdd2b53b61b40feab7f61efc4dd5941a3d1e6",
     "app/client-phase2.js": "bb6313f1db47759d790ada9a537db00acab0a65254bd0f96b5cf3b318f66e6db",
@@ -15,7 +15,7 @@
     "app/server.js": "c86bf2b329634ee6a243f347e83bbaed61fbf363c526eae9b54b8ac194fe50f9",
     "scripts/build-portable.mjs": "2ebe8c70dc85efc9cce6e039d175df719da5c7d9ec2ce57ef7da5b5206bc46ad",
     "scripts/serve.mjs": "44520df4f3175a1bfe147c9dadc416ba47eca949657b533d97651cab55360e9b",
-    "scripts/integration-lab-check.mjs": "2ff333573bee580e26c0dd2006b25191f5472b890dbe09e2647d1fc00282810f",
+    "scripts/integration-lab-check.mjs": "8e7a1d8ca01d41bd312a6cbbc3be89b798afbb9afd48df2c5e07a7430ab9ce69",
     "docs/integration-lab-seed.json": "1e01260283048ff2ff9c3bf5be67982d578609c7f228137a31107ee232dc7562",
     "docs/INTEGRATION_LAB.md": "871703e273425f0581a4d066de6ab0d1e1a5fa0d4a564a1339b33570e2199e6c",
     ".openai/hosting.json": "d6081e664ce588b00b8c93a11242d12d8b63464ce69649494701fa01672e02ca"

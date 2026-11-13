@@ -77,7 +77,7 @@ function importCandidate(current,incoming){
  validateState(result);return {candidate:result,summary:{additions,updates,collisions,archives}};
 }
 function serverRevision(candidate,previous,actor,action,rawPrevious=previous){
- let d=clone(candidate);validateLabChanges(d,previous);preparePhase3(d,previous);enforceAppendOnly(d,previous);const downgrades=enforceVerified(d,previous);const now=new Date().toISOString(),changed=[];
+ let d=clone(candidate);preparePhase3(d,previous);validateLabChanges(d,previous);enforceAppendOnly(d,previous);const downgrades=enforceVerified(d,previous);const now=new Date().toISOString(),changed=[];
  if(previous&&d.workspace.id!==previous.workspace.id)throw Error('Changing workspace identity is not allowed');
  for(const k of RECORD_KINDS){const priorRows=rawPrevious?.[k]||[];if(rawPrevious)for(const r of priorRows)if(!d[k].some(x=>x.id===r.id))throw Error('Archive instead of deleting: '+r.id);
  for(const r of d[k]){let old=priorRows.find(x=>x.id===r.id);const clean=x=>{let c=clone(x);delete c.updatedAt;delete c.revision;return c};let different=!old||JSON.stringify(clean(r))!==JSON.stringify(clean(old));r.revision=old?(Number.isSafeInteger(old.revision)?old.revision:1)+(different?1:0):1;r.updatedAt=different?now:(old.updatedAt||now);if(different)changed.push({kind:k,id:r.id,revision:r.revision});}}
