@@ -7,7 +7,7 @@ describe("curated Study Gallery contract", () => {
   it("maps every actionable Project card to an existing starter with complete guidance", () => {
     expect(validateCuratedStudyCatalog()).toBeUndefined();
     const ids = new Set([...MATH3D_PROJECT_TEMPLATES, ...NOTEBOOK_STARTERS].map(item => item.id));
-    expect(CURATED_STUDIES).toHaveLength(15);
+    expect(CURATED_STUDIES).toHaveLength(16);
     for (const item of CURATED_STUDIES) {
       expect(curatedStudy(item.id)).toBe(item);
       expect([item.question, item.objects, item.operations, item.insight, item.prerequisites,

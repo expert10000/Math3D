@@ -42,6 +42,17 @@ export function StudyPanePreview({ project, study, paneId, resources }: {
       }
       if (document.format === "math3d.vector-field3d-document")
         return { kind: "field" as const, document };
+      if (document.format === "math3d.volume-document") {
+        const payload = document.source.payload;
+        if (payload && !resources?.bytes({ kind: "volume-payload", id: payload.handle }))
+          return { kind: "withheld" as const, reason: "Saved Volume payload is unavailable or unverified." };
+        return { kind: "volume" as const, document };
+      }
+      if (document.format === "math3d.mesh-document") {
+        if (!resources?.bytes({ kind: "mesh-buffers", id: document.source.resource.id }))
+          return { kind: "withheld" as const, reason: "Saved Mesh sidecar is unavailable or unverified." };
+        return { kind: "mesh" as const, document };
+      }
       if (["math3d.curve-document", "math3d.surface-document", "math3d.geometry-document",
         "math3d.topology-document"].includes(document.format)) {
         const view = additionalRepresentationView(document as Parameters<typeof additionalRepresentationView>[0],
@@ -65,7 +76,17 @@ export function StudyPanePreview({ project, study, paneId, resources }: {
   if (preview.kind === "withheld") return <p role="status" data-testid="project-study-preview-withheld">{preview.reason}</p>;
   return <div data-testid="project-study-pane-preview" data-kind={preview.kind}
     style={{ position: "relative", height: 320, minWidth: 0, overflow: "hidden" }}>
-    {preview.kind === "field" ? <StudyVectorFieldPanePreview
+    {preview.kind === "volume" ? <div data-testid="project-study-volume-source" style={{ padding: 16 }}>
+      <strong>{preview.document.metadata.title}</strong>
+      <p>Saved Volume source · revision {preview.document.identity.revision}</p>
+      <p>Grid {preview.document.source.spatial.dimensions.join(" × ")} · {preview.document.source.spatial.positionUnits} · {preview.document.source.spatial.valueUnits}</p>
+      <p>Open the owning Volume document for slices and extraction controls.</p>
+    </div> : preview.kind === "mesh" ? <div data-testid="project-study-mesh-source" style={{ padding: 16 }}>
+      <strong>{preview.document.metadata.label}</strong>
+      <p>Retained Mesh · revision {preview.document.identity.revision}</p>
+      <p>Verified sidecar {preview.document.source.resource.id}</p>
+      <p>Open the owning Mesh document for geometry and analysis.</p>
+    </div> : preview.kind === "field" ? <StudyVectorFieldPanePreview
       key={`${preview.document.identity.id}:${preview.document.identity.revision}:${preview.document.identity.structuralHash}`}
       document={preview.document} /> :
       preview.kind === "graph" ? <Graph2DPlot display={preview.display} size={plotSize} series={preview.series}

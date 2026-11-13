@@ -17,6 +17,7 @@ import { CatenoidWaistEvidencePanel } from "./CatenoidWaistEvidencePanel";
 import { SurfaceRidgePublicationPanel } from "./SurfaceRidgePublicationPanel";
 import { StudyQwzCursorControl } from "./StudyQwzCursorControl";
 import { qualifyStudyScientificSelectionPin } from "../projects/projectStudyNoteAnchor";
+import { volumeMeshJourneyOptions } from "../projects/volumeMeshStudy";
 
 const StudyPanePreview = lazy(() => import("./StudyPanePreview").then(module => ({ default: module.StudyPanePreview })));
 
@@ -34,6 +35,7 @@ type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoi
   onUnpinQwz: (studyId: string) => void;
   onDeriveQwzProfile?: (studyId: string) => Promise<{ graphId: string; resultId: string }>;
   onPublishSurfaceRidge?: (surfaceId: string, meshId: string, ridgeIndex: number) => Promise<void>;
+  onPublishVolumeMesh?: (resultId: string) => void;
   onPinScientificSelection: (studyId: string, selectionId: string) => void;
   workbookBytes?: (id: string) => Uint8Array | null;
   onOpenWorkbookBlock?: (id: string, stageId: WorkbookStageId, blockId: string) => void;
@@ -47,6 +49,7 @@ type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoi
 export function ProjectStudiesPanel({ project, documents, editable, resources, focusStudy, onCreate, onRename, onFork, onConfigure,
   onLink, onLinkCurveSurface, onLinkSurfaceMesh, onCreateQwz, onPinQwz, onUnpinQwz, onDeriveQwzProfile,
   onPublishSurfaceRidge,
+  onPublishVolumeMesh,
   onPinScientificSelection, workbookBytes, onOpenWorkbookBlock,
   onCapturePinnedNote, onOpenNote,
   onOpenQuantumSource, onInspectResult, onOpenDocument }: Props) {
@@ -87,6 +90,8 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
     return project.workspace.entries.find(entry => entry.expected.id === id)?.module ?? "missing";
   }) ?? [];
   const pairKind = paneModules.length === 2 ? [...paneModules].sort().join(":") : "";
+  const volumeMeshOptions = editable ? volumeMeshJourneyOptions(project).filter(option =>
+    !studies.some(study => study.members.some(member => member.resultId === option.resultId))) : [];
   const withheldMember = open && inspectProjectStudyMembers(project, open)
     .find(member => member.status !== "current-reference");
   const availableScientificSelections = open ? (project.workspace.scientificSelections ?? []).filter(selection => {
@@ -127,6 +132,15 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
         Create four-view QWZ Study from {item.title}</button>)}
     <SurfaceRidgePublicationPanel project={project} resources={resources} editable={editable}
       onPublish={onPublishSurfaceRidge} />
+    {!!onPublishVolumeMesh && volumeMeshOptions.length > 0 && <div data-testid="project-volume-mesh-journeys">
+      <strong>Volume → isosurface → Mesh</strong>
+      <p>Pin a current extraction, its retained Mesh, and a Workbook citation in one Study.</p>
+      {volumeMeshOptions.map(option => <button type="button" key={option.resultId}
+        data-testid={`project-volume-mesh-publish-${option.resultId}`}
+        onClick={() => onPublishVolumeMesh(option.resultId)}>
+        Create Study from {option.volumeTitle} · iso {option.isoValue} · {option.meshTitle}
+      </button>)}
+    </div>}
     <ul>{studies.map(study => <li key={study.id}>
       <button type="button" data-testid={`project-study-open-${study.id}`} onClick={() => {
         setOpenId(study.id); setEditTitle(study.title); setDescription(study.description ?? "");

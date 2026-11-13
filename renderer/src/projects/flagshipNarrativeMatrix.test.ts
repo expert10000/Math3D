@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createGraph2DDocument, createMixedWorkspaceDocument, instantiateMath3DProjectTemplate,
   inspectResearchReference, MATH3D_PROJECT_TEMPLATES, parseMath3DProject,
   replaceGeometryDocumentSource, replaceMath3DProjectWorkspace, replaceMeshDocumentSource,
-  replaceSurfaceDocumentSource, serializeMath3DProject, sha256Checksum, structuralHash,
+  replaceSurfaceDocumentSource, replaceVolumeDocumentSource, serializeMath3DProject, sha256Checksum, structuralHash,
   type Math3DProject, type MixedWorkspaceDocument } from "@math3d/core";
 import { CURATED_STUDIES } from "./curatedStudyCatalog";
 import { prepareCuratedStudyBundle } from "./curatedStudyProject";
@@ -38,6 +38,9 @@ const editStudySource = (project: Math3DProject, documentId: string): Math3DProj
           : old.format === "math3d.surface-document"
             ? replaceSurfaceDocumentSource(old, { ...old.source,
               parameters: { ...old.source.parameters, narrativeEdit: true } })
+            : old.format === "math3d.volume-document" && old.source.recipe?.kind === "custom-field"
+              ? replaceVolumeDocumentSource(old, { ...old.source, recipe: { ...old.source.recipe,
+                expression: "x*x+y*y+z*z-0.64" } })
             : (() => { throw new Error(`No research source edit fixture for ${old.format}.`); })();
     return { ...entry, checkpoint, expected: checkpoint.identity, replay: null };
   });
@@ -46,7 +49,7 @@ const editStudySource = (project: Math3DProject, documentId: string): Math3DProj
 
 describe("M3D20-07 built-in flagship narrative matrix", () => {
   it("covers every advertised built-in route and keeps external routes conditional", () => {
-    expect(builtInJourneys).toHaveLength(11);
+    expect(builtInJourneys).toHaveLength(12);
     expect(CURATED_STUDIES.filter(card => card.route.kind === "verified-quantum-import")
       .map(card => card.id)).toEqual(["quantum-qwz", "quantum-ssh", "quantum-hydrogen"]);
     expect(CURATED_STUDIES.filter(card => card.route.kind === "cas-gallery").map(card => card.id))

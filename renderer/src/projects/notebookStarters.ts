@@ -1,4 +1,4 @@
-import { createDocumentRelation, createGeometryDocument, createGraph2DDocument, createGraph2DWorkspaceProject, createMath3DProject, createMixedWorkspaceDocument, createProjectNote, extrudeGraph2DProfile, instantiateMath3DProjectTemplate, parseGraph2DExpression, replaceMath3DProjectWorkspace, structuralHash, updateMath3DProjectMetadata, updateProjectNote, upsertMath3DProjectNote, upsertMath3DProjectWorkbook, viewerSourceFromDocument } from "@math3d/core";
+import { createDocumentRelation, createGeometryDocument, createGraph2DDocument, createGraph2DWorkspaceProject, createMath3DProject, createMixedWorkspaceDocument, createProjectNote, createVolumeDocument, extrudeGraph2DProfile, instantiateMath3DProjectTemplate, parseGraph2DExpression, replaceMath3DProjectWorkspace, structuralHash, updateMath3DProjectMetadata, updateProjectNote, upsertMath3DProjectNote, upsertMath3DProjectWorkbook, viewerSourceFromDocument } from "@math3d/core";
 import { bindWorkbookNamedParameter, createDefaultWorkbook, createNotebookReference } from "@math3d/workbook";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { createSavedSurfaceMesh } from "./savedSurfaceMesh";
@@ -22,6 +22,7 @@ export const NOTEBOOK_STARTERS = [
   { id: "mesh-geometry-probe", title: "Mesh and Geometry Coordinate Probe", description: "A saved Mesh and Geometry pair with matching declared metre coordinates for source-backed probe observations." },
   { id: "surface-mesh-probe", title: "Surface and Mesh Coordinate Probe", description: "A saved Surface and Mesh pair with matching declared metre coordinates for a bounded cross-model coordinate marker." },
   { id: "surface-geometry-probe", title: "Surface and Geometry Coordinate Probe", description: "A saved Surface and Geometry pair with matching declared metre coordinates for exact source-backed observations." },
+  { id: "volume-isosurface-study", title: "Volume to Mesh Isosurface Study", description: "Extract an isosurface from a saved analytic Volume, retain its Mesh, and cite the exact result in a Project Study and Workbook." },
 ] as const;
 export type NotebookStarterId = typeof NOTEBOOK_STARTERS[number]["id"];
 
@@ -152,6 +153,28 @@ const instantiateDocumentNotebookStarter = (id: "graph-derivative-notebook" | "c
   return { project, resources: captureProjectResources(project, item => item.kind === "workbook-payload" ? bound.bytes : null) };
 };
 
+const instantiateVolumeIsosurfaceStarter = (token: string) => {
+  const id = "volume-isosurface-study", recipe = NOTEBOOK_STARTERS.find(item => item.id === id)!;
+  const volume = createVolumeDocument({ stableKey: [id, token, "volume"],
+    metadata: { title: "Analytic sphere Volume" }, source: {
+      representation: "custom-scalar-field", recipe: { kind: "custom-field", expression: "x*x+y*y+z*z-1", parameters: {} },
+      spatial: { dimensions: [24, 24, 24], origin: [-1.5, -1.5, -1.5],
+        spacing: [3 / 23, 3 / 23, 3 / 23], direction: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+        centering: "point", coordinateSystem: "world", positionUnits: "m", valueUnits: "unitless" },
+      dependencies: [], payload: null,
+    } });
+  const workspace = createMixedWorkspaceDocument({
+    entries: [{ module: "volume", checkpoint: volume, expected: volume.identity, replay: null }],
+    activeDocumentIds: [volume.identity.id], results: [], artifacts: [], relations: [],
+    constructions: [], committedSelection: null,
+  });
+  let project = createMath3DProject(workspace, { stableKey: [id, token], title: recipe.title });
+  project = updateMath3DProjectMetadata(project, { ...project.metadata,
+    description: recipe.description, tags: ["starter", id, "volume", "mesh", "analysis"],
+    documents: { [volume.identity.id]: { title: volume.metadata.title } } });
+  return { project, resources: captureProjectResources(project, () => null) };
+};
+
 /** Numerical records and source sidecars use the same implementations as the editors. */
 export function instantiateNotebookStarter(id: NotebookStarterId, token: string) {
   let phaseStart = performance.now();
@@ -167,6 +190,7 @@ export function instantiateNotebookStarter(id: NotebookStarterId, token: string)
     id === "surface-mesh-probe" || id === "surface-geometry-probe")
     return instantiateMeshComparisonStarter(token, id);
   if (id === "ripple-wave-study") return instantiateRippleWaveStarter(token);
+  if (id === "volume-isosurface-study") return instantiateVolumeIsosurfaceStarter(token);
   if (id === "graph-derivative-notebook" || id === "curve-construction-notebook") return instantiateDocumentNotebookStarter(id, token);
   let project = instantiateMath3DProjectTemplate("catenary-study", token);
   measurePhase("template");
