@@ -9,6 +9,8 @@
 
 > **Release principle.** Version 2.0.0 is not another sequence of independent scientific-module expansions. It is the release that makes the already substantial Geometry, Curves, Surfaces, Mesh, Volume, Graphs, Field Explorer, Topology, CAS/Sage, Projects, Workbooks, and Quantum capabilities behave as **one integrated, reproducible scientific application**.
 
+**Active closure checklist:** [Ranked 20-item release closure TODO](RELEASE_CLOSURE_TODO.md).
+
 ---
 
 ## Delivery snapshot — 2026-11-12
