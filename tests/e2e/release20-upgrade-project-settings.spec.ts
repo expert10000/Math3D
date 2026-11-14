@@ -41,6 +41,8 @@ test("M3D20-13c published 1.7 Project and setting survive the exact 2.0 upgrade"
       const form = editor.getByRole("form", { name: "New function" });
       await form.getByLabel("Start from preset").selectOption("parabola");
       await form.getByLabel("Function expression").fill("x^2 + 1");
+      await form.getByRole("button", { name: "Preview", exact: true }).click();
+      await expect(editor.getByLabel("Graph preview", { exact: true })).toContainText("y = x^2 + 1");
       await editor.getByRole("button", { name: "Create graph" }).click();
       await expect(editor).toBeHidden();
     }
