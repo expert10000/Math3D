@@ -44,8 +44,13 @@ test("SAGE-F01/F02 saves exact-source contract and bounded sphere/plane plot, th
     await ctx.page.getByTestId(`project-open-saved-${project.identity.id}`).click();
     const projectPanel = ctx.page.getByTestId("project-explorer-panel");
     await expect(projectPanel.getByTestId("project-view-mode")).toContainText("Current workspace");
-    await projectPanel.getByTestId("project-gallery-layout-toggle").click();
+    // Opening a saved Project finishes asynchronously and places its details
+    // in the compact viewer dock. Wait for that transition before expanding it.
+    const layoutToggle = projectPanel.getByTestId("project-gallery-layout-toggle");
+    await expect(layoutToggle).toHaveAttribute("aria-label", "Project details", { timeout: 45_000 });
+    await layoutToggle.click();
     const detailToggle = projectPanel.getByTestId("project-detail-toggle");
+    await expect(detailToggle).toBeVisible();
     if (await detailToggle.getAttribute("aria-pressed") === "false") await detailToggle.click();
     await projectPanel.getByTestId("project-detail-tab-documents").click();
     const algebraMenu = projectPanel.getByTestId(`project-algebra-open-in-${ideal.id}`);
@@ -250,6 +255,8 @@ test("saved exact locus opens read-only in CAS and returns to its Geometry check
     await ctx.page.reload();
     await ctx.page.getByTestId("projects-toggle").click();
     await ctx.page.getByTestId(`project-open-saved-${project.identity.id}`).click();
+    await expect(ctx.page.getByTestId("project-explorer-panel").getByTestId("project-gallery-layout-toggle"))
+      .toHaveAttribute("aria-label", "Project details", { timeout: 45_000 });
     await ctx.page.getByTestId("workspace-nav-cas").click();
     const cas = ctx.page.getByTestId("cas-algebra-workspace");
     await cas.getByTestId("cas-structures-explorer").getByRole("button", { name: /R @1/ }).click();
@@ -318,6 +325,8 @@ test("saved two-circle sample promotes a chosen contour with Curve lineage", asy
     await ctx.page.reload();
     await ctx.page.getByTestId("projects-toggle").click();
     await ctx.page.getByTestId(`project-open-saved-${project.identity.id}`).click();
+    await expect(ctx.page.getByTestId("project-explorer-panel").getByTestId("project-gallery-layout-toggle"))
+      .toHaveAttribute("aria-label", "Project details", { timeout: 45_000 });
     await ctx.page.getByTestId("workspace-nav-cas").click();
     const cas = ctx.page.getByTestId("cas-algebra-workspace");
     await cas.getByTestId("cas-structures-explorer").getByRole("button", { name: /R @1/ }).click();
@@ -343,12 +352,14 @@ test("saved two-circle sample promotes a chosen contour with Curve lineage", asy
     await ctx.page.reload();
     await ctx.page.getByTestId("projects-toggle").click();
     await ctx.page.getByTestId(`project-open-saved-${project.identity.id}`).click();
-    await expect(ctx.page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id",
-      expected.curve.identity.id);
-    await ctx.page.getByTestId("projects-toggle").click();
     const panel = ctx.page.getByTestId("project-explorer-panel");
-    await panel.getByTestId("project-gallery-layout-toggle").click();
+    await expect(ctx.page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id",
+      expected.curve.identity.id, { timeout: 45_000 });
+    await expect(panel).toBeVisible();
+    const layoutToggle = panel.getByTestId("project-gallery-layout-toggle");
+    if (await layoutToggle.count() && await layoutToggle.getAttribute("aria-label") === "Project details") await layoutToggle.click();
     const details = panel.getByTestId("project-detail-toggle");
+    await expect(details).toBeVisible();
     if (await details.getAttribute("aria-pressed") === "false") await details.click();
     await panel.getByTestId("project-detail-tab-documents").click();
     await expect(panel.getByTestId("project-view-mode")).toContainText("Current workspace");

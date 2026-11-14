@@ -1,5 +1,5 @@
 import type { Math3DProject } from "@math3d/core";
-import { VerifiedProjectResources, type ProjectResourceSidecar, type ProjectResourceBytes } from "./projectResources";
+import { VerifiedProjectResources, projectResourceInventory, type ProjectResourceSidecar, type ProjectResourceBytes } from "./projectResources";
 import { runWithDeferredProjectDurability } from "./projectLibrary";
 
 const DATABASE = "math3d.project-resources.v1", STORE = "projects";
@@ -32,6 +32,9 @@ export const loadProjectResources = async (project: Math3DProject): Promise<Veri
       const transaction = db.transaction(STORE), store = transaction.objectStore(STORE), request = store.get(project.identity.id);
       request.onsuccess = () => {
         if (request.result) { resolve(request.result as Record); return; }
+        // A previous Open may have left a backup for an older revision of the
+        // same Project. It cannot supply anything to a resource-free revision.
+        if (projectResourceInventory(project).length === 0) { resolve(undefined); return; }
         const savedSlot = localStorage.getItem(BACKUP_SLOT_KEY);
         const backup = store.get(BACKUP_SLOTS.includes(savedSlot as typeof BACKUP_SLOTS[number]) ? savedSlot! : "before-open");
         backup.onsuccess = () => resolve(backup.result?.projectId === project.identity.id ? backup.result as Record : undefined);
