@@ -25,6 +25,25 @@ describe("Surface analysis scheduler", () => {
     expect(states).toEqual(["queued", "running", "progressive", "ready", "cached"]);
   });
 
+  it("cancels an in-flight curvature result without caching or publishing its late value", async () => {
+    const scheduler = new SurfaceAnalysisScheduler<number>();
+    const states: string[] = [];
+    let finish!: (value: number) => void;
+    const pending = scheduler.run({ requestId: "cancelled-ridge", surfaceRevision: 4,
+      cacheKey: "surface-ridge-curvature", publish: job => states.push(job.state),
+      compute: () => new Promise<number>(resolve => { finish = resolve; }) });
+    scheduler.cancel();
+    finish(42);
+    expect(await pending).toMatchObject({ state: "cancelled", value: null });
+    expect(scheduler.getCached("surface-ridge-curvature")).toBeNull();
+    expect(states).toEqual(["queued", "running", "cancelled"]);
+    const retried = await scheduler.run({ requestId: "retry-ridge", surfaceRevision: 4,
+      cacheKey: "surface-ridge-curvature", publish: job => states.push(job.state),
+      compute: () => 7 });
+    expect(retried).toMatchObject({ state: "ready", value: 7 });
+    expect(scheduler.getCached("surface-ridge-curvature")).toBe(7);
+  });
+
   it("records reviewed performance budgets", () => {
     expect(createSurfacePerformanceReport([{ scenario: "pointProbe", durationMs: 40 }, { scenario: "moduleSwitch", durationMs: 300 }]).measurements.map((entry) => entry.withinBudget)).toEqual([true, false]);
   });

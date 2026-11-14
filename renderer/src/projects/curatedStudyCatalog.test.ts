@@ -7,7 +7,7 @@ describe("curated Study Gallery contract", () => {
   it("maps every actionable Project card to an existing starter with complete guidance", () => {
     expect(validateCuratedStudyCatalog()).toBeUndefined();
     const ids = new Set([...MATH3D_PROJECT_TEMPLATES, ...NOTEBOOK_STARTERS].map(item => item.id));
-    expect(CURATED_STUDIES).toHaveLength(15);
+    expect(CURATED_STUDIES).toHaveLength(16);
     for (const item of CURATED_STUDIES) {
       expect(curatedStudy(item.id)).toBe(item);
       expect([item.question, item.objects, item.operations, item.insight, item.prerequisites,
@@ -34,5 +34,11 @@ describe("curated Study Gallery contract", () => {
     expect(item.objects).toContain("GF(5)");
     expect(item.prerequisites).toContain("named Project");
     expect(item.limitation).toContain("do not constitute a Galois correspondence Study");
+  });
+  it("offers the bounded Field return as a desktop live route without a bundled result", () => {
+    const item = curatedStudy("field-graph-return")!;
+    expect(item.route).toEqual({ kind: "field-explorer" });
+    expect(item.platforms).toEqual(["desktop"]);
+    expect(item.limitation).toContain("does not reconstruct an arbitrary Field");
   });
 });

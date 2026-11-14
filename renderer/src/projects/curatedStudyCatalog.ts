@@ -6,6 +6,7 @@ export type CuratedStudy = Readonly<{
   id: string;
   route: Readonly<{ kind: "project"; starterId: CuratedStarterId }> |
     Readonly<{ kind: "verified-quantum-import"; model: "qwz" | "ssh" | "hydrogen" }> |
+    Readonly<{ kind: "field-explorer" }> |
     Readonly<{ kind: "cas-gallery" }>;
   field: "Geometry" | "Fields" | "Topology" | "Analysis" | "Quantum" | "Algebra" | "Provenance";
   question: string;
@@ -97,6 +98,17 @@ export const CURATED_STUDIES: readonly CuratedStudy[] = Object.freeze([
     "Surface and Geometry sources with metre coordinates", "Pick a source-backed coordinate in the comparison",
     "The overlay records its frame assertion and exact source revisions.",
     "A shared coordinate does not imply the two shapes are equivalent."),
+  { id: "field-graph-return", route: { kind: "field-explorer" }, field: "Fields",
+    question: "Can a saved Graph row return to the exact Field position that produced it?",
+    objects: "One static analytic Field, a finite XY line profile, Graph, Study and Workbook",
+    operations: "Open Field Explorer, save a line profile to Graphs, select a row and return to its Field source",
+    insight: "The row and returned position retain the exact Field generation and declared physical plane.",
+    prerequisites: "Desktop app with a named Project; use a static analytic Field on its declared XY plane.",
+    platforms: ["desktop"], approximateAssets: "Small local analytic source and finite Graph rows; no external scene bundle.",
+    offline: "The analytic Field and saved Project can reopen offline; source identity is rechecked on return.",
+    firstOpen: "Opens Scientific Field Explorer in Graphs; create and save a Project for the Study and Workbook.",
+    reset: "Start another named Project or create a new Field generation; the old Graph remains historical.",
+    limitation: "This bounded line profile does not reconstruct an arbitrary Field or certify time-dependent flow." },
   quantum("qwz", "How does a QWZ band selection relate to Berry curvature?",
     "Producer bands and curvature scenes", "Import verified scenes, then create a four-view Project Study",
     "A pinned k sample can be projected with an explicit offset and exported as qualified evidence.",
@@ -136,6 +148,8 @@ export function validateCuratedStudyCatalog(): void {
       throw new TypeError(`Curated Study ${item.id} has an invalid quantum route.`);
     if (item.route.kind === "cas-gallery" && item.id !== "cas-structures")
       throw new TypeError(`Curated Study ${item.id} has an invalid CAS route.`);
+    if (item.route.kind === "field-explorer" && item.id !== "field-graph-return")
+      throw new TypeError(`Curated Study ${item.id} has an invalid Field Explorer route.`);
     if (!item.platforms.length || Object.values(item).some(value => typeof value === "string" && !value.trim()))
       throw new TypeError(`Curated Study ${item.id} has incomplete guidance.`);
   }

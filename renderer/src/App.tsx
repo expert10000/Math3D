@@ -23444,6 +23444,7 @@ const App: React.FC = () => {
   const [vectorField3DRegionStatuses, setVectorField3DRegionStatuses] = useState<Record<string, SavedRegionSourceStatus>>({});
   const regionResultCheckEpoch = useRef(0);
   const [vectorField3DOpenRequest, setVectorField3DOpenRequest] = useState<{ document: import("@math3d/core").VectorField3DDocument; token: number } | null>(null);
+  const [fieldExplorerGuideToken, setFieldExplorerGuideToken] = useState(0);
   const vectorField3DRequestSerial = useRef(0);
   const [vectorField2DDocument, setVectorField2DDocument] = useState<import("@math3d/core").VectorField2DDocument | null>(null);
   const [vectorField2DOpenRequest, setVectorField2DOpenRequest] = useState<{ document: import("@math3d/core").VectorField2DDocument; token: number } | null>(null);
@@ -80797,6 +80798,7 @@ case "mobius":
         verifiedQuantumScene={verifiedQuantumSceneTitle && quantumSceneReference ? { format: verifiedQuantumSceneFormat, title: verifiedQuantumSceneTitle, ...quantumSceneReference } : null}
         onImportQuantumScene={() => handleMenuCommand("file:open-quantum-scene")}
         onOpenCasGallery={() => { setProjectsOpen(false); setNumberTheoryWorkspaceOpen(false); setCasWorkspaceOpen(true); }}
+        onOpenFieldExplorer={() => { setProjectsOpen(false); setMode("graphs"); setFieldExplorerGuideToken(token => token + 1); }}
         onImportScientificScene={() => handleMenuCommand("file:open-scientific-scene")}
         onOpenQuantumScene={async (reference) => {
           if (!window.quantumScenes?.openReference) throw new TypeError("Verified quantum scenes are available only in the desktop app.");
@@ -91260,7 +91262,7 @@ case "mobius":
             )}
           </div>
         ) : mode === "graphs" ? (
-          <GraphsWorkspace key={graph2dDocument.identity.id} dockLayout={activeDockLayout} document={graph2dDocument} project={activeNotebookProjectRef.current} analysisRequest={projectGraphAnalysisRequest}
+          <GraphsWorkspace key={graph2dDocument.identity.id} dockLayout={activeDockLayout} document={graph2dDocument} project={activeNotebookProjectRef.current} analysisRequest={projectGraphAnalysisRequest} fieldExplorerGuideToken={fieldExplorerGuideToken} onFieldExplorerGuideOpened={() => setFieldExplorerGuideToken(0)}
             onSaveSageResult={(record) => { openNormalSurfacesWorkspace(); saveSageResultToWorkbook(record); }}
             onOpenSageRuntimes={() => { setComputeCenterInitialTab("runtimes"); setComputeCenterOpen(true); }}
             savedVectorField3D={vectorField3DDocument} openVectorField3DRequest={vectorField3DOpenRequest}

@@ -149,6 +149,7 @@ type Props = {
   verifiedQuantumScene?: ProjectQuantumSceneReference | null;
   onImportQuantumScene?: () => void;
   onOpenCasGallery?: () => void;
+  onOpenFieldExplorer?: () => void;
   onImportScientificScene?: () => void;
   onOpenQuantumScene?: (reference: ProjectQuantumSceneReference) => Promise<void>;
   onVerifyQuantumSceneDocument?: (reference: ProjectQuantumSceneReference) => Promise<QuantumSceneDocument>;
@@ -179,7 +180,7 @@ type Props = {
   activeProjectDocumentId?: string | null;
   onRestoreWorkspace?: (workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources, owner?: Math3DProject) => void;
 };
-export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open, onOpenChange, onCurrentProjectChange, verifiedQuantumScene, onImportQuantumScene, onOpenCasGallery, onImportScientificScene, onOpenQuantumScene, onVerifyQuantumSceneDocument, onRelinkQuantumScene, verifiedScientificScene, onOpenScientificScene, onRelinkScientificScene, captureActiveWorkbook, onOpenWorkbook, onViewProjectWorkbook, onViewProjectDetail, noteRequest, resultRequest, pairRequest, regionResultStatuses = {}, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAlgebra, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeEvidence, activeProjectDocumentId }) => {
+export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open, onOpenChange, onCurrentProjectChange, verifiedQuantumScene, onImportQuantumScene, onOpenCasGallery, onOpenFieldExplorer, onImportScientificScene, onOpenQuantumScene, onVerifyQuantumSceneDocument, onRelinkQuantumScene, verifiedScientificScene, onOpenScientificScene, onRelinkScientificScene, captureActiveWorkbook, onOpenWorkbook, onViewProjectWorkbook, onViewProjectDetail, noteRequest, resultRequest, pairRequest, regionResultStatuses = {}, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAlgebra, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeEvidence, activeProjectDocumentId }) => {
 
   const loadedProject = useRef<Math3DProject | null>(null);
   const resourceSession = useRef<VerifiedProjectResources | undefined>(undefined);
@@ -2124,6 +2125,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           onPreviewCurated={id => { void previewTemplate(id, true); }} onOpenCurated={id => { void openTemplate(id, false, true); }}
           onNewCuratedCopy={id => { void openTemplate(id, true, true); }}
           onImportQuantumScene={onImportQuantumScene} quantumImportAvailable={!!window.quantumScenes?.open}
+          onOpenFieldExplorer={onOpenFieldExplorer}
           onOpenCasGallery={onOpenCasGallery} casProvenance={project && !preview && (project.algebraObjects?.length || project.algebraEvidence?.length) ? {
             projectTitle: project.metadata.title,
             definitions: (project.algebraObjects ?? []).map(entry => entry.revisions[entry.revisions.length - 1]!)

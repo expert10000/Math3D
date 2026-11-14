@@ -234,6 +234,8 @@ type Props = {
   document: Graph2DDocument;
   project?: Math3DProject | null;
   analysisRequest?: { documentId: string; token: number } | null;
+  fieldExplorerGuideToken?: number;
+  onFieldExplorerGuideOpened?: () => void;
   status?: "ready" | "loading" | "error";
   errorMessage?: string;
   onViewportCommit?: (viewport: Graph2DViewport) => void;
@@ -339,7 +341,7 @@ type Props = {
 };
 
 /** Desktop/web projection of shared Graph2D source and persistent display state. */
-export function GraphsWorkspace({ dockLayout, document, project, analysisRequest, status = "ready", errorMessage, onViewportCommit,
+export function GraphsWorkspace({ dockLayout, document, project, analysisRequest, fieldExplorerGuideToken = 0, onFieldExplorerGuideOpened, status = "ready", errorMessage, onViewportCommit,
   onGridModeCommit, onAxesCommit, onProbesCommit, onAuthoringCommit, onConstructionCommit, onConstructionBatchCommit, onSelectionCommit, onUndo, onRedo, promotions = [],
   onPromotionCreate, onPromotionLocate, onPromotionRegenerate, onComplexContourPlace, onOpenPreset, onResumeCheckpoint, onCopyProject,
   onExportPersonalProject, onCopyGraphDefinition, onPreviewPersonalImport, onImportPersonalProject,
@@ -853,6 +855,12 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
         units: saved.source.axes.map(axis => axis.unit) as [string, string, string] } : null));
   }, [savedVectorField3D?.identity.id]);
   const [vectorField3DOpen, setVectorField3DOpen] = useState(() => readFieldExplorerSession() !== null);
+  useEffect(() => {
+    if (!fieldExplorerGuideToken) return;
+    setVectorField3DDocument(current => current ?? savedVectorField3D ?? null);
+    setVectorField3DOpen(true);
+    onFieldExplorerGuideOpened?.();
+  }, [fieldExplorerGuideToken]);
   const [vectorField2DDocument, setVectorField2DDocument] = useState<VectorField2DDocument | null>(null);
   const [vectorField2DOpen, setVectorField2DOpen] = useState(false);
   const [scientificFieldDocument, setScientificFieldDocument] = useState<ScientificFieldDocument | null>(null);
