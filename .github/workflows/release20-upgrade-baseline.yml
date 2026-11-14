@@ -1,0 +1,57 @@
+name: Verify published 1.7 upgrade baseline
+
+on:
+  push:
+    branches: ["codex/release20-upgrade-baseline"]
+    paths:
+      - .github/workflows/release20-upgrade-baseline.yml
+      - scripts/release20-upgrade-baseline.ps1
+      - tests/e2e/release20-upgrade-project-settings.spec.ts
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  baseline:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install exact test locks
+        shell: pwsh
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw 'Root test install failed.' }
+          npm --prefix renderer ci
+          if ($LASTEXITCODE -ne 0) { throw 'Renderer test install failed.' }
+      - name: Download pinned published assets
+        shell: pwsh
+        run: |
+          $base = 'https://github.com/expert10000/Math3D/releases/download/v1.7.0'
+          foreach ($name in @('Math3D-Setup-1.7.0.exe', 'SHA256SUMS.txt', 'candidate-manifest.json')) {
+            Invoke-WebRequest -Uri "$base/$name" -OutFile (Join-Path $env:RUNNER_TEMP $name)
+          }
+      - name: Seed, back up and reopen the 1.7 profile
+        shell: pwsh
+        run: |
+          ./scripts/release20-upgrade-baseline.ps1 `
+            -OldInstaller (Join-Path $env:RUNNER_TEMP 'Math3D-Setup-1.7.0.exe') `
+            -ChecksumsPath (Join-Path $env:RUNNER_TEMP 'SHA256SUMS.txt') `
+            -ReleaseManifestPath (Join-Path $env:RUNNER_TEMP 'candidate-manifest.json') `
+            -WorkRoot (Join-Path $env:RUNNER_TEMP 'math3d-17-baseline') `
+            -EvidencePath (Join-Path $env:RUNNER_TEMP 'release20-upgrade-baseline.json')
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: release20-upgrade-baseline-receipt
+          path: |
+            ${{ runner.temp }}/release20-upgrade-baseline.json
+            ${{ runner.temp }}/math3d-17-baseline/seed.json
+            ${{ runner.temp }}/math3d-17-baseline/rollback.json
+            ${{ runner.temp }}/math3d-17-baseline/profile-inventory.json
+          if-no-files-found: warn
