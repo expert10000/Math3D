@@ -141,7 +141,10 @@ for (const format of ["folder", "zip"] as const) test(`two scientific ${format} 
     await expect(comparison.getByLabel("Dataset A", { exact: true })).toHaveValue(b.expected.id);
     await comparison.getByLabel("Dataset A", { exact: true }).selectOption(a.expected.id);
     comparison = field.getByTestId("gf18-field-comparison");
-    await comparison.getByLabel("Second saved field").selectOption(b.expected.id);
+    // Finish with the second imported run as A: recovery must not choose the original A.
+    await comparison.getByLabel("Dataset A", { exact: true }).selectOption(b.expected.id);
+    comparison = field.getByTestId("gf18-field-comparison");
+    await comparison.getByLabel("Second saved field").selectOption(a.expected.id);
     await comparison.getByRole("button", { name: "Show linked A/B views", exact: true }).click();
     const pair = field.getByRole("region", { name: "Linked A/B field views" });
     await expect(pair).toContainText("Both scientific sources verified");
@@ -185,6 +188,8 @@ for (const format of ["folder", "zip"] as const) test(`two scientific ${format} 
     await panel.getByTestId(`project-open-saved-${ownerId}`).click();
     await expect(panel.getByTestId("project-message")).toContainText("Opened");
     field = await explorer(page); comparison = field.getByTestId("gf18-field-comparison");
+    await expect(comparison.getByLabel("Dataset A", { exact: true })).toHaveValue(b.expected.id);
+    await expect(comparison.getByLabel("Second saved field")).toHaveValue(a.expected.id);
     await expect(field.getByRole("region", { name: "Linked A/B field views" })).toContainText("Both scientific sources verified");
     await expect(field.getByRole("region", { name: "Line profile through probe" })).toHaveCount(2);
     await comparison.locator("details").filter({ hasText: "Saved comparisons (1)" }).locator("summary").click();
