@@ -18,6 +18,44 @@ test("selected Surface ridge publishes Mesh error and Workbook evidence across r
     await expect(panel.getByTestId("project-message")).toContainText("Opened supported project", { timeout: 60_000 });
     if (!await panel.getByTestId("project-studies-panel").count())
       await panel.getByTestId("project-gallery-layout-toggle").click();
+    const sourceStudy = panel.getByTestId("project-studies-panel");
+    await sourceStudy.locator("[data-testid^='project-study-open-']").first().click();
+    await sourceStudy.getByTestId("project-study-open-source-pane-1").click();
+    // The real worker computes quickly; hold only its result delivery so Cancel remains actionable.
+    await page.evaluate(() => {
+      const NativeWorker = window.Worker;
+      (window as any).surfaceCurvatureWorkerCompleted = false;
+      (window as any).Worker = class extends NativeWorker {
+        private pending: ReturnType<typeof setTimeout>[] = [];
+        constructor(url: string | URL, options?: WorkerOptions) {
+          super(url, options);
+          this.addEventListener("message", (event: MessageEvent) => {
+            if (event.data?.type !== "curvature-result") return;
+            event.stopImmediatePropagation();
+            (window as any).surfaceCurvatureWorkerCompleted = true;
+            this.pending.push(setTimeout(() => this.onmessage?.(event), 2000));
+          }, { capture: true });
+        }
+        override terminate() {
+          this.pending.forEach(clearTimeout);
+          super.terminate();
+        }
+      };
+    });
+    await page.getByTestId("surfaces-left-tab-analysis").click();
+    await page.getByTestId("surface-computation-curvature-field").click();
+    await page.getByTestId("surface-curvature-compute-button").click();
+    await expect.poll(() => page.evaluate(() => (window as any).surfaceCurvatureWorkerCompleted))
+      .toBe(true);
+    await page.getByTestId("surface-curvature-cancel-button").click();
+    await expect(page.getByTestId("surface-curvature-execution-state")).toContainText("cancelled");
+    await expect(page.getByTestId("surface-curvature-result")).toHaveCount(0);
+    await page.getByTestId("surface-curvature-compute-button").click();
+    await expect(page.getByTestId("surface-curvature-execution-state"))
+      .toHaveText(/Execution: (ready|cached)/);
+    await expect(page.getByTestId("surface-curvature-result")).toBeVisible();
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByRole("button", { name: "View current project" }).click();
     const ridge = panel.getByTestId("project-surface-ridge-publication");
     await expect(ridge).toBeVisible();
     await ridge.locator("[data-testid^='project-publish-ridge-']").first().click();

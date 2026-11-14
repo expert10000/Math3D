@@ -50596,6 +50596,7 @@ case "mobius":
   activeSurfaceCurvatureIdentityRef.current = activeCanonicalSurfaceDefinition.identity.key;
   const handleComputeSurfaceCurvature = useCallback(async (display?: { scalar?: SurfaceCurvatureScalar; palette?: ColorPalette; rangeMode?: "automatic" | "percentile" | "symmetric"; visible?: boolean }) => {
     if (!surfaceCurvatureSource) return;
+    const runInWorker = savedSurfaceModuleActive || shouldWorkerizeSurfaceAnalysis("curvature", surfaceCurvatureSource.sampleCount);
     const definition = activeCanonicalSurfaceDefinition;
     const method: SurfaceAnalysisMethod = definition.representation === "mesh-backed" ? "mesh-approximation" : "surface-sampling";
     const selectedScalar = display?.scalar ?? surfaceCurvatureScalar;
@@ -50646,11 +50647,11 @@ case "mobius":
           progress: job.progress,
           error: job.error,
           computeTimeMs: job.value ? performance.now() - started : undefined,
-          backend: job.state === "cached" ? "Surface analysis cache" : shouldWorkerizeSurfaceAnalysis("curvature", surfaceCurvatureSource.sampleCount) ? "Surface Analysis Web Worker" : method === "mesh-approximation" ? "Discrete Surface curvature" : "Surface sampler",
+          backend: job.state === "cached" ? "Surface analysis cache" : runInWorker && typeof Worker !== "undefined" ? "Surface Analysis Web Worker" : method === "mesh-approximation" ? "Discrete Surface curvature" : "Surface sampler",
         }));
       },
       compute: (signal, progress) => {
-        if (!shouldWorkerizeSurfaceAnalysis("curvature", surfaceCurvatureSource.sampleCount) || typeof Worker === "undefined") {
+        if (!runInWorker || typeof Worker === "undefined") {
           progress(0.25);
           const field = createSurfaceCurvatureField(surfaceCurvatureSource, options);
           progress(0.9);
@@ -50698,7 +50699,7 @@ case "mobius":
     setAnalysisFocusedSection("differential-geometry");
     setRightPanelTab("inspector");
     return field;
-  }, [activeCanonicalSurfaceDefinition, colorPalette, surfaceCurvatureRangeMode, surfaceCurvatureScalar, surfaceCurvatureSource, surfaceCurvatureVisible]);
+  }, [activeCanonicalSurfaceDefinition, colorPalette, savedSurfaceModuleActive, surfaceCurvatureRangeMode, surfaceCurvatureScalar, surfaceCurvatureSource, surfaceCurvatureVisible]);
 
   const handleCancelSurfaceCurvature = useCallback(() => {
     surfaceCurvatureSchedulerRef.current.cancel();
