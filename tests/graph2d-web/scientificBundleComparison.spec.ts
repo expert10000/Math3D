@@ -85,6 +85,9 @@ for (const format of ["folder", "zip"] as const) test(`two scientific ${format} 
     await expect(panel.getByTestId("project-import-open")).toBeEnabled();
     await panel.getByTestId("project-import-open").click();
     await expect(panel.getByTestId("project-message")).toContainText("Opened");
+    const initialField = await explorer(page);
+    await initialField.getByRole("button", { name: "Save field to Project", exact: true }).click();
+    panel = await projects(page);
     await panel.getByTestId("project-save").click();
     await expect(panel.getByTestId("project-message")).toContainText("Saved");
     const original = parseMath3DProject(await active(page)), a = original.workspace.entries.find(entry => entry.module === "vector3d")!;
