@@ -144,7 +144,7 @@ export function createDefaultVectorField3DDocument(): VectorField3DDocument {
 }
 
 export function VectorField3DPanel({ initialDocument, savedDocument, project, focusSelectionRequest,
-  onSaveDocument, onPinBaseline, onClose, mount,
+  onSaveDocument, onSelectComparisonSource, onPinBaseline, onClose, mount,
   onAddGraphLine, isGraphLineImported, onAddAnalyticLine, onAddDerivedLine,
   onAddLinkedOverlayLine, onFocusRegionInGraphs, onFocusSubrectangleInGraphs,
   onPublishVectorSubrectangle, onPublishCombinedSubrectangle,
@@ -191,6 +191,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   derivedProfileError?: string;
   onPinBaseline?: (document: VectorField3DDocument) => VectorField3DDocument;
   onSaveDocument?: (document: VectorField3DDocument) => void; onClose: () => void;
+  onSelectComparisonSource?: (next: VectorField3DDocument, current: VectorField3DDocument) => void;
   mount?: HTMLElement;
   onAddGraphLine?: (preview: Graph2DScientificDatasetPreview, selection: VectorField3DGraphLineSelection) => void;
   isGraphLineImported?: (selection: VectorField3DGraphLineSelection, document: VectorField3DDocument) => boolean;
@@ -2468,6 +2469,13 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
         inspectorSection[0]!.toUpperCase() + inspectorSection.slice(1)}</h5>
     {!fieldLayer && <div data-gf06-section="analyze" className="field-explorer-compare-inspector">
       <VectorField3DComparisonPanel document={document} project={project}
+        onSelectSourceA={onSelectComparisonSource && !busy && !lineBusy ? id => {
+          const entry = project?.workspace.entries.find(item => item.module === "vector3d" && item.expected.id === id);
+          if (entry?.checkpoint.format !== "math3d.vector-field3d-document") return;
+          const current = currentDocument();
+          onSelectComparisonSource(entry.checkpoint, reviseVectorField3DWorkspace(current,
+            { ...(current.workspace ?? defaultVectorField3DWorkspace(current.source)), linkedProbe }));
+        } : undefined}
         onWorkflowChange={changes => setDocument(current => reviseFieldExplorerWorkflow(current, changes))}
         onSave={onSaveComparisonResult} onOpenProfile={onOpenComparisonProfile} />
     </div>}

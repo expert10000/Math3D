@@ -4645,6 +4645,12 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
             const next = onPinVectorField3DBaseline(field); setVectorField3DDocument(next); return next;
           } : undefined}
           onSaveDocument={field => { setVectorField3DDocument(field); onSaveVectorField3D?.(field); }}
+          onSelectComparisonSource={onSaveVectorField3D ? (next, current) => {
+            onSaveVectorField3D(current);
+            onSaveVectorField3D(next);
+            setLinkedExplorerProbe(next.workspace?.linkedProbe ?? null);
+            setVectorField3DDocument(next);
+          } : undefined}
           onClose={() => { window.sessionStorage.removeItem(fieldExplorerSessionKey);
             setVectorField3DOpen(false); setLinkedRegionFocus(null);
             requestAnimationFrame(() => viewerRef.current?.querySelector<HTMLElement>(".graph2d-toolbar-menu > summary")?.focus()); }} />}

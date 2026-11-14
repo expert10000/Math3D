@@ -7,9 +7,10 @@ import { compareVectorField3D, createVectorField3DComparisonResult,
   type VectorField3DComparisonTransfers } from "@math3d/core";
 import { loadVerifiedVectorFieldTransfer, SCIENTIFIC_FIELD_REVERIFY_EVENT } from "./loadVerifiedVectorFieldTransfer";
 
-export function VectorField3DComparisonPanel({ document, project, onSave, onOpenProfile, onWorkflowChange }: {
+export function VectorField3DComparisonPanel({ document, project, onSave, onOpenProfile, onWorkflowChange, onSelectSourceA }: {
   document: VectorField3DDocument; project: Math3DProject | null | undefined;
   onWorkflowChange?: (changes: Partial<FieldExplorerWorkflow>) => void;
+  onSelectSourceA?: (id: string) => void;
   onSave?: (result: AnalysisResultEnvelope, transfers: VectorField3DComparisonTransfers) => void;
   onOpenProfile?: (result: AnalysisResultEnvelope) => void;
 }) {
@@ -115,7 +116,13 @@ export function VectorField3DComparisonPanel({ document, project, onSave, onOpen
     <p>Cartesian axes and identical component units. Choose identical grids or an explicit
       physical overlap; verified-volume trilinear interpolation and complete coverage are
       required for cross-grid comparison. The comparison grid is capped at 4096 samples.</p>
-    <label>Second saved field <select value={secondId} onChange={event => {
+    <label>Dataset A <select value={document.identity.id} disabled={!onSelectSourceA || busy}
+      onChange={event => onSelectSourceA?.(event.target.value)}>
+      <option value={document.identity.id}>{document.metadata.title} · revision {document.identity.revision}</option>
+      {sources.map(source => <option key={source.identity.id} value={source.identity.id}>
+        {source.metadata.title} · revision {source.identity.revision}</option>)}
+    </select></label>
+    <label>Dataset B · Second saved field <select value={secondId} onChange={event => {
       const next = sources.find(item => item.identity.id === event.target.value);
       setSecondId(event.target.value); setResult(null);
       onWorkflowChange?.({ comparisonSource: next?.identity ?? null,
