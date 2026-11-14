@@ -1,0 +1,74 @@
+name: Installed History and Resource Recovery f725
+
+on:
+  push:
+    branches: [codex/qualify-installed-history-f7258881]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  ubuntu-packages:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BUILD_RUN_ID: "43625939211"
+      CI: "1"
+      MATH3D_GPU_MODE: disabled
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Verify source run and fetch exact packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh run view "$BUILD_RUN_ID" --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)" = success
+          gh run view "$BUILD_RUN_ID" --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha > source-sha.txt
+          test "$(cat source-sha.txt)" = f725888199b35e93809c1b20f12c54afea0c2efc
+          gh run download "$BUILD_RUN_ID" --repo "$GITHUB_REPOSITORY" --name linux-package-smoke --dir packages
+          test "$(find packages -maxdepth 1 -name '*.AppImage' | wc -l)" = 1
+          test "$(find packages -maxdepth 1 -name '*.deb' | wc -l)" = 1
+          test "$(find packages -maxdepth 1 -name '*.rpm' | wc -l)" = 1
+          sha256sum packages/*.AppImage packages/*.deb packages/*.rpm | tee package-sha256.txt
+      - name: Install test and desktop dependencies
+        run: |
+          npm ci --ignore-scripts
+          sudo apt-get update
+          sudo apt-get install -y xvfb libnss3 libatk-bridge2.0-0 libgtk-3-0 libgbm1 libxss1
+          sudo apt-get install -y libasound2t64 || sudo apt-get install -y libasound2
+      - name: Install and qualify deb
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y "$(realpath packages/*.deb)"
+          app=/opt/Math3D/math3d
+          worker="$(find /opt -type f -path '*/resources/python-worker/worker' -print -quit)"
+          test -n "$app" && test -n "$worker"
+      - name: Installed deb runtime loss, offline cold reopen, reconnect and retry
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo chown -R "$(id -u):$(id -g)" /opt/Math3D
+          worker="$(find /opt/Math3D -type f -path '*/resources/python-worker/worker' -print -quit)"
+          xvfb-run -a timeout --kill-after=20s 12m node scripts/m3d20-installed-history-recovery.mjs \
+            --phase journey --format deb --package packages/*.deb --app /opt/Math3D/math3d \
+            --worker "$worker" --profile "$RUNNER_TEMP/installed-recovery-profile" \
+            --source-sha "$(cat source-sha.txt)" --receipt installed-history-recovery-receipt.json
+      - name: Upload Ubuntu receipts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: installed-history-recovery-receipts
+          if-no-files-found: warn
+          path: |
+            *-receipt.json
+            package-sha256.txt
+            source-sha.txt
+            installed-outbound.json
+            installed-returned.json
