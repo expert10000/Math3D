@@ -11,7 +11,7 @@ The [published release](https://github.com/expert10000/Math3D/releases/tag/v1.7.
 `scripts/release20-upgrade-baseline.ps1` runs only on Windows, refuses an existing stable Math3D registration, and requires a new work root beneath the runner's temporary directory. It then:
 
 1. Installs the published 1.7.0 bytes into the isolated work root and records the installed `Math3D.exe` hash. An old-toolchain NSIS failure is reported as a **1.7 baseline failure**.
-2. Launches the installed app with a fresh profile. The existing upgrade acceptance test disables command preview overlays, creates a named *Upgrade Graph from v1.7.0* Project through My Graphs, and writes the exact local-storage checkpoint bytes and SHA-256 into `seed.json`.
+2. Launches the installed app with a fresh profile. The upgrade acceptance test disables command preview overlays, authors a parabola with expression `x^2 + 1`, creates a named *Upgrade Graph from v1.7.0* Project through My Graphs, and writes the exact local-storage checkpoint bytes and SHA-256 into `seed.json`.
 3. Inventories each profile file by relative path, byte length, and SHA-256. It copies the whole profile into `profile-before-2.0` and requires the backup inventory digest to match the original.
 4. Copies the pristine backup to a separate rollback profile and launches the installed 1.7.0 app against that profile. The test reopens the Graph Project and compares its checkpoint bytes and setting with the seed. The pristine backup is inventoried again to prove the rehearsal did not change it.
 
