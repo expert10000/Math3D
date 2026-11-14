@@ -8,12 +8,10 @@ import { marchingCubesVolume } from "../math/marchingCubes";
 import type { VolumeDataset, VectorGrid } from "../scene/datasets";
 import type { Image2D } from "../scene/renderPrimitives";
 import {
-  buildSliceImage,
   getSliceInfo,
   gradientMagnitudeAt,
   gridIndexToWorld,
   sampleGridTrilinear,
-  sliceVolumeData,
   volumeSliceContours,
   type SliceAxis,
   type VolumeSliceData,
@@ -21,6 +19,7 @@ import {
   type VolumeSliceReport,
   type VolumeSliceWindow,
 } from "../scene/volume/sliceVolume";
+import { viewerSliceData, viewerSliceImage } from "../scene/volume/viewerSliceCache";
 import {
   supportsVtkVolumeSlice,
   vtkVolumeIsosurface,
@@ -1183,7 +1182,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     }
     try {
       setSliceRuntimeState({ kind: "loading", message: `Preparing ${axis.toUpperCase()} slice…` });
-      setSliceData(sliceVolumeData(dataset.grid, axis, index));
+      setSliceData(viewerSliceData(dataset.grid, axis, index));
     } catch (error) {
       setSliceData(null);
       setSliceImage(null);
@@ -1247,7 +1246,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
           if (!res.ok) backendFailure = res.error;
         }
         if (!cancelled) {
-          setSliceImage(buildSliceImage(sliceData, sliceWindow ?? undefined));
+          setSliceImage(viewerSliceImage(sliceData, sliceWindow ?? undefined));
           setSliceRuntimeState(
             backendFailure
               ? { kind: "fallback", message: `VTK unavailable: ${backendFailure}. Showing CPU slice.` }
@@ -1359,8 +1358,8 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     const clippingPlanes = clipToCrop ? getCropClippingPlanes(cropCenter, cropExtents) : [];
     for (const [axisOrder, sliceAxis] of (["x", "y", "z"] as const).entries()) {
       if (spatialPlaneVisibility?.[sliceAxis] === false) continue;
-      const data = sliceVolumeData(dataset.grid, sliceAxis, spatialSlices[sliceAxis]);
-      const image = buildSliceImage(data);
+      const data = viewerSliceData(dataset.grid, sliceAxis, spatialSlices[sliceAxis]);
+      const image = viewerSliceImage(data);
       const texture = new THREE.DataTexture(image.data, image.width, image.height, THREE.RGBAFormat);
       texture.magFilter = THREE.LinearFilter;
       texture.minFilter = THREE.LinearFilter;
