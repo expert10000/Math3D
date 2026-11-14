@@ -17,13 +17,14 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <a class="skip-link" href="#top">Skip to main content</a>
     <div class="bg-glow bg-glow-a" aria-hidden="true"></div>
     <div class="bg-glow bg-glow-b" aria-hidden="true"></div>
 
     <header class="site-header">
       <div class="container top-nav reveal">
         <a class="brand" href="#top">Math3D Lab</a>
-        <nav class="nav-links">
+        <nav class="nav-links" aria-label="Site navigation">
           <a href="#features">Features</a>
           <a href="#showcase">Showcase</a>
           <a href="#release20">2.0 workflows</a>
@@ -36,7 +37,7 @@
       </div>
     </header>
 
-    <main id="top">
+    <main id="top" tabindex="-1">
       <section class="hero container">
         <div class="hero-copy reveal">
           <p class="eyebrow">Geometry without friction</p>
@@ -60,7 +61,7 @@
           </div>
         </div>
 
-        <div class="hero-panel reveal reveal-delay-1" role="img" aria-label="Math3D summary panel">
+        <div class="hero-panel reveal reveal-delay-1">
           <figure class="hero-shot">
             <img
               src="./assets/release-current/graph-phase-center.png"
@@ -69,18 +70,18 @@
             />
             <figcaption>Current Graph view · source-build capture</figcaption>
           </figure>
-          <div class="chip-row" role="tablist" aria-label="Math3D feature mode">
-            <button class="chip chip-btn is-active" type="button" data-mode="implicit" role="tab" aria-selected="true">
+          <div class="chip-row" role="group" aria-label="Explore feature modes">
+            <button class="chip chip-btn is-active" type="button" data-mode="implicit" aria-pressed="true">
               Implicit
             </button>
-            <button class="chip chip-btn" type="button" data-mode="parametric" role="tab" aria-selected="false">
+            <button class="chip chip-btn" type="button" data-mode="parametric" aria-pressed="false">
               Parametric
             </button>
-            <button class="chip chip-btn" type="button" data-mode="topology" role="tab" aria-selected="false">
+            <button class="chip chip-btn" type="button" data-mode="topology" aria-pressed="false">
               Topology
             </button>
           </div>
-          <p class="chip-mode-copy" data-mode-copy>
+          <p class="chip-mode-copy" data-mode-copy aria-live="polite">
             Implicit mode focuses on field-defined surfaces and mesh extraction for complex equation-driven geometry.
           </p>
           <div class="panel-grid">

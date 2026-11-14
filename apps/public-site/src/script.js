@@ -72,7 +72,7 @@ function applyHeroMode(mode) {
   for (const button of modeButtons) {
     const isActive = button.dataset.mode === mode;
     button.classList.toggle("is-active", isActive);
-    button.setAttribute("aria-selected", isActive ? "true" : "false");
+    button.setAttribute("aria-pressed", isActive ? "true" : "false");
   }
 }
 
