@@ -1,8 +1,19 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { launchRepoElectron } from "./helpers/electronLauncher";
+import { freezeControls } from "./helpers/projectFreeze";
+const restoredProjectControls = async (page: Page) => {
+  // Saved Project restore changes the active workbench and may remount its
+  // companion. Wait for the actual Geometry owner before using Project controls.
+  await expect(page.getByTestId("workspace-nav-geometry")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("project-geometry-editor")).toBeVisible();
+  const controls = freezeControls(page); await controls.show();
+  if (await controls.panel.getAttribute("data-project-placement")) await controls.panel.getByTestId("project-gallery-layout-toggle").click();
+  if (await controls.panel.locator(".project-gallery-layout-detail").count()) await controls.panel.getByTestId("project-detail-toggle").click();
+  await expect(controls.panel).toBeVisible(); return controls.panel;
+};
 
 test("Q09 saved Lab scene refuses stale bytes and survives exact relink and restart", async () => {
   test.setTimeout(240_000);
@@ -42,6 +53,7 @@ test("Q09 saved Lab scene refuses stale bytes and survives exact relink and rest
     projects = page.getByTestId("project-explorer-panel");
     await projects.getByTestId(`project-open-saved-${saved.id}`).click();
     await expect(projects.getByTestId("project-message")).toContainText("Opened supported project", { timeout: 60_000 });
+    projects = await restoredProjectControls(page);
     await projects.getByTestId(`project-open-quantum-scene-${saved.reference.sceneFingerprint}`).click();
     await expect(projects.getByTestId("project-quantum-scene-message")).toContainText(/Scene unavailable:.*integrity/);
     await expect(page.getByTestId("quantum-scene-preview")).toHaveCount(0);
@@ -65,6 +77,7 @@ test("Q09 saved Lab scene refuses stale bytes and survives exact relink and rest
     projects = page.getByTestId("project-explorer-panel");
     await projects.getByTestId(`project-open-saved-${saved.id}`).click();
     await expect(projects.getByTestId("project-message")).toContainText("Opened supported project", { timeout: 60_000 });
+    projects = await restoredProjectControls(page);
     await projects.getByTestId(`project-open-quantum-scene-${saved.reference.sceneFingerprint}`).click();
     await expect(page.getByTestId("quantum-scene-preview")).toContainText("QWZ supplied energy bands");
     await expect(page.getByTestId("quantum-source-directory")).toHaveText(relocated);
