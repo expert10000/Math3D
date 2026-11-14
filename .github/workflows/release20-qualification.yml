@@ -58,7 +58,7 @@ jobs:
   fresh_install:
     needs: integrity
     runs-on: windows-2022
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
         with:
@@ -80,8 +80,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Root test install failed.' }
           npm --prefix renderer ci
           if ($LASTEXITCODE -ne 0) { throw 'Renderer test install failed.' }
-      - name: Install on a fresh Windows runner and reopen a Study
+      - name: Install exact candidate and run first-use plus four journeys
         shell: pwsh
+        env:
+          MATH3D_RELEASE20_SAGE_SERVICE_URL: ${{ secrets.MATH3D_RELEASE20_SAGE_SERVICE_URL }}
         run: |
           node scripts/verify-release20-uploaded-assets.mjs `
             (Join-Path $env:RUNNER_TEMP 'candidate') `
@@ -96,7 +98,17 @@ jobs:
         if: always()
         with:
           name: release20-fresh-install-receipt
-          path: ${{ runner.temp }}/fresh-install.json
+          path: |
+            ${{ runner.temp }}/fresh-install.json
+            ${{ runner.temp }}/release20-sage-oracle.json
+            ${{ runner.temp }}/release20-four-journeys.json
+            ${{ runner.temp }}/release20-journeys-playwright.json
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: release20-journey-traces
+          path: test-results/release20-journeys-playwright/
           if-no-files-found: warn
 
   upgrade:

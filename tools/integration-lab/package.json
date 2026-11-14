@@ -1,0 +1,10 @@
+{
+  "name": "math3d-integration-lab",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build-portable.mjs",
+    "test": "node scripts/integration-lab-check.mjs",
+    "start": "node scripts/serve.mjs"
+  }
+}

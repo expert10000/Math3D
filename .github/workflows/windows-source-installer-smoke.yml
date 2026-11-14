@@ -1,0 +1,178 @@
+# Optional unsigned installer check for a source checkout. The signed 2.0 candidate uses release20-candidate.yml.
+name: Windows Unsigned Installer Smoke
+
+on:
+  pull_request:
+    types:
+      - labeled
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      skip_launch_check:
+        description: Skip installed app launch persistence check
+        required: false
+        default: true
+        type: boolean
+  repository_dispatch:
+    types:
+      - run-installer-smoke
+
+concurrency:
+  group: windows-unsigned-installer-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release-smoke:
+    if: ${{ github.event_name != 'pull_request' || github.event.label.name == 'ci:installer-smoke' }}
+    runs-on: windows-latest
+    timeout-minutes: 120
+    env:
+      electron_config_cache: ${{ github.workspace }}\.cache\electron
+      MATH3D_ELECTRON_DOWNLOAD_TIMEOUT_MS: "600000"
+      MATH3D_ELECTRON_EXTRACT_TIMEOUT_MS: "180000"
+      MATH3D_ELECTRON_DOWNLOAD_RETRIES: "2"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+          cache: 'npm'
+
+      - name: Show Node version
+        run: node --version
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: python/worker/requirements.freeze.txt
+
+      - name: Cache Electron downloads
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.electron_config_cache }}
+          key: ${{ runner.os }}-electron-cache-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-electron-cache-
+
+      - name: Install npm dependencies (root + renderer, retry)
+        shell: pwsh
+        run: |
+          function Invoke-NpmWithRetry {
+            param(
+              [Parameter(Mandatory = $true)][string]$Label,
+              [Parameter(Mandatory = $true)][scriptblock]$Command,
+              [Parameter(Mandatory = $true)][string]$CleanupPath,
+              [int]$MaxAttempts = 3
+            )
+
+            for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+              Write-Host "[$Label] attempt $attempt/$MaxAttempts"
+              $output = & $Command 2>&1
+              $exitCode = $LASTEXITCODE
+              if ($output) {
+                $output | ForEach-Object { Write-Host $_ }
+              }
+
+              if ($exitCode -eq 0) {
+                return
+              }
+
+              $outputText = ($output | Out-String)
+              $lockMismatch = ($outputText -match "npm error code EUSAGE") -and (
+                ($outputText -match "can only install packages when your package\.json and package-lock\.json") -or
+                ($outputText -match "Invalid:\s+lock file") -or
+                ($outputText -match "Please update your lock file with")
+              )
+              if ($lockMismatch) {
+                throw "[$Label] failed with lockfile mismatch. npm ci cannot proceed when package.json and package-lock.json are out of sync. Run npm install locally, commit updated lockfiles, and rerun CI."
+              }
+
+              if ($attempt -eq $MaxAttempts) {
+                throw "[$Label] failed after $MaxAttempts attempts (exit $exitCode)."
+              }
+
+              Write-Warning "[$Label] failed with exit $exitCode. Cleaning up and retrying..."
+              if (Test-Path $CleanupPath) {
+                Remove-Item -Recurse -Force $CleanupPath -ErrorAction SilentlyContinue
+              }
+              Start-Sleep -Seconds (15 * $attempt)
+            }
+          }
+
+          Invoke-NpmWithRetry -Label "root npm ci" -Command { npm ci } -CleanupPath "node_modules"
+          Invoke-NpmWithRetry -Label "renderer npm install" -Command { npm --prefix renderer install } -CleanupPath "renderer/node_modules"
+
+      - name: Run renderer unit tests
+        run: npm --prefix renderer run test
+
+      - name: Run TypeScript noEmit checks
+        run: npm run typecheck:noemit
+
+      - name: Install Python dependencies for frozen worker
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -c python/worker/build-requirements.freeze.txt -c python/worker/requirements.freeze.txt pyinstaller numpy scipy sympy vtk
+          python -c "import numpy, scipy, sympy, vtk; print('Python worker smoke dependencies available')"
+          python -m pip install -c python/worker/requirements.freeze.txt pygalmesh
+          if ($LASTEXITCODE -ne 0) {
+            Write-Warning "Optional dependency pygalmesh failed to install; continuing without mesh.generate support."
+            $global:LASTEXITCODE = 0
+          }
+
+      - name: Build app
+        run: npm run build:core
+
+      - name: Run Electron startup smoke test
+        run: npm run test:app:startup:smoke
+
+      - name: Run geometry functional smoke
+        run: npm run test:app:geometry:smoke
+
+      - name: Build unsigned Dev installer, install, and run source smoke
+        shell: pwsh
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          CSC_LINK: ""
+          CSC_KEY_PASSWORD: ""
+          MATH3D_WINDOWS_TIMESTAMP_URL: ""
+        run: |
+          $skipLaunchCheck = "${{ github.event.inputs.skip_launch_check }}"
+          if ([string]::IsNullOrWhiteSpace($skipLaunchCheck)) {
+            $skipLaunchCheck = "true"
+          }
+
+          if ($skipLaunchCheck -eq "true") {
+            ./scripts/release-smoke.ps1 -SourceDev -SkipLaunchCheck
+          } else {
+            ./scripts/release-smoke.ps1 -SourceDev -StrictLaunchCheck
+          }
+
+      - name: Run packaged Playwright e2e tests
+        shell: pwsh
+        run: |
+          $env:MATH3D_RUN_PACKAGED_E2E = "1"
+          $env:MATH3D_INSTALL_ROOT = Join-Path $env:RUNNER_TEMP 'Math3D-smoke-install'
+          $env:MATH3D_INSTALLED_APP_EXE = Join-Path $env:MATH3D_INSTALL_ROOT 'Math3D Dev.exe'
+          npm run test:app:e2e:packaged
+
+      - name: Upload release artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-source-installer-smoke-artifacts
+          if-no-files-found: warn
+          path: |
+            release-dev/*.exe
+            release-dev/builder-debug.yml
+            release-dev/latest.yml
+            playwright-report/**
+            test-results/**

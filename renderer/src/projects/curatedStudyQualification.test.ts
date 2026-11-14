@@ -26,10 +26,6 @@ describe("active-host Gallery qualification", () => {
       .toBe("open");
     expect(qualifyCuratedStudy(curatedStudy("cas-structures")!, host(false), { casAvailable: true }).mode)
       .toBe("open");
-    expect(qualifyCuratedStudy(curatedStudy("field-graph-return")!, host(true), { fieldExplorerAvailable: true }).mode)
-      .toBe("open");
-    expect(qualifyCuratedStudy(curatedStudy("field-graph-return")!, host(false), { fieldExplorerAvailable: true }).mode)
-      .toBe("unavailable");
     expect(qualifyCuratedStudy(curatedStudy("catenary-study")!, host(true),
       { savedCopyLimit: "Required source sidecar is missing." })).toMatchObject({ mode: "preview", reason: "Required source sidecar is missing." });
   });

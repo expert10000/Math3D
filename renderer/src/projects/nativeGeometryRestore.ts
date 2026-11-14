@@ -1,4 +1,4 @@
-import { canonicalJsonStringify, geometryDocumentToSceneDocument, type CanonicalJsonValue, type GeometryDocument, type MixedWorkspaceDocument } from "@math3d/core";
+import { canonicalJsonStringify, geometryDocumentToSceneDocument, SAGE_LOCUS_GEOMETRY_EXTENSION, type CanonicalJsonValue, type GeometryDocument, type MixedWorkspaceDocument } from "@math3d/core";
 
 export const LIVE_GEOMETRY_CONSTRUCTIONS = "math3d.geometry.live-derived.v1";
 const supportedConstructions = new Set([
@@ -44,13 +44,22 @@ export const independentQuantumPrimitiveCopy = (document: GeometryDocument) => {
     !!document.source.geometry && !document.source.objects.length && !document.source.surfaces.length &&
     !document.source.constructions.length && !document.source.relationships.length;
 };
+const independentAlgebraicLocusCopy = (document: GeometryDocument) => {
+  const source = document.source;
+  // The Project parser validates this pinned locus extension. Its Geometry has
+  // no procedural targets and cannot own the global scene-script construction.
+  return SAGE_LOCUS_GEOMETRY_EXTENSION in source.extensions && source.geometry === null &&
+    !source.objects.length && !source.surfaces.length && !source.constructions.length &&
+    !source.relationships.length;
+};
 export const projectConstructionsEditable = (workspace: MixedWorkspaceDocument) => {
   if (!workspace.constructions.length) return true;
-  // A standalone quantum primitive copy has no procedural targets for the
-  // legacy global construction state. Keep exactly one procedural Geometry.
+  // Independent quantum and Sage locus Geometry copies have no procedural
+  // targets for the legacy global construction state. Keep one owner.
   if (workspace.entries.filter(entry => entry.module === "geometry" &&
     !(entry.checkpoint.format === "math3d.geometry-document" &&
-      independentQuantumPrimitiveCopy(entry.checkpoint))).length !== 1) return false;
+      (independentQuantumPrimitiveCopy(entry.checkpoint) ||
+        independentAlgebraicLocusCopy(entry.checkpoint)))).length !== 1) return false;
   const seed = (value: unknown) => record(value) && Array.isArray(value.nodes) && value.nodes.length > 0 && value.nodes.every((node: unknown) => record(node) && typeof node.id === "string") && Array.isArray(value.checkDefs) && value.checkDefs.every((check: unknown) => record(check) && typeof check.id === "string");
   const counts = new Map<string, number>();
   return workspace.constructions.every((entry) => {

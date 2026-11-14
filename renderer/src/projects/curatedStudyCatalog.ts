@@ -6,7 +6,6 @@ export type CuratedStudy = Readonly<{
   id: string;
   route: Readonly<{ kind: "project"; starterId: CuratedStarterId }> |
     Readonly<{ kind: "verified-quantum-import"; model: "qwz" | "ssh" | "hydrogen" }> |
-    Readonly<{ kind: "field-explorer" }> |
     Readonly<{ kind: "cas-gallery" }>;
   field: "Geometry" | "Fields" | "Topology" | "Analysis" | "Quantum" | "Algebra" | "Provenance";
   question: string;
@@ -98,17 +97,19 @@ export const CURATED_STUDIES: readonly CuratedStudy[] = Object.freeze([
     "Surface and Geometry sources with metre coordinates", "Pick a source-backed coordinate in the comparison",
     "The overlay records its frame assertion and exact source revisions.",
     "A shared coordinate does not imply the two shapes are equivalent."),
-  { id: "field-graph-return", route: { kind: "field-explorer" }, field: "Fields",
-    question: "Can a saved Graph row return to the exact Field position that produced it?",
-    objects: "One static analytic Field, a finite XY line profile, Graph, Study and Workbook",
-    operations: "Open Field Explorer, save a line profile to Graphs, select a row and return to its Field source",
-    insight: "The row and returned position retain the exact Field generation and declared physical plane.",
-    prerequisites: "Desktop app with a named Project; use a static analytic Field on its declared XY plane.",
-    platforms: ["desktop"], approximateAssets: "Small local analytic source and finite Graph rows; no external scene bundle.",
-    offline: "The analytic Field and saved Project can reopen offline; source identity is rechecked on return.",
-    firstOpen: "Opens Scientific Field Explorer in Graphs; create and save a Project for the Study and Workbook.",
-    reset: "Start another named Project or create a new Field generation; the old Graph remains historical.",
-    limitation: "This bounded line profile does not reconstruct an arbitrary Field or certify time-dependent flow." },
+  project("volume-isosurface-study", "Analysis", "How does an isovalue become a retained Mesh?",
+    "Analytic sphere Volume, sampled isosurface, retained Mesh, Study and Workbook",
+    "Open the Volume, apply isosurface extraction, then create the Volume → Mesh Study in Projects",
+    "The saved Mesh and extraction result retain the exact Volume source and threshold.",
+    "The sampled boundary and vertex counts do not certify smooth geometry or topology; a changed source makes earlier results historical.",
+    { platforms: ["desktop"], approximateAssets: "A small Volume recipe; the extracted Mesh sidecar size is measured after computation.",
+      firstOpen: "Creates an independent Volume Project copy with a guided source Study; run extraction before creating the Volume–Mesh Study." }),
+  project("field-line-profile-study", "Fields", "Where does a Graph sample sit in its exact Field source?",
+    "Static rotational Field and a finite XY line profile", "Open Field Explorer, preview the XY slice, send the line to Graphs, then select a row and return to Field",
+    "A Graph row carries the Field generation and physical position used for its sample.",
+    "The line is sampled on one declared plane; a changed or unavailable Field source cannot be treated as the original row.",
+    { platforms: ["desktop"], approximateAssets: "Small analytic Field and guided Workbook sidecar; profile samples are generated after opening.",
+      firstOpen: "Creates an independent Field Project copy with a source Study and Workbook; create the profile in Field Explorer." }),
   quantum("qwz", "How does a QWZ band selection relate to Berry curvature?",
     "Producer bands and curvature scenes", "Import verified scenes, then create a four-view Project Study",
     "A pinned k sample can be projected with an explicit offset and exported as qualified evidence.",
@@ -148,8 +149,6 @@ export function validateCuratedStudyCatalog(): void {
       throw new TypeError(`Curated Study ${item.id} has an invalid quantum route.`);
     if (item.route.kind === "cas-gallery" && item.id !== "cas-structures")
       throw new TypeError(`Curated Study ${item.id} has an invalid CAS route.`);
-    if (item.route.kind === "field-explorer" && item.id !== "field-graph-return")
-      throw new TypeError(`Curated Study ${item.id} has an invalid Field Explorer route.`);
     if (!item.platforms.length || Object.values(item).some(value => typeof value === "string" && !value.trim()))
       throw new TypeError(`Curated Study ${item.id} has incomplete guidance.`);
   }

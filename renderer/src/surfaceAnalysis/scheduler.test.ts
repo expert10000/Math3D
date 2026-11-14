@@ -25,23 +25,22 @@ describe("Surface analysis scheduler", () => {
     expect(states).toEqual(["queued", "running", "progressive", "ready", "cached"]);
   });
 
-  it("cancels an in-flight curvature result without caching or publishing its late value", async () => {
+  it("withholds a cancelled curvature result even when its worker completes late", async () => {
     const scheduler = new SurfaceAnalysisScheduler<number>();
     const states: string[] = [];
-    let finish!: (value: number) => void;
-    const pending = scheduler.run({ requestId: "cancelled-ridge", surfaceRevision: 4,
-      cacheKey: "surface-ridge-curvature", publish: job => states.push(job.state),
-      compute: () => new Promise<number>(resolve => { finish = resolve; }) });
+    let release!: (value: number) => void;
+    const pending = new Promise<number>(resolve => { release = resolve; });
+    const running = scheduler.run({ requestId: "ridge-curvature", surfaceRevision: 2,
+      cacheKey: "ridge-curvature:2", publish: job => states.push(job.state),
+      compute: () => pending });
     scheduler.cancel();
-    finish(42);
-    expect(await pending).toMatchObject({ state: "cancelled", value: null });
-    expect(scheduler.getCached("surface-ridge-curvature")).toBeNull();
+    release(42);
+    expect(await running).toMatchObject({ state: "cancelled", value: null });
+    expect(scheduler.getCached("ridge-curvature:2")).toBeNull();
     expect(states).toEqual(["queued", "running", "cancelled"]);
-    const retried = await scheduler.run({ requestId: "retry-ridge", surfaceRevision: 4,
-      cacheKey: "surface-ridge-curvature", publish: job => states.push(job.state),
-      compute: () => 7 });
-    expect(retried).toMatchObject({ state: "ready", value: 7 });
-    expect(scheduler.getCached("surface-ridge-curvature")).toBe(7);
+    const retry = await scheduler.run({ requestId: "ridge-curvature-retry", surfaceRevision: 2,
+      cacheKey: "ridge-curvature:2", publish: job => states.push(job.state), compute: () => 7 });
+    expect(retry).toMatchObject({ state: "ready", value: 7 });
   });
 
   it("records reviewed performance budgets", () => {

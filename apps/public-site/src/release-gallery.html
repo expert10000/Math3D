@@ -9,11 +9,13 @@
     <link rel="stylesheet" href="./release-gallery.css" />
   </head>
   <body>
+    <a class="skip-link" href="#main-content">Skip to main content</a>
     <header class="site-header">
       <div class="container top-nav">
         <a class="brand" href="./index.html">Math3D Lab</a>
         <nav class="nav-links" aria-label="Site navigation">
           <a href="./index.html">Home</a>
+          <a href="./index.html#release20">2.0 workflows</a>
           <a href="./release-gallery.html" aria-current="page">Gallery</a>
           <a href="./capabilities.html">Capabilities</a>
           <a href="https://expert10000.github.io/Math3D/app/">Web app</a>
@@ -21,7 +23,7 @@
         </nav>
       </div>
     </header>
-    <main class="container release-gallery">
+    <main id="main-content" class="container release-gallery" tabindex="-1">
       <section class="release-gallery-intro">
         <p class="eyebrow">Source-build visuals</p>
         <h1>Math3D in use</h1>

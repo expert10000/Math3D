@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createGeometryDocument, geometryDocumentFromSceneDocument, createMath3DProject, createMixedWorkspaceDocument } from "@math3d/core";
+import { createGeometryDocument, geometryDocumentFromSceneDocument, createMath3DProject, createMixedWorkspaceDocument, SAGE_LOCUS_GEOMETRY_EXTENSION } from "@math3d/core";
 import { geometryEditorSeed, geometrySourceFromEditor, geometryDisplayFromEditor, projectConstructionsEditable, retainConstructionSource, LIVE_GEOMETRY_CONSTRUCTIONS } from "./nativeGeometryRestore";
 import { inspectProjectCompatibility } from "./projectTransfer";
 import { GeometryDocumentAdapter } from "../geometry/geometryDocumentAdapter";
@@ -50,6 +50,21 @@ describe("native Geometry project restore", () => {
     expect(compatibility.canOpenWorkspace).toBe(false);
     expect(compatibility.reasons).toContain("Saved construction/script state has preview support; the active editor adapters do not restore it.");
     expect(projectConstructionsEditable({ ...withPromotion, constructions: [] })).toBe(true);
+  });
+  it("does not assign a procedural scene script to an independent Sage locus Geometry", () => {
+    const original = fixture(), base = workspace(original);
+    const locus = createGeometryDocument({ source: { ...original.source, geometry: null,
+      objects: [], surfaces: [], constructions: [], relationships: [],
+      extensions: { [SAGE_LOCUS_GEOMETRY_EXTENSION]: { sceneHash: "pinned" } } } });
+    const withLocus = createMixedWorkspaceDocument({ ...base,
+      entries: [...base.entries, { module: "geometry", checkpoint: locus,
+        expected: locus.identity, replay: null }] });
+    expect(projectConstructionsEditable(withLocus)).toBe(true);
+    const withProceduralTarget = createGeometryDocument({ source: { ...locus.source,
+      objects: original.source.objects } });
+    expect(projectConstructionsEditable(createMixedWorkspaceDocument({ ...base,
+      entries: [...base.entries, { module: "geometry", checkpoint: withProceduralTarget,
+        expected: withProceduralTarget.identity, replay: null }] }))).toBe(false);
   });
   it("restores a bounded independent quantum primitive copy beside procedural constructions", () => {
     const original = fixture(), points = Array.from({ length: 600 }, (_, index) =>

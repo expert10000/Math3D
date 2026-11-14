@@ -223,10 +223,13 @@ def _surface_calculus(operation, params):
             "criterion": "all generators vanish and Jacobian rank is below codimension",
             "field": "QQ rational points, real-locus completeness checked over AA", "text": str(coordinates)}, latex(coordinates))
     variables = _variables(params, ("x", "y", "z"))
-    if set(variables) != {"x", "y", "z"} or len(variables) != 3:
+    if operation == "sage.symbolic.singularities":
+        if variables not in (["x", "y"], ["x", "y", "z"]):
+            raise SageRequestError("Polynomial singularities require x, y or x, y, z variables.")
+    elif variables != ["x", "y", "z"]:
         raise SageRequestError("Surface calculus requires x, y, z as the three variables.")
     expression = _symbolic_expression(params.get("expression"), variables)
-    axes = [SR(name) for name in ("x", "y", "z")]
+    axes = [SR(name) for name in variables]
     gradient = [expression.diff(axis).simplify_full() for axis in axes]
     if operation == "sage.symbolic.gradient":
         return _success(operation, {"components": [str(item) for item in gradient], "text": str(gradient)}, latex(gradient))

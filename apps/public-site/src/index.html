@@ -17,13 +17,14 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <a class="skip-link" href="#top">Skip to main content</a>
     <div class="bg-glow bg-glow-a" aria-hidden="true"></div>
     <div class="bg-glow bg-glow-b" aria-hidden="true"></div>
 
     <header class="site-header">
       <div class="container top-nav reveal">
         <a class="brand" href="#top">Math3D Lab</a>
-        <nav class="nav-links">
+        <nav class="nav-links" aria-label="Site navigation">
           <a href="#features">Features</a>
           <a href="#showcase">Showcase</a>
           <a href="#release20">2.0 workflows</a>
@@ -36,13 +37,13 @@
       </div>
     </header>
 
-    <main id="top">
+    <main id="top" tabindex="-1">
       <section class="hero container">
         <div class="hero-copy reveal">
           <p class="eyebrow">Geometry without friction</p>
           <h1>Build, analyze, and publish 3D math scenes in one place.</h1>
           <p class="lead">
-            Math3D combines interactive surfaces, procedural solids, and topology tools with CGAL/VTK-backed workflows.
+            Math3D combines interactive surfaces, procedural solids, and topology tools with runtime-qualified compute routes.
             Use it for teaching, prototyping, and research visuals.
           </p>
           <div class="cta-row">
@@ -60,26 +61,27 @@
           </div>
         </div>
 
-        <div class="hero-panel reveal reveal-delay-1" role="img" aria-label="Math3D summary panel">
+        <div class="hero-panel reveal reveal-delay-1">
           <figure class="hero-shot">
             <img
               src="./assets/release-current/graph-phase-center.png"
               alt="Current Math3D Graphs workspace showing a circular flow phase portrait"
               loading="eager"
             />
+            <figcaption>Current Graph view · source-build capture</figcaption>
           </figure>
-          <div class="chip-row" role="tablist" aria-label="Math3D feature mode">
-            <button class="chip chip-btn is-active" type="button" data-mode="implicit" role="tab" aria-selected="true">
+          <div class="chip-row" role="group" aria-label="Explore feature modes">
+            <button class="chip chip-btn is-active" type="button" data-mode="implicit" aria-pressed="true">
               Implicit
             </button>
-            <button class="chip chip-btn" type="button" data-mode="parametric" role="tab" aria-selected="false">
+            <button class="chip chip-btn" type="button" data-mode="parametric" aria-pressed="false">
               Parametric
             </button>
-            <button class="chip chip-btn" type="button" data-mode="topology" role="tab" aria-selected="false">
+            <button class="chip chip-btn" type="button" data-mode="topology" aria-pressed="false">
               Topology
             </button>
           </div>
-          <p class="chip-mode-copy" data-mode-copy>
+          <p class="chip-mode-copy" data-mode-copy aria-live="polite">
             Implicit mode focuses on field-defined surfaces and mesh extraction for complex equation-driven geometry.
           </p>
           <div class="panel-grid">
@@ -88,8 +90,8 @@
               <p data-mode-text="1">editable scenes and guided concepts</p>
             </article>
             <article>
-              <h3 data-mode-title="2">CGAL/VTK</h3>
-              <p data-mode-text="2">high-fidelity mesh and volume operations</p>
+              <h3 data-mode-title="2">Compute routes</h3>
+              <p data-mode-text="2">mesh and volume operations where available</p>
             </article>
             <article>
               <h3 data-mode-title="3">Playwright</h3>
@@ -123,7 +125,7 @@
           </article>
           <article class="feature-card reveal">
             <h3>Worker-backed Compute</h3>
-            <p>Use Python worker integrations for heavier CGAL/VTK operations when precision and throughput matter.</p>
+            <p>Use supported Python worker operations when the required backend and host route are available. Optional native operations need their own qualification.</p>
           </article>
         </div>
       </section>
@@ -138,17 +140,17 @@
           <article class="showcase-card">
             <h3>Graphs</h3>
             <p>Twenty-six current graph gallery scenes, including calculus, curves, implicit regions, and phase portraits.</p>
-            <div class="shot-grid"><figure><a class="shot-link" href="./assets/release-current/graph-phase-center.png"><img src="./assets/release-current/graph-phase-center.png" alt="Circular flow phase portrait in Math3D Graphs" loading="lazy" /></a></figure></div>
+            <div class="shot-grid"><figure><a class="shot-link" href="./assets/release-current/graph-phase-center.png"><img src="./assets/release-current/graph-phase-center.png" alt="Circular flow phase portrait in Math3D Graphs" loading="lazy" /></a><figcaption>Graph view · source-build capture</figcaption></figure></div>
           </article>
           <article class="showcase-card">
             <h3>Scientific Field Explorer</h3>
             <p>Verified 3D fields, slices, source inspection, and analysis views captured in the desktop app.</p>
-            <div class="shot-grid"><figure><a class="shot-link" href="./assets/release-field-current/swirling-flow-explorer.png"><img src="./assets/release-field-current/swirling-flow-explorer.png" alt="Swirling flow in Scientific Field Explorer" loading="lazy" /></a></figure></div>
+            <div class="shot-grid"><figure><a class="shot-link" href="./assets/release-field-current/swirling-flow-explorer.png"><img src="./assets/release-field-current/swirling-flow-explorer.png" alt="Swirling flow in Scientific Field Explorer" loading="lazy" /></a><figcaption>Field view · source-build capture</figcaption></figure></div>
           </article>
           <article class="showcase-card">
             <h3>Quantum integration</h3>
             <p>Verified Theory Lab scenes with supplied bands, fields, and source-linked views in the desktop app.</p>
-            <div class="shot-grid"><figure><a class="shot-link" href="./assets/release-quantum-current/05-rice-mele-bands.png"><img src="./assets/release-quantum-current/05-rice-mele-bands.png" alt="Verified Rice-Mele energy bands scene in Math3D" loading="lazy" /></a></figure></div>
+            <div class="shot-grid"><figure><a class="shot-link" href="./assets/release-quantum-current/05-rice-mele-bands.png"><img src="./assets/release-quantum-current/05-rice-mele-bands.png" alt="Rice-Mele energy bands scene in Math3D" loading="lazy" /></a><figcaption>Rice–Mele view · source-build capture</figcaption></figure></div>
           </article>
         </div>
         <div class="cta-row"><a class="btn btn-primary" href="./release-gallery.html">Browse source-build screenshots</a></div>
@@ -156,37 +158,37 @@
       <section id="release20" class="container section release20-section" aria-labelledby="release20-title">
         <div class="section-head">
           <p class="eyebrow">2.0 in preparation</p>
-          <h2 id="release20-title">Four bounded scientific journeys.</h2>
-          <p class="showcase-intro">These workflows define the 2.0 release target. The images below show existing source-build views; they are not screenshots of a signed 2.0 installer. The current release and downloads remain on the release page.</p>
+          <h2 id="release20-title">Four scientific journeys targeted for 2.0.</h2>
+          <p class="showcase-intro">These bounded workflows define the 2.0 release target. The images below show existing source-build views, not completed journey captures or screenshots of a signed 2.0 installer. The current release and downloads remain on the release page.</p>
         </div>
         <div class="release20-workflows">
           <article class="release20-workflow" aria-labelledby="release20-surface">
             <div class="release20-workflow-copy">
               <span class="release20-number">01 / Surface</span>
               <h3 id="release20-surface">Trace a surface result to its source.</h3>
-              <p>Start from a Surface, analyze curvature, derive a Curve and Mesh, then compare continuous and sampled evidence in one Project. The release target adds a clear path from each saved result back to its exact source generation and Workbook reference.</p>
-              <ol class="release20-steps"><li>Create Surface</li><li>Analyze curvature</li><li>Compare and save evidence</li></ol>
-              <p class="release20-state"><strong>Current source:</strong> the saved comparison, Workbook, transfer, and changed or missing source checks have focused desktop acceptance. <strong>2.0 gate:</strong> cancellation and the signed installed candidate still need qualification. A sampled ridge is not a certified continuous maximum.</p>
+              <p>Start from a saved Surface, derive a sampled characteristic Curve and tessellated Mesh, then compare qualified analytic and discrete curvature in a Project Study and Workbook. Each result retains its exact source relation. A sampled ridge and local error are not a continuous-geometry proof.</p>
+              <ol class="release20-steps"><li>Save Surface source</li><li>Derive Curve and Mesh</li><li>Cite qualified evidence</li></ol>
+              <p class="release20-state"><strong>Current source:</strong> the connected desktop route has source-test evidence. <strong>2.0 gate:</strong> the exact signed installed journey remains open.</p>
             </div>
             <figure class="release20-workflow-visual"><img src="./assets/release-analysis-current/surfaces-analysis-workspace.png" alt="Existing desktop Surface analysis workspace" loading="lazy" /><figcaption>Existing desktop analysis view · source-build capture</figcaption></figure>
           </article>
           <article class="release20-workflow" aria-labelledby="release20-quantum">
             <div class="release20-workflow-copy">
-              <span class="release20-number">02 / Quantum</span>
-              <h3 id="release20-quantum">Keep a quantum scene and its plots linked.</h3>
-              <p>Open two verified producer scenes, inspect a reciprocal-space sample across the four-view Study, and save a bounded source-linked Graph and publication evidence. Selection follows the declared reciprocal mapping.</p>
-              <ol class="release20-steps"><li>Verify scene source</li><li>Inspect linked views</li><li>Save Study evidence</li></ol>
-              <p class="release20-state"><strong>Current source:</strong> verified quantum scenes and bounded Study views exist. <strong>2.0 gate:</strong> the independently verified producer bundles, return navigation, stale-source refusal, and installed journey need qualification.</p>
+              <span class="release20-number">02 / QWZ Study</span>
+              <h3 id="release20-quantum">Trace a QWZ sample across four views.</h3>
+              <p>Admit two independently verified external producer scenes, pin one reciprocal-space sample in a four-view Study, and carry a bounded producer sample or section into a source-linked Graph and evidence export. Connecting those samples does not compute new band energies or independently certify the physical model.</p>
+              <ol class="release20-steps"><li>Verify producer scenes</li><li>Pin a reciprocal sample</li><li>Save Graph evidence</li></ol>
+              <p class="release20-state"><strong>Current source:</strong> bounded QWZ Study and Graph paths have source-test evidence. <strong>2.0 gate:</strong> external bundles and the exact signed installed journey must be qualified together.</p>
             </div>
-            <figure class="release20-workflow-visual"><img src="./assets/release-quantum-current/05-rice-mele-bands.png" alt="Existing verified Rice-Mele bands view in the desktop app" loading="lazy" /><figcaption>Existing verified scene view · source-build capture</figcaption></figure>
+            <figure class="release20-workflow-visual"><img src="./assets/release-quantum-current/01-qwz-curvature.png" alt="Existing QWZ Berry curvature view in the desktop app" loading="lazy" /><figcaption>Existing QWZ view · source-build capture; not a four-view journey receipt</figcaption></figure>
           </article>
           <article class="release20-workflow" aria-labelledby="release20-algebra">
             <div class="release20-workflow-copy">
               <span class="release20-number">03 / Algebra</span>
               <h3 id="release20-algebra">Carry a CAS result into a geometric view.</h3>
-              <p>Create a polynomial or ideal, run a supported operation through an available Sage route, and inspect a bounded Geometry or Curve locus with singularity evidence. Preserve the exact algebra source, method, and sampling qualifications.</p>
-              <ol class="release20-steps"><li>Create algebra object</li><li>Check runtime and compute</li><li>Inspect derived view</li></ol>
-              <p class="release20-state"><strong>Current source:</strong> typed algebra operations and selected representation paths exist. <strong>2.0 gate:</strong> the live Sage route, cancellation, offline evidence, and installed handoff need qualification.</p>
+              <p>Start with a typed polynomial or ideal, probe a supported Sage operation, and keep its exact equations distinct from a bounded real Curve or Geometry sample. Save the source, method, singularity evidence, and sampling limits. An unavailable Sage route is reported rather than assumed.</p>
+              <ol class="release20-steps"><li>Save algebra source</li><li>Probe Sage operation</li><li>Inspect bounded locus</li></ol>
+              <p class="release20-state"><strong>Current source:</strong> bounded live Sage routes have source-test evidence. <strong>2.0 gate:</strong> operation availability and the exact signed installed journey remain open.</p>
             </div>
             <div class="release20-diagram" role="img" aria-label="Algebra source leads to a runtime-qualified result, then a bounded geometric representation and saved Project evidence">
               <span>Algebra source</span><span aria-hidden="true">↓</span><span>Qualified result</span><span aria-hidden="true">↓</span><span>Geometric view</span><span aria-hidden="true">↓</span><span>Project evidence</span>
@@ -194,13 +196,13 @@
           </article>
           <article class="release20-workflow" aria-labelledby="release20-field">
             <div class="release20-workflow-copy">
-              <span class="release20-number">04 / Field</span>
-              <h3 id="release20-field">Return from a Graph profile to its exact Field.</h3>
-              <p>Save a finite line profile from one static analytic Field on its declared plane, inspect it as a Graph, and return from a selected row to the exact Field source and position. Retain the source and result in a Project Study and Workbook.</p>
-              <ol class="release20-steps"><li>Save Field profile</li><li>Inspect Graph row</li><li>Return and cite evidence</li></ol>
-              <p class="release20-state"><strong>Current source:</strong> Field-to-Graph return and Study panes have separate desktop checks. <strong>2.0 gate:</strong> the connected journey, changed or missing source refusal, transfer, and signed installed candidate need qualification.</p>
+              <span class="release20-number">04 / Field Explorer</span>
+              <h3 id="release20-field">Return from a Graph row to its exact Field source.</h3>
+              <p>Save a finite line profile from one static analytic Field on its declared plane, carry it into a source-linked Graph, and return from a selected row to the exact Field and position. A Project Study and Workbook cite the verified source and result. This does not claim arbitrary cross-document cursor mapping, inverse Field reconstruction, or time-dependent trajectories.</p>
+              <ol class="release20-steps"><li>Save Field line profile</li><li>Inspect Graph row</li><li>Return to exact Field</li></ol>
+              <p class="release20-state"><strong>Current source:</strong> the connected Field, Graph, Study, and Workbook route has source-test evidence. <strong>2.0 gate:</strong> the exact signed installed journey remains open.</p>
             </div>
-            <figure class="release20-workflow-visual"><img src="./assets/release-field-current/swirling-flow-explorer.png" alt="Existing desktop Scientific Field Explorer view" loading="lazy" /><figcaption>Existing Field view · source-build capture</figcaption></figure>
+            <figure class="release20-workflow-visual"><img src="./assets/release-field-current/swirling-flow-explorer.png" alt="Existing Scientific Field Explorer view of swirling flow" loading="lazy" /><figcaption>Existing Field Explorer view · source-build capture; not a Field-to-Graph journey receipt</figcaption></figure>
           </article>
         </div>
       </section>

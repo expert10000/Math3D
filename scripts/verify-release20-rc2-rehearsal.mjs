@@ -10,7 +10,7 @@ import { verifyRelease20Gallery } from './verify-release20-gallery.mjs';
 
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const insist = (condition, message) => { if (!condition) throw new Error(message); };
-const requiredFresh = ['exactBytes', 'signature', 'cleanInstall', 'installedResources', 'workerWithoutPython', 'firstUseStudy'];
+const requiredFresh = ['exactBytes', 'signature', 'cleanInstall', 'installedResources', 'workerWithoutPython', 'firstUseStudy', 'fourJourneys'];
 const requiredUpgrade = ['exactBytes', 'signature', 'oldInstall', 'seed', 'profileBackup', 'inPlaceUpgrade', 'retainedBytesAndSetting'];
 const releaseUrl = 'https://github.com/expert10000/Math3D/releases/download/v2.0.0/Math3D-Setup-2.0.0.exe';
 
@@ -25,7 +25,13 @@ export function assertRelease20RehearsalIdentities({ candidate, freeze, freezeMa
     'Release asset integrity differs from candidate.');
   insist(fresh.schema === 'math3d/release20-fresh-install/v1' && fresh.status === 'passed' &&
     fresh.sourceCommit === sourceCommit && fresh.installerSha256 === app.installerSha256 &&
-    requiredFresh.every(key => fresh.checks?.[key] === 'passed') && /^[0-9A-Fa-f]{40}$/.test(fresh.signerThumbprint ?? ''),
+    requiredFresh.every(key => fresh.checks?.[key] === 'passed') &&
+    fresh.journeys?.schema === 'math3d/release20-four-journeys/v1' && fresh.journeys.status === 'passed' &&
+    fresh.journeys.sourceCommit === sourceCommit && fresh.journeys.installerSha256 === app.installerSha256 &&
+    fresh.journeys.sage === 'passed' &&
+    ['surface', 'quantum', 'casPolynomial', 'casIdeal', 'field'].every(key =>
+      fresh.journeys.journeys?.[key] === 'passed') &&
+    /^[0-9A-Fa-f]{40}$/.test(fresh.signerThumbprint ?? ''),
   'Fresh-install evidence is incomplete or has a different candidate.');
   insist(upgrade.schema === 'math3d/release20-upgrade/v1' && upgrade.status === 'passed' &&
     upgrade.oldVersion === '1.7.0' && upgrade.candidateVersion === '2.0.0' &&

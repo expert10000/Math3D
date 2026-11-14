@@ -19,6 +19,7 @@ const starters = [...MATH3D_PROJECT_TEMPLATES, ...NOTEBOOK_STARTERS.map(item => 
     item.id === "mesh-geometry-probe" ? "Open Compare saved documents → Mesh / Geometry · shared metres, then pick either source and save a coordinate observation." :
     item.id === "surface-mesh-probe" ? "Open Compare saved documents → Surface / Mesh · shared metres, then pick either source to mark its 3D coordinate in the other pane." :
     item.id === "surface-geometry-probe" ? "Open Compare saved documents → Surface / Geometry · shared metres, then pick either source and save a coordinate observation." :
+    item.id === "field-line-profile-study" ? "Open the Field in Field Explorer, preview an XY slice, send a line profile to Graphs, then select a row to return to its exact Field position. Review the Study and Workbook in Projects." :
     "Find its Workbook and Notes in Projects → Contents."] }))];
 
 export const PROJECT_STARTER_MODULES: Record<ProjectStarterId, readonly string[]> = {
@@ -43,6 +44,8 @@ export const PROJECT_STARTER_MODULES: Record<ProjectStarterId, readonly string[]
   "mesh-geometry-probe": ["Mesh", "Geometry", "Notes"],
   "surface-mesh-probe": ["Surface", "Mesh", "Notes"],
   "surface-geometry-probe": ["Surface", "Geometry", "Notes"],
+  "volume-isosurface-study": ["Volume", "Mesh", "Analysis", "Workbook"],
+  "field-line-profile-study": ["3D vector field", "Graph", "Workbook"],
 };
 
 export const StarterArtwork: React.FC<{ id: ProjectStarterId }> = ({ id }) => <svg viewBox="0 0 320 152" aria-hidden="true" focusable="false">
@@ -78,13 +81,12 @@ export const StarterArtwork: React.FC<{ id: ProjectStarterId }> = ({ id }) => <s
 export const ProjectTemplatesPanel: React.FC<{ onPreview: (id: ProjectStarterId) => void; onOpen: (id: ProjectStarterId) => void; onNewCopy: (id: ProjectStarterId) => void;
   onPreviewCurated: (id: ProjectStarterId) => void; onOpenCurated: (id: ProjectStarterId) => void; onNewCuratedCopy: (id: ProjectStarterId) => void;
   onImportQuantumScene?: () => void; quantumImportAvailable?: boolean; onOpenCasGallery?: () => void;
-  onOpenFieldExplorer?: () => void;
   casProvenance?: Readonly<{ projectTitle: string; definitions: readonly Readonly<{ label: string; revision: number }>[]; results: number }> | null;
   copies: Partial<Record<ProjectStarterId, ProjectLibraryEntry>>; guidedCopies: Partial<Record<ProjectStarterId, ProjectLibraryEntry>>;
   busy: boolean; query?: string; moduleFilter?: string; host?: PlatformCapabilitySnapshot;
   assetBytes?: Readonly<Record<string, number>>; guidedLimits?: Readonly<Record<string, string | null>> }> = ({ onPreview, onOpen, onNewCopy,
     onPreviewCurated, onOpenCurated, onNewCuratedCopy, onImportQuantumScene, quantumImportAvailable = false,
-    onOpenCasGallery, onOpenFieldExplorer, casProvenance, copies, guidedCopies, busy, query = "", moduleFilter = "All modules", host, assetBytes = {}, guidedLimits = {} }) => {
+    onOpenCasGallery, casProvenance, copies, guidedCopies, busy, query = "", moduleFilter = "All modules", host, assetBytes = {}, guidedLimits = {} }) => {
   const [id, setId] = useState<ProjectStarterId>("catenary-study");
   const [view, setView] = useState<"starters" | "studies">("starters");
   const matches = starters.filter(item => (moduleFilter === "All modules" || PROJECT_STARTER_MODULES[item.id].includes(moduleFilter)) &&
@@ -94,7 +96,6 @@ export const ProjectTemplatesPanel: React.FC<{ onPreview: (id: ProjectStarterId)
     const haystack = [item.question, item.objects, item.operations, item.insight, item.field,
       starterId ? starters.find(starter => starter.id === starterId)?.title : item.route.kind === "verified-quantum-import" ? item.route.model : "CAS algebra examples"].join(" ").toLowerCase();
     return (moduleFilter === "All modules" || item.field === moduleFilter || moduleFilter === "Quantum scene" && item.field === "Quantum" ||
-      moduleFilter === "3D vector field" && item.route.kind === "field-explorer" ||
       starterId !== null && PROJECT_STARTER_MODULES[starterId].includes(moduleFilter)) &&
       haystack.includes(query.trim().toLowerCase());
   });
@@ -107,18 +108,17 @@ export const ProjectTemplatesPanel: React.FC<{ onPreview: (id: ProjectStarterId)
       <button type="button" data-testid="project-gallery-all-starters" aria-pressed={view === "starters"} onClick={() => setView("starters")}>All starters ({matches.length})</button>
     </div>
     {view === "studies" && <>
-      <p className="curated-study-intro">Choose a scientific question, inspect its saved sources, and follow the stated limitations. Quantum cards require your own verified scene bundle; Field Explorer and CAS examples save into a named Project.</p>
+      <p className="curated-study-intro">Choose a scientific question, inspect its saved sources, and follow the stated limitations. Quantum cards require your own verified scene bundle; CAS examples save into a named Project.</p>
       {!guided.length && <p className="project-gallery-empty">No guided Studies match. Try another search or module.</p>}
       <div className="curated-study-grid">{guided.map(item => <CuratedStudyCard key={item.id} item={item}
         starterTitle={curatedStarterId(item) ? starters.find(starter => starter.id === curatedStarterId(item))?.title : undefined}
         hasCopy={!!(curatedStarterId(item) && guidedCopies[curatedStarterId(item)!])} busy={busy}
         qualification={host ? qualifyCuratedStudy(item, host, { quantumChooser: quantumImportAvailable,
-          casAvailable: !!onOpenCasGallery, fieldExplorerAvailable: !!onOpenFieldExplorer, measuredBytes: assetBytes[item.id],
+          casAvailable: !!onOpenCasGallery, measuredBytes: assetBytes[item.id],
           savedCopyLimit: item.route.kind === "project" && guidedCopies[item.route.starterId] ?
             guidedLimits[item.route.starterId] === undefined ? "Checking saved Project compatibility…" : guidedLimits[item.route.starterId] : null,
           source: assetBytes[item.id] === undefined ? "unmeasured" : item.route.kind === "project" && guidedCopies[item.route.starterId] ? "saved-copy" : "prepared-copy" }) : undefined}
         quantumImportAvailable={quantumImportAvailable} onImportQuantumScene={onImportQuantumScene} onOpenCasGallery={onOpenCasGallery}
-        onOpenFieldExplorer={onOpenFieldExplorer}
         casProvenance={casProvenance}
         onOpen={onOpenCurated} onPreview={onPreviewCurated} onNewCopy={onNewCuratedCopy} />)}</div>
     </>}
@@ -151,19 +151,17 @@ export const CuratedStudyCard: React.FC<{ item: CuratedStudy; starterTitle?: str
   qualification?: CuratedStudyQualification;
   casProvenance?: Readonly<{ projectTitle: string; definitions: readonly Readonly<{ label: string; revision: number }>[]; results: number }> | null;
   quantumImportAvailable: boolean; onImportQuantumScene?: () => void; onOpenCasGallery?: () => void;
-  onOpenFieldExplorer?: () => void;
   onOpen: (id: ProjectStarterId) => void; onPreview: (id: ProjectStarterId) => void; onNewCopy: (id: ProjectStarterId) => void }> =
-  ({ item, starterTitle, hasCopy, busy, qualification, casProvenance, quantumImportAvailable, onImportQuantumScene, onOpenCasGallery, onOpenFieldExplorer, onOpen, onPreview, onNewCopy }) => {
+  ({ item, starterTitle, hasCopy, busy, qualification, casProvenance, quantumImportAvailable, onImportQuantumScene, onOpenCasGallery, onOpen, onPreview, onNewCopy }) => {
     const starter = item.route.kind === "project" ? item.route.starterId : null;
     const quantum = item.route.kind === "verified-quantum-import";
-    const title = starterTitle ?? (quantum ? item.route.model.toUpperCase() : item.route.kind === "cas-gallery" ? "Algebra structures" :
-      item.route.kind === "field-explorer" ? "Field → Graph → exact Field return" : item.question);
+    const title = starterTitle ?? (quantum ? item.route.model.toUpperCase() : item.route.kind === "cas-gallery" ? "Algebra structures" : item.question);
     return <article className="curated-study-card" data-testid={`curated-study-card-${item.id}`}>
       <div className="curated-study-art">{starter ? <StarterArtwork id={starter} /> :
-        <div className="curated-study-quantum-art" aria-hidden="true">{quantum ? "ψ" : item.route.kind === "field-explorer" ? "F" : "𝔄"}</div>}</div>
+        <div className="curated-study-quantum-art" aria-hidden="true">{quantum ? "ψ" : "𝔄"}</div>}</div>
       <div className="curated-study-content">
         <div className="curated-study-badges"><span>{item.field}</span><span>{qualification ? `${qualification.mode} on this host` : item.platforms.join(" · ")}</span>
-          <span>{starter ? curatedStudyHasLayout(starter) ? "Saved Study layout" : "Built-in Project" : quantum ? "External verified scene" : item.route.kind === "field-explorer" ? "Guided live workflow" : "Built-in algebra examples"}</span></div>
+          <span>{starter ? curatedStudyHasLayout(starter) ? "Saved Study layout" : "Built-in Project" : quantum ? "External verified scene" : "Built-in algebra examples"}</span></div>
         {qualification?.reason && <p role="status" data-testid={`curated-study-limit-${item.id}`}>{qualification.reason}</p>}
         <h4>{title}</h4>
         <p className="curated-study-question">{item.question}</p>
@@ -175,12 +173,6 @@ export const CuratedStudyCard: React.FC<{ item: CuratedStudy; starterTitle?: str
           <button type="button" disabled={busy || !onOpenCasGallery} onClick={onOpenCasGallery}>Review saved provenance in CAS</button>
         </div>}
         {item.route.kind === "cas-gallery" && <p data-testid="curated-study-cas-compute-limit">Bundled definitions and saved evidence can be reviewed offline. Live calculations require a separately verified Compute route.</p>}
-        {item.route.kind === "field-explorer" && <ol data-testid="curated-study-field-steps">
-          <li>Save a named Project, then open the Field Explorer and select an analytic Field on the XY plane.</li>
-          <li>Preview a slice, send its finite line profile to Graphs, and save the Field and Graph in the Project.</li>
-          <li>Select a Graph row and return to the exact Field position. Add both sources to a Study and cite them in a Workbook.</li>
-          <li>Reopen or transfer the Project; a changed or missing Field source must refuse the return.</li>
-        </ol>}
         <dl><div><dt>Objects</dt><dd>{item.objects}</dd></div><div><dt>Do</dt><dd>{item.operations}</dd></div>
           <div><dt>Learn</dt><dd>{item.insight}</dd></div></dl>
         <details><summary>Requirements and limits</summary>
@@ -196,9 +188,7 @@ export const CuratedStudyCard: React.FC<{ item: CuratedStudy; starterTitle?: str
           {hasCopy && <button type="button" data-testid={`curated-study-reset-${item.id}`} disabled={busy || qualification?.mode !== undefined && qualification.mode !== "open"} onClick={() => onNewCopy(starter)}>New copy</button>}
         </> : quantum ? <button type="button" data-testid={`curated-study-import-${item.id}`}
           disabled={busy || qualification?.mode !== undefined && qualification.mode !== "open" || !quantumImportAvailable || !onImportQuantumScene} onClick={onImportQuantumScene}>
-          Choose verified scene bundle</button> : item.route.kind === "field-explorer" ? <button type="button"
-          data-testid="curated-study-open-field-graph-return" disabled={busy || qualification?.mode !== undefined && qualification.mode !== "open" || !onOpenFieldExplorer}
-          onClick={onOpenFieldExplorer}>Open Field Explorer</button> : <button type="button" data-testid="curated-study-open-cas-structures"
+          Choose verified scene bundle</button> : <button type="button" data-testid="curated-study-open-cas-structures"
           disabled={busy || qualification?.mode !== undefined && qualification.mode !== "open" || !onOpenCasGallery} onClick={onOpenCasGallery}>Open CAS examples</button>}</div>
         {quantum && !quantumImportAvailable && <small>{qualification?.reason ?? "Scene import requires the desktop app."}</small>}
       </div>

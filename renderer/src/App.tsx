@@ -23444,7 +23444,6 @@ const App: React.FC = () => {
   const [vectorField3DRegionStatuses, setVectorField3DRegionStatuses] = useState<Record<string, SavedRegionSourceStatus>>({});
   const regionResultCheckEpoch = useRef(0);
   const [vectorField3DOpenRequest, setVectorField3DOpenRequest] = useState<{ document: import("@math3d/core").VectorField3DDocument; token: number } | null>(null);
-  const [fieldExplorerGuideToken, setFieldExplorerGuideToken] = useState(0);
   const vectorField3DRequestSerial = useRef(0);
   const [vectorField2DDocument, setVectorField2DDocument] = useState<import("@math3d/core").VectorField2DDocument | null>(null);
   const [vectorField2DOpenRequest, setVectorField2DOpenRequest] = useState<{ document: import("@math3d/core").VectorField2DDocument; token: number } | null>(null);
@@ -50597,6 +50596,7 @@ case "mobius":
   activeSurfaceCurvatureIdentityRef.current = activeCanonicalSurfaceDefinition.identity.key;
   const handleComputeSurfaceCurvature = useCallback(async (display?: { scalar?: SurfaceCurvatureScalar; palette?: ColorPalette; rangeMode?: "automatic" | "percentile" | "symmetric"; visible?: boolean }) => {
     if (!surfaceCurvatureSource) return;
+    const runInWorker = savedSurfaceModuleActive || shouldWorkerizeSurfaceAnalysis("curvature", surfaceCurvatureSource.sampleCount);
     const definition = activeCanonicalSurfaceDefinition;
     const method: SurfaceAnalysisMethod = definition.representation === "mesh-backed" ? "mesh-approximation" : "surface-sampling";
     const selectedScalar = display?.scalar ?? surfaceCurvatureScalar;
@@ -50647,11 +50647,11 @@ case "mobius":
           progress: job.progress,
           error: job.error,
           computeTimeMs: job.value ? performance.now() - started : undefined,
-          backend: job.state === "cached" ? "Surface analysis cache" : shouldWorkerizeSurfaceAnalysis("curvature", surfaceCurvatureSource.sampleCount) ? "Surface Analysis Web Worker" : method === "mesh-approximation" ? "Discrete Surface curvature" : "Surface sampler",
+          backend: job.state === "cached" ? "Surface analysis cache" : runInWorker && typeof Worker !== "undefined" ? "Surface Analysis Web Worker" : method === "mesh-approximation" ? "Discrete Surface curvature" : "Surface sampler",
         }));
       },
       compute: (signal, progress) => {
-        if (!shouldWorkerizeSurfaceAnalysis("curvature", surfaceCurvatureSource.sampleCount) || typeof Worker === "undefined") {
+        if (!runInWorker || typeof Worker === "undefined") {
           progress(0.25);
           const field = createSurfaceCurvatureField(surfaceCurvatureSource, options);
           progress(0.9);
@@ -50699,7 +50699,7 @@ case "mobius":
     setAnalysisFocusedSection("differential-geometry");
     setRightPanelTab("inspector");
     return field;
-  }, [activeCanonicalSurfaceDefinition, colorPalette, surfaceCurvatureRangeMode, surfaceCurvatureScalar, surfaceCurvatureSource, surfaceCurvatureVisible]);
+  }, [activeCanonicalSurfaceDefinition, colorPalette, savedSurfaceModuleActive, surfaceCurvatureRangeMode, surfaceCurvatureScalar, surfaceCurvatureSource, surfaceCurvatureVisible]);
 
   const handleCancelSurfaceCurvature = useCallback(() => {
     surfaceCurvatureSchedulerRef.current.cancel();
@@ -80798,7 +80798,6 @@ case "mobius":
         verifiedQuantumScene={verifiedQuantumSceneTitle && quantumSceneReference ? { format: verifiedQuantumSceneFormat, title: verifiedQuantumSceneTitle, ...quantumSceneReference } : null}
         onImportQuantumScene={() => handleMenuCommand("file:open-quantum-scene")}
         onOpenCasGallery={() => { setProjectsOpen(false); setNumberTheoryWorkspaceOpen(false); setCasWorkspaceOpen(true); }}
-        onOpenFieldExplorer={() => { setProjectsOpen(false); setMode("graphs"); setFieldExplorerGuideToken(token => token + 1); }}
         onImportScientificScene={() => handleMenuCommand("file:open-scientific-scene")}
         onOpenQuantumScene={async (reference) => {
           if (!window.quantumScenes?.openReference) throw new TypeError("Verified quantum scenes are available only in the desktop app.");
@@ -91262,7 +91261,7 @@ case "mobius":
             )}
           </div>
         ) : mode === "graphs" ? (
-          <GraphsWorkspace key={graph2dDocument.identity.id} dockLayout={activeDockLayout} document={graph2dDocument} project={activeNotebookProjectRef.current} analysisRequest={projectGraphAnalysisRequest} fieldExplorerGuideToken={fieldExplorerGuideToken} onFieldExplorerGuideOpened={() => setFieldExplorerGuideToken(0)}
+          <GraphsWorkspace key={graph2dDocument.identity.id} dockLayout={activeDockLayout} document={graph2dDocument} project={activeNotebookProjectRef.current} analysisRequest={projectGraphAnalysisRequest}
             onSaveSageResult={(record) => { openNormalSurfacesWorkspace(); saveSageResultToWorkbook(record); }}
             onOpenSageRuntimes={() => { setComputeCenterInitialTab("runtimes"); setComputeCenterOpen(true); }}
             savedVectorField3D={vectorField3DDocument} openVectorField3DRequest={vectorField3DOpenRequest}

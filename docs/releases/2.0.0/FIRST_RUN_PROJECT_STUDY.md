@@ -27,4 +27,6 @@ After changing a document or adding evidence, return to **Projects** and use **S
 
 The built-in starter does not need Sage, a separate Python installation, or an external scene folder for this walkthrough. Other operations may require the bundled worker or a configured external runtime. Availability depends on the operation and host: see the [platform capability matrix](PLATFORM_CAPABILITIES.md). In particular, a browser or mobile Project preview does not imply that every desktop editor or computation is available there.
 
+For the proposed 2.0 Surface, QWZ, Algebra, and Field paths, use the [four-journey help](RUNTIME_AND_PLATFORMS.md#four-bounded-20-journeys). It identifies the required source or runtime, the return path, and the scientific limit for each result. This starter walkthrough does not itself qualify those four installed journeys.
+
 For release qualification, the exact signed installer must pass the [fresh install and upgrade gates](INSTALL_UPGRADE_GATE.md). Source-build success alone does not establish that installed resources, signing, or migration work in a distributable 2.0 build.

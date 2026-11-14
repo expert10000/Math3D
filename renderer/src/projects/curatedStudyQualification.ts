@@ -19,7 +19,7 @@ export function measureCuratedStudyAssets(project: Math3DProject, resources?: Ve
 }
 
 export function qualifyCuratedStudy(item: CuratedStudy, host: PlatformCapabilitySnapshot,
-  options: { quantumChooser?: boolean; casAvailable?: boolean; fieldExplorerAvailable?: boolean; measuredBytes?: number | null;
+  options: { quantumChooser?: boolean; casAvailable?: boolean; measuredBytes?: number | null;
     source?: CuratedStudyQualification["source"]; savedCopyLimit?: string | null } = {}): CuratedStudyQualification {
   const measuredBytes = options.measuredBytes ?? null, source = options.source ?? "unmeasured";
   const base = { measuredBytes, source };
@@ -36,13 +36,6 @@ export function qualifyCuratedStudy(item: CuratedStudy, host: PlatformCapability
     ...base, mode: options.casAvailable ? "open" : "unavailable",
     reason: options.casAvailable ? null : "CAS examples are unavailable in this host view.",
     offline: "Bundled definitions open offline; saving needs a named Project and persistent storage.",
-  };
-  if (item.route.kind === "field-explorer") return {
-    ...base, mode: host.runtime === "desktop" && options.fieldExplorerAvailable && storage.available ? "open" : "unavailable",
-    reason: host.runtime !== "desktop" ? "The bounded Field-to-Graph journey requires the desktop app." :
-      !options.fieldExplorerAvailable ? "Scientific Field Explorer is unavailable in this host view." :
-        !storage.available ? storage.reason : null,
-    offline: item.offline,
   };
   const desktopOnly = item.platforms.length === 1 && item.platforms[0] === "desktop";
   const unsupportedHost = host.runtime === "mobile" || desktopOnly && host.runtime !== "desktop";

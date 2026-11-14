@@ -56,6 +56,7 @@ import { addQualifiedStudyCurveSurfaceLink } from "../projects/studyCurveSurface
 import { addQualifiedStudySurfaceMeshLink } from "../projects/studySurfaceMeshLink";
 import { deriveQwzBandProfile } from "../projects/qwzBandProfile";
 import { prepareCuratedStudyBundle } from "../projects/curatedStudyProject";
+import { prepareVolumeMeshStudy } from "../projects/volumeMeshStudy";
 import { curatedStudy } from "../projects/curatedStudyCatalog";
 import { qualifyCuratedStudy } from "../projects/curatedStudyQualification";
 import { resolveProjectJourneys } from "../projects/projectJourneyCapabilities";
@@ -149,7 +150,6 @@ type Props = {
   verifiedQuantumScene?: ProjectQuantumSceneReference | null;
   onImportQuantumScene?: () => void;
   onOpenCasGallery?: () => void;
-  onOpenFieldExplorer?: () => void;
   onImportScientificScene?: () => void;
   onOpenQuantumScene?: (reference: ProjectQuantumSceneReference) => Promise<void>;
   onVerifyQuantumSceneDocument?: (reference: ProjectQuantumSceneReference) => Promise<QuantumSceneDocument>;
@@ -180,7 +180,7 @@ type Props = {
   activeProjectDocumentId?: string | null;
   onRestoreWorkspace?: (workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources, owner?: Math3DProject) => void;
 };
-export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open, onOpenChange, onCurrentProjectChange, verifiedQuantumScene, onImportQuantumScene, onOpenCasGallery, onOpenFieldExplorer, onImportScientificScene, onOpenQuantumScene, onVerifyQuantumSceneDocument, onRelinkQuantumScene, verifiedScientificScene, onOpenScientificScene, onRelinkScientificScene, captureActiveWorkbook, onOpenWorkbook, onViewProjectWorkbook, onViewProjectDetail, noteRequest, resultRequest, pairRequest, regionResultStatuses = {}, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAlgebra, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeEvidence, activeProjectDocumentId }) => {
+export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open, onOpenChange, onCurrentProjectChange, verifiedQuantumScene, onImportQuantumScene, onOpenCasGallery, onImportScientificScene, onOpenQuantumScene, onVerifyQuantumSceneDocument, onRelinkQuantumScene, verifiedScientificScene, onOpenScientificScene, onRelinkScientificScene, captureActiveWorkbook, onOpenWorkbook, onViewProjectWorkbook, onViewProjectDetail, noteRequest, resultRequest, pairRequest, regionResultStatuses = {}, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAlgebra, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeEvidence, activeProjectDocumentId }) => {
 
   const loadedProject = useRef<Math3DProject | null>(null);
   const resourceSession = useRef<VerifiedProjectResources | undefined>(undefined);
@@ -1901,6 +1901,22 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     try { setProject(change(project)); setMessage(`${success} Save Project to keep it.`); }
     catch (error) { setMessage(`Study change refused: ${(error as Error).message}`); }
   };
+  const stageVolumeMeshStudy = (resultId: string) => {
+    const source = projectStateRef.current;
+    if (!source || busy || preview || managed) return;
+    try {
+      // Verify the Volume payload and retained Mesh before creating any citation.
+      const currentResources = collectResources(source, resourceSession.current, false);
+      const prepared = prepareVolumeMeshStudy(source, resultId);
+      const resources = collectResources(prepared.project, currentResources, false,
+        { id: prepared.workbookId, bytes: prepared.workbookBytes });
+      if (projectStateRef.current !== source) throw new TypeError("Project changed during Volume Study creation.");
+      resourceSession.current = resources; resourceSessionId.current = source.identity.id;
+      setResourceVersion(version => version + 1);
+      setProject(prepared.project);
+      setMessage("Volume, retained Mesh, Study and Workbook staged. Save Project to keep them.");
+    } catch (error) { setMessage(`Volume Study refused: ${(error as Error).message}`); }
+  };
   const stageSurfaceRidgeComparison = async (surfaceId: string, meshId: string, ridgeIndex: number) => {
     const source = projectStateRef.current;
     if (!source || busy || preview || managed) throw new TypeError("Project is not editable.");
@@ -2125,7 +2141,6 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           onPreviewCurated={id => { void previewTemplate(id, true); }} onOpenCurated={id => { void openTemplate(id, false, true); }}
           onNewCuratedCopy={id => { void openTemplate(id, true, true); }}
           onImportQuantumScene={onImportQuantumScene} quantumImportAvailable={!!window.quantumScenes?.open}
-          onOpenFieldExplorer={onOpenFieldExplorer}
           onOpenCasGallery={onOpenCasGallery} casProvenance={project && !preview && (project.algebraObjects?.length || project.algebraEvidence?.length) ? {
             projectTitle: project.metadata.title,
             definitions: (project.algebraObjects ?? []).map(entry => entry.revisions[entry.revisions.length - 1]!)
@@ -2319,6 +2334,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                 "QWZ k selection removed from Study.")}
               onDeriveQwzProfile={stageQwzBandProfile}
               onPublishSurfaceRidge={stageSurfaceRidgeComparison}
+              onPublishVolumeMesh={stageVolumeMeshStudy}
               onPinScientificSelection={(id, selectionId) => stageStudy(source =>
                 pinProjectStudyScientificSelection(source, id, selectionId), "Scientific selection pinned in Study.")}
               onCapturePinnedNote={(studyId, memberId, selectionId) => {
