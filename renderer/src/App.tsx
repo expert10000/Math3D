@@ -1043,6 +1043,11 @@ import {
   type MeshTopologyListRow,
 } from "./mesh/topologyInspector";
 import {
+  interpretTopologyByExactPosition,
+  type ExactPositionTopologyInterpretation,
+} from "./geometry/exactPositionTopology";
+import { boxDefinitionBoundaryTopology } from "./geometry/boxDefinitionTopology";
+import {
   createMeshAnalysisMeshIdentity,
   createMeshAnalysisResultStore,
   meshAnalysisResultKey,
@@ -12505,6 +12510,23 @@ const App: React.FC = () => {
       const saved = window.localStorage.getItem(UI_GEOMETRY_PROCEDURAL_PANEL_KEY) ?? undefined;
       return isGeometryProceduralPanelTabValue(saved) ? saved : "create";
     });
+  const [geometryAnalysisFocusTarget, setGeometryAnalysisFocusTarget] = useState<
+    "measurements" | "gaussian" | "curvature" | null
+  >(null);
+  const [geometryAnalysisActiveCommand, setGeometryAnalysisActiveCommand] = useState<
+    "compare" | "measurements" | "gaussian" | "curvature"
+  >("compare");
+  useEffect(() => {
+    if (geometryMode !== "procedural" || geometryProceduralPanelTab !== "analysis" || !geometryAnalysisFocusTarget) return;
+    const targetTestId = {
+      measurements: "geometry-measure-group",
+      gaussian: "geometry-sampled-field-controls",
+      curvature: "geometry-exact-surface-analysis-controls",
+    }[geometryAnalysisFocusTarget];
+    const target = document.querySelector<HTMLElement>(`[data-testid="${targetTestId}"]`);
+    if (target) target.scrollIntoView({ block: "start" });
+    setGeometryAnalysisFocusTarget(null);
+  }, [geometryAnalysisFocusTarget, geometryMode, geometryProceduralPanelTab]);
   useEffect(() => {
     window.localStorage.setItem(UI_WORKSPACE_MODE_KEY, mode);
   }, [mode]);
@@ -12524,6 +12546,12 @@ const App: React.FC = () => {
     window.localStorage.setItem(UI_GEOMETRY_PROCEDURAL_PANEL_KEY, geometryProceduralPanelTab);
   }, [geometryProceduralPanelTab]);
   const [geometryEulerScope, setGeometryEulerScope] = useState<GeometryEulerScope>("selected");
+  const [geometryExactPositionTopology, setGeometryExactPositionTopology] = useState<{
+    objectId: string;
+    sourceRevision: number;
+    sourceMesh: SurfaceMeshData;
+    result: ExactPositionTopologyInterpretation;
+  } | null>(null);
   const [geometryEulerPolygonTemplateId, setGeometryEulerPolygonTemplateId] =
     useState<GeometryEulerPolygonTemplateId>("torus_abab_inv");
   const [geometryEulerPolygonEdges, setGeometryEulerPolygonEdges] = useState<PolygonWordEdge[]>(() =>
@@ -14571,39 +14599,43 @@ const App: React.FC = () => {
     const allObjects: Array<GeometryObject | GeometryDatasetMeshObject> = [...geometryObjects, ...geometryDatasetMeshObjects];
     const changedObjectIds: string[] = [];
     const suppressHistoryCapture = Date.now() < geometryHistoryCaptureSuppressUntilRef.current;
+    for (const obj of allObjects) {
+      const fingerprint =
+        "mesh" in obj
+          ? JSON.stringify({
+              id: obj.id,
+              name: obj.name,
+              transform: obj.transform,
+              material: obj.material,
+              visible: obj.visible,
+              meshLabel: obj.mesh.label,
+              meshVertCount: Math.floor(obj.mesh.positions.length / 3),
+              meshTriCount: obj.mesh.indices?.length ? Math.floor(obj.mesh.indices.length / 3) : Math.floor(obj.mesh.positions.length / 9),
+              meshPosSample: Array.from(obj.mesh.positions.slice(0, 24)),
+              meshPosTailSample: Array.from(
+                obj.mesh.positions.slice(Math.max(0, obj.mesh.positions.length - 24), obj.mesh.positions.length)
+              ),
+            })
+          : JSON.stringify({
+              id: obj.id,
+              name: obj.name,
+              type: obj.type,
+              params: obj.params,
+              transform: obj.transform,
+              material: obj.material,
+              visible: obj.visible,
+            });
+      nextFingerprint.set(obj.id, fingerprint);
+      const previous = geometryHistoryFingerprintRef.current.get(obj.id);
+      if (previous === fingerprint) continue;
+      changedObjectIds.push(obj.id);
+    }
+    const changedObjectIdSet = new Set(changedObjectIds);
     setGeometryObjectHistoryById((prev) => {
       let changed = false;
       const next = { ...prev };
       for (const obj of allObjects) {
-        const fingerprint =
-          "mesh" in obj
-            ? JSON.stringify({
-                id: obj.id,
-                name: obj.name,
-                transform: obj.transform,
-                material: obj.material,
-                visible: obj.visible,
-                meshLabel: obj.mesh.label,
-                meshVertCount: Math.floor(obj.mesh.positions.length / 3),
-                meshTriCount: obj.mesh.indices?.length ? Math.floor(obj.mesh.indices.length / 3) : Math.floor(obj.mesh.positions.length / 9),
-                meshPosSample: Array.from(obj.mesh.positions.slice(0, 24)),
-                meshPosTailSample: Array.from(
-                  obj.mesh.positions.slice(Math.max(0, obj.mesh.positions.length - 24), obj.mesh.positions.length)
-                ),
-              })
-            : JSON.stringify({
-                id: obj.id,
-                name: obj.name,
-                type: obj.type,
-                params: obj.params,
-                transform: obj.transform,
-                material: obj.material,
-                visible: obj.visible,
-              });
-        nextFingerprint.set(obj.id, fingerprint);
-        const previous = geometryHistoryFingerprintRef.current.get(obj.id);
-        if (previous === fingerprint) continue;
-        changedObjectIds.push(obj.id);
+        if (!changedObjectIdSet.has(obj.id)) continue;
         if (suppressHistoryCapture) continue;
         const history = next[obj.id] ?? [];
         const previousSnapshot = history.length ? history[0].snapshot : null;
@@ -23985,6 +24017,30 @@ const App: React.FC = () => {
     () => (geometrySelectedSceneMesh ? computeTriangleMeshCellCounts(geometrySelectedSceneMesh) : null),
     [geometrySelectedSceneMesh]
   );
+  const geometryEulerSelectedRawTopology = useMemo(
+    () => (geometrySelectedSceneMesh && (geometryProceduralPanelTab === "analysis" || geometryProceduralPanelTab === "euler")
+      ? computeMeshTopologyInspector(geometrySelectedSceneMesh)
+      : null),
+    [geometryProceduralPanelTab, geometrySelectedSceneMesh]
+  );
+  const geometrySelectedBoxDefinitionTopology = useMemo(
+    () => (geometrySelectedSceneObject && "type" in geometrySelectedSceneObject
+      ? boxDefinitionBoundaryTopology(geometrySelectedSceneObject)
+      : null),
+    [geometrySelectedSceneObject]
+  );
+  const geometryExactPositionTopologyCurrent =
+    geometryExactPositionTopology &&
+    geometrySelectedSceneObject?.id === geometryExactPositionTopology.objectId &&
+    geometrySelectedSceneMesh === geometryExactPositionTopology.sourceMesh &&
+    (geometryObjectRevisionById[geometryExactPositionTopology.objectId] ?? 0) ===
+      geometryExactPositionTopology.sourceRevision
+      ? geometryExactPositionTopology.result
+      : null;
+  const geometryExactPositionTopologyStale =
+    geometryExactPositionTopology != null &&
+    geometrySelectedSceneObject?.id === geometryExactPositionTopology.objectId &&
+    geometryExactPositionTopologyCurrent == null;
   const geometryEulerSceneMeshCounts = useMemo(() => {
     if (!proceduralMeshSet.meshes.length) return null;
     let c0 = 0;
@@ -75392,6 +75448,14 @@ case "mobius":
     () => geometryProfessionalActiveIds(geometryMode, geometryProceduralPanelTab),
     [geometryMode, geometryProceduralPanelTab]
   );
+  const handleGeometryPickModeChange = useCallback((pickMode: GeometryProbeSelectionMode) => {
+    setGeometryProbeSelectionMode(pickMode);
+    setGeometryProceduralHoverPick(null);
+    setGeometryRightPanelTab("selection");
+    if (pickMode === "face") setGeometryActiveOperationInputSlotId("source-face");
+    if (pickMode === "edge") setGeometryActiveOperationInputSlotId("active-edge");
+    if (pickMode === "vertex") setGeometryActiveOperationInputSlotId("active-vertex");
+  }, []);
   const openGeometryProfessionalDestination = useCallback(
     (destination: GeometryProfessionalDestination) => {
       if (destination.kind === "mode") {
@@ -75405,7 +75469,10 @@ case "mobius":
       }
       setGeometryMode("procedural");
       setGeometryProceduralPanelTab(destination.panel);
-      if (destination.panel === "analysis") prepareGeometryCompareFromSelected();
+      if (destination.panel === "analysis") {
+        setGeometryAnalysisActiveCommand("compare");
+        prepareGeometryCompareFromSelected();
+      }
     },
     [geometryScratchSceneSeed, openGeometryWorkbookMode, prepareGeometryCompareFromSelected]
   );
@@ -75472,6 +75539,7 @@ case "mobius":
       if (stepId === "analyze") {
         setGeometryMode("procedural");
         setGeometryProceduralPanelTab("analysis");
+        setGeometryAnalysisActiveCommand("compare");
         prepareGeometryCompareFromSelected();
         return;
       }
@@ -75499,7 +75567,17 @@ case "mobius":
     const openProceduralPanel = (panel: GeometryProceduralPanelTab, options?: { compare?: boolean }) => () => {
       setGeometryMode("procedural");
       setGeometryProceduralPanelTab(panel);
-      if (options?.compare) prepareGeometryCompareFromSelected();
+      if (options?.compare) {
+        setGeometryAnalysisActiveCommand("compare");
+        prepareGeometryCompareFromSelected();
+      }
+    };
+    const openAnalysisSection = (target: "measurements" | "gaussian" | "curvature") => () => {
+      setGeometryMode("procedural");
+      setGeometryProceduralPanelTab("analysis");
+      setGeometryAnalysisActiveCommand(target);
+      setGeometryAnalysisFocusTarget(target);
+      if (target === "gaussian") setGeometrySampledFieldQuantity("K");
     };
     const openPlacementTarget = (target: GeometryCreatePlacementTarget) => () => {
       setGeometryMode("procedural");
@@ -75612,15 +75690,15 @@ case "mobius":
           key: "compare",
           label: "Compare",
           panel: "analysis",
-          active: geometryProceduralPanelTab === "analysis",
+          active: geometryProceduralPanelTab === "analysis" && geometryAnalysisActiveCommand === "compare",
           onClick: openProceduralPanel("analysis", { compare: true }),
         },
-        { key: "measurements", label: "Measurements", panel: "theory", onClick: openProceduralPanel("theory") },
+        { key: "measurements", label: "Measurements", panel: "analysis", active: geometryProceduralPanelTab === "analysis" && geometryAnalysisActiveCommand === "measurements", onClick: openAnalysisSection("measurements") },
         { key: "demonstrations", label: "Demonstrations", panel: "demonstrations", onClick: openProceduralPanel("demonstrations") },
-        { key: "gaussian", label: "Gaussian", panel: "analysis", onClick: openProceduralPanel("analysis", { compare: true }) },
-        { key: "curvature", label: "Curvature", panel: "analysis", onClick: openProceduralPanel("analysis", { compare: true }) },
+        { key: "gaussian", label: "Gaussian K", panel: "analysis", active: geometryProceduralPanelTab === "analysis" && geometryAnalysisActiveCommand === "gaussian", onClick: openAnalysisSection("gaussian") },
+        { key: "curvature", label: "Surface curvature", panel: "analysis", active: geometryProceduralPanelTab === "analysis" && geometryAnalysisActiveCommand === "curvature", onClick: openAnalysisSection("curvature") },
         { key: "topology", label: "Topology", panel: "euler", onClick: openProceduralPanel("euler") },
-        { key: "reports", label: "Reports", panel: "history", onClick: openProceduralPanel("history") },
+        { key: "reports", label: "History", panel: "history", onClick: openProceduralPanel("history") },
         { key: "view", label: "View", panel: "view", onClick: openProceduralPanel("view") },
       ];
     }
@@ -75648,6 +75726,7 @@ case "mobius":
   }, [
     handleToggleGeometryGizmoMode,
     geometryAddEnterPlacementMode,
+    geometryAnalysisActiveCommand,
     geometryCreatePlacementTarget,
     geometryGizmoEnabled,
     geometryGizmoMode,
@@ -82032,6 +82111,7 @@ case "mobius":
                               type="button"
                               data-testid={`geometry-professional-action-${entry.id}`}
                               onClick={() => handleGeometryProfessionalAction(entry.id, entry.destination)}
+                              title={entry.id === "new" ? "Start a new Geometry scene and clear the current scene." : undefined}
                               aria-pressed={active}
                               aria-expanded={entry.id === "gallery" || entry.id === "new" || entry.id === "more" ? expanded : undefined}
                               style={surfacesModeButtonStyle(active, "actions")}
@@ -96840,7 +96920,7 @@ case "mobius":
                             <button
                               key={`geometry-construct-probe-mode-${modeId}`}
                               type="button"
-                              onClick={() => setGeometryProbeSelectionMode(modeId)}
+                              onClick={() => handleGeometryPickModeChange(modeId)}
                               style={pill(geometryProbeSelectionMode === modeId)}
                               aria-pressed={geometryProbeSelectionMode === modeId}
                             >
@@ -99647,6 +99727,7 @@ case "mobius":
                                   <label key={param.id} style={{ fontSize: 11, fontWeight: 600 }}>
                                     {param.label}
                                     <input
+                                      data-testid={`geometry-object-param-${param.id}`}
                                       type="number"
                                       min={param.min}
                                       max={param.max}
@@ -102142,7 +102223,7 @@ case "mobius":
                                 <button
                                   key={`geometry-probe-mode-${modeId}`}
                                   type="button"
-                                  onClick={() => setGeometryProbeSelectionMode(modeId)}
+                                  onClick={() => handleGeometryPickModeChange(modeId)}
                                   style={pill(geometryProbeSelectionMode === modeId)}
                                   aria-pressed={geometryProbeSelectionMode === modeId}
                                 >
@@ -102833,9 +102914,10 @@ case "mobius":
                                         <div><strong>Vertices:</strong> {geometrySelectedQuickAnalysisResult.topologySummary.vertexCount.toLocaleString()}</div>
                                         <div><strong>Edges:</strong> {geometrySelectedQuickAnalysisResult.topologySummary.edgeCount.toLocaleString()}</div>
                                         <div><strong>Faces:</strong> {geometrySelectedQuickAnalysisResult.topologySummary.faceCount.toLocaleString()}</div>
-                                        <div><strong>Euler characteristic:</strong> {geometrySelectedQuickAnalysisResult.topologySummary.eulerCharacteristic}</div>
-                                        <div><strong>Boundaries:</strong> {geometrySelectedQuickAnalysisResult.topologySummary.boundaryCount.toLocaleString()}</div>
-                                        <div><strong>Manifold:</strong> {geometrySelectedQuickAnalysisResult.topologySummary.manifold ? "yes" : "no"}</div>
+                                        <div><strong>Raw indexed Euler characteristic:</strong> {geometrySelectedQuickAnalysisResult.topologySummary.eulerCharacteristic}</div>
+                                        <div><strong>Boundary components:</strong> {geometrySelectedQuickAnalysisResult.topologySummary.boundaryCount.toLocaleString()}</div>
+                                        <div><strong>Non-manifold edges:</strong> {geometrySelectedQuickAnalysisResult.topologySummary.nonManifoldEdgeCount.toLocaleString()}</div>
+                                        <div>Render-index connectivity; this result alone does not certify a closed solid.</div>
                                       </div>
                                     )}
                                   {geometrySelectedQuickAnalysisResult.kind === "basic-metrics" &&
@@ -103174,7 +103256,14 @@ case "mobius":
                             </div>
                           )}
                         </div>
-                        <div style={{ fontSize: 12, fontWeight: 700 }}>Euler characteristic from mesh/cell counts</div>
+                        {geometryEulerScope === "selected" && geometrySelectedBoxDefinitionTopology && geometrySelectedSceneObject && (
+                          <div data-testid="geometry-topology-box-definition" style={{ border: "1px solid #93c5fd", borderRadius: 8, padding: "8px 10px", background: "#eff6ff", display: "grid", gap: 4, fontSize: 10 }}>
+                            <strong>Box definition boundary · source {geometrySelectedSceneObject.id} r{geometryObjectRevisionById[geometrySelectedSceneObject.id] ?? 0}</strong>
+                            <span>V={geometrySelectedBoxDefinitionTopology.vertexCount} · E={geometrySelectedBoxDefinitionTopology.edgeCount} · F={geometrySelectedBoxDefinitionTopology.faceCount} · χ={geometrySelectedBoxDefinitionTopology.eulerCharacteristic}</span>
+                            <span>Method: triangulated parametric box boundary ({geometrySelectedBoxDefinitionTopology.widthSegments} × {geometrySelectedBoxDefinitionTopology.heightSegments} × {geometrySelectedBoxDefinitionTopology.depthSegments} face grid). One connected closed abstract boundary; this does not certify the display mesh or a solid-volume result.</span>
+                          </div>
+                        )}
+                        <div style={{ fontSize: 12, fontWeight: 700 }}>Raw indexed display-mesh topology</div>
                         <div
                           style={{
                             border: "1px solid #dbe2ea",
@@ -103206,6 +103295,11 @@ case "mobius":
                           {geometryEulerActiveMeshCounts ? (
                             <>
                               <div style={{ fontSize: 11, color: "#334155" }}>{geometryEulerActiveMeshLabel}</div>
+                              <div style={{ fontSize: 10, color: "#475467" }}>
+                                {geometryEulerScope === "selected" && geometrySelectedSceneObject
+                                  ? `Source ${geometrySelectedSceneObject.id} · revision r${geometryObjectRevisionById[geometrySelectedSceneObject.id] ?? 0} · render-buffer indices`
+                                  : "Current visible scene render meshes; counts are summed per mesh, with no cross-object identification."}
+                              </div>
                               <div style={{ fontFamily: "monospace", fontSize: 11, color: "#0f172a" }}>
                                 c0 = {geometryEulerActiveMeshCounts.c0.toLocaleString()} , c1 ={" "}
                                 {geometryEulerActiveMeshCounts.c1.toLocaleString()} , c2 ={" "}
@@ -103218,14 +103312,61 @@ case "mobius":
                                 {geometryEulerActiveMeshCounts.chi.toLocaleString()}
                               </div>
                               <div style={{ fontSize: 10, color: "#475467" }}>
-                                chi(X) = sum_i (-1)^i c_i (finite-cell view)
+                                χ is for the indexed triangles shown here. Duplicated vertices at seams may split a visually closed surface into separate indexed patches.
                               </div>
                               <div style={{ fontSize: 10, color: "#475467" }}>
                                 Valid triangles: {geometryEulerActiveMeshCounts.validFaces.toLocaleString()}
                                 {geometryEulerActiveMeshCounts.skippedFaces > 0
                                   ? `, skipped/degenerate: ${geometryEulerActiveMeshCounts.skippedFaces.toLocaleString()}`
                                   : ""}
+                                {" · Triangle validity does not establish a closed solid."}
                               </div>
+                              {geometryEulerScope === "selected" && geometryEulerSelectedRawTopology && (
+                                <div style={{ fontSize: 10, color: "#475467" }}>
+                                  Indexed components: {geometryEulerSelectedRawTopology.connectedComponentCount.toLocaleString()} · boundary edges: {geometryEulerSelectedRawTopology.boundaryEdgeCount.toLocaleString()} · non-manifold edges: {geometryEulerSelectedRawTopology.nonManifoldEdgeCount.toLocaleString()}
+                                </div>
+                              )}
+                              {geometryEulerScope === "selected" && geometrySelectedSceneMesh && geometrySelectedSceneObject && (
+                                <div style={{ display: "grid", gap: 5, borderTop: "1px solid #e2e8f0", paddingTop: 7 }}>
+                                  <button
+                                    type="button"
+                                    data-testid="geometry-topology-identify-exact-positions"
+                                    onClick={() => {
+                                      const result = interpretTopologyByExactPosition(geometrySelectedSceneMesh);
+                                      if (!result) {
+                                        setGeometryExactPositionTopology(null);
+                                        setGeometryCreateActionStatus("Exact-position topology interpretation unavailable for this mesh.");
+                                        return;
+                                      }
+                                      setGeometryExactPositionTopology({
+                                        objectId: geometrySelectedSceneObject.id,
+                                        sourceRevision: geometryObjectRevisionById[geometrySelectedSceneObject.id] ?? 0,
+                                        sourceMesh: geometrySelectedSceneMesh,
+                                        result,
+                                      });
+                                    }}
+                                    style={{ justifySelf: "start", fontSize: 10 }}
+                                  >
+                                    Interpret coincident vertices
+                                  </button>
+                                  <div style={{ fontSize: 10, color: "#475467" }}>
+                                    Read-only candidate: identify exactly equal positions within this mesh (tolerance 0 scene units). This can join unrelated coincident sheets; it does not edit or prove source connectivity.
+                                  </div>
+                                  {geometryExactPositionTopologyCurrent?.topology && (
+                                    <div data-testid="geometry-topology-exact-position-result" style={{ display: "grid", gap: 3, fontSize: 10, color: "#1e3a8a" }}>
+                                      <strong>Exact-position interpretation · source r{geometryObjectRevisionById[geometrySelectedSceneObject.id] ?? 0}</strong>
+                                      <span>V={geometryExactPositionTopologyCurrent.topology.vertexCount} · E={geometryExactPositionTopologyCurrent.topology.edgeCount} · F={geometryExactPositionTopologyCurrent.topology.faceCount} · χ={geometryExactPositionTopologyCurrent.topology.eulerCharacteristic}</span>
+                                      <span>Components: {geometryExactPositionTopologyCurrent.topology.connectedComponentCount} · boundary edges: {geometryExactPositionTopologyCurrent.topology.boundaryEdgeCount} · non-manifold edges: {geometryExactPositionTopologyCurrent.topology.nonManifoldEdgeCount} · identified vertices: {geometryExactPositionTopologyCurrent.mergedVertexCount}</span>
+                                      {geometryExactPositionTopologyCurrent.collapsedTriangleCount > 0 && <span>Triangles collapsed by identification: {geometryExactPositionTopologyCurrent.collapsedTriangleCount}</span>}
+                                    </div>
+                                  )}
+                                  {geometryExactPositionTopologyStale && (
+                                    <div data-testid="geometry-topology-exact-position-stale" style={{ color: "#9a3412", fontSize: 10 }}>
+                                      Previous exact-position interpretation is stale for this source revision. Run it again to inspect the current display mesh.
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </>
                           ) : (
                             <div style={{ fontSize: 11, color: "#475467" }}>
@@ -104363,31 +104504,32 @@ case "mobius":
                           >
                             <div style={{ fontSize: 12, fontWeight: 700 }}>Euler characteristic for polyhedra</div>
                             <div style={{ color: "#475467" }}>
-                              Use Pick mode to inspect vertices/edges/faces and verify V - E + F = 2 on closed convex polyhedra.
+                              Use Pick mode to inspect components. A closed convex boundary has χ = 2, but raw render indices may contain separate seam patches.
                             </div>
                             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                              <button type="button" onClick={() => setGeometryProbeSelectionMode("vertex")} style={pill(geometryProbeSelectionMode === "vertex")}>
+                              <button type="button" onClick={() => handleGeometryPickModeChange("vertex")} style={pill(geometryProbeSelectionMode === "vertex")}>
                                 Highlight vertices
                               </button>
-                              <button type="button" onClick={() => setGeometryProbeSelectionMode("edge")} style={pill(geometryProbeSelectionMode === "edge")}>
+                              <button type="button" onClick={() => handleGeometryPickModeChange("edge")} style={pill(geometryProbeSelectionMode === "edge")}>
                                 Highlight edges
                               </button>
-                              <button type="button" onClick={() => setGeometryProbeSelectionMode("face")} style={pill(geometryProbeSelectionMode === "face")}>
+                              <button type="button" onClick={() => handleGeometryPickModeChange("face")} style={pill(geometryProbeSelectionMode === "face")}>
                                 Highlight faces
                               </button>
-                              <button type="button" onClick={() => setGeometryProceduralPanelTab("analysis")} style={{ fontSize: 11 }}>
+                              <button type="button" onClick={() => setGeometryProceduralPanelTab("euler")} style={{ fontSize: 11 }}>
                                 Open full Euler tools
                               </button>
                             </div>
                             {geometryEulerActiveMeshCounts ? (
                               <div style={{ display: "grid", gap: 4, border: "1px solid #e2e8f0", borderRadius: 6, padding: "6px 8px", background: "#fff" }}>
-                                <div>{geometryEulerActiveMeshLabel}</div>
+                                <div>Raw indexed display mesh · {geometryEulerActiveMeshLabel}</div>
                                 <div style={{ fontFamily: "monospace" }}>
                                   V={geometryEulerActiveMeshCounts.c0.toLocaleString()} · E={geometryEulerActiveMeshCounts.c1.toLocaleString()} · F={geometryEulerActiveMeshCounts.c2.toLocaleString()}
                                 </div>
                                 <div style={{ fontFamily: "monospace" }}>
                                   V - E + F = {geometryEulerActiveMeshCounts.chi.toLocaleString()}
                                 </div>
+                                <div>Use full Euler tools for a separate, explicit coincident-vertex interpretation.</div>
                               </div>
                             ) : (
                               <div style={{ color: "#475467" }}>No mesh counts available yet. Select/show a polyhedron mesh first.</div>
@@ -105838,14 +105980,7 @@ case "mobius":
                     ] satisfies readonly ContextualActionStripOption<GeometryProbeSelectionMode>[]
                   }
                   activePick={geometryProbeSelectionMode}
-                  onPickChange={(pickMode) => {
-                    setGeometryProbeSelectionMode(pickMode);
-                    setGeometryProceduralHoverPick(null);
-                    setGeometryRightPanelTab("selection");
-                    if (pickMode === "face") setGeometryActiveOperationInputSlotId("source-face");
-                    if (pickMode === "edge") setGeometryActiveOperationInputSlotId("active-edge");
-                    if (pickMode === "vertex") setGeometryActiveOperationInputSlotId("active-vertex");
-                  }}
+                  onPickChange={handleGeometryPickModeChange}
                   selectionLabel={
                     geometryProbeSelectionMode === "object"
                       ? geometryContextToolbarSelectionLabel
@@ -107475,10 +107610,7 @@ case "mobius":
                                     key={`geometry-right-probe-mode-${modeId}`}
                                     type="button"
                                     data-testid={`geometry-pick-mode-${modeId}`}
-                                    onClick={() => {
-                                      setGeometryProbeSelectionMode(modeId);
-                                      setGeometryProceduralHoverPick(null);
-                                    }}
+                                    onClick={() => handleGeometryPickModeChange(modeId)}
                                     style={pill(geometryProbeSelectionMode === modeId)}
                                     aria-pressed={geometryProbeSelectionMode === modeId}
                                   >
