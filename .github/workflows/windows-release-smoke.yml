@@ -1,3 +1,4 @@
+# Unsigned source checkout smoke. The signed 2.0 candidate is built only by release20-candidate.yml.
 name: Windows Installer Smoke
 
 on:
@@ -142,8 +143,13 @@ jobs:
       - name: Run geometry functional smoke
         run: npm run test:app:geometry:smoke
 
-      - name: Build installer, install, and run smoke tests
+      - name: Build unsigned Dev installer, install, and run source smoke
         shell: pwsh
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          CSC_LINK: ""
+          CSC_KEY_PASSWORD: ""
+          MATH3D_WINDOWS_TIMESTAMP_URL: ""
         run: |
           $skipLaunchCheck = "${{ github.event.inputs.skip_launch_check }}"
           if ([string]::IsNullOrWhiteSpace($skipLaunchCheck)) {
@@ -151,26 +157,28 @@ jobs:
           }
 
           if ($skipLaunchCheck -eq "true") {
-            npm run test:release:smoke
+            ./scripts/release-smoke.ps1 -SourceDev -SkipLaunchCheck
           } else {
-            powershell -ExecutionPolicy Bypass -File scripts/release-smoke.ps1 -StrictLaunchCheck
+            ./scripts/release-smoke.ps1 -SourceDev -StrictLaunchCheck
           }
 
       - name: Run packaged Playwright e2e tests
         shell: pwsh
         run: |
           $env:MATH3D_RUN_PACKAGED_E2E = "1"
+          $env:MATH3D_INSTALL_ROOT = Join-Path $env:RUNNER_TEMP 'Math3D-smoke-install'
+          $env:MATH3D_INSTALLED_APP_EXE = Join-Path $env:MATH3D_INSTALL_ROOT 'Math3D Dev.exe'
           npm run test:app:e2e:packaged
 
       - name: Upload release artifacts
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: windows-installer-smoke-artifacts
+          name: windows-source-installer-smoke-artifacts
           if-no-files-found: warn
           path: |
-            release/*.exe
-            release/builder-debug.yml
-            release/latest.yml
+            release-dev/*.exe
+            release-dev/builder-debug.yml
+            release-dev/latest.yml
             playwright-report/**
             test-results/**

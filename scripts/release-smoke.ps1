@@ -4,7 +4,8 @@ param(
   [switch]$SkipBuild,
   [switch]$SkipInstall,
   [switch]$SkipLaunchCheck,
-  [switch]$StrictLaunchCheck
+  [switch]$StrictLaunchCheck,
+  [switch]$SourceDev
 )
 
 $ErrorActionPreference = "Stop"
@@ -23,10 +24,12 @@ if (-not $SkipBuild) {
   try {
     # Prevent electron-builder CI auto-publish behavior in smoke runs.
     $env:CI = "false"
-    Write-Host "[release-smoke] building installer (npm run dist:ci)"
-    npm run dist:ci
+    $buildCommand = if ($SourceDev) { "dist:dev:ci" } else { "dist:ci" }
+    if ($SourceDev) { Write-Host "[release-smoke] source-only unsigned Dev installer; not a signed 2.0 candidate" }
+    Write-Host "[release-smoke] building installer (npm run $buildCommand)"
+    npm run $buildCommand
     if ($LASTEXITCODE -ne 0) {
-      throw "npm run dist:ci failed (exit code $LASTEXITCODE)"
+      throw "npm run $buildCommand failed (exit code $LASTEXITCODE)"
     }
   } finally {
     if ($null -eq $ciBackup) {
@@ -47,22 +50,24 @@ Write-Host "[release-smoke] verifying installer layout + worker smoke"
   -InstallerPath $InstallerPath `
   -InstallRoot $InstallRoot `
   -SkipInstall:$SkipInstall.IsPresent `
-  -SkipLaunchCheck:$SkipLaunchCheck.IsPresent
+  -SkipLaunchCheck:$SkipLaunchCheck.IsPresent `
+  -SourceDev:$SourceDev.IsPresent
 if ($LASTEXITCODE -ne 0) {
   throw "verify-installer-worker failed (exit code $LASTEXITCODE)"
 }
 
-$installedExe = Join-Path $InstallRoot "Math3D.exe"
+$appName = if ($SourceDev) { "Math3D Dev" } else { "Math3D" }
+$installedExe = Join-Path $InstallRoot "$appName.exe"
 if (-not (Test-Path $installedExe)) {
   throw "Installed app executable not found: $installedExe"
 }
 
 if (-not $SkipLaunchCheck) {
   Write-Host "[release-smoke] checking app launch"
-  $before = @(Get-Process -Name "Math3D" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
-  $spawned = Start-Process -FilePath $installedExe -PassThru
+  $before = @(Get-Process -Name $appName -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
+  $spawned = Start-Process -FilePath $installedExe -WindowStyle Hidden -PassThru
   Start-Sleep -Seconds 6
-  $after = @(Get-Process -Name "Math3D" -ErrorAction SilentlyContinue)
+  $after = @(Get-Process -Name $appName -ErrorAction SilentlyContinue)
   $new = @($after | Where-Object { $before -notcontains $_.Id })
   if ($new.Count -eq 0) {
     if ($spawned.HasExited) {

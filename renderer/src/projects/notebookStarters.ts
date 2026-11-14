@@ -179,7 +179,11 @@ const instantiateVolumeIsosurfaceStarter = (token: string) => {
 const instantiateFieldLineProfileStarter = (token: string) => {
   const id = "field-line-profile-study", recipe = NOTEBOOK_STARTERS.find(item => item.id === id)!;
   const field = createVectorField3DDocument({
-    axes: (["x", "y", "z"] as const).map(role => ({ role, label: role, unit: "m", min: -4, max: 4 })),
+    axes: [
+      { role: "x", label: "x", unit: "m", min: -4, max: 4 },
+      { role: "y", label: "y", unit: "m", min: -4, max: 4 },
+      { role: "z", label: "z", unit: "m", min: -4, max: 4 },
+    ],
     timeUnit: "s", field: { kind: "expressions", components: [
       vectorField3DExpression("-y", "m/s"), vectorField3DExpression("x", "m/s"),
       vectorField3DExpression("0", "m/s") ] },
