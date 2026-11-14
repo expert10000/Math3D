@@ -25,7 +25,14 @@ const operations = async (page: Page) => {
   await card.getByTestId("mesh-workspace-operation-registry-clean-normals-output-replace").check();
   return { card, run: card.getByTestId("mesh-workspace-operation-registry-run-clean-normals") };
 };
-const center = async (page: Page) => { await page.getByTestId("top-compute-center-button").click(); return page.getByTestId("compute-center"); };
+const center = async (page: Page) => {
+  await page.getByTestId("top-compute-center-button").click();
+  const panel=page.getByTestId("compute-center"); await expect(panel).toBeVisible();
+  // Opening the panel probes all routes. Await that real probe before another
+  // explicit refresh; do not confuse its transient label with an absent control.
+  await expect(panel.getByRole("button",{name:/^Refresh/})).toBeEnabled({timeout:60000});
+  return panel;
+};
 const diagnostics = (ctx: LaunchedSurfaceApp) => ctx.page.evaluate(() => (window as any).pythonWorkerDiagnostics.getStatus());
 // Observes only real VTK replies. It delegates unchanged to the production method,
 // records its actual bytes, and never supplies a result or edits application state.
@@ -119,6 +126,10 @@ test("AC08 Windows native compute/save, actual worker loss, offline cold-reopen 
     record("native explicit retry computes matching bytes while historical results stay intact",{retried});
     writeFileSync(test.info().outputPath("saved.json"),JSON.stringify(saved));writeFileSync(test.info().outputPath("reopened.json"),JSON.stringify(reopened));
     receipt.result="passed";
-  } catch(error) {receipt.result="failed";receipt.error=String(error);throw error;}
+  } catch(error) {
+    receipt.result="failed";receipt.error=String(error);
+    if(ctx) {try {receipt.failureDiagnostics=await diagnostics(ctx);writeFileSync(test.info().outputPath("worker-diagnostics.log"),readFileSync(receipt.failureDiagnostics.logPath));}catch { /* Preserve the original assertion failure. */ }}
+    throw error;
+  }
   finally {writeFileSync(test.info().outputPath("native-recovery-receipt.json"),JSON.stringify(receipt,null,2));await closeSurfaceApp(ctx);}
 });
