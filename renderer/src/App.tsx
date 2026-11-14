@@ -91271,7 +91271,10 @@ case "mobius":
               if (active && restored) {
                 const updated = checkpointProjectFieldExplorerDocument(active, field, activate);
                 activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
-                if (activate) rememberProjectDocument(localStorage, updated, field.identity.id);
+                if (activate) {
+                  setActiveProjectDocumentId(field.identity.id);
+                  rememberProjectDocument(localStorage, updated, field.identity.id);
+                }
                 setNotebookProjectVersion(value => value + 1);
               }
               setVectorField3DDocument(field); setVectorField3DOpenRequest(null);
