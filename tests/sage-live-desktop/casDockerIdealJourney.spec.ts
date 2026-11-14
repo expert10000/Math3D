@@ -6,7 +6,7 @@ import { closeSurfaceApp, launchSurfaceApp, openLastSavedProject, resetSurfaceAp
 
 const core = require(resolve("packages/core/src/index.ts"));
 
-test("live Docker ideal saves exact Sage and sampled locus through cancellation, offline reopen and reimport", async ({ request }) => {
+test("live Docker ideal saves exact Sage and sampled locus through cancellation, offline reopen and clean-profile direct open", async ({ request }) => {
   test.setTimeout(240_000);
   const serviceUrl = "http://127.0.0.1:8767";
   const health = await request.get(`${serviceUrl}/health`);
@@ -109,16 +109,21 @@ test("live Docker ideal saves exact Sage and sampled locus through cancellation,
     const importPanel = page.getByTestId("project-explorer-panel");
     await importPanel.getByTestId("project-import-file").setInputFiles({ name: "ideal-return.json",
       mimeType: "application/json", buffer: Buffer.from(raw) });
-    await importPanel.getByTestId("project-import-save").click();
-    await expect(importPanel.getByTestId("project-message")).toContainText("Imported into the library");
-    const importedRaw = await page.evaluate(id => localStorage.getItem(`math3d.project.v1.payload.${id}`),
-      returned.identity.id);
+    await expect(importPanel.getByTestId("project-import-open")).toBeEnabled();
+    await importPanel.getByTestId("project-import-open").click();
+    await expect(importPanel.getByTestId("project-message")).toContainText("Opened supported project");
+    const importedRaw = await page.evaluate(() => localStorage.getItem("math3d.project.v1"));
     expect(importedRaw).toBeTruthy();
     const imported = core.parseMath3DProject(importedRaw);
     expect(imported.workspace.results.find((item: { resultId: string }) => item.resultId === result.resultId))
       .toEqual(result);
     expect(imported.workspace.entries.find((entry: { expected: { id: string } }) =>
       entry.expected.id === geometry.expected.id)?.checkpoint).toEqual(geometry.checkpoint);
+    await page.getByTestId("workspace-nav-cas").click();
+    const importedCas = page.getByTestId("cas-algebra-workspace");
+    await importedCas.getByTestId("cas-structures-explorer").getByRole("button", { name: /I @1/ }).click();
+    await expect(importedCas.getByTestId("cas-saved-sage-locus-evidence"))
+      .toContainText("QQ rational points", { timeout: 60_000 });
     const revised = core.createAlgebraObjectRecord({ id: ideal.id, revision: 2, label: "I revised",
       definition: { kind: "ideal", ambientRing: { objectId: ring.id, revision: 1 },
         generators: ["y^2-x^3-1", "z"] } });
