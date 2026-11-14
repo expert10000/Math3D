@@ -65,6 +65,10 @@ jobs:
           git -C ../harness rev-parse HEAD > native-recovery-evidence/harness-source.txt
           git status --porcelain > native-recovery-evidence/source-overlay.txt
           python python/worker/main.py --health > native-recovery-evidence/worker-health.json
+      - name: Verify the accepted supported Project format boundary
+        working-directory: target
+        shell: bash
+        run: MATH3D_SOURCE_ROOT="$PWD" node ../harness/acceptance/m3d20-gaps/run.mjs format
       - name: Build existing source desktop application
         working-directory: target
         shell: bash
@@ -99,6 +103,7 @@ jobs:
           name: m3d20-windows-native-recovery-evidence
           path: |
             target/native-recovery-evidence/**
+            target/output/acceptance-gaps/format.json
             target/test-results/native-recovery/**
             harness/acceptance/windows-native/**
           retention-days: 30
