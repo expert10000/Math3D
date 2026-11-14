@@ -1,9 +1,14 @@
 name: M3D20 real offline recovery acceptance
 on:
   push:
-    branches: [codex/m3d20-real-offline-acceptance]
+    branches: [main, codex/m3d20-real-offline-acceptance]
     paths: ["acceptance/m3d20-gaps/**", ".github/workflows/m3d20-offline-recovery.yml"]
   workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact optional production source SHA; defaults to the triggering commit
+        type: string
+        required: false
 permissions:
   contents: read
 jobs:
@@ -13,7 +18,7 @@ jobs:
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
       MATH3D_RECOVERY_CONTAINER: m3d20-recovery-acceptance
-      TEST_SOURCE_SHA: 392917887911df24c25332f2c5f4ad809822f637
+      TEST_SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
     steps:
       - uses: actions/checkout@v7
         with:

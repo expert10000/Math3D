@@ -1,9 +1,14 @@
 name: M3D20 Windows native offline recovery
 on:
   push:
-    branches: [codex/m3d20-real-offline-acceptance]
+    branches: [main, codex/m3d20-real-offline-acceptance]
     paths: ["acceptance/windows-native/**", ".github/workflows/m3d20-windows-recovery.yml"]
   workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact optional production source SHA; defaults to the triggering commit
+        type: string
+        required: false
 permissions:
   contents: read
 jobs:
@@ -11,7 +16,7 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 30
     env:
-      TEST_SOURCE_SHA: 392917887911df24c25332f2c5f4ad809822f637
+      TEST_SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
       electron_config_cache: '${{ github.workspace }}\\.cache\\electron'
       MATH3D_ELECTRON_DOWNLOAD_TIMEOUT_MS: '600000'
       MATH3D_ELECTRON_EXTRACT_TIMEOUT_MS: '180000'

@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { buildSageAlgebraicLocusScene, createAlgebraObjectRecord,
   createMath3DProject, createMixedWorkspaceDocument, createProjectAlgebraObjectId,
-  parseMath3DProject, serializeMath3DProject, upsertMath3DProjectAlgebraObject,
+  parseMath3DProject, sampleSageAlgebraicLocus, serializeMath3DProject,
+  upsertMath3DProjectAlgebraicLocusSample, upsertMath3DProjectAlgebraObject,
   type Math3DProject } from "@math3d/core";
-import { saveSageLocusSingularities, SAGE_LOCUS_SINGULARITIES_OPERATION } from "./sageLocusJourney";
+import { inspectSavedSageLocusSingularities, saveSageLocusSingularities,
+  SAGE_LOCUS_SINGULARITIES_OPERATION } from "./sageLocusJourney";
 
 const fixture = () => {
   let project: Math3DProject = createMath3DProject(createMixedWorkspaceDocument({
@@ -51,5 +53,20 @@ describe("saved Sage locus singularity journey", () => {
     const changed = upsertMath3DProjectAlgebraObject(project, revised);
     expect(() => saveSageLocusSingularities(changed, scene, response, "docker"))
       .toThrow(/current single-polynomial locus/);
+  });
+
+  it("retains exact Sage evidence when the same locus gains a bounded sample", () => {
+    const { project, scene, ring, qq } = fixture();
+    const exact = saveSageLocusSingularities(project, scene, response, "local");
+    const result = exact.workspace.results.find(item =>
+      item.provenance.operation.type === SAGE_LOCUS_SINGULARITIES_OPERATION)!;
+    const sampled = parseMath3DProject(serializeMath3DProject(
+      upsertMath3DProjectAlgebraicLocusSample(exact, sampleSageAlgebraicLocus(scene))));
+    expect(inspectSavedSageLocusSingularities(sampled, result.resultId).status).toBe("current");
+    const revised = createAlgebraObjectRecord({ id: ring.id, revision: 2, label: "R revised",
+      definition: { kind: "polynomial-ring", coefficientDomain: { objectId: qq.id, revision: 1 },
+        variables: ["x", "y"], monomialOrder: "lex" } });
+    expect(inspectSavedSageLocusSingularities(
+      upsertMath3DProjectAlgebraObject(sampled, revised), result.resultId).status).toBe("withheld");
   });
 });

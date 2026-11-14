@@ -1,0 +1,122 @@
+name: Linux 1.7 to 2.0 Upgrade Qualification
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: Successful Linux Package Smoke run containing exact 2.0 AppImage, deb, and rpm bytes
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  ubuntu-upgrades:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BUILD_RUN_ID: ${{ inputs.build_run_id }}
+      CI: "1"
+      MATH3D_GPU_MODE: disabled
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Download and verify published 1.7 and built 2.0 packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh run view "$BUILD_RUN_ID" --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)" = success
+          gh run view "$BUILD_RUN_ID" --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha > source-sha.txt
+          mkdir old-packages
+          gh release download v1.7.0 --repo "$GITHUB_REPOSITORY" --dir old-packages \
+            --pattern 'Math3D-1.7.0-linux-x64.AppImage' \
+            --pattern 'Math3D-1.7.0-linux-x64.deb' --pattern 'SHA256SUMS-linux.txt'
+          (cd old-packages && grep -E '  Math3D-1\.7\.0-linux-x64\.(AppImage|deb)$' SHA256SUMS-linux.txt | sha256sum -c -)
+          gh run download "$BUILD_RUN_ID" --repo "$GITHUB_REPOSITORY" --name linux-package-smoke --dir new-packages
+          node scripts/release20-linux-package-manifest.mjs new-packages
+          sha256sum old-packages/*.AppImage old-packages/*.deb new-packages/*.AppImage new-packages/*.deb > package-sha256.txt
+      - name: Install test and desktop dependencies
+        run: |
+          npm ci --ignore-scripts
+          sudo apt-get update
+          sudo apt-get install -y xvfb libnss3 libatk-bridge2.0-0 libgtk-3-0 libgbm1 libxss1
+          sudo apt-get install -y libasound2t64 || sudo apt-get install -y libasound2
+      - name: Qualify deb upgrade, worker journey, and rollback
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout --kill-after=20s 20m xvfb-run -a bash scripts/release20-linux-upgrade-qualify.sh \
+            deb old-packages/*.deb new-packages/*.deb upgrade-receipts/deb "$(cat source-sha.txt)"
+      - name: Qualify AppImage version switch, worker journey, and rollback
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout --kill-after=20s 20m xvfb-run -a bash scripts/release20-linux-upgrade-qualify.sh \
+            AppImage old-packages/*.AppImage new-packages/*.AppImage upgrade-receipts/AppImage "$(cat source-sha.txt)"
+      - name: Upload Ubuntu upgrade receipts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-upgrade-ubuntu-receipts
+          if-no-files-found: warn
+          path: |
+            upgrade-receipts/**
+            package-sha256.txt
+            source-sha.txt
+
+  fedora-rpm-upgrade:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BUILD_RUN_ID: ${{ inputs.build_run_id }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Download and verify published 1.7 and built 2.0 packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh run view "$BUILD_RUN_ID" --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)" = success
+          gh run view "$BUILD_RUN_ID" --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha > source-sha.txt
+          mkdir old-packages
+          gh release download v1.7.0 --repo "$GITHUB_REPOSITORY" --dir old-packages \
+            --pattern 'Math3D-1.7.0-linux-x64.rpm' --pattern 'SHA256SUMS-linux.txt'
+          (cd old-packages && grep -E '  Math3D-1\.7\.0-linux-x64\.rpm$' SHA256SUMS-linux.txt | sha256sum -c -)
+          gh run download "$BUILD_RUN_ID" --repo "$GITHUB_REPOSITORY" --name linux-package-smoke --dir new-packages
+          node --version
+          node scripts/release20-linux-package-manifest.mjs new-packages
+          sha256sum old-packages/*.rpm new-packages/*.rpm > package-sha256.txt
+      - name: Qualify rpm upgrade, worker journey, and rollback on Fedora
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --shm-size=2g -v "$PWD:/repo" -w /repo \
+            -e CI=1 -e MATH3D_GPU_MODE=disabled fedora:43 bash -euo pipefail -c '
+              dnf install -y nodejs npm xorg-x11-server-Xvfb xorg-x11-xauth \
+                gtk3 nss alsa-lib libdrm libXcomposite libXdamage libXrandr mesa-libgbm
+              npm ci --ignore-scripts
+              Xvfb :99 -screen 0 1920x1080x24 > /tmp/xvfb.log 2>&1 &
+              export DISPLAY=:99
+              timeout --kill-after=20s 20m bash scripts/release20-linux-upgrade-qualify.sh \
+                rpm old-packages/*.rpm new-packages/*.rpm upgrade-receipts/rpm "$(cat source-sha.txt)"
+            '
+      - name: Upload Fedora upgrade receipt
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-upgrade-fedora-receipt
+          if-no-files-found: warn
+          path: |
+            upgrade-receipts/**
+            package-sha256.txt
+            source-sha.txt

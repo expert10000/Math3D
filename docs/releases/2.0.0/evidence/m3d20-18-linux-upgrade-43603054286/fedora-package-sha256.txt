@@ -1,0 +1,2 @@
+947b604818853a82ecb71aba8756dfa5f467f5eee6f359eaa8d39448c9dd9120  old-packages/Math3D-1.7.0-linux-x64.rpm
+3fbea9c94d19c58aebaef1cfa1b61c299d7a8db0189fe488581259e9843e9fae  new-packages/Math3D-2.0.0-linux-x86_64.rpm

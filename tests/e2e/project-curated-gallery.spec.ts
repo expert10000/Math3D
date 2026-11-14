@@ -12,7 +12,9 @@ test("guided Study Gallery explains real Project and external-scene routes witho
     await panel.getByRole("button", { name: "Starter projects", exact: true }).click();
     await expect(panel.getByTestId("project-template-card-catenary-study")).toBeVisible();
     await panel.getByTestId("project-gallery-guided").click();
-    await expect(panel.locator(".curated-study-card")).toHaveCount(15);
+    await expect(panel.locator(".curated-study-card")).toHaveCount(17);
+    await expect(panel.getByTestId("curated-study-card-field-line-profile-study"))
+      .toContainText("exact Field source");
     const catenary = panel.getByTestId("curated-study-card-catenary-study");
     await catenary.scrollIntoViewIfNeeded();
     if (process.env.MATH3D_GALLERY_CAPTURE_DIR) {

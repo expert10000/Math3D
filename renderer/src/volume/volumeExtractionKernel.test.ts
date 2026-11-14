@@ -1,6 +1,11 @@
-import { createMath3DProject, createMixedWorkspaceDocument, parseMath3DProject, serializeMath3DProject, sha256Checksum } from "@math3d/core";
+import { createMath3DProject, createMixedWorkspaceDocument, inspectProjectStudyMembers,
+  inspectResearchReference, parseMath3DProject, replaceMath3DProjectWorkspace,
+  serializeMath3DProject, sha256Checksum } from "@math3d/core";
 import { inspectProjectCompatibility } from "../projects/projectTransfer";
+import { readProjectWorkbook } from "../projects/projectWorkbookBinding";
 import { captureProjectResources, exportProjectPackage, parseProjectPackage } from "../projects/projectResources";
+import { projectStudyWorkbookReferences } from "../projects/projectStudyReferences";
+import { prepareVolumeMeshStudy, volumeMeshJourneyOptions } from "../projects/volumeMeshStudy";
 import { describe, expect, it } from "vitest";
 import { adaptAnalyticVolume } from "./infrastructure";
 import { createVolumeJobRequest, executeVolumeJobRequest, type VolumeWorkerInbound, type VolumeWorkerOutbound } from "./computation";
@@ -80,25 +85,63 @@ describe("GK15 Volume extraction kernel", () => {
     bridge.invalidate();
     expect(jobs.resources()).toEqual([]);
     // Historical geometry uses normal Mesh sidecars, never stale analysis bytes.
-    const saved = createMath3DProject(createMixedWorkspaceDocument({
+    let saved = createMath3DProject(createMixedWorkspaceDocument({
       entries: [
-        { module: "volume", checkpoint: adapter.document(), expected: adapter.document().identity, replay: null },
+        { module: "volume", checkpoint: record.sourceDocument, expected: record.sourceDocument.identity, replay: null },
         { module: "surface", checkpoint: record.surface, expected: record.surface.identity, replay: null },
         { module: "mesh", checkpoint: record.mesh!, expected: record.mesh!.identity, replay: null },
-      ], activeDocumentIds: [adapter.document().identity.id], results: [record.result],
+      ], activeDocumentIds: [record.sourceDocument.identity.id], results: [record.result],
       artifacts: [{ handle: record.result.artifacts[0], contentHash: record.contentHash, byteLength: record.byteLength }],
       relations: [...record.relations], constructions: [], committedSelection: null,
     }), { stableKey: "volume-extraction-reopen" });
+    expect(volumeMeshJourneyOptions(saved)).toEqual([expect.objectContaining({
+      volumeId: record.sourceDocument.identity.id, meshId: record.mesh!.identity.id,
+      resultId: record.result.resultId, isoValue: 0 })]);
+    const prepared = prepareVolumeMeshStudy(saved, record.result.resultId);
+    saved = prepared.project;
+    expect(() => prepareVolumeMeshStudy(saved, record.result.resultId)).toThrow(/already has a saved Study/);
+    const changedProject = replaceMath3DProjectWorkspace(saved, createMixedWorkspaceDocument({
+      ...saved.workspace, entries: saved.workspace.entries.map(entry => entry.expected.id === record.sourceDocument.identity.id
+        ? { ...entry, checkpoint: adapter.document(), expected: adapter.document().identity, replay: null }
+        : entry),
+    }));
+    expect(volumeMeshJourneyOptions(changedProject)).toEqual([]);
+    expect(inspectProjectStudyMembers(changedProject, changedProject.workspace.studies![0]!)[0]!.status)
+      .toBe("changed");
     expect(inspectProjectCompatibility(saved).canOpenWorkspace).toBe(false);
     const retainedBytes = bridge.meshResources().bytes(record.mesh!.source.resource)!;
     expect(sha256Checksum(retainedBytes)).toBe(record.mesh!.source.resource.checksum);
-    const resources = captureProjectResources(saved, item => item.kind === "mesh-buffers" ? retainedBytes : null);
+    const volumeBytes = new Uint8Array(grid.scalars.buffer, grid.scalars.byteOffset, grid.scalars.byteLength);
+    const resources = captureProjectResources(saved, item => item.kind === "mesh-buffers" ? retainedBytes :
+      item.kind === "volume-payload" ? volumeBytes :
+      item.kind === "workbook-payload" && item.id === prepared.workbookId ? prepared.workbookBytes : null);
     const transferred = parseProjectPackage(exportProjectPackage(saved, resources));
     expect(transferred.project).toEqual(parseMath3DProject(serializeMath3DProject(saved)));
     expect(inspectProjectCompatibility(transferred.project, { resources: transferred.resources }).canOpenWorkspace).toBe(true);
     expect(transferred.resources.bytes({ kind: "mesh-buffers", id: record.mesh!.source.resource.id })).toEqual(retainedBytes);
+    const reopenedStudy = transferred.project.workspace.studies![0]!;
+    expect(inspectProjectStudyMembers(transferred.project, reopenedStudy).map(member => member.status))
+      .toEqual(["current-reference", "current-reference"]);
+    const paneStates = reopenedStudy.paneReferences!.map(pane => inspectResearchReference(transferred.project,
+      pane.reference, item => transferred.resources.bytes(item)));
+    expect(paneStates).toEqual([expect.objectContaining({ status: "current" }),
+      expect.objectContaining({ status: "current" })]);
+    const workbookReference = saved.workbooks!.find(item => item.id === prepared.workbookId)!;
+    const reopenedWorkbook = readProjectWorkbook(transferred.resources.bytes({ kind: "workbook-payload",
+      id: prepared.workbookId })!, workbookReference);
+    expect(reopenedWorkbook.stages[1]!.blocks).toHaveLength(2);
+    expect(projectStudyWorkbookReferences(transferred.project, reopenedStudy,
+      id => transferred.resources.bytes({ kind: "workbook-payload", id })))
+      .toEqual([expect.objectContaining({ status: "current", workbookId: prepared.workbookId })]);
+    const meshPane = reopenedStudy.paneReferences!.find(pane => pane.reference.targetId === record.mesh!.identity.id)!;
+    expect(inspectResearchReference(transferred.project, meshPane.reference, () => null).status).not.toBe("current");
+    const volumePane = reopenedStudy.paneReferences!.find(pane => pane.reference.targetId === record.sourceDocument.identity.id)!;
+    expect(inspectResearchReference(transferred.project, volumePane.reference,
+      item => item.kind === "volume-payload" ? null : transferred.resources.bytes(item)).status).not.toBe("current");
     const corrupt = retainedBytes.slice(); corrupt[corrupt.length - 1] ^= 1;
-    expect(() => captureProjectResources(saved, () => corrupt)).toThrow();
+    expect(() => captureProjectResources(saved, item => item.kind === "mesh-buffers" ? corrupt :
+      item.kind === "volume-payload" ? volumeBytes :
+      item.kind === "workbook-payload" ? prepared.workbookBytes : null)).toThrow();
     const legacy = { ...record }; delete legacy.mesh;
     expect(parseVolumeExtraction(serializeVolumeExtraction(legacy))).toEqual(legacy);
     expect(volumeExtractionStatus(record, adapter.sourceGeneration())).toBe("stale");
@@ -113,6 +156,22 @@ describe("GK15 Volume extraction kernel", () => {
     const jobs = new VolumeIsosurfaceScientificJob(() => adapter, new VolumeWorkerCoordinator(() => { throw new Error("Worker should not start."); }));
     const request = createVolumeJobRequest({ requestId: "unsafe-volume", operation: "marchingCubes", volume, grid, parameters: { isoValue: 0 } });
     expect(() => jobs.submit({ ...request, dimensions: [10_000, 10_000, 10_000] })).toThrow();
+    jobs.dispose();
+  });
+
+  it("does not retain a Mesh resource after a cancelled isosurface extraction", async () => {
+    const adapter = new VolumeDocumentAdapter(volumeDocumentFromLegacyObject(volume));
+    const coordinator = new VolumeWorkerCoordinator(() => new InlineWorker(), undefined,
+      () => ({ volumeRevision: volume.identity.volumeRevision, sampledGridRevision: volume.identity.sampledGridRevision }));
+    const jobs = new VolumeIsosurfaceScientificJob(() => adapter, coordinator);
+    const request = createVolumeJobRequest({ requestId: "volume-gk15-cancel", operation: "marchingCubes", volume,
+      grid, parameters: { isoValue: 0 }, backend: "native-worker", algorithmVersion: "marching-cubes-v1" });
+    const handle = jobs.submit(request);
+    handle.cancel();
+    const outcome = await handle.promise;
+    expect(outcome.broker.ok).toBe(false);
+    expect(outcome.artifact).toBeNull();
+    expect(jobs.resources()).toEqual([]);
     jobs.dispose();
   });
 });
