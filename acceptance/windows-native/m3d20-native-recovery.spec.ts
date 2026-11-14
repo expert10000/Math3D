@@ -29,7 +29,8 @@ const diagnostics = (ctx: LaunchedSurfaceApp) => ctx.page.evaluate(() => (window
 // Observes only real VTK replies. It delegates unchanged to the production method,
 // records its actual bytes, and never supplies a result or edits application state.
 const observeWorker = (ctx: LaunchedSurfaceApp) => ctx.app.evaluate(async () => {
-  const worker = await require(require("node:path").resolve("dist/main/python/pythonWorker.js")).getPythonWorker();
+  const req = process.getBuiltinModule("module").createRequire(process.getBuiltinModule("path").resolve("dist/main.js"));
+  const worker = await req("./main/python/pythonWorker.js").getPythonWorker();
   const pid = (worker as any).proc.pid;
   const original = worker.vtkMesh.bind(worker); (globalThis as any).__nativeRecovery = { pid, replies: [] };
   worker.vtkMesh = async (...args: any[]) => {
@@ -37,7 +38,7 @@ const observeWorker = (ctx: LaunchedSurfaceApp) => ctx.app.evaluate(async () => 
     if (result.ok) (globalThis as any).__nativeRecovery.replies.push({ op: args[0], jobId: args[1].jobId,
       positions: [...new Float32Array(result.positions)], indices: [...new Uint32Array(result.indices)],
       normals: result.normals ? [...new Float32Array(result.normals)] : [],
-      positionSha256: require("node:crypto").createHash("sha256").update(Buffer.from(result.positions)).digest("hex") });
+      positionSha256: req("node:crypto").createHash("sha256").update(Buffer.from(result.positions)).digest("hex") });
     return result;
   };
   return { pid, version: await worker.version(), health: await worker.health() };
@@ -66,7 +67,11 @@ test("AC08 Windows native compute/save, actual worker loss, offline cold-reopen 
     await expect(op.card.getByTestId("mesh-workspace-operation-registry-last-result")).toContainText(/Clean/i);
     await expect(op.card.getByTestId("mesh-workspace-operation-registry-last-result")).toContainText(/VTK/i);
     const actualOutput = (await replies(ctx))[0]; const saved = await c.save(); await c.hide();
-    expect(saved.identity.id).toBe(fixture.project.identity.id); expect(saved.workspace.results).toEqual(expect.arrayContaining([fixture.result]));
+    expect(saved.identity.id).toBe(fixture.project.identity.id);
+    const computedIdentity=saved.workspace.entries.find((e:any)=>e.expected.id===fixture.docs[0].identity.id)!.expected;
+    expect(computedIdentity.revision).toBeGreaterThan(fixture.docs[0].identity.revision);
+    expect(computedIdentity.structuralHash).not.toBe(fixture.docs[0].identity.structuralHash);
+    expect(saved.workspace.results).toEqual(expect.arrayContaining([fixture.result]));
     const exportPackage = async (name: string) => {
       const controls = await fullPanel(page), path = test.info().outputPath(name);
       await ctx!.app.evaluate(({session}, filename) => session.defaultSession.once("will-download", (_event,item) => item.setSavePath(filename)), path);
@@ -82,7 +87,8 @@ test("AC08 Windows native compute/save, actual worker loss, offline cold-reopen 
     record("native pointer computation and save preserve actual VTK output", {initialWorker,actualOutput,projectId:saved.identity.id,diagnostics:await diagnostics(ctx)});
     const lost = await ctx.app.evaluate(async (_electron, unavailable) => {
       process.env.MATH3D_PYTHON = unavailable;
-      const worker = await require(require("node:path").resolve("dist/main/python/pythonWorker.js")).getPythonWorker();
+      const req = process.getBuiltinModule("module").createRequire(process.getBuiltinModule("path").resolve("dist/main.js"));
+      const worker = await req("./main/python/pythonWorker.js").getPythonWorker();
       const child=(worker as any).proc, pid=child.pid;
       await new Promise<void>(done=>{child.once("exit",()=>done());child.kill("SIGKILL");});return {pid};
     }, missingPython); expect(lost.pid).toBe(initialWorker.pid);
