@@ -48,7 +48,9 @@ test("Field Gallery source flows through line, Graph row, exact return, Study, W
     const inspector = page.locator(".graph2d-compact-panels > details").last();
     await inspector.locator(":scope > summary").click();
     await page.getByRole("button", { name: "Fit selection" }).last().click();
+    await inspector.locator(":scope > summary").click();
     await page.getByTestId("graph2d-plot").locator('[data-row-id="row_65"]').click();
+    await inspector.locator(":scope > summary").click();
     await inspector.getByTestId("graph2d-return-field-cursor").click();
     field = page.getByRole("region", { name: "Scientific Field Explorer" });
     await expect(field.getByTestId("vector-field-linked-cursor")).toContainText("0, 0, 0 m");
@@ -121,7 +123,9 @@ test("Field Gallery source flows through line, Graph row, exact return, Study, W
     const changedInspector = page.locator(".graph2d-compact-panels > details").last();
     await changedInspector.locator(":scope > summary").click();
     await page.getByRole("button", { name: "Fit selection" }).last().click();
+    await changedInspector.locator(":scope > summary").click();
     await page.getByTestId("graph2d-plot").locator('[data-row-id="row_65"]').click();
+    await changedInspector.locator(":scope > summary").click();
     await changedInspector.getByTestId("graph2d-return-field-cursor").click();
     await expect(changedInspector.getByTestId("graph2d-return-field-cursor-error"))
       .toContainText("Analytic Field source has changed");

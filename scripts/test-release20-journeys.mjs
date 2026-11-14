@@ -30,6 +30,8 @@ try {
   assert.equal(run(['--dev', 'invalid']).status, 1);
   report.suites[4].specs[0].tests[0].results[0].status = 'skipped';
   save(); assert.equal(run().status, 1);
+  assert.equal(JSON.parse(readFileSync(output, 'utf8')).journeys.field, 'failed');
+  assert.equal(JSON.parse(readFileSync(output, 'utf8')).journeys.surface, 'passed');
   report.suites[4].specs[0].tests[0].results[0].status = 'passed';
   sage.engineVersion = '9.5'; save(); assert.equal(run().status, 1);
   sage.engineVersion = '10.10'; report.suites.pop(); save(); assert.equal(run().status, 1);

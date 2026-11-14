@@ -34,17 +34,23 @@ try {
     for (const child of suite.suites ?? []) visit(child);
   };
   for (const suite of report.suites ?? []) visit(suite);
-  if (specs.length !== Object.keys(expected).length || report.stats?.unexpected !== 0 ||
-    report.stats?.skipped !== 0) throw new Error('Journey selection is incomplete or has unexpected/skipped tests.');
+  const failed = [];
   for (const [journey, filename] of Object.entries(expected)) {
     const matches = specs.filter(spec => spec.file?.replace(/\\/g, '/').endsWith(`/${filename}`));
-    if (matches.length !== 1 || matches[0].tests?.length !== 1) throw new Error(`Missing or duplicate ${journey} test.`);
+    if (matches.length !== 1 || matches[0].tests?.length !== 1) {
+      receipt.journeys[journey] = 'missing-or-duplicate';
+      failed.push(journey);
+      continue;
+    }
     const test = matches[0].tests[0];
-    if (test.expectedStatus !== 'passed' || test.status !== 'expected' ||
-      test.results?.length !== 1 || test.results[0].status !== 'passed')
-      throw new Error(`${journey} did not pass once against the installed candidate.`);
-    receipt.journeys[journey] = 'passed';
+    const passed = test.expectedStatus === 'passed' && test.status === 'expected' &&
+      test.results?.length === 1 && test.results[0].status === 'passed';
+    receipt.journeys[journey] = passed ? 'passed' : 'failed';
+    if (!passed) failed.push(journey);
   }
+  if (specs.length !== Object.keys(expected).length || report.stats?.unexpected !== 0 ||
+    report.stats?.skipped !== 0 || failed.length)
+    throw new Error(`Installed journey selection or results failed: ${failed.join(', ') || 'report stats'}.`);
   receipt.status = 'passed';
 } catch (error) { receipt.failure = error.message; }
 mkdirSync(dirname(resolve(outputPath)), { recursive: true });

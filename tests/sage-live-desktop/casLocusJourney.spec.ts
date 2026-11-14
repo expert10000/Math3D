@@ -52,6 +52,8 @@ test("live Sage carries a polynomial locus through Geometry, Curve, restart and 
           savedAt: Date.now(), viewedAt: Date.now() }] }));
     }, { id: project.identity.id, title: project.metadata.title, raw: core.serializeMath3DProject(project) });
     await page.reload(); await openLastSavedProject(page);
+    await page.getByTestId("project-explorer-panel")
+      .getByRole("button", { name: "Close project explorer" }).click();
     await page.getByTestId("workspace-nav-cas").click();
     let cas = page.getByTestId("cas-algebra-workspace");
     await cas.getByTestId("cas-structures-explorer").getByRole("button", { name: /R @1/ }).click();
@@ -122,6 +124,8 @@ test("live Sage carries a polynomial locus through Geometry, Curve, restart and 
     app = await launchSurfaceApp({ MATH3D_WSL_DISTRO: "MissingSage",
       MATH3D_SAGE_SERVICE_URL: "http://127.0.0.1:1" }, firstProfile);
     page = app.page; await openLastSavedProject(page);
+    await page.getByTestId("project-explorer-panel")
+      .getByRole("button", { name: "Close project explorer" }).click();
     await page.getByTestId("workspace-nav-cas").click();
     cas = page.getByTestId("cas-algebra-workspace");
     await cas.getByTestId("cas-structures-explorer").getByRole("button", { name: /R @1/ }).click();
