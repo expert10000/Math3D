@@ -20,7 +20,8 @@ const operations = async (page: Page) => {
   const card = page.getByTestId("mesh-workspace-operation-registry");
   if (!await card.isVisible()) await page.getByRole("button", { name: "Mesh tools", exact: true }).filter({visible:true}).click();
   await expect(card).toBeVisible();
-  await card.getByTestId("mesh-workspace-operation-registry-row-clean-normals").click();
+  const row = card.getByTestId("mesh-workspace-operation-registry-row-clean-normals");
+  if (await row.getAttribute("aria-expanded") !== "true") await row.click();
   await card.getByTestId("mesh-workspace-operation-registry-clean-normals-output-replace").check();
   return { card, run: card.getByTestId("mesh-workspace-operation-registry-run-clean-normals") };
 };
