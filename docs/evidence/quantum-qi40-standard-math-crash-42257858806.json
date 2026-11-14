@@ -1,0 +1,116 @@
+{
+  "schema": "math3d/qi40-installer-probe/v1",
+  "checkedAtUtc": "2026-11-06T17:04:02.3348717Z",
+  "environment": "clean Windows runner",
+  "scope": "both apps",
+  "installMode": "CurrentUser",
+  "imageVersion": "20261103.298.1",
+  "osVersion": "10.0.26100",
+  "status": "failed",
+  "candidate": {
+    "buildRunId": "42254227636",
+    "manifestSha256": "6a4cd6703362c1236d7b9c93188da97e139be710d28479a3764feb2411f8801f",
+    "math3dCommit": "f18bf74a86114f4f8b7f6f398bcf889b74d8cb12",
+    "theoryLabCommit": "38842c8ca927720e9a0f39bd6a04f0e366073996",
+    "math3dInstallerSha256": "d8e91046243f7618ca01ea48b9af09f9a6d4fbec221a8059488adac396ea73be",
+    "theoryLabInstallerSha256": "5acd34485c4913ed7677f15396df5ef3783cf336a4aa0cc7fd3d1a6416e8e0a5"
+  },
+  "checks": {
+    "exactBytes": "passed",
+    "math3dInstall": "pending",
+    "theoryLabInstall": "pending",
+    "packagedWorkers": "pending"
+  },
+  "failure": "Math3D installer exited with code -1073741819 (0xC0000005)",
+  "debugger": {
+    "cdbAvailable": true,
+    "dumpAnalysis": "no stack frames parsed"
+  },
+  "crashDump": {
+    "configured": true,
+    "dumpType": "full",
+    "configuredFor": [
+      "Math3D Setup 1.7.0.exe",
+      "Quantum-Hamiltonian-Lab-Setup-0.1.0.exe"
+    ],
+    "files": [
+      {
+        "name": "Math3D Setup 1.7.0.exe.5316.dmp",
+        "bytes": 58899453,
+        "sha256": "28c3f348d418cff17c2f01c61be3f208abc382f0f72092545763df937bf300d1"
+      }
+    ],
+    "stackSummary": {
+      "status": "no stack frames parsed",
+      "exceptionCode": "c0000005",
+      "frames": [],
+      "stackLineCount": 0,
+      "moduleTokens": [
+        "ntdll!NtWaitForMultipleObjects+0xc",
+        "System!Store+0x000004a0",
+        "System!Store+0x4a0",
+        "System!Call+0x7f",
+        "Math3D_Setup_1_7_0+0x20c0",
+        "Math3D_Setup_1_7_0+0x13a8",
+        "Math3D_Setup_1_7_0+0x21005c",
+        "Math3D_Setup_1_7_0+0x1f005c",
+        "System!Int64Op+0x1042",
+        "Math3D_Setup_1_7_0+0x7b000",
+        "System!Call",
+        "KERNELBASE!lstrcpynW+0xc",
+        "Math3D_Setup_1_7_0+0x6ae88",
+        "Math3D_Setup_1_7_0+0xa5d8",
+        "KERNELBASE!_except_handler4",
+        "Math3D_Setup_1_7_0+0x62cd"
+      ],
+      "commandMarkers": {
+        "begin": true,
+        "end": true,
+        "stackWordsBegin": true,
+        "stackWordsEnd": true
+      },
+      "stackWordSymbols": [
+        "System!Int64Op+0x1042",
+        "System!Call",
+        "System!Call+0x7f",
+        "KERNELBASE!lstrcpynW+0xc",
+        "KERNELBASE!lstrcpynW+0xc",
+        "KERNELBASE!_except_handler4",
+        "ntdll!LdrGetDllHandle+0x18",
+        "KERNELBASE!GetModuleHandleW+0x2e",
+        "user32!_except_handler4"
+      ],
+      "diagnosticTags": [
+        "Unable to",
+        "Stack unwind",
+        "Symbol search path"
+      ],
+      "stdoutChars": 6583,
+      "stderrChars": 0,
+      "debuggerExitCode": 0
+    }
+  },
+  "installerFailure": {
+    "phase": "Math3D",
+    "installerName": "Math3D Setup 1.7.0.exe",
+    "processId": 5316,
+    "startedUtc": "2026-11-06T17:04:02.5184209Z",
+    "endedUtc": "2026-11-06T17:04:09.5267548Z",
+    "exitCode": -1073741819,
+    "exitCodeHex": "0xC0000005",
+    "applicationErrors": [
+      {
+        "timeUtc": "2026-11-06T17:04:06.8083296Z",
+        "faultingApplication": "Math3D Setup 1.7.0.exe",
+        "applicationVersion": "1.7.0.0",
+        "faultingModule": "System.dll",
+        "moduleVersion": "0.0.0.0",
+        "exceptionCode": "c0000005",
+        "faultOffset": "00001581",
+        "modulePathName": "System.dll",
+        "eventRecordId": 3864
+      }
+    ],
+    "werEvents": []
+  }
+}

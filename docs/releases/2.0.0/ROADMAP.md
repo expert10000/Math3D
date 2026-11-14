@@ -906,7 +906,7 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **Commit slices:**
 
-- `M3D20-01a chore(core): inventory canonical project document and result contracts` — map current schemas and duplication, attach module owners and invariants.
+- `M3D20-01a chore(core): inventory canonical project document and result contracts` — map current schemas and duplication, attach module owners and invariants. [Current contract inventory](ARCHITECTURE_INVENTORY.md).
 - `M3D20-01b feat(core): define cross-module capability and selection adapter registry` — schema versioning, validation, unit/frame metadata.
 - `M3D20-01c test(core): add canonical compatibility fixtures` — old/current serializer and invalid-input corpus.
 - `M3D20-01d docs(architecture): freeze 2.0 ownership and extension rules` — no parallel registries/jobs.
