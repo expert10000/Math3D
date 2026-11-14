@@ -26,6 +26,23 @@ test("live Docker Sage certifies a two-generator ideal singularity against the c
   const smooth = await run(["y-x", "z"]);
   expect(smooth.success, smooth.error).toBe(true);
   expect(smooth.result.points).toEqual([]);
+  const polynomial = async (expression: string) => {
+    const response = await request.post("http://127.0.0.1:8767/run", { data: {
+      operation: "sage.symbolic.singularities", backend: "docker",
+      jobId: `polynomial-oracle-${expression === "y^2-x^3" ? "cusp" : "smooth"}`,
+      params: { expression, variables: ["x", "y"] },
+    } });
+    expect(response.ok()).toBe(true);
+    return response.json() as Promise<{ success: boolean; error?: string; result: {
+      points: { x: string; y: string }[]; criterion: string } }>;
+  };
+  const polynomialCusp = await polynomial("y^2-x^3");
+  expect(polynomialCusp.success, polynomialCusp.error).toBe(true);
+  expect(polynomialCusp.result).toMatchObject({ points: [{ x: "0", y: "0" }],
+    criterion: "F=0 and gradient F=0" });
+  const polynomialSmooth = await polynomial("x^2+y^2-1");
+  expect(polynomialSmooth.success, polynomialSmooth.error).toBe(true);
+  expect(polynomialSmooth.result.points).toEqual([]);
 });
 
 test("web Number Theory runs GCD and modular inverse through live Docker", async ({ page, request }) => {
