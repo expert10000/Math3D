@@ -4,9 +4,10 @@
 
 ## Source identity and integration
 
-- `main` when this receipt was revised: `3b518f154906218368ce046f2010098590d44326` ([commit](https://github.com/expert10000/Math3D/commit/3b518f154906218368ce046f2010098590d44326)). This is the source identity to requalify before an RC1 freeze.
-- Its parent `7ec9aa82c9fec821c0421f403707c5e988c2d671` is the squash merge of [PR #60](https://github.com/expert10000/Math3D/pull/60), an Android internal APK and emulator documentation/evidence change. #60 was merged at `2026-11-14T22:03:53Z` from head `a6b80bfb3d63c5178e529045a08a4abbbdcaa8a7`. `git diff --name-status f7258881 7ec9aa82` lists only eight documentation/evidence files. The physical-device gate remains open.
-- #60's parent, `f725888199b35e93809c1b20f12c54afea0c2efc`, has the last completed full source workflow matrix. The new `3b518f15` commit adds a guarded local Sage route for Windows qualification: a preflight workflow, bridge and tunnel scripts, and a Docker Compose change. It changes source, so the `f7258881` matrix cannot qualify it by ancestry alone.
+- `main` when this receipt was revised: `1b41be899ad5cc25ec5b05c9951a853923f6bc39` ([commit](https://github.com/expert10000/Math3D/commit/1b41be899ad5cc25ec5b05c9951a853923f6bc39)). It adds a Windows Sage endpoint reachability receipt to two release documents and no source files. This is the exact commit to requalify before an RC1 freeze.
+- Its parent `3b518f154906218368ce046f2010098590d44326` ([commit](https://github.com/expert10000/Math3D/commit/3b518f154906218368ce046f2010098590d44326)) adds a guarded local Sage route for Windows qualification: a preflight workflow, bridge and tunnel scripts, and a Docker Compose change. It changes source, so the earlier source matrix cannot qualify it by ancestry alone.
+- The preceding `7ec9aa82c9fec821c0421f403707c5e988c2d671` is the squash merge of [PR #60](https://github.com/expert10000/Math3D/pull/60), an Android internal APK and emulator documentation/evidence change. #60 was merged at `2026-11-14T22:03:53Z` from head `a6b80bfb3d63c5178e529045a08a4abbbdcaa8a7`. `git diff --name-status f7258881 7ec9aa82` lists only eight documentation/evidence files. The physical-device gate remains open.
+- #60's parent, `f725888199b35e93809c1b20f12c54afea0c2efc`, has the last completed full source workflow matrix.
 - [PR #57](https://github.com/expert10000/Math3D/pull/57) records hosted-web/Cloudflare work deferred for this pass. [PR #61](https://github.com/expert10000/Math3D/pull/61) changes Geometry source as well as plans and belongs to its journey owner. Neither is included in this snapshot. Any later source merge requires a new identity and matching receipts.
 
 ## Completed full-source CI on the parent
@@ -40,7 +41,7 @@ These runs have `headSha = 7ec9aa82c9fec821c0421f403707c5e988c2d671` and were st
 
 ## New source CI on `3b518f15`
 
-All runs below have `headSha = 3b518f154906218368ce046f2010098590d44326`. Their conclusions were still pending when this receipt was revised:
+All runs below have `headSha = 3b518f154906218368ce046f2010098590d44326`. The later documentation push cancelled most of the overlapping runs. Their current status must be checked at the links:
 
 | Workflow | Run |
 | --- | --- |
@@ -52,6 +53,8 @@ All runs below have `headSha = 3b518f154906218368ce046f2010098590d44326`. Their 
 | Projects Installed Engine Acceptance | [43646977643](https://github.com/expert10000/Math3D/actions/runs/43646977643) |
 | Linux Package Smoke | [43646977580](https://github.com/expert10000/Math3D/actions/runs/43646977580) |
 | CI Build and Worker Smoke | [43646977590](https://github.com/expert10000/Math3D/actions/runs/43646977590) |
+
+The documentation-only `1b41be89` push started another five runs with `headSha = 1b41be899ad5cc25ec5b05c9951a853923f6bc39`: [Windows Source Smoke 43647147637](https://github.com/expert10000/Math3D/actions/runs/43647147637), [CI Build and Worker Smoke 43647147623](https://github.com/expert10000/Math3D/actions/runs/43647147623), [Docs Pages 43647147633](https://github.com/expert10000/Math3D/actions/runs/43647147633), [Mobile Android Gate 43647147692](https://github.com/expert10000/Math3D/actions/runs/43647147692), and [Linux Package Smoke 43647147730](https://github.com/expert10000/Math3D/actions/runs/43647147730). All were in progress when this receipt was revised. The earlier [Sage preflight 43646985315](https://github.com/expert10000/Math3D/actions/runs/43646985315) and [Projects Installed Engine Acceptance 43646977643](https://github.com/expert10000/Math3D/actions/runs/43646977643) passed at `3b518f15`; the new commit does not touch their inputs.
 
 ## Remaining #9 gate
 
