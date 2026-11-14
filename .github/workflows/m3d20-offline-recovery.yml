@@ -1,0 +1,78 @@
+name: M3D20 real offline recovery acceptance
+on:
+  push:
+    branches: [codex/m3d20-real-offline-acceptance]
+    paths: ["acceptance/m3d20-gaps/**", ".github/workflows/m3d20-offline-recovery.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  real-recovery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+      MATH3D_RECOVERY_CONTAINER: m3d20-recovery-acceptance
+      TEST_SOURCE_SHA: 392917887911df24c25332f2c5f4ad809822f637
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: harness
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TEST_SOURCE_SHA }}
+          path: target
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: target/package-lock.json
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Verify source and install working worker dependencies
+        working-directory: target
+        run: |
+          test "$(git rev-parse HEAD)" = "$TEST_SOURCE_SHA"
+          npm ci
+          npm --prefix renderer ci
+          python -m pip install numpy scipy sympy vtk==9.3.1
+          echo "MATH3D_PYTHON=$(command -v python)" >> "$GITHUB_ENV"
+          echo "MATH3D_SOURCE_ROOT=$PWD" >> "$GITHUB_ENV"
+          echo "MATH3D_HARNESS_SHA=$(git -C ../harness rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: Exact-source format boundaries and real Python VTK recovery
+        run: |
+          node harness/acceptance/m3d20-gaps/run.mjs format
+          node harness/acceptance/m3d20-gaps/run.mjs python
+      - name: Start dedicated real Sage service using existing image configuration
+        working-directory: target
+        run: |
+          docker build --pull -t math3d-sage-recovery services/sage-worker
+          docker run -d --name "$MATH3D_RECOVERY_CONTAINER" -p 127.0.0.1:8767:8767 math3d-sage-recovery
+          echo "MATH3D_SAGE_IMAGE_ID=$(docker image inspect math3d-sage-recovery --format '{{.Id}}')" >> "$GITHUB_ENV"
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:8767/health; then exit 0; fi
+            sleep 2
+          done
+          docker logs "$MATH3D_RECOVERY_CONTAINER"
+          exit 1
+      - name: Real Sage stop offline reopen capability refresh and explicit retry
+        run: node harness/acceptance/m3d20-gaps/run.mjs sage
+      - name: Preserve exact-source receipts and diagnostics
+        if: always()
+        run: |
+          mkdir -p target/output/acceptance-gaps
+          docker logs "$MATH3D_RECOVERY_CONTAINER" > target/output/acceptance-gaps/sage-service.log 2>&1 || true
+          docker image inspect math3d-sage-recovery > target/output/acceptance-gaps/sage-image.json 2>&1 || true
+          git -C target rev-parse HEAD > target/output/acceptance-gaps/tested-source.txt
+          git -C harness rev-parse HEAD > target/output/acceptance-gaps/harness-source.txt
+          cp harness/acceptance/m3d20-gaps/* target/output/acceptance-gaps/
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: m3d20-real-offline-recovery-evidence
+          path: target/output/acceptance-gaps/
+          retention-days: 30
+      - name: Stop dedicated test container
+        if: always()
+        run: docker rm -f "$MATH3D_RECOVERY_CONTAINER" || true
