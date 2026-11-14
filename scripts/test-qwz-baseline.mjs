@@ -11,6 +11,14 @@ const root = resolve("tests/fixtures/quantum-scene");
 const runId = "run-97a132d1d712414bb62bb8c9212f517e";
 const resultSha256 = "abbcae23a0bb3fe113205cab2ffd769c8c22c79f83cd4369215aba24328d9713";
 const sha = bytes => createHash("sha256").update(bytes).digest("hex");
+// Independent two-band QWZ oracle: H(k) = d(k)·sigma, d = (sin kx, sin ky, m + cos kx + cos ky).
+// The lower-band curvature is -d·(∂kx d × ∂ky d)/(2 |d|^3).
+const qwzSample = (kx, ky, mass) => {
+  const sx = Math.sin(kx), sy = Math.sin(ky), cx = Math.cos(kx), cy = Math.cos(ky);
+  const z = mass + cx + cy, energy = Math.hypot(sx, sy, z);
+  return { lower: -energy, upper: energy,
+    curvature: -(sx * sx * cy + sy * sy * cx + z * cx * cy) / (2 * energy ** 3) };
+};
 const cases = [
   {
     folder: `${runId}.qscene`, sceneSha256: "7fbeeecc8b2dda7bd1b6d74dc9e0f8dc67ced7af50d4b295b81f3030fae724a1",
@@ -55,6 +63,16 @@ for (const item of cases) {
   assert.equal(dataset.sha256, item.datasetSha256);
   assert.equal(dataset.count, 441);
   for (const [index, value] of item.samples) assert.equal(imported.arrays.get(item.dataset)[index], value);
+  const coordinates = imported.arrays.get(item.dataset === "curvature" ? "curvature-grid" : "band-k");
+  const lower = imported.arrays.get(item.dataset === "curvature" ? "curvature" : "band-energy-0");
+  const upper = item.dataset === "curvature" ? null : imported.arrays.get("band-energy-1");
+  for (let index = 0; index < 441; index++) {
+    const expected = qwzSample(coordinates[index * 3], coordinates[index * 3 + 1], -1);
+    assert.ok(Math.abs(lower[index] - (item.dataset === "curvature" ? expected.curvature : expected.lower)) < 1e-12,
+      `${item.folder}: independent ${item.dataset} sample ${index} disagrees`);
+    if (upper) assert.ok(Math.abs(upper[index] - expected.upper) < 1e-12,
+      `${item.folder}: independent upper-band sample ${index} disagrees`);
+  }
   if (item.dataset === "band-energy-0") {
     assert.deepEqual(imported.source.bands.grid, [21, 21]);
     assert.equal(imported.source.bands.bulkGap, 2);

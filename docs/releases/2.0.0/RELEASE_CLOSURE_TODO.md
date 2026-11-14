@@ -11,7 +11,7 @@ The items are ranked by release risk and dependencies. Estimates are **engineeri
 | 2 | P0 | Fix retained App render contexts and mixed Mesh/Volume memory growth identified in the [memory gate](PERFORMANCE_RESILIENCE_GATE.md). | **10–20 d** | Open |
 | 3 | P0 | Pass the clean-build, 800-switch mixed-route gate for heap, renderer, GPU, context loss, and page errors. | 2–5 d | Open |
 | 4 | P0 | Qualify the complete Surface → Curve → Mesh → comparison → Workbook journey, including cold reopen and changed or missing sources. | **5–8 d** | Source restart, transfer, offline and resource refusal covered; connected computation cancellation and installed acceptance open |
-| 5 | P0 | Qualify QWZ with independently verified producer bundles, reciprocal selection, Graph evidence, return navigation, and stale-source refusal. | **5–8 d** | Open |
+| 5 | P0 | Qualify QWZ with independently verified producer bundles, reciprocal selection, Graph evidence, return navigation, and stale-source refusal. | **5–8 d** | Source numeric oracle, connected Study/Graph/evidence, restart, clean-profile transfer and refusal passed; installed candidate open |
 | 6 | P0 | Qualify the bounded CAS → locus → Geometry/Curve journey against a real supported Sage route, including cancellation and offline evidence. | **5–8 d** | Open |
 | 6a | P0 | Qualify the fourth bounded Field Explorer → line profile → Graph → exact Field return journey, with Study/Workbook, cold reopen, transfer, changed/missing source refusal, installed acceptance, and a discoverable Gallery entry. | **5–8 d** | Open |
 | 7 | P0 | Establish the Windows certificate, signer thumbprint, password, and timestamp configuration required by the [candidate gate](INSTALL_UPGRADE_GATE.md). | 1–3 d + external lead time | Open |
