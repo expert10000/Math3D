@@ -36,7 +36,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$TEST_SOURCE_SHA"
           npm ci
           npm --prefix renderer ci
-          python -m pip install numpy scipy sympy vtk==9.3.1
+          python -m pip install numpy==2.4.6 scipy==1.17.1 sympy==1.14.0 vtk==9.7.0
           echo "MATH3D_PYTHON=$(command -v python)" >> "$GITHUB_ENV"
           echo "MATH3D_SOURCE_ROOT=$PWD" >> "$GITHUB_ENV"
           echo "MATH3D_HARNESS_SHA=$(git -C ../harness rev-parse HEAD)" >> "$GITHUB_ENV"
