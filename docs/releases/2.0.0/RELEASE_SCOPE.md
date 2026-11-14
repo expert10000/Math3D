@@ -30,7 +30,7 @@ Apart from the bounded Field route, the roadmap's suggested Green/Stokes, Fourie
 | --- | --- |
 | Signed Windows desktop | **Primary GA host.** All four required journeys must pass on one exact signed installer and source commit. Core Geometry, Surface, Mesh, Graph and Project use must launch without a developer checkout or manually installed Python/Conda when the worker is advertised as bundled. Optional Sage and external QWZ producer routes must report absence honestly. |
 | Local browser | Source-build evidence for documented Graph, Project, package and research-preview subsets. It is not an installed Windows receipt or a claim that desktop-only tools work in browser. |
-| Hosted browser | Limited until deployment, storage, authenticated worker, external scene transport and failure-path receipts pass TODO #15–16. Do not advertise full 2.0 scientific parity. |
+| Hosted browser | Limited. The [hosted web gate](HOSTED_WEB_GATE.md) observed basic Project persistence on GitHub Pages, but scientific source cold reopen failed and no worker gateway was present. Keep authenticated worker, external scene and broader browser journeys outside the claim until TODO #15–16 pass. |
 | Android | Limited or view-only by document, as stated in the [platform matrix](PLATFORM_CAPABILITIES.md). Physical-device and signed-artifact claims require TODO #17. No general Sage or desktop-native editor promise. |
 | Linux packages | Limited until the exact package installation, runtime, Project reopen and bounded journey pass TODO #18. Do not infer support from a successful source build. |
 
