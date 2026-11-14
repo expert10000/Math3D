@@ -1,10 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { instantiateMath3DProjectTemplate, serializeMath3DProject } from "@math3d/core";
+import { instantiateMath3DProjectTemplate, serializeMath3DProject, createMixedWorkspaceDocument,
+  replaceMath3DProjectWorkspace, updateMath3DProjectMetadata } from "@math3d/core";
 import { PROJECT_RESUME_KEY, projectResumeDocument, rememberProjectDocument, projectUiPreferences, selectProjectDocument } from "./projectResume";
 
 describe("Project document resume", () => {
   const project = instantiateMath3DProjectTemplate("catenary-study", "resume-contract");
   const surface = project.workspace.entries.find(entry => entry.module === "surface")!;
+  it("uses the explicit active-document order when a portable Project has no local selection", () => {
+    const chosen = project.workspace.entries.at(-1)!;
+    const current = replaceMath3DProjectWorkspace(updateMath3DProjectMetadata(project,
+      { ...project.metadata, tags: [] }), createMixedWorkspaceDocument({ ...project.workspace,
+      activeDocumentIds: [chosen.expected.id, ...project.workspace.activeDocumentIds.filter(id => id !== chosen.expected.id)] }));
+    expect(current.workspace.entries[0]!.expected.id).not.toBe(chosen.expected.id);
+    expect(selectProjectDocument(current, null).selected.expected.id).toBe(chosen.expected.id);
+    expect(selectProjectDocument(current, JSON.stringify({ projectId: current.identity.id, documentId: "missing" }))
+      .selected.expected.id).toBe(chosen.expected.id);
+  });
   it("keeps document selection outside scientific project bytes", () => {
     const before = serializeMath3DProject(project), values = new Map<string, string>();
     rememberProjectDocument({ setItem: (key, value) => { values.set(key, value); } }, project, surface.expected.id);

@@ -20,7 +20,7 @@ export function selectProjectDocument(project: Math3DProject, raw: string | null
   const entries = project.workspace.entries.filter(entry => !project.metadata.documents?.[entry.expected.id]?.archived);
   const selected = resumed ?? (project.metadata.tags?.includes("starter")
     ? (["surface", "geometry", "mesh", "volume", "curve", "graph2d"] as const).map(module => entries.find(entry => entry.module === module)).find(Boolean) : null)
-    ?? entries.find(entry => project.workspace.activeDocumentIds.includes(entry.expected.id)) ?? entries[0];
+    ?? project.workspace.activeDocumentIds.map(id => entries.find(entry => entry.expected.id === id)).find(Boolean) ?? entries[0];
   if (!selected) throw new Error("Saved Project has no available document to open.");
   let applies = false;
   try { applies = !!raw && JSON.parse(raw)?.projectId === project.identity.id; } catch { applies = !!raw; }
