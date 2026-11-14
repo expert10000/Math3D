@@ -67,7 +67,11 @@ try {
     result.checks.firstUsePreferences = "passed";
     await page.getByTestId("projects-toggle").click();
     await page.getByTestId("project-template-open-graph-derivative-notebook").click();
-    await page.getByTestId("project-explorer-panel").getByTestId("project-save").click();
+    const projectPanel = page.getByTestId("project-explorer-panel");
+    if (!await projectPanel.isVisible()) await page.getByTestId("projects-toggle").click();
+    await projectPanel.waitFor({ state: "visible" });
+    await projectPanel.getByTestId("project-save").click();
+    await projectPanel.getByTestId("project-message").getByText(/^Saved “/).waitFor();
     const saved = await page.evaluate(() => localStorage.getItem("math3d.project.v1"));
     assert(saved, "Project checkpoint absent after save");
     const parsed = JSON.parse(saved);
