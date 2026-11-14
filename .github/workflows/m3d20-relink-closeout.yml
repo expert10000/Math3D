@@ -1,0 +1,85 @@
+name: M3D20 AC05 explicit relink recovery at35afd770
+on:
+  push:
+    branches: [codex/m3d20-ac05-relink-closeout]
+permissions:
+  contents: read
+jobs:
+  relink:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    env:
+      TEST_SOURCE_SHA: 35afd770ed689e6c5893f2959e5943c25a83390a
+      electron_config_cache: '${{ github.workspace }}\\.cache\\electron'
+      MATH3D_ELECTRON_DOWNLOAD_TIMEOUT_MS: '600000'
+      MATH3D_ELECTRON_EXTRACT_TIMEOUT_MS: '180000'
+      MATH3D_ELECTRON_DOWNLOAD_RETRIES: '2'
+    defaults:
+      run:
+        working-directory: target
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: harness
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          path: target
+          ref: ${{ env.TEST_SOURCE_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+          cache: npm
+          cache-dependency-path: target/package-lock.json
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - uses: actions/cache@v6
+        with:
+          path: ${{ env.electron_config_cache }}
+          key: ${{ runner.os }}-electron-cache-${{ hashFiles('target/package-lock.json') }}
+      - name: Install locked source dependencies
+        run: npm ci && npm --prefix renderer ci
+      - name: Record production source and explicit test-only navigation correction
+        run: |
+          set -euo pipefail
+          mkdir -p relink-evidence
+          test "$(git rev-parse HEAD)" = "$TEST_SOURCE_SHA"
+          git rev-parse HEAD > relink-evidence/source.txt
+          git -C ../harness rev-parse HEAD > relink-evidence/harness.txt
+          cp tests/e2e/quantum-q09-project-lifecycle.spec.ts relink-evidence/original.spec.ts
+          cp ../harness/acceptance/milestone-closeout/relink.spec.ts tests/e2e/quantum-q09-project-lifecycle.spec.ts
+          git diff -- tests/e2e/quantum-q09-project-lifecycle.spec.ts > relink-evidence/navigation-only.patch
+          git status --porcelain > relink-evidence/overlay.txt
+          node <<'JS'
+          const fs=require('node:fs'),crypto=require('node:crypto'),cp=require('node:child_process');
+          const hash=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
+          if(process.version!=='v24.15.0')throw Error('Unexpected Node');
+          fs.writeFileSync('relink-evidence/manifest.json',JSON.stringify({sourceCommit:process.env.TEST_SOURCE_SHA,harnessCommit:fs.readFileSync('relink-evidence/harness.txt','utf8').trim(),runId:process.env.GITHUB_RUN_ID,runner:'windows-2022',node:process.version,python:cp.execFileSync('python',['--version'],{encoding:'utf8'}).trim(),originalSpecSha256:hash('relink-evidence/original.spec.ts'),executedSpecSha256:hash('tests/e2e/quantum-q09-project-lifecycle.spec.ts'),startedAt:new Date().toISOString(),scope:'Only the failed explicit Q09 relink journey. All71 owner cases and four other completed native journeys retained from43620117442. No application files changed.'},null,2));
+          JS
+      - name: Build unchanged production desktop
+        run: npm run build:main && npm run build:renderer
+      - name: Run only explicit relink, preserving all integrity and Project assertions
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: relink-evidence/native.json
+        run: npx playwright test tests/e2e/quantum-q09-project-lifecycle.spec.ts --workers=1 --retries=0 --reporter=list,json --output=test-results/milestone-relink
+      - name: Require one complete executed journey without retries
+        run: |
+          node <<'JS'
+          const fs=require('node:fs'),r=JSON.parse(fs.readFileSync('relink-evidence/native.json'));
+          if(r.stats.expected!==1||r.stats.unexpected||r.stats.skipped||r.stats.flaky)throw Error('Incomplete relink journey');
+          const results=[];function visit(s){for(const x of s.specs||[])for(const t of x.tests)results.push(...t.results);for(const q of s.suites||[])visit(q)}visit(r);
+          if(results.length!==1||results[0].status!=='passed'||results[0].retry!==0)throw Error('Retry or missing execution');
+          const m=JSON.parse(fs.readFileSync('relink-evidence/manifest.json'));m.completedAt=new Date().toISOString();m.result='passed';m.baselineApproved=false;fs.writeFileSync('relink-evidence/manifest.json',JSON.stringify(m,null,2));
+          JS
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: m3d20-explicit-relink-evidence
+          path: |
+            target/relink-evidence/**
+            target/test-results/milestone-relink/**
+            harness/acceptance/milestone-closeout/relink.spec.ts
+          retention-days: 30
