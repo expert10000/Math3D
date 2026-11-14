@@ -139,13 +139,3 @@ jobs:
 
       - name: Freeze and smoke the source worker
         run: npm run test:worker:smoke
-
-      - name: Upload source smoke artifacts
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: windows-source-smoke-artifacts
-          if-no-files-found: warn
-          path: |
-            playwright-report/**
-            test-results/**
