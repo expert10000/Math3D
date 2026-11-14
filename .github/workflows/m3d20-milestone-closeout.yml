@@ -1,0 +1,89 @@
+name: M3D20 missing milestone acceptance at 35afd770
+on:
+  push:
+    branches: [codex/m3d20-ac02-ac07-closeout]
+permissions:
+  contents: read
+jobs:
+  missing-acceptance:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    env:
+      TEST_SOURCE_SHA: 35afd770ed689e6c5893f2959e5943c25a83390a
+      electron_config_cache: '${{ github.workspace }}\\.cache\\electron'
+      MATH3D_ELECTRON_DOWNLOAD_TIMEOUT_MS: '600000'
+      MATH3D_ELECTRON_EXTRACT_TIMEOUT_MS: '180000'
+      MATH3D_ELECTRON_DOWNLOAD_RETRIES: '2'
+    defaults:
+      run:
+        working-directory: target
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: harness
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          path: target
+          ref: ${{ env.TEST_SOURCE_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+          cache: npm
+          cache-dependency-path: target/package-lock.json
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - uses: actions/cache@v6
+        with:
+          path: ${{ env.electron_config_cache }}
+          key: ${{ runner.os }}-electron-cache-${{ hashFiles('target/package-lock.json') }}
+      - name: Install locked source dependencies
+        run: |
+          set -euo pipefail
+          npm ci
+          npm --prefix renderer ci
+      - name: Record exact source and test-only overlay
+        run: |
+          set -euo pipefail
+          mkdir -p milestone-evidence
+          test "$(git rev-parse HEAD)" = "$TEST_SOURCE_SHA"
+          git rev-parse HEAD > milestone-evidence/source.txt
+          git -C ../harness rev-parse HEAD > milestone-evidence/harness.txt
+          cp ../harness/acceptance/milestone-closeout/frame-boundary.test.ts tests/unit/milestone-frame-boundary.test.ts
+          git status --porcelain > milestone-evidence/overlay.txt
+          node <<'JS'
+          const fs=require('node:fs'),cp=require('node:child_process'),crypto=require('node:crypto');
+          const files=['tests/unit/milestone-frame-boundary.test.ts','tests/unit/crossModuleAdapterRegistry.test.ts','tests/unit/scientificSelection.test.ts','renderer/src/core/analysisResults.test.ts','renderer/src/kernel/artifactRegistry.test.ts','renderer/src/kernel/scientificJobService.test.ts','renderer/src/projects/projectResources.test.ts','renderer/src/projects/projectResultEvidence.test.ts','tests/e2e/m3d20-legacy-reopen.spec.ts','tests/e2e/m3d20-native-job-lifecycle.spec.ts','tests/e2e/quantum-q09-project-lifecycle.spec.ts'];
+          if(process.version!=='v24.15.0')throw Error('Unexpected Node version');
+          fs.writeFileSync('milestone-evidence/manifest.json',JSON.stringify({sourceCommit:process.env.TEST_SOURCE_SHA,harnessCommit:fs.readFileSync('milestone-evidence/harness.txt','utf8').trim(),workflowRun:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,runner:'windows-2022',node:process.version,python:cp.execFileSync('python',['--version'],{encoding:'utf8'}).trim(),startedAt:new Date().toISOString(),files:Object.fromEntries(files.map(f=>[f,crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex')])),scope:'AC02-AC07 missing exact-merge owner and native acceptance; AC01 and real AC08 are reused, not rerun; signing and Cloudflare excluded'},null,2));
+          JS
+      - name: Missing exact-commit owner and frame-boundary checks
+        run: node renderer/node_modules/vitest/vitest.mjs run --config renderer/vite.config.ts tests/unit/milestone-frame-boundary.test.ts tests/unit/crossModuleAdapterRegistry.test.ts tests/unit/scientificSelection.test.ts renderer/src/core/analysisResults.test.ts renderer/src/kernel/artifactRegistry.test.ts renderer/src/kernel/scientificJobService.test.ts renderer/src/projects/projectResources.test.ts renderer/src/projects/projectResultEvidence.test.ts --maxWorkers=1 --reporter=default --reporter=json --outputFile=milestone-evidence/unit.json
+      - name: Build the unchanged source desktop application
+        run: npm run build:main && npm run build:renderer
+      - name: Legacy nullable retention, metadata-only artifacts, sidecars, stale late output and explicit relink
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: milestone-evidence/native.json
+        run: npx playwright test tests/e2e/m3d20-legacy-reopen.spec.ts tests/e2e/m3d20-native-job-lifecycle.spec.ts tests/e2e/quantum-q09-project-lifecycle.spec.ts --workers=1 --retries=0 --reporter=list,json --output=test-results/milestone-closeout
+      - name: Require every intended assertion and native journey to execute
+        run: |
+          node <<'JS'
+          const fs=require('node:fs'),u=JSON.parse(fs.readFileSync('milestone-evidence/unit.json')),n=JSON.parse(fs.readFileSync('milestone-evidence/native.json'));
+          if(u.testResults.length!==8||u.numFailedTests||u.numPendingTests||u.numTodoTests||!u.success||u.testResults.some(s=>s.status!=='passed'||!s.assertionResults.length||s.assertionResults.some(a=>a.status!=='passed')))throw Error('Incomplete owner assertions');
+          if(n.stats.expected!==5||n.stats.unexpected||n.stats.skipped||n.stats.flaky)throw Error('Incomplete native journeys');
+          const results=[];const visit=s=>{for(const p of s.specs||[])for(const t of p.tests)results.push(...t.results);for(const q of s.suites||[])visit(q)};visit(n);
+          if(results.length!==5||results.some(r=>r.status!=='passed'||r.retry!==0))throw Error('Native retries or missing cases');
+          const m=JSON.parse(fs.readFileSync('milestone-evidence/manifest.json'));m.completedAt=new Date().toISOString();m.ownerAssertions=u.numPassedTests;m.nativeJourneys=5;m.result='passed';m.baselineApproved=false;fs.writeFileSync('milestone-evidence/manifest.json',JSON.stringify(m,null,2));
+          JS
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: m3d20-missing-acceptance-evidence
+          path: |
+            target/milestone-evidence/**
+            target/test-results/milestone-closeout/**
+            harness/acceptance/milestone-closeout/**
+          retention-days: 30
