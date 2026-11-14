@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { previewGraph2DFormula } from "./graph2dFormulaPreview";
 
 describe("Graph formula preview", () => {
@@ -118,13 +118,33 @@ describe("Graph formula preview", () => {
   });
 
   it("reports two-variable formulas that cannot produce a visible result", () => {
-    const ranges = [{ min: -2, max: 2 }, { min: -2, max: 2 }] as const;
-    expect(previewGraph2DFormula("sqrt(-1)", ["x", "y"], ["x", "y"], {}, ranges, "slope-field"))
-      .toMatchObject({ kind: "error", source: "sampling" });
-    expect(previewGraph2DFormula("sqrt(-1)", ["x", "y"], ["x", "y"], {}, ranges, "inequality",
-      { region: { clauses: [{ expression: "sqrt(-1)", comparator: "<=" }], operator: "all", editingIndex: 0 } }))
-      .toMatchObject({ kind: "error", source: "sampling" });
-    expect(previewGraph2DFormula("sqrt(-1)", ["t", "x"], ["t", "x"], {}, ranges, "time-ode",
-      { timeOde: { seed: { t: 0, x: 1 } } })).toMatchObject({ kind: "error", source: "sampling" });
+    // Prove the undefined-result path independently of wall-clock sampling deadlines.
+    const clock = vi.spyOn(Date, "now").mockReturnValue(1_000);
+    try {
+      const ranges = [{ min: -2, max: 2 }, { min: -2, max: 2 }] as const;
+      expect(previewGraph2DFormula("sqrt(-1)", ["x", "y"], ["x", "y"], {}, ranges, "slope-field"))
+        .toMatchObject({ kind: "error", source: "sampling" });
+      expect(previewGraph2DFormula("sqrt(-1)", ["x", "y"], ["x", "y"], {}, ranges, "inequality",
+        { region: { clauses: [{ expression: "sqrt(-1)", comparator: "<=" }], operator: "all", editingIndex: 0 } }))
+        .toMatchObject({ kind: "error", source: "sampling" });
+      expect(previewGraph2DFormula("sqrt(-1)", ["t", "x"], ["t", "x"], {}, ranges, "time-ode",
+        { timeOde: { seed: { t: 0, x: 1 } } })).toMatchObject({ kind: "error", source: "sampling" });
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it("keeps a deadline-limited inequality preview incomplete", () => {
+    let now = 1_000;
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now += 100);
+    try {
+      const ranges = [{ min: -2, max: 2 }, { min: -2, max: 2 }] as const;
+      const preview = previewGraph2DFormula("sqrt(-1)", ["x", "y"], ["x", "y"], {}, ranges, "inequality",
+        { region: { clauses: [{ expression: "sqrt(-1)", comparator: "<=" }], operator: "all", editingIndex: 0 } });
+      expect(preview).toMatchObject({ kind: "diagram", mode: "inequality", incomplete: true,
+        segments: [], fills: [] });
+    } finally {
+      clock.mockRestore();
+    }
   });
 });
