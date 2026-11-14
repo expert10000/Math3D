@@ -169,7 +169,7 @@ async function journeyPhase() {
         if(!await open.isVisible()) await panel.getByTestId("project-detail-tab-documents").click();
         await open.click();
       }
-      await page.getByRole("button",{name:"Close project explorer"}).click();
+      if(await panel.isVisible()) await page.getByRole("button",{name:"Close project explorer"}).click();
       await page.waitForFunction(()=>!!window.__MATH3D_E2E_MESH_OPERATION__);
       const card=page.getByTestId("mesh-workspace-operation-registry");
       if(!await card.isVisible()) await page.getByRole("button",{name:"Mesh tools",exact:true}).filter({visible:true}).click();
@@ -188,7 +188,7 @@ async function journeyPhase() {
       const pack=JSON.parse(await readFile(file,"utf8"));
       assert(pack.resources.length>0,"Expected real saved resource bytes");
       for(const item of pack.resources) assert("sha256:"+sha256(Buffer.from(item.data,"base64"))===item.checksum,"Exported resource checksum mismatch");
-      await page.getByRole("button",{name:"Close project explorer"}).click();
+      if(await panel.isVisible()) await page.getByRole("button",{name:"Close project explorer"}).click();
       return pack.resources;
     };
     const compute = async () => {
