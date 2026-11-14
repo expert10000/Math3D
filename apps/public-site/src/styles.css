@@ -211,6 +211,16 @@ h1 {
   box-shadow: 0 10px 24px rgba(10, 46, 84, 0.16);
 }
 
+.hero-shot figcaption,
+.shot-grid figcaption {
+  color: #4a607b;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.hero-shot figcaption { margin-top: 0.4rem; }
+.shot-grid figcaption { padding: 0.4rem 0.55rem; }
+
 .chip-row {
   display: flex;
   flex-wrap: wrap;
