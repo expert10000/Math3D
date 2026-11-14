@@ -37,9 +37,9 @@ describe("guided Gallery desktop open contract", () => {
     measurements.push({ id, ...measured, packageBytes, requiredResources: requiredResources.length });
   });
 
-  it("certifies 12 built-in, three external, and one CAS routes against desktop and browser capabilities", () => {
-    expect(CURATED_STUDIES).toHaveLength(16);
-    expect(measurements).toHaveLength(12);
+  it("certifies 13 built-in, three external, and one CAS routes against desktop and browser capabilities", () => {
+    expect(CURATED_STUDIES).toHaveLength(17);
+    expect(measurements).toHaveLength(13);
     const desktop = snapshotFromRendererProbe({ desktopBridge: true, hostFileSystem: true, nativeDialog: true,
       webgl2: true, backgroundWorker: true, persistentStorage: true, network: false, touchInput: false });
     const browser = snapshotFromRendererProbe({ desktopBridge: false, hostFileSystem: false, nativeDialog: false,

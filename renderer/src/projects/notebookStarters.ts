@@ -1,4 +1,4 @@
-import { createDocumentRelation, createGeometryDocument, createGraph2DDocument, createGraph2DWorkspaceProject, createMath3DProject, createMixedWorkspaceDocument, createProjectNote, createVolumeDocument, extrudeGraph2DProfile, instantiateMath3DProjectTemplate, parseGraph2DExpression, replaceMath3DProjectWorkspace, structuralHash, updateMath3DProjectMetadata, updateProjectNote, upsertMath3DProjectNote, upsertMath3DProjectWorkbook, viewerSourceFromDocument } from "@math3d/core";
+import { createDocumentRelation, createGeometryDocument, createGraph2DDocument, createGraph2DWorkspaceProject, createMath3DProject, createMixedWorkspaceDocument, createProjectNote, createVectorField3DDocument, createVolumeDocument, extrudeGraph2DProfile, instantiateMath3DProjectTemplate, parseGraph2DExpression, replaceMath3DProjectWorkspace, structuralHash, updateMath3DProjectMetadata, updateProjectNote, upsertMath3DProjectNote, upsertMath3DProjectWorkbook, vectorField3DExpression, viewerSourceFromDocument } from "@math3d/core";
 import { bindWorkbookNamedParameter, createDefaultWorkbook, createNotebookReference } from "@math3d/workbook";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { createSavedSurfaceMesh } from "./savedSurfaceMesh";
@@ -23,6 +23,7 @@ export const NOTEBOOK_STARTERS = [
   { id: "surface-mesh-probe", title: "Surface and Mesh Coordinate Probe", description: "A saved Surface and Mesh pair with matching declared metre coordinates for a bounded cross-model coordinate marker." },
   { id: "surface-geometry-probe", title: "Surface and Geometry Coordinate Probe", description: "A saved Surface and Geometry pair with matching declared metre coordinates for exact source-backed observations." },
   { id: "volume-isosurface-study", title: "Volume to Mesh Isosurface Study", description: "Extract an isosurface from a saved analytic Volume, retain its Mesh, and cite the exact result in a Project Study and Workbook." },
+  { id: "field-line-profile-study", title: "Field Line Profile Study", description: "Explore a static analytic Field on its XY plane, send a finite line profile to Graphs, and return a selected row to its exact Field source." },
 ] as const;
 export type NotebookStarterId = typeof NOTEBOOK_STARTERS[number]["id"];
 
@@ -175,6 +176,30 @@ const instantiateVolumeIsosurfaceStarter = (token: string) => {
   return { project, resources: captureProjectResources(project, () => null) };
 };
 
+const instantiateFieldLineProfileStarter = (token: string) => {
+  const id = "field-line-profile-study", recipe = NOTEBOOK_STARTERS.find(item => item.id === id)!;
+  const field = createVectorField3DDocument({
+    axes: (["x", "y", "z"] as const).map(role => ({ role, label: role, unit: "m", min: -4, max: 4 })),
+    timeUnit: "s", field: { kind: "expressions", components: [
+      vectorField3DExpression("-y", "m/s"), vectorField3DExpression("x", "m/s"),
+      vectorField3DExpression("0", "m/s") ] },
+    seeds: [{ id: "seed-1", position: [1, 0, 0] }],
+    display: { density: [8, 8, 8], maxGlyphs: 512, magnitudeScale: 1, colorBy: "speed" },
+    solver: { absoluteTolerance: 1e-7, relativeTolerance: 1e-5, maxSteps: 57,
+      maxTime: 12, maxArcLength: 27 },
+  }, { stableKey: [id, token, "field"], title: "Rotational field" });
+  const workspace = createMixedWorkspaceDocument({
+    entries: [{ module: "vector3d", checkpoint: field, expected: field.identity, replay: null }],
+    activeDocumentIds: [field.identity.id], results: [], artifacts: [], relations: [],
+    constructions: [], committedSelection: null,
+  });
+  let project = createMath3DProject(workspace, { stableKey: [id, token], title: recipe.title });
+  project = updateMath3DProjectMetadata(project, { ...project.metadata,
+    description: recipe.description, tags: ["starter", id, "field", "graph", "workbook"],
+    documents: { [field.identity.id]: { title: field.metadata.title } } });
+  return { project, resources: captureProjectResources(project, () => null) };
+};
+
 /** Numerical records and source sidecars use the same implementations as the editors. */
 export function instantiateNotebookStarter(id: NotebookStarterId, token: string) {
   let phaseStart = performance.now();
@@ -191,6 +216,7 @@ export function instantiateNotebookStarter(id: NotebookStarterId, token: string)
     return instantiateMeshComparisonStarter(token, id);
   if (id === "ripple-wave-study") return instantiateRippleWaveStarter(token);
   if (id === "volume-isosurface-study") return instantiateVolumeIsosurfaceStarter(token);
+  if (id === "field-line-profile-study") return instantiateFieldLineProfileStarter(token);
   if (id === "graph-derivative-notebook" || id === "curve-construction-notebook") return instantiateDocumentNotebookStarter(id, token);
   let project = instantiateMath3DProjectTemplate("catenary-study", token);
   measurePhase("template");

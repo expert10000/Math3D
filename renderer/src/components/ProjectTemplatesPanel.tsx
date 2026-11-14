@@ -19,6 +19,7 @@ const starters = [...MATH3D_PROJECT_TEMPLATES, ...NOTEBOOK_STARTERS.map(item => 
     item.id === "mesh-geometry-probe" ? "Open Compare saved documents → Mesh / Geometry · shared metres, then pick either source and save a coordinate observation." :
     item.id === "surface-mesh-probe" ? "Open Compare saved documents → Surface / Mesh · shared metres, then pick either source to mark its 3D coordinate in the other pane." :
     item.id === "surface-geometry-probe" ? "Open Compare saved documents → Surface / Geometry · shared metres, then pick either source and save a coordinate observation." :
+    item.id === "field-line-profile-study" ? "Open the Field in Field Explorer, preview an XY slice, send a line profile to Graphs, then select a row to return to its exact Field position. Review the Study and Workbook in Projects." :
     "Find its Workbook and Notes in Projects → Contents."] }))];
 
 export const PROJECT_STARTER_MODULES: Record<ProjectStarterId, readonly string[]> = {
@@ -44,6 +45,7 @@ export const PROJECT_STARTER_MODULES: Record<ProjectStarterId, readonly string[]
   "surface-mesh-probe": ["Surface", "Mesh", "Notes"],
   "surface-geometry-probe": ["Surface", "Geometry", "Notes"],
   "volume-isosurface-study": ["Volume", "Mesh", "Analysis", "Workbook"],
+  "field-line-profile-study": ["3D vector field", "Graph", "Workbook"],
 };
 
 export const StarterArtwork: React.FC<{ id: ProjectStarterId }> = ({ id }) => <svg viewBox="0 0 320 152" aria-hidden="true" focusable="false">
