@@ -20,7 +20,7 @@ The items are ranked by release risk and dependencies. Estimates are **engineeri
 | 10 | P0 | Pass the clean-source [two-hour navigation and memory soak](RC2_SOAK_GATE.md), including hard-exit Project recovery and reviewed receipts. | 2–5 d plus run time | Open |
 | 11 | P0 | Build one signed Windows candidate; verify NSIS component, worker, signatures, source inventory, SBOM, licenses, and asset hashes against its manifest. | 3–5 d | Open |
 | 12 | P0 | Install that exact candidate on a clean Windows machine; launch without Python/Conda, run the worker and first-use Study, then restart and reopen it. | 2–4 d | Open |
-| 13 | P0 | Upgrade the exact published 1.7 installer to 2.0, prove Project and profile byte preservation, and rehearse rollback. | **4–7 d** | Open |
+| 13 | P0 | Upgrade the exact published 1.7 installer to 2.0, prove Project and profile byte preservation, and rehearse rollback. See the [published 1.7 baseline](UPGRADE_1_7_BASELINE.md). | **4–7 d** | 1.7 installer, authored Project, profile backup, and restored-profile reopen passed; signed 2.0 upgrade and rollback open |
 | 14 | P0 | Pass installed Windows memory, cancellation, viewer disposal, and performance checks tied to the candidate installer hash. | **4–7 d** | Open |
 | 15 | P1* | Qualify a hosted web deployment: storage, authorized worker routes, external scene transport, permissions, and failure behavior. | **5–10 d** | Open |
 | 16 | P1* | Run browser Project/Study/Workbook import, export, reopen, narrow layout, locale, and offline-after-load journeys on the deployed build. | **4–7 d** | Open |
