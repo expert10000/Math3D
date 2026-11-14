@@ -2,9 +2,11 @@
 
 ## Goal
 
-Prevent installer regressions by validating packaged behavior in a repeatable way.
+Keep source-build checks separate from qualification of an exact signed 2.0 installer. The automatic Windows Source Smoke workflow checks the source app and frozen worker. The signed [candidate build](../.github/workflows/release20-candidate.yml) and [exact-candidate qualification](../.github/workflows/release20-qualification.yml) workflows own packaging, installation, signatures, upgrade, and rollback.
 
 ## Automated smoke command
+
+For 2.0, the installer commands below require the signing inputs described in the [candidate gate](releases/2.0.0/INSTALL_UPGRADE_GATE.md). A passing source workflow does not certify an installed app.
 
 - full flow (build + install + smoke):
   - `npm run smoke:release`
@@ -24,7 +26,8 @@ Run these before treating a candidate as release-ready:
 3. App startup smoke: `npm run test:app:startup:smoke`
 4. Geometry smoke: `npm run test:app:geometry:smoke`
 5. Fast app e2e: `npm run test:app:e2e:fast`
-6. Package smoke: `npm run test:release:smoke`
+6. Frozen source worker smoke: `npm run test:worker:smoke`
+7. Signed candidate packaging and installed smoke: follow the [candidate gate](releases/2.0.0/INSTALL_UPGRADE_GATE.md).
 
 Expected package-build notes:
 
@@ -54,7 +57,7 @@ Expected package-build notes:
 
 ## Manual release checklist
 
-1. Run `npm run smoke:release` on release machine.
+1. Run `npm run smoke:release` on a release machine with the required signing inputs.
 2. Re-run the launch check against the built installer with `powershell -ExecutionPolicy Bypass -File scripts/release-smoke.ps1 -SkipBuild -StrictLaunchCheck`.
 3. Install same installer on a clean Windows VM with no Python installation.
 4. Launch app from Start Menu / install folder.
@@ -108,20 +111,24 @@ script; ordinary installed-app navigation needs no checkout.
     - try to install `pygalmesh` (optional; workflow continues if unavailable on runner)
     - run `npm run build:core`
     - run `npm run test:worker:smoke`
-- Installer smoke workflow: `.github/workflows/windows-release-smoke.yml`
+- Windows source smoke workflow: `.github/workflows/windows-release-smoke.yml`
   - Runs on: `windows-latest`
   - Trigger methods:
     - push to `main|master`
     - weekly schedule (Monday, 04:00 UTC)
-    - manual `workflow_dispatch` (optional `skip_launch_check` input)
-    - PR label: add `ci:installer-smoke` label
-    - API: `repository_dispatch` event type `run-installer-smoke`
+    - manual `workflow_dispatch`
+    - PR label: add `ci:source-smoke` (the previous `ci:installer-smoke` label is accepted as an alias)
+    - API: `repository_dispatch` event type `run-source-smoke` (previous `run-installer-smoke` remains an alias)
   - Flow:
     - install Node + Python
     - install npm dependencies (`root` + `renderer`)
     - install Python freeze dependencies (`pyinstaller`, `numpy`, `scipy`, `sympy`, `vtk`)
     - try to install `pygalmesh` (optional; workflow continues if unavailable on runner)
-    - build installer, install silently, run packaged and installed worker smoke checks
+    - run renderer unit tests, TypeScript checks, core build, startup and geometry source smokes
+    - freeze the worker and run its CLI and protocol smoke
+  - This workflow does not package an installer or produce an installed-candidate receipt.
+- Signed 2.0 candidate workflows: `.github/workflows/release20-candidate.yml` and `.github/workflows/release20-qualification.yml`
+  - Require a reviewed source/freeze identity, signing inputs, an approved installer hash, and exact installed receipts.
 
 ## Minimal packaged-build test plan
 
