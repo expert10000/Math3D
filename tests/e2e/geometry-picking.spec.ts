@@ -300,6 +300,71 @@ test("Geometry pick readout commits object, face, edge, and vertex modes", async
   }
 });
 
+test("Geometry analysis shortcuts focus their controls and Pick modes stay in sync", async () => {
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-geometry-controls-"));
+  let app: ElectronApplication | null = null;
+  try {
+    const launched = await launchApp(profileDir);
+    app = launched.app;
+    const page = launched.page;
+    await resetStorage(page);
+    await openProceduralGeometry(page, "box");
+
+    await page.getByTestId("geometry-workflow-step-analyze").click();
+    await page.getByTestId("geometry-workflow-command-analyze-gaussian").click();
+    await expect(page.getByTestId("geometry-workflow-command-analyze-gaussian")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("geometry-sampled-field-controls")).toBeInViewport();
+    await expect(page.getByTestId("geometry-sampled-field-quantity")).toHaveValue("K");
+
+    await page.getByTestId("geometry-workflow-command-analyze-curvature").click();
+    await expect(page.getByTestId("geometry-workflow-command-analyze-curvature")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("geometry-exact-surface-analysis-controls")).toBeInViewport();
+
+    await page.getByTestId("geometry-workflow-command-analyze-measurements").click();
+    await expect(page.getByTestId("geometry-workflow-command-analyze-measurements")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("geometry-measure-group")).toBeInViewport();
+
+    await page.getByTestId("geometry-right-panel-tab-actions").click();
+    await page.getByTestId("geometry-context-pick-face").click();
+    await expect(page.getByTestId("geometry-right-panel-tab-selection")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("geometry-pick-mode-face")).toHaveAttribute("aria-pressed", "true");
+    await page.getByTestId("geometry-pick-mode-vertex").click();
+    await expect(page.getByTestId("geometry-context-pick-vertex")).toHaveAttribute("aria-pressed", "true");
+  } finally {
+    if (app) await app.close().catch(() => undefined);
+    await removeProfileDir(profileDir);
+  }
+});
+
+test("Geometry box topology distinguishes raw indices from requested position interpretation", async () => {
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-geometry-topology-"));
+  let app: ElectronApplication | null = null;
+  try {
+    const launched = await launchApp(profileDir);
+    app = launched.app;
+    const page = launched.page;
+    await resetStorage(page);
+    await openProceduralGeometry(page, "box");
+    await page.getByTestId("geometry-workflow-step-analyze").click();
+    await page.getByTestId("geometry-workflow-command-analyze-topology").click();
+
+    const left = page.getByTestId("geometry-left-panel");
+    await expect(left).toContainText("Raw indexed display-mesh topology");
+    await expect(left).toContainText("V = 24 , E = 30 , F = 12 , chi = V - E + F = 6");
+    await expect(left).toContainText("Indexed components: 6 · boundary edges: 24");
+    await expect(page.getByTestId("geometry-topology-exact-position-result")).toHaveCount(0);
+
+    await page.getByTestId("geometry-topology-identify-exact-positions").click();
+    const interpreted = page.getByTestId("geometry-topology-exact-position-result");
+    await expect(interpreted).toContainText("V=8 · E=18 · F=12 · χ=2");
+    await expect(interpreted).toContainText("Components: 1 · boundary edges: 0");
+    await expect(left).toContainText("tolerance 0 scene units");
+  } finally {
+    if (app) await app.close().catch(() => undefined);
+    await removeProfileDir(profileDir);
+  }
+});
+
 test("Geometry canvas picker commits a visible object pick", async () => {
   const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-canvas-pick-"));
   let app: ElectronApplication | null = null;
