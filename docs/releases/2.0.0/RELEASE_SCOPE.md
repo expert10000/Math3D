@@ -35,7 +35,7 @@ Apart from the bounded Field route, the roadmap's suggested Green/Stokes, Fourie
 | Android | Limited or view-only by document, as stated in the [platform matrix](PLATFORM_CAPABILITIES.md). Physical-device and signed-artifact claims require TODO #17. No general Sage or desktop-native editor promise. |
 | Linux packages | Limited until the exact package installation, runtime, Project reopen and bounded journey pass TODO #18. Do not infer support from a successful source build. |
 
-The site currently labels its three original 2.0 workflows as targets and source-build views, and its capability page labels the published desktop download as 1.7.0. Add the required Field journey and its limits to the site and guided Gallery before publication. Compare every site, Gallery, help and download claim with the exact candidate and [platform matrix](PLATFORM_CAPABILITIES.md). P1 host work becomes a release blocker if that host is promoted as fully supported.
+The site now presents all four bounded 2.0 journeys as targets, including Field Explorer → Graph → exact Field return. Its images are labelled source-build captures, and its capability page identifies the published desktop download as 1.7.0. The guided Gallery has a Field card, but exact signed installed-candidate imagery and publication review remain open. Compare every site, Gallery, help and download claim with the exact candidate and [platform matrix](PLATFORM_CAPABILITIES.md) before publication. P1 host work becomes a release blocker if that host is promoted as fully supported.
 
 ## Open-item disposition for release planning
 
