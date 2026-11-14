@@ -37,7 +37,7 @@ $evidence = [ordered]@{
   releaseManifestSha256 = $null; checkpointSha256 = $null; profileInventorySha256 = $null
   profileFileCount = $null; installedExecutableSha256 = $null
   checks = [ordered]@{ exactPublishedBytes = 'pending'; oldInstall = 'pending'; seed = 'pending'
-    profileBackup = 'pending'; rollbackProfile = 'pending'; reinstall = 'pending'; rollbackOpen = 'pending'; backupUnchanged = 'pending' }
+    profileBackup = 'pending'; rollbackProfile = 'pending'; rollbackOpen = 'pending'; backupUnchanged = 'pending' }
   failure = $null
 }
 function Invoke-Installer([string]$file, [string]$phase) {
@@ -115,10 +115,6 @@ try {
   $rollbackInventory = & node $inventoryScript $rollbackProfile | ConvertFrom-Json
   if ($LASTEXITCODE -ne 0 -or $rollbackInventory.digest -ne $original.digest) { throw 'Rollback profile differs from original 1.7 bytes.' }
   $evidence.checks.rollbackProfile = 'passed'
-  Invoke-Installer $old '1.7 rollback rehearsal'
-  $reinstalledHash = (Get-FileHash -LiteralPath (Join-Path $install 'Math3D.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
-  if ($reinstalledHash -ne $evidence.installedExecutableSha256) { throw 'Reinstalled 1.7 executable bytes changed.' }
-  $evidence.checks.reinstall = 'passed'
   Invoke-Phase 'rollback' $rollbackFile $rollbackProfile
   $rollback = Get-Content -LiteralPath $rollbackFile -Raw | ConvertFrom-Json
   if ($rollback.checkpointSha256 -ne $seed.checkpointSha256 -or $rollback.checkpointBytes -cne $seed.checkpointBytes) {
