@@ -50,7 +50,9 @@ check('GPU process and context health', gpuPids.length === samples.length && gpu
   new Set(gpuPids).size === 1 && contextLosses === 0, { gpuPids: [...new Set(gpuPids)], contextLosses });
 if (modeArg === 'source') {
   const limits = budget?.longMemory;
-  check('predeclared source long-run budget', !!limits && Object.values(limits).filter(value => typeof value === 'number').length === 6,
+  const requiredLimits = ['peakRssMiB', 'lateGrowthMiB', 'peakRendererPrivateMiB',
+    'rendererPrivateLateGrowthMiB', 'peakGpuPrivateMiB', 'gpuPrivateLateGrowthMiB'];
+  check('predeclared source long-run budget', !!limits && requiredLimits.every(name => Number.isFinite(limits[name])),
     limits ?? null);
   check('source peak RSS ceiling', peak !== null && peak <= limits?.peakRssMiB, { peak, limit: limits?.peakRssMiB });
   check('source late RSS plateau', lateGrowthMiB !== null && lateGrowthMiB <= limits?.lateGrowthMiB,
