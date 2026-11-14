@@ -33,6 +33,19 @@ test("M3D20-13c published 1.7 Project and setting survive the exact 2.0 upgrade"
     await expect(setting).not.toBeChecked();
     await page.getByRole("button", { name: "Close", exact: true }).click();
     await page.getByTestId("workspace-nav-graphs").click();
+    if (phase === "seed") {
+      await page.getByLabel("Graph functions", { exact: true }).getByRole("button", { name: "Add Graph" }).click();
+      await page.getByRole("dialog", { name: "Choose graph type" })
+        .getByRole("button", { name: "Function", exact: true }).click();
+      const editor = page.getByRole("dialog", { name: "Create graph" });
+      const form = editor.getByRole("form", { name: "New function" });
+      await form.getByLabel("Start from preset").selectOption("parabola");
+      await form.getByLabel("Function expression").fill("x^2 + 1");
+      await form.getByRole("button", { name: "Preview", exact: true }).click();
+      await expect(editor.getByLabel("Graph preview", { exact: true })).toContainText("y = x^2 + 1");
+      await editor.getByRole("button", { name: "Create graph" }).click();
+      await expect(editor).toBeHidden();
+    }
     await page.getByTestId("graph-gallery-open").click();
     let gallery = page.getByTestId("graph-gallery");
     await gallery.getByRole("button", { name: "My Graphs", exact: true }).click();
@@ -48,6 +61,9 @@ test("M3D20-13c published 1.7 Project and setting survive the exact 2.0 upgrade"
     const checkpointBytes = await page.evaluate(key => localStorage.getItem(key), checkpointKey);
     expect(checkpointBytes).not.toBeNull();
     expect(checkpointBytes).toContain(projectTitle);
+    const graph = JSON.parse(checkpointBytes!).entries.find((entry: { module: string }) => entry.module === "graph2d")?.checkpoint;
+    expect(graph?.source?.objects?.length).toBeGreaterThan(0);
+    expect(checkpointBytes).toContain("x^2 + 1");
     if (phase !== "seed") {
       const seed = JSON.parse(readFileSync(resolve(process.env.MATH3D_RELEASE20_UPGRADE_SEED!), "utf8"));
       expect(checkpointBytes).toBe(seed.checkpointBytes);
