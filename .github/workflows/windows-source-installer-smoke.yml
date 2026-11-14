@@ -15,6 +15,11 @@ on:
         required: false
         default: true
         type: boolean
+      run_four_journeys:
+        description: Run four 2.0 journeys on installed unsigned Dev app using live Sage
+        required: false
+        default: false
+        type: boolean
   repository_dispatch:
     types:
       - run-installer-smoke
@@ -157,12 +162,50 @@ jobs:
           }
 
       - name: Run packaged Playwright e2e tests
+        if: ${{ !inputs.run_four_journeys }}
         shell: pwsh
         run: |
           $env:MATH3D_RUN_PACKAGED_E2E = "1"
           $env:MATH3D_INSTALL_ROOT = Join-Path $env:RUNNER_TEMP 'Math3D-smoke-install'
           $env:MATH3D_INSTALLED_APP_EXE = Join-Path $env:MATH3D_INSTALL_ROOT 'Math3D Dev.exe'
           npm run test:app:e2e:packaged
+
+      - name: Run four journeys against installed unsigned Dev app
+        if: ${{ inputs.run_four_journeys }}
+        shell: pwsh
+        env:
+          MATH3D_RELEASE20_SAGE_SERVICE_URL: ${{ secrets.MATH3D_RELEASE20_SAGE_SERVICE_URL }}
+        run: |
+          $app = Join-Path $env:RUNNER_TEMP 'Math3D-smoke-install/Math3D Dev.exe'
+          if (-not (Test-Path -LiteralPath $app -PathType Leaf)) { throw "Installed Dev executable is missing: $app" }
+          $installers = @(Get-ChildItem -LiteralPath (Join-Path $PWD 'release-dev') -Filter '*.exe' -File)
+          if ($installers.Count -ne 1) { throw "Expected exactly one unsigned Dev installer, found $($installers.Count)." }
+          $env:MATH3D_PACKAGED_APP_EXE = $app
+          $env:MATH3D_RELEASE20_EXPECTED_VERSION = '2.0.0'
+          $env:MATH3D_RELEASE20_JOURNEY_REPORT = Join-Path $env:RUNNER_TEMP 'dev-four-journeys-playwright.json'
+          $sageReceipt = Join-Path $env:RUNNER_TEMP 'dev-four-journeys-sage.json'
+          $receipt = Join-Path $env:RUNNER_TEMP 'dev-four-journeys-receipt.json'
+          node scripts/release20-sage-oracle.mjs $sageReceipt
+          if ($LASTEXITCODE -ne 0) { throw 'Live Sage oracle preflight failed.' }
+          & (Join-Path $PWD 'node_modules/.bin/playwright.cmd') test --config playwright.release20-journeys.config.ts
+          $playwrightExit = $LASTEXITCODE
+          $commit = (git rev-parse HEAD).Trim()
+          $installerHash = (Get-FileHash -LiteralPath $installers[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          $installedHash = (Get-FileHash -LiteralPath $app -Algorithm SHA256).Hash.ToLowerInvariant()
+          node scripts/check-release20-journeys.mjs $env:MATH3D_RELEASE20_JOURNEY_REPORT $sageReceipt $commit $installerHash $receipt --dev $installedHash
+          if ($playwrightExit -ne 0 -or $LASTEXITCODE -ne 0) { throw 'Installed Dev four-journey rehearsal failed; inspect the receipt and Playwright report.' }
+
+      - name: Upload unsigned Dev journey evidence
+        if: ${{ always() && inputs.run_four_journeys }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: release20-unsigned-installed-rehearsal
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/dev-four-journeys-playwright.json
+            ${{ runner.temp }}/dev-four-journeys-sage.json
+            ${{ runner.temp }}/dev-four-journeys-receipt.json
+            test-results/release20-journeys-playwright/**
 
       - name: Upload release artifacts
         if: always()
