@@ -1,0 +1,99 @@
+name: M3D20 Windows native offline recovery
+on:
+  push:
+    branches: [codex/m3d20-real-offline-acceptance]
+    paths: ["acceptance/windows-native/**", ".github/workflows/m3d20-windows-recovery.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-recovery:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    env:
+      TEST_SOURCE_SHA: 392917887911df24c25332f2c5f4ad809822f637
+      electron_config_cache: '${{ github.workspace }}\\.cache\\electron'
+      MATH3D_ELECTRON_DOWNLOAD_TIMEOUT_MS: '600000'
+      MATH3D_ELECTRON_EXTRACT_TIMEOUT_MS: '180000'
+      MATH3D_ELECTRON_DOWNLOAD_RETRIES: '2'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: harness
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          path: target
+          ref: ${{ env.TEST_SOURCE_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+          cache: npm
+          cache-dependency-path: target/package-lock.json
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - uses: actions/cache@v6
+        with:
+          path: ${{ env.electron_config_cache }}
+          key: ${{ runner.os }}-electron-cache-${{ hashFiles('target/package-lock.json') }}
+      - name: Install working desktop dependencies and source-pinned worker runtime
+        working-directory: target
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p native-recovery-evidence
+          npm ci --foreground-scripts 2>&1 | tee native-recovery-evidence/npm-root.log
+          npm --prefix renderer ci --foreground-scripts 2>&1 | tee native-recovery-evidence/npm-renderer.log
+          python -m pip install numpy==2.4.6 scipy==1.17.1 sympy==1.14.0 vtk==9.7.0
+          python -c 'import os,sys; print("MATH3D_PYTHON="+sys.executable)' >> "$GITHUB_ENV"
+      - name: Assert source identity and overlay only the acceptance test
+        working-directory: target
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TEST_SOURCE_SHA"
+          echo "MATH3D_HARNESS_SHA=$(git -C ../harness rev-parse HEAD)" >> "$GITHUB_ENV"
+          cp ../harness/acceptance/windows-native/m3d20-native-recovery.spec.ts tests/e2e/m3d20-native-recovery.spec.ts
+          git rev-parse HEAD > native-recovery-evidence/tested-source.txt
+          git -C ../harness rev-parse HEAD > native-recovery-evidence/harness-source.txt
+          git status --porcelain > native-recovery-evidence/source-overlay.txt
+          python python/worker/main.py --health > native-recovery-evidence/worker-health.json
+      - name: Build existing source desktop application
+        working-directory: target
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build:main
+          npm run build:renderer
+      - name: Run only the Windows native offline recovery journey without retries
+        working-directory: target
+        shell: bash
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: native-recovery-evidence/playwright.json
+        run: npx playwright test tests/e2e/m3d20-native-recovery.spec.ts --output=test-results/native-recovery --workers=1 --retries=0 --reporter=list,json
+      - name: Require an executed PASS and all five native journey stages
+        working-directory: target
+        shell: bash
+        run: |
+          node <<'JS'
+          const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
+          const r=JSON.parse(fs.readFileSync('native-recovery-evidence/playwright.json','utf8'));
+          if(r.stats.expected!==1||r.stats.unexpected||r.stats.skipped||r.stats.flaky)throw Error('Native journey missing, skipped or failed');
+          const walk=d=>fs.readdirSync(d,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(path.join(d,e.name)):[path.join(d,e.name)]);
+          const p=walk('test-results/native-recovery').find(p=>p.endsWith('native-recovery-receipt.json'));
+          const receipt=JSON.parse(fs.readFileSync(p,'utf8'));
+          if(receipt.result!=='passed'||receipt.platform!=='win32'||receipt.sourceCommit!==process.env.TEST_SOURCE_SHA||receipt.harnessCommit!==process.env.MATH3D_HARNESS_SHA||receipt.checks.length!==5||receipt.checks.some(c=>c.status!=='passed'))throw Error('Incomplete source-bound native receipt');
+          const spec='tests/e2e/m3d20-native-recovery.spec.ts';
+          fs.writeFileSync('native-recovery-evidence/manifest.json',JSON.stringify({sourceCommit:receipt.sourceCommit,harnessCommit:receipt.harnessCommit,node:process.version,runner:'windows-2022',specSha256:crypto.createHash('sha256').update(fs.readFileSync(spec)).digest('hex'),journeys:1,stages:5,retries:0,baselineApproved:false},null,2));
+          JS
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: m3d20-windows-native-recovery-evidence
+          path: |
+            target/native-recovery-evidence/**
+            target/test-results/native-recovery/**
+            harness/acceptance/windows-native/**
+          retention-days: 30
