@@ -36,6 +36,7 @@ jobs:
         run: |
           node scripts/release20-candidate.mjs --preflight
           if ($LASTEXITCODE -ne 0) { throw 'Candidate inputs or signer are unavailable.' }
+          ./scripts/verify-release20-signer-inputs.ps1
           node scripts/prepare-release20-freeze.mjs (Join-Path $env:RUNNER_TEMP 'release20-freeze.json')
           if ($LASTEXITCODE -ne 0) { throw '2.0 freeze preparation failed.' }
           $actual = (Get-FileHash -LiteralPath (Join-Path $env:RUNNER_TEMP 'release20-freeze.json') -Algorithm SHA256).Hash.ToLowerInvariant()

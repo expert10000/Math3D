@@ -2,11 +2,11 @@
 
 ## Goal
 
-Keep source-build checks separate from qualification of an exact signed 2.0 installer. The automatic Windows Source Smoke workflow checks the source app and frozen worker. The signed [candidate build](../.github/workflows/release20-candidate.yml) and [exact-candidate qualification](../.github/workflows/release20-qualification.yml) workflows own packaging, installation, signatures, upgrade, and rollback.
+Keep source-build checks separate from qualification of an exact signed 2.0 installer. The automatic Windows Source Smoke workflow checks the source app and frozen worker. The optional [unsigned installer smoke](../.github/workflows/windows-source-installer-smoke.yml) checks Dev-channel packaging, installation, workers, and UI. The signed [candidate build](../.github/workflows/release20-candidate.yml) and [exact-candidate qualification](../.github/workflows/release20-qualification.yml) workflows own release packaging, signatures, upgrade, and rollback.
 
 ## Automated smoke command
 
-For 2.0, the installer commands below require the signing inputs described in the [candidate gate](releases/2.0.0/INSTALL_UPGRADE_GATE.md). A passing source workflow does not certify an installed app.
+For 2.0, the stable installer commands below require the signing inputs described in the [candidate gate](releases/2.0.0/INSTALL_UPGRADE_GATE.md). `./scripts/release-smoke.ps1 -SourceDev -SkipLaunchCheck` instead builds and installs an unsigned Dev package under `release-dev`; it is source evidence only. A passing source workflow does not certify the signed candidate.
 
 - full flow (build + install + smoke):
   - `npm run smoke:release`
