@@ -1,0 +1,26 @@
+{
+  "schema": "math3d/release20-upgrade-baseline/v1",
+  "status": "passed",
+  "checkedAtUtc": "2026-11-14T13:14:29.1894003Z",
+  "sourceCommit": "f39b21a3e3b86f316101dacce02e9c573cd1aa9a",
+  "oldVersion": "1.7.0",
+  "oldInstallerSha256": "eacffc903e988a15636f556b36d12621b9918f4cec69e5c8b19e7daa512222db",
+  "publishedChecksumSha256": "b8ef3bcaa2b9d35cc1f668490fca15226716c3c26cdb3fe8cc995217235ec604",
+  "releaseManifestSha256": "72921034c88abfd86504bb81172e3b630666fb83234d49bd236dc9b08389e769",
+  "checkpointSha256": "4b0d7477f699e37e1f66e63d8d05e279d7813d1b021630277e4daf81627d99d6",
+  "profileInventorySha256": "a6b04323c84785f75a03a9c8516b35672c90b3ebc1a35f5a52e0a16908c31b1e",
+  "profileFileCount": 43,
+  "installedExecutableSha256": "ff9ec3b9ea65f2d97ab79aeb8a8e52d4ed78d73319d4b69690a6f6c5c144afea",
+  "checks": {
+    "exactPublishedBytes": "passed",
+    "oldInstall": "passed",
+    "seed": "passed",
+    "profileBackup": "passed",
+    "rollbackProfile": "passed",
+    "rollbackOpen": "passed",
+    "backupUnchanged": "passed"
+  },
+  "failure": null,
+  "seedEvidenceSha256": "7a9f84ff011714598f34b5801f6a140bfac0656793c24f56a75c053c19adeb85",
+  "rollbackEvidenceSha256": "d7cee11d0689cdc9049330b034aa99117e5ab1e89aac9c5e727e94e73cbb8b9c"
+}
