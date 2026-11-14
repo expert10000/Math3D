@@ -70,6 +70,8 @@ try {
     const projectPanel = page.getByTestId("project-explorer-panel");
     if (!await projectPanel.isVisible()) await page.getByTestId("projects-toggle").click();
     await projectPanel.waitFor({ state: "visible" });
+    if (!await projectPanel.getByTestId("project-save").isVisible())
+      await projectPanel.getByTestId("project-gallery-layout-toggle").first().click();
     await projectPanel.getByTestId("project-save").click();
     await projectPanel.getByTestId("project-message").getByText(/^Saved “/).waitFor();
     const saved = await page.evaluate(() => localStorage.getItem("math3d.project.v1"));
