@@ -11,6 +11,7 @@ const minutes = Number(minutesText);
 const smoke = process.env.MATH3D_MEMORY_SOAK_SMOKE === "1";
 const smokeCycles = Number(process.env.MATH3D_MEMORY_SOAK_SMOKE_CYCLES || "1");
 const diagnosticRoute = process.env.MATH3D_MEMORY_SOAK_ROUTE;
+const diagnosticRoutes = process.env.MATH3D_MEMORY_SOAK_ROUTES?.split(",").map(route => route.trim());
 test.skip(minutesText === undefined && !smoke, "Set MATH3D_MEMORY_SOAK_MINUTES=120 or more for an intentional long run.");
 
 test("one Electron process retains responsive navigation and records long-run memory", async ({}, testInfo) => {
@@ -18,7 +19,11 @@ test("one Electron process retains responsive navigation and records long-run me
   if (smoke && (!Number.isInteger(smokeCycles) || smokeCycles < 1 || smokeCycles > 20)) throw new Error("Smoke cycles must be 1–20.");
   if (diagnosticRoute && (!smoke || !["surfaces", "mesh", "volume", "projects"].includes(diagnosticRoute)))
     throw new Error("A diagnostic route requires smoke mode and one supported target.");
-  const routes = diagnosticRoute ? ["graphs", diagnosticRoute] : ["graphs", "surfaces", "mesh", "volume", "projects"];
+  if (diagnosticRoutes && (!smoke || diagnosticRoute || diagnosticRoutes.length < 2 ||
+      diagnosticRoutes[0] !== "graphs" || new Set(diagnosticRoutes).size !== diagnosticRoutes.length ||
+      diagnosticRoutes.some(route => !["graphs", "surfaces", "mesh", "volume", "projects"].includes(route))))
+    throw new Error("Diagnostic route sets require smoke mode, graphs first, and unique supported routes.");
+  const routes = diagnosticRoutes ?? (diagnosticRoute ? ["graphs", diagnosticRoute] : ["graphs", "surfaces", "mesh", "volume", "projects"]);
   // A clean 800-switch Windows run can exceed 29 minutes even when all
   // navigation actions succeed; memory budgets, not this wall clock, qualify it.
   test.setTimeout(smoke ? (smokeCycles * 5 + 10) * 60_000 : (minutes + 45) * 60_000);
