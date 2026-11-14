@@ -61,6 +61,10 @@ try {
     const page = await app.firstWindow();
     await page.getByRole("heading", { name: /^math3d$/i, level: 1 }).waitFor({ timeout: 90_000 });
     result.checks.firstLaunch = "passed";
+    const preferences = page.getByTestId("settings-preferences-panel");
+    await preferences.waitFor({ state: "visible", timeout: 15_000 });
+    await preferences.locator("..").getByRole("button", { name: "Close", exact: true }).click();
+    result.checks.firstUsePreferences = "passed";
     await page.getByTestId("projects-toggle").click();
     await page.getByTestId("project-template-open-graph-derivative-notebook").click();
     await page.getByTestId("project-explorer-panel").getByTestId("project-save").click();

@@ -49,7 +49,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get install -y "$(realpath packages/*.deb)"
-          app="$(command -v math3d)"
+          app=/opt/Math3D/math3d
           worker="$(find /opt -type f -path '*/resources/python-worker/worker' -print -quit)"
           test -n "$app" && test -n "$worker"
           xvfb-run -a timeout --kill-after=20s 8m node scripts/release20-linux-package-qualify.mjs \
@@ -109,7 +109,7 @@ jobs:
                 gtk3 nss alsa-lib libdrm libXcomposite libXdamage libXrandr mesa-libgbm \
                 packages/*.rpm
               npm ci --ignore-scripts
-              app="$(command -v math3d)"
+              app=/opt/Math3D/math3d
               worker="$(find /opt -type f -path "*/resources/python-worker/worker" -print -quit)"
               test -n "$app" && test -n "$worker"
               Xvfb :99 -screen 0 1920x1080x24 > /tmp/xvfb.log 2>&1 &
