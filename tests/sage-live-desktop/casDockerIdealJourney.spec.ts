@@ -8,7 +8,7 @@ const core = require(resolve("packages/core/src/index.ts"));
 
 test("live Docker ideal saves exact Sage and sampled locus through cancellation, offline reopen and clean-profile direct open", async ({ request }) => {
   test.setTimeout(240_000);
-  const serviceUrl = "http://127.0.0.1:8767";
+  const serviceUrl = process.env.MATH3D_RELEASE20_SAGE_SERVICE_URL || "http://127.0.0.1:8767";
   const health = await request.get(`${serviceUrl}/health`);
   expect(health.ok()).toBe(true);
   const service = await health.json();

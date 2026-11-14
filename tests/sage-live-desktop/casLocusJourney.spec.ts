@@ -7,11 +7,18 @@ import { closeSurfaceApp, launchSurfaceApp, openLastSavedProject, resetSurfaceAp
 
 const core = require(resolve("packages/core/src/index.ts"));
 
-test("live WSL Sage carries a polynomial locus through Geometry, Curve, restart and independent transfer", async () => {
+test("live Sage carries a polynomial locus through Geometry, Curve, restart and independent transfer", async ({ request }) => {
   test.setTimeout(360_000);
+  const serviceUrl = process.env.MATH3D_RELEASE20_SAGE_SERVICE_URL;
+  const backend = serviceUrl ? "docker" : "local";
   let app: LaunchedSurfaceApp | null = null;
   try {
-    const cusp = await require(resolve("dist/main/python/sageSymbolicWorker.js"))
+    const cuspResponse = serviceUrl ? await request.post(`${serviceUrl}/run`, { data: {
+      operation: "sage.symbolic.singularities", backend: "docker", jobId: "release20-polynomial-cusp",
+      params: { expression: "y^2-x^3", variables: ["x", "y"] },
+    } }) : null;
+    if (cuspResponse) expect(cuspResponse.ok()).toBe(true);
+    const cusp = cuspResponse ? await cuspResponse.json() : await require(resolve("dist/main/python/sageSymbolicWorker.js"))
       .runSageSymbolicJob("sage.symbolic.singularities",
         { expression: "y^2-x^3", variables: ["x", "y"] });
     expect(cusp).toMatchObject({ success: true, engine: "sagemath",
@@ -34,7 +41,7 @@ test("live WSL Sage carries a polynomial locus through Geometry, Curve, restart 
         coefficientDomain: { objectId: qq.id, revision: 1 }, variables: ["x", "y"],
         monomialOrder: "degrevlex" } });
     project = core.upsertMath3DProjectAlgebraObject(project, ring);
-    app = await launchSurfaceApp();
+    app = await launchSurfaceApp(serviceUrl ? { MATH3D_SAGE_SERVICE_URL: serviceUrl } : {});
     await resetSurfaceAppState(app.page);
     let page = app.page;
     await page.evaluate(({ id, title, raw }) => {
@@ -52,7 +59,7 @@ test("live WSL Sage carries a polynomial locus through Geometry, Curve, restart 
     await builder.getByLabel("Locus polynomial").fill("x^2+y^2-1");
     await builder.getByLabel("Locus sample cap").fill("8000");
     await builder.getByRole("button", { name: "Validate & preview locus" }).click();
-    await builder.getByTestId("cas-locus-sage").getByLabel("Locus Sage backend").selectOption("local");
+    await builder.getByTestId("cas-locus-sage").getByLabel("Locus Sage backend").selectOption(backend);
     await builder.getByTestId("cas-locus-run-sage").click();
     await builder.getByTestId("cas-locus-cancel-sage").click();
     await expect(builder.getByTestId("cas-locus-sage-status"))
@@ -67,7 +74,7 @@ test("live WSL Sage carries a polynomial locus through Geometry, Curve, restart 
     const result = saved.workspace.results.find((item: { provenance: { operation: { type: string } } }) =>
       item.provenance.operation.type === "sage.symbolic.singularities");
     expect(result).toMatchObject({ provenance: { operation: { parameters: {
-      polynomial: "x^2+y^2-1", variables: ["x", "y"], backend: "local",
+      polynomial: "x^2+y^2-1", variables: ["x", "y"], backend,
       algebraObjectId: ring.id, algebraRevision: 1 } }, engine: { name: "SageMath",
         version: expect.stringMatching(/^\d+\.\d+/) } },
       summary: { exactResult: { points: [], criterion: "F=0 and gradient F=0" } } });
@@ -112,7 +119,8 @@ test("live WSL Sage carries a polynomial locus through Geometry, Curve, restart 
     const packageHash = createHash("sha256").update(packageRaw).digest("hex");
     const firstProfile = app.profileDir;
     await app.app.close();
-    app = await launchSurfaceApp({ MATH3D_WSL_DISTRO: "MissingSage" }, firstProfile);
+    app = await launchSurfaceApp({ MATH3D_WSL_DISTRO: "MissingSage",
+      MATH3D_SAGE_SERVICE_URL: "http://127.0.0.1:1" }, firstProfile);
     page = app.page; await openLastSavedProject(page);
     await page.getByTestId("workspace-nav-cas").click();
     cas = page.getByTestId("cas-algebra-workspace");
@@ -122,7 +130,8 @@ test("live WSL Sage carries a polynomial locus through Geometry, Curve, restart 
     expect(core.parseMath3DProject(await page.evaluate(() => localStorage.getItem("math3d.project.v1")))
       .workspace.results.find((item: { resultId: string }) => item.resultId === result.resultId)).toEqual(result);
     await closeSurfaceApp(app); app = null;
-    app = await launchSurfaceApp({ MATH3D_WSL_DISTRO: "MissingSage" });
+    app = await launchSurfaceApp({ MATH3D_WSL_DISTRO: "MissingSage",
+      MATH3D_SAGE_SERVICE_URL: "http://127.0.0.1:1" });
     await resetSurfaceAppState(app.page);
     page = app.page;
     await page.getByTestId("projects-toggle").click();
@@ -143,7 +152,7 @@ test("live WSL Sage carries a polynomial locus through Geometry, Curve, restart 
     expect(require(resolve("renderer/src/projects/sageLocusJourney.ts"))
       .inspectSavedSageLocusSingularities(changed, result.resultId).status).toBe("withheld");
     await writeFile(test.info().outputPath("cas-live-locus-observation.json"), JSON.stringify({
-      route: "Local WSL", sageVersion: result.provenance.engine.version,
+      route: serviceUrl ? "Docker service" : "Local WSL", sageVersion: result.provenance.engine.version,
       cuspPoint: cusp.result.points[0],
       source: { algebraObjectId: ring.id, revision: 1, polynomial: "x^2+y^2-1" },
       resultId: result.resultId, geometryId: geometry.expected.id, curveId: curve.expected.id,
