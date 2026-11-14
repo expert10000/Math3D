@@ -858,7 +858,10 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
 
     const renderer = acquireViewerRenderer(viewPreset === "free");
     renderer.localClippingEnabled = true;
-    renderer.setPixelRatio(window.devicePixelRatio || 1);
+    // Orthogonal slices display sampled source pixels in small panes. Bound
+    // the four simultaneous drawing buffers on high-DPI displays.
+    const maxPixelRatio = viewPreset === "free" ? 1.5 : 1.25;
+    renderer.setPixelRatio(Math.min(Math.max(1, window.devicePixelRatio || 1), maxPixelRatio));
     renderer.setSize(mount.clientWidth || 1, mount.clientHeight || 1);
     mount.appendChild(renderer.domElement);
 

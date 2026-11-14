@@ -969,10 +969,14 @@ ipcMain.on("app:mesh-debug-trace", (event, packet: unknown) => {
     packet,
   };
   lastMeshDebugTraceByWebContentsId.set(event.sender.id, payload);
-  try {
-    console.info("[mesh-debug-trace]", JSON.stringify(payload));
-  } catch {
-    console.info("[mesh-debug-trace]", payload);
+  // High-frequency route changes can produce thousands of viewer events. Keep
+  // the latest crash diagnostic without flooding the Electron stdout pipe.
+  if (isDev || isMeshTraceRun || process.env.MATH3D_MESH_DEBUG_LOG === "1") {
+    try {
+      console.info("[mesh-debug-trace]", JSON.stringify(payload));
+    } catch {
+      console.info("[mesh-debug-trace]", payload);
+    }
   }
 });
 
