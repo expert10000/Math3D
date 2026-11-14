@@ -1,0 +1,13 @@
+# M3D20-18 — Linux installed-package baseline
+
+**Status:** partial qualification, 2026-11-14. The exact artifacts came from successful [Linux Package Smoke run 43592575902](https://github.com/expert10000/Math3D/actions/runs/43592575902), source `d15c694ee6e5b14ca594dfe75bcc3c670842ef9a`. [Installed qualification run 43601090868](https://github.com/expert10000/Math3D/actions/runs/43601090868) used probe commit `0c34087fa36c920e5b1f1fef2318c0efb7bd8be9` and passed both isolated jobs. The artifact source and probe source are deliberately recorded separately.
+
+| Format | Isolated host | Package bytes | SHA-256 | Receipt |
+| --- | --- | ---: | --- | --- |
+| AppImage | Ubuntu 22.04 runner, extract-and-run | 415,329,435 | `3041b4a6bd6607b8861f47160d17a90449af82f7db9df32ea83cc5a2fb0b28a0` | [AppImage](evidence/m3d20-18-linux-43601090868/appimage-receipt.json) |
+| deb | Ubuntu 22.04 runner, `apt-get install` | 270,789,610 | `650e23dc5cd9f21e368166b130ba3323783904ab1f87e3e0fdbc2a9334f8ed3b` | [deb](evidence/m3d20-18-linux-43601090868/deb-receipt.json) |
+| rpm | Fedora 43 container, `dnf install` | 270,765,041 | `3fbea9c94d19c58aebaef1cfa1b61c299d7a8db0189fe488581259e9843e9fae` | [rpm](evidence/m3d20-18-linux-43601090868/rpm-receipt.json) |
+
+All three downloaded package sizes and SHA-512 digests matched `latest-linux.yml` from the build artifact; the receipt SHA-256 values were recomputed independently against the downloaded package bytes. Each installed or extracted package reported app version `2.0.0`, passed the bundled frozen Python worker's real-operation smoke, opened its first-use Settings dialog, saved a Graph Derivative Investigation Project, closed, relaunched with the same isolated profile, and reopened that Project. In every receipt, the saved and reopened Project checkpoint SHA-256 values match exactly. The [qualifier](../../../scripts/release20-linux-package-qualify.mjs) runs through the [manual CI workflow](../../../.github/workflows/release20-linux-qualification.yml) with a successful package-build run ID.
+
+This is a baseline for source `d15c694e`, not a receipt for the current merged commit or final 2.0 release candidate. The later [Linux Package Smoke run 43599540129](https://github.com/expert10000/Math3D/actions/runs/43599540129) stopped at the Field Gallery TypeScript check before packaging; the journey work owns that source fix. The full checklist #18 gate still requires a package build from the frozen release commit, package upgrade behavior, and a bounded installed scientific journey. Linux claims remain limited in the [platform matrix](PLATFORM_CAPABILITIES.md).
