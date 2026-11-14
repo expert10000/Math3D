@@ -4,9 +4,9 @@
 
 ## Source identity and integration
 
-- `main`: `7ec9aa82c9fec821c0421f403707c5e988c2d671` ([commit](https://github.com/expert10000/Math3D/commit/7ec9aa82c9fec821c0421f403707c5e988c2d671)).
-- Its parent, `f725888199b35e93809c1b20f12c54afea0c2efc`, is the last commit with the full source workflow matrix completed. The only change from that commit to this snapshot is [PR #60](https://github.com/expert10000/Math3D/pull/60): eight documentation/evidence files for the Android internal APK and emulator baseline. `git diff --name-status f7258881 7ec9aa82` contains no application code, lockfile, workflow, or release script change.
-- #60 was squash-merged at `2026-11-14T22:03:53Z` from head `a6b80bfb3d63c5178e529045a08a4abbbdcaa8a7`; its merge commit is the `main` SHA above. The Android physical-device gate remains open.
+- `main` when this receipt was revised: `3b518f154906218368ce046f2010098590d44326` ([commit](https://github.com/expert10000/Math3D/commit/3b518f154906218368ce046f2010098590d44326)). This is the source identity to requalify before an RC1 freeze.
+- Its parent `7ec9aa82c9fec821c0421f403707c5e988c2d671` is the squash merge of [PR #60](https://github.com/expert10000/Math3D/pull/60), an Android internal APK and emulator documentation/evidence change. #60 was merged at `2026-11-14T22:03:53Z` from head `a6b80bfb3d63c5178e529045a08a4abbbdcaa8a7`. `git diff --name-status f7258881 7ec9aa82` lists only eight documentation/evidence files. The physical-device gate remains open.
+- #60's parent, `f725888199b35e93809c1b20f12c54afea0c2efc`, has the last completed full source workflow matrix. The new `3b518f15` commit adds a guarded local Sage route for Windows qualification: a preflight workflow, bridge and tunnel scripts, and a Docker Compose change. It changes source, so the `f7258881` matrix cannot qualify it by ancestry alone.
 - [PR #57](https://github.com/expert10000/Math3D/pull/57) records hosted-web/Cloudflare work deferred for this pass. [PR #61](https://github.com/expert10000/Math3D/pull/61) changes Geometry source as well as plans and belongs to its journey owner. Neither is included in this snapshot. Any later source merge requires a new identity and matching receipts.
 
 ## Completed full-source CI on the parent
@@ -28,15 +28,30 @@ Every run below has `headSha = f725888199b35e93809c1b20f12c54afea0c2efc`, `statu
 
 ## CI on the documentation merge
 
-These runs have `headSha = 7ec9aa82c9fec821c0421f403707c5e988c2d671` and were started by the #60 merge. Record their final conclusions before treating this snapshot as CI complete:
+These runs have `headSha = 7ec9aa82c9fec821c0421f403707c5e988c2d671` and were started by the #60 merge. The subsequent Sage source push cancelled three; they are not passes:
 
 | Workflow | Run | Conclusion |
 | --- | --- | --- |
-| Mobile Android Gate | [43646085488](https://github.com/expert10000/Math3D/actions/runs/43646085488) | In progress at snapshot |
-| Linux Package Smoke | [43646085536](https://github.com/expert10000/Math3D/actions/runs/43646085536) | In progress at snapshot |
-| Windows Source Smoke | [43646085542](https://github.com/expert10000/Math3D/actions/runs/43646085542) | In progress at snapshot |
-| Docs Pages | [43646085513](https://github.com/expert10000/Math3D/actions/runs/43646085513) | In progress at snapshot |
-| CI Build and Worker Smoke | [43646085561](https://github.com/expert10000/Math3D/actions/runs/43646085561) | In progress at snapshot |
+| Mobile Android Gate | [43646085488](https://github.com/expert10000/Math3D/actions/runs/43646085488) | Cancelled |
+| Linux Package Smoke | [43646085536](https://github.com/expert10000/Math3D/actions/runs/43646085536) | Cancelled |
+| Windows Source Smoke | [43646085542](https://github.com/expert10000/Math3D/actions/runs/43646085542) | Success |
+| Docs Pages | [43646085513](https://github.com/expert10000/Math3D/actions/runs/43646085513) | Success |
+| CI Build and Worker Smoke | [43646085561](https://github.com/expert10000/Math3D/actions/runs/43646085561) | Cancelled |
+
+## New source CI on `3b518f15`
+
+All runs below have `headSha = 3b518f154906218368ce046f2010098590d44326`. Their conclusions were still pending when this receipt was revised:
+
+| Workflow | Run |
+| --- | --- |
+| Check live Sage endpoint from Windows | [43646985315](https://github.com/expert10000/Math3D/actions/runs/43646985315) |
+| Mobile Android Gate | [43646977622](https://github.com/expert10000/Math3D/actions/runs/43646977622) |
+| Windows Source Smoke | [43646977642](https://github.com/expert10000/Math3D/actions/runs/43646977642) |
+| Release 2.0 Flagship Source Evidence | [43646977620](https://github.com/expert10000/Math3D/actions/runs/43646977620) |
+| Docs Pages | [43646977603](https://github.com/expert10000/Math3D/actions/runs/43646977603) |
+| Projects Installed Engine Acceptance | [43646977643](https://github.com/expert10000/Math3D/actions/runs/43646977643) |
+| Linux Package Smoke | [43646977580](https://github.com/expert10000/Math3D/actions/runs/43646977580) |
+| CI Build and Worker Smoke | [43646977590](https://github.com/expert10000/Math3D/actions/runs/43646977590) |
 
 ## Remaining #9 gate
 
