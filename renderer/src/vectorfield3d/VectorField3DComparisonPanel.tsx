@@ -116,7 +116,7 @@ export function VectorField3DComparisonPanel({ document, project, onSave, onOpen
     <p>Cartesian axes and identical component units. Choose identical grids or an explicit
       physical overlap; verified-volume trilinear interpolation and complete coverage are
       required for cross-grid comparison. The comparison grid is capped at 4096 samples.</p>
-    <label>Dataset A <select value={document.identity.id} disabled={!onSelectSourceA || busy}
+    <label>Dataset A <select aria-label="Dataset A" value={document.identity.id} disabled={!onSelectSourceA || busy}
       onChange={event => onSelectSourceA?.(event.target.value)}>
       <option value={document.identity.id}>{document.metadata.title} · revision {document.identity.revision}</option>
       {sources.map(source => <option key={source.identity.id} value={source.identity.id}>
