@@ -349,6 +349,11 @@ test("Geometry box topology distinguishes raw indices from requested position in
     await page.getByTestId("geometry-workflow-command-analyze-topology").click();
 
     const left = page.getByTestId("geometry-left-panel");
+    const definition = page.getByTestId("geometry-topology-box-definition");
+    await expect(definition).toContainText("V=8 · E=18 · F=12 · χ=2");
+    await expect(definition).toContainText("triangulated parametric box boundary");
+    const initialRevision = Number((await definition.innerText()).match(/\br(\d+)/)?.[1]);
+    expect(Number.isFinite(initialRevision)).toBe(true);
     await expect(left).toContainText("Raw indexed display-mesh topology");
     await expect(left).toContainText("V = 24 , E = 30 , F = 12 , chi = V - E + F = 6");
     await expect(left).toContainText("Indexed components: 6 · boundary edges: 24");
@@ -359,6 +364,30 @@ test("Geometry box topology distinguishes raw indices from requested position in
     await expect(interpreted).toContainText("V=8 · E=18 · F=12 · χ=2");
     await expect(interpreted).toContainText("Components: 1 · boundary edges: 0");
     await expect(left).toContainText("tolerance 0 scene units");
+
+    await page.getByTestId("geometry-professional-panel-object").click();
+    await page.getByTestId("geometry-object-param-width").fill("2.5");
+    await expect(page.getByTestId("geometry-object-param-width")).toHaveValue("2.5");
+    await page.getByTestId("geometry-professional-panel-analysis").click();
+    await page.getByTestId("geometry-workflow-command-analyze-topology").click();
+    await expect(page.getByTestId("geometry-topology-exact-position-result")).toHaveCount(0);
+    await expect(page.getByTestId("geometry-topology-exact-position-stale")).toBeVisible();
+    await expect(page.getByTestId("geometry-topology-box-definition")).toContainText("V=8 · E=18 · F=12 · χ=2");
+    await expect.poll(async () => Number((await definition.innerText()).match(/\br(\d+)/)?.[1])).toBeGreaterThan(initialRevision);
+    await page.getByTestId("geometry-topology-identify-exact-positions").click();
+    await expect(page.getByTestId("geometry-topology-exact-position-stale")).toHaveCount(0);
+    await expect(page.getByTestId("geometry-topology-exact-position-result")).toContainText("χ=2");
+
+    await page.getByTestId("geometry-professional-action-gallery").click();
+    await page.getByTestId("geometry-gallery-quick-add-box").click();
+    await page.getByTestId("geometry-workflow-step-analyze").click();
+    await page.getByTestId("geometry-workflow-command-analyze-topology").click();
+    await left.getByRole("button", { name: "Scene total" }).click();
+    const sceneObjectCount = Number((await page.getByTestId("geometry-scene-stats").innerText()).match(/(\d+) objects?/)?.[1]);
+    expect(sceneObjectCount).toBeGreaterThan(1);
+    await expect(left).toContainText(`V = ${24 * sceneObjectCount} , E = ${30 * sceneObjectCount} , F = ${12 * sceneObjectCount} , chi = V - E + F = ${6 * sceneObjectCount}`);
+    await expect(left).toContainText("counts are summed per mesh, with no cross-object identification");
+    await expect(page.getByTestId("geometry-topology-box-definition")).toHaveCount(0);
   } finally {
     if (app) await app.close().catch(() => undefined);
     await removeProfileDir(profileDir);

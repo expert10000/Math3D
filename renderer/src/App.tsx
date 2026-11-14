@@ -1046,6 +1046,7 @@ import {
   interpretTopologyByExactPosition,
   type ExactPositionTopologyInterpretation,
 } from "./geometry/exactPositionTopology";
+import { boxDefinitionBoundaryTopology } from "./geometry/boxDefinitionTopology";
 import {
   createMeshAnalysisMeshIdentity,
   createMeshAnalysisResultStore,
@@ -14598,39 +14599,43 @@ const App: React.FC = () => {
     const allObjects: Array<GeometryObject | GeometryDatasetMeshObject> = [...geometryObjects, ...geometryDatasetMeshObjects];
     const changedObjectIds: string[] = [];
     const suppressHistoryCapture = Date.now() < geometryHistoryCaptureSuppressUntilRef.current;
+    for (const obj of allObjects) {
+      const fingerprint =
+        "mesh" in obj
+          ? JSON.stringify({
+              id: obj.id,
+              name: obj.name,
+              transform: obj.transform,
+              material: obj.material,
+              visible: obj.visible,
+              meshLabel: obj.mesh.label,
+              meshVertCount: Math.floor(obj.mesh.positions.length / 3),
+              meshTriCount: obj.mesh.indices?.length ? Math.floor(obj.mesh.indices.length / 3) : Math.floor(obj.mesh.positions.length / 9),
+              meshPosSample: Array.from(obj.mesh.positions.slice(0, 24)),
+              meshPosTailSample: Array.from(
+                obj.mesh.positions.slice(Math.max(0, obj.mesh.positions.length - 24), obj.mesh.positions.length)
+              ),
+            })
+          : JSON.stringify({
+              id: obj.id,
+              name: obj.name,
+              type: obj.type,
+              params: obj.params,
+              transform: obj.transform,
+              material: obj.material,
+              visible: obj.visible,
+            });
+      nextFingerprint.set(obj.id, fingerprint);
+      const previous = geometryHistoryFingerprintRef.current.get(obj.id);
+      if (previous === fingerprint) continue;
+      changedObjectIds.push(obj.id);
+    }
+    const changedObjectIdSet = new Set(changedObjectIds);
     setGeometryObjectHistoryById((prev) => {
       let changed = false;
       const next = { ...prev };
       for (const obj of allObjects) {
-        const fingerprint =
-          "mesh" in obj
-            ? JSON.stringify({
-                id: obj.id,
-                name: obj.name,
-                transform: obj.transform,
-                material: obj.material,
-                visible: obj.visible,
-                meshLabel: obj.mesh.label,
-                meshVertCount: Math.floor(obj.mesh.positions.length / 3),
-                meshTriCount: obj.mesh.indices?.length ? Math.floor(obj.mesh.indices.length / 3) : Math.floor(obj.mesh.positions.length / 9),
-                meshPosSample: Array.from(obj.mesh.positions.slice(0, 24)),
-                meshPosTailSample: Array.from(
-                  obj.mesh.positions.slice(Math.max(0, obj.mesh.positions.length - 24), obj.mesh.positions.length)
-                ),
-              })
-            : JSON.stringify({
-                id: obj.id,
-                name: obj.name,
-                type: obj.type,
-                params: obj.params,
-                transform: obj.transform,
-                material: obj.material,
-                visible: obj.visible,
-              });
-        nextFingerprint.set(obj.id, fingerprint);
-        const previous = geometryHistoryFingerprintRef.current.get(obj.id);
-        if (previous === fingerprint) continue;
-        changedObjectIds.push(obj.id);
+        if (!changedObjectIdSet.has(obj.id)) continue;
         if (suppressHistoryCapture) continue;
         const history = next[obj.id] ?? [];
         const previousSnapshot = history.length ? history[0].snapshot : null;
@@ -24018,6 +24023,12 @@ const App: React.FC = () => {
       : null),
     [geometryProceduralPanelTab, geometrySelectedSceneMesh]
   );
+  const geometrySelectedBoxDefinitionTopology = useMemo(
+    () => (geometrySelectedSceneObject && "type" in geometrySelectedSceneObject
+      ? boxDefinitionBoundaryTopology(geometrySelectedSceneObject)
+      : null),
+    [geometrySelectedSceneObject]
+  );
   const geometryExactPositionTopologyCurrent =
     geometryExactPositionTopology &&
     geometrySelectedSceneObject?.id === geometryExactPositionTopology.objectId &&
@@ -24026,6 +24037,10 @@ const App: React.FC = () => {
       geometryExactPositionTopology.sourceRevision
       ? geometryExactPositionTopology.result
       : null;
+  const geometryExactPositionTopologyStale =
+    geometryExactPositionTopology != null &&
+    geometrySelectedSceneObject?.id === geometryExactPositionTopology.objectId &&
+    geometryExactPositionTopologyCurrent == null;
   const geometryEulerSceneMeshCounts = useMemo(() => {
     if (!proceduralMeshSet.meshes.length) return null;
     let c0 = 0;
@@ -99712,6 +99727,7 @@ case "mobius":
                                   <label key={param.id} style={{ fontSize: 11, fontWeight: 600 }}>
                                     {param.label}
                                     <input
+                                      data-testid={`geometry-object-param-${param.id}`}
                                       type="number"
                                       min={param.min}
                                       max={param.max}
@@ -103240,6 +103256,13 @@ case "mobius":
                             </div>
                           )}
                         </div>
+                        {geometryEulerScope === "selected" && geometrySelectedBoxDefinitionTopology && geometrySelectedSceneObject && (
+                          <div data-testid="geometry-topology-box-definition" style={{ border: "1px solid #93c5fd", borderRadius: 8, padding: "8px 10px", background: "#eff6ff", display: "grid", gap: 4, fontSize: 10 }}>
+                            <strong>Box definition boundary · source {geometrySelectedSceneObject.id} r{geometryObjectRevisionById[geometrySelectedSceneObject.id] ?? 0}</strong>
+                            <span>V={geometrySelectedBoxDefinitionTopology.vertexCount} · E={geometrySelectedBoxDefinitionTopology.edgeCount} · F={geometrySelectedBoxDefinitionTopology.faceCount} · χ={geometrySelectedBoxDefinitionTopology.eulerCharacteristic}</span>
+                            <span>Method: triangulated parametric box boundary ({geometrySelectedBoxDefinitionTopology.widthSegments} × {geometrySelectedBoxDefinitionTopology.heightSegments} × {geometrySelectedBoxDefinitionTopology.depthSegments} face grid). One connected closed abstract boundary; this does not certify the display mesh or a solid-volume result.</span>
+                          </div>
+                        )}
                         <div style={{ fontSize: 12, fontWeight: 700 }}>Raw indexed display-mesh topology</div>
                         <div
                           style={{
@@ -103335,6 +103358,11 @@ case "mobius":
                                       <span>V={geometryExactPositionTopologyCurrent.topology.vertexCount} · E={geometryExactPositionTopologyCurrent.topology.edgeCount} · F={geometryExactPositionTopologyCurrent.topology.faceCount} · χ={geometryExactPositionTopologyCurrent.topology.eulerCharacteristic}</span>
                                       <span>Components: {geometryExactPositionTopologyCurrent.topology.connectedComponentCount} · boundary edges: {geometryExactPositionTopologyCurrent.topology.boundaryEdgeCount} · non-manifold edges: {geometryExactPositionTopologyCurrent.topology.nonManifoldEdgeCount} · identified vertices: {geometryExactPositionTopologyCurrent.mergedVertexCount}</span>
                                       {geometryExactPositionTopologyCurrent.collapsedTriangleCount > 0 && <span>Triangles collapsed by identification: {geometryExactPositionTopologyCurrent.collapsedTriangleCount}</span>}
+                                    </div>
+                                  )}
+                                  {geometryExactPositionTopologyStale && (
+                                    <div data-testid="geometry-topology-exact-position-stale" style={{ color: "#9a3412", fontSize: 10 }}>
+                                      Previous exact-position interpretation is stale for this source revision. Run it again to inspect the current display mesh.
                                     </div>
                                   )}
                                 </div>
