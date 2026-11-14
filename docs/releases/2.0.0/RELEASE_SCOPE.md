@@ -1,7 +1,7 @@
 # Math3D 2.0 release scope and disposition
 
 **Prepared:** 2026-11-13 against `main` at `c7646c8cc`; fourth-journey decision recorded 2026-11-13.
-**Reviewed:** 2026-11-14 against `main` at `d15c694e` for the [source defect disposition](DEFECT_DISPOSITION.md).
+**Reviewed:** 2026-11-15 against `main` at `6c3d2012` for the [defect and host disposition](DEFECT_DISPOSITION.md).
 **State:** Four required 2.0 journeys and source-level defect/host dispositions are recorded for release closure TODO #1. Re-review at the exact freeze and release qualification remain open. This document does not certify RC1, an installed build, or publication. Reconcile it with the exact frozen candidate and the [RC1 blocker register](RC1_ACCEPTANCE_GATE.md) before sign-off.
 
 ## What counts as a journey
@@ -44,8 +44,8 @@ The [defect and claim register](DEFECT_DISPOSITION.md) records each documented o
 | Item | Disposition | Closure or claim boundary |
 | --- | --- | --- |
 | Retained App contexts and mixed Mesh/Volume growth; failed 800-switch review | **Blocking** | Pass the clean 800-switch budgets and two-hour source plateau, then installed memory and viewer-disposal budgets on the exact candidate. TODO #2–3, #10, #14. |
-| Four required journeys and live producer/runtime evidence | **Blocking for the flagship claim** | Qualify the four paths on the same reviewed commit, including their negative cases and independent fixtures. The Field Study/Workbook and exact-return route is a separate blocking acceptance case. TODO #4–6a, #9. |
-| Windows signing, red Installer Smoke, exact candidate, clean install, upgrade and rollback | **Blocking** | Provision trusted signing, keep the release gate fail-closed, produce one manifest and prove the exact installed bytes and 1.7 data preservation. TODO #7–8, #11–13. |
+| Four required journeys and live producer/runtime evidence | **Blocking for the signed installed flagship claim** | Connected source paths and one unsigned installed Dev rehearsal passed on earlier commits. Qualify all four paths, including negative cases and independent fixtures, on the same exact signed candidate and reviewed commit. TODO #4–6a, #9, #12. |
+| Windows signing, exact candidate, clean install, upgrade and rollback | **Blocking** | Source smoke is separate from candidate packaging; keep the signed release gate fail-closed. Provision trusted signing, produce one reviewed manifest and prove exact installed bytes and 1.7 data preservation. TODO #7–8, #11–13. |
 | RC1 freeze, RC2 soak, signed-asset and SBOM integrity, Gallery media, GA audit | **Blocking for Windows GA** | Re-freeze after code and scope settle; bind the signed assets, installed captures, and uploaded bytes to the same reviewed identity. TODO #9–11, #19–20. |
 | Optional native CGAL source and binary chain | **Blocking if the native binary is bundled or advertised** | Qualify matching source, build, license and SBOM ownership before inclusion; otherwise keep the optional backend absent. |
 | Surface sampled ridge, QWZ producer samples, bounded CAS locus, optional runtimes | **Limited capability** | Keep the scientific and runtime qualifications visible in the app, documentation, Gallery and exports. A limitation cannot excuse stale or falsely verified values. |
