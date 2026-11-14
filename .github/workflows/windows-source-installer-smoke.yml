@@ -20,6 +20,11 @@ on:
         required: false
         default: false
         type: boolean
+      run_upgrade_rehearsal:
+        description: Rehearse published 1.7 profile through a same-directory unsigned Dev overlay
+        required: false
+        default: false
+        type: boolean
   repository_dispatch:
     types:
       - run-installer-smoke
@@ -162,7 +167,7 @@ jobs:
           }
 
       - name: Run packaged Playwright e2e tests
-        if: ${{ !inputs.run_four_journeys }}
+        if: ${{ !inputs.run_four_journeys && !inputs.run_upgrade_rehearsal }}
         shell: pwsh
         run: |
           $env:MATH3D_RUN_PACKAGED_E2E = "1"
@@ -219,3 +224,58 @@ jobs:
             release-dev/latest.yml
             playwright-report/**
             test-results/**
+
+  upgrade-rehearsal:
+    if: ${{ inputs.run_upgrade_rehearsal }}
+    needs: release-smoke
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+          cache: npm
+      - name: Install exact test locks
+        shell: pwsh
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw 'Root test install failed.' }
+          npm --prefix renderer ci
+          if ($LASTEXITCODE -ne 0) { throw 'Renderer test install failed.' }
+      - uses: actions/download-artifact@v7
+        with:
+          name: windows-source-installer-smoke-artifacts
+          path: ${{ runner.temp }}/dev-artifacts
+      - name: Download pinned published 1.7 assets
+        shell: pwsh
+        run: |
+          $base = 'https://github.com/expert10000/Math3D/releases/download/v1.7.0'
+          foreach ($name in @('Math3D-Setup-1.7.0.exe', 'SHA256SUMS.txt', 'candidate-manifest.json')) {
+            Invoke-WebRequest -Uri "$base/$name" -OutFile (Join-Path $env:RUNNER_TEMP $name)
+          }
+      - name: Rehearse published 1.7 profile through unsigned Dev overlay
+        shell: pwsh
+        run: |
+          $installers = @(Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TEMP 'dev-artifacts') `
+            -Filter 'Math3D Dev Setup 2.0.0.exe' -File -Recurse)
+          if ($installers.Count -ne 1) { throw "Expected exactly one unsigned Dev installer, found $($installers.Count)." }
+          ./scripts/release20-unsigned-dev-upgrade.ps1 `
+            -OldInstaller (Join-Path $env:RUNNER_TEMP 'Math3D-Setup-1.7.0.exe') `
+            -ChecksumsPath (Join-Path $env:RUNNER_TEMP 'SHA256SUMS.txt') `
+            -ReleaseManifestPath (Join-Path $env:RUNNER_TEMP 'candidate-manifest.json') `
+            -DevInstaller $installers[0].FullName `
+            -WorkRoot (Join-Path $env:RUNNER_TEMP 'math3d-17-to-dev-upgrade') `
+            -EvidencePath (Join-Path $env:RUNNER_TEMP 'release20-unsigned-dev-upgrade.json')
+      - name: Upload unsigned Dev upgrade evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release20-unsigned-dev-upgrade-rehearsal
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/release20-unsigned-dev-upgrade.json
+            ${{ runner.temp }}/math3d-17-to-dev-upgrade/seed.json
+            ${{ runner.temp }}/math3d-17-to-dev-upgrade/verify.json
+            ${{ runner.temp }}/math3d-17-to-dev-upgrade/rollback.json
+            ${{ runner.temp }}/math3d-17-to-dev-upgrade/profile-inventory.json
