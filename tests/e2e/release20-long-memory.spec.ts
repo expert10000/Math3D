@@ -43,6 +43,7 @@ test("one Electron process retains responsive navigation and records long-run me
         byRoleMiB: Record<string, number>; electronPrivateMiB: number; rendererPrivateMiB: number;
         gpuPrivateMiB: number; gpuPid: number | null; contextLosses: number;
         jsHeapMiB: number | null; v8UsedMiB: number; v8TotalMiB: number; domNodes: number }> }>, pageErrors: [] as string[],
+    lifecycleEvents: [] as Array<{ event: string; elapsedMs: number; status: string; code?: number | null; signal?: string | null }>,
     peakSampledRssMiB: 0, failure: null as string | null,
   };
   const save = () => { mkdirSync(path.dirname(reportPath), { recursive: true });
@@ -54,6 +55,13 @@ test("one Electron process retains responsive navigation and records long-run me
     await resetSurfaceAppState(ctx.page);
     const page = ctx.page, pid = ctx.app.process().pid;
     if (!pid) throw new Error("Electron PID unavailable.");
+    const recordLifecycle = (event: string, details: { code?: number | null; signal?: string | null } = {}) => {
+      report.lifecycleEvents.push({ event, elapsedMs: Date.now() - started, status: report.status, ...details });
+      save();
+    };
+    page.on("crash", () => recordLifecycle("renderer-crash"));
+    page.on("close", () => recordLifecycle("page-close"));
+    ctx.app.process().on("exit", (code, signal) => recordLifecycle("electron-exit", { code, signal }));
     if (await page.evaluate(() => (window as Window & { appRuntime?: { e2e?: boolean } }).appRuntime?.e2e ?? false))
       throw new Error("Memory soak must run without E2E runtime hooks.");
     const heapSession = await page.context().newCDPSession(page);
