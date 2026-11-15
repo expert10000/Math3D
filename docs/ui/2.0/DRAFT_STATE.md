@@ -18,7 +18,7 @@ Reviewed source: `2cf4b6a4b096ff08f3e7c8e928c542d25acca065`. Planning files reac
 | Task | State | Owner / branch | Reviewed base | Owned scope | Next check |
 | --- | --- | --- | --- | --- | --- |
 | SHARED-01 | verified (scoped) | this cleanup thread / codex/ui-cleanup-first-slice | 2cf4b6a4 | Production footer patch merged; no further App.tsx edits reserved by this task | Closed: scoped Windows native CI passed at fa27817f; no file reservation |
-| CA-01 | local native pass; Windows CI pending (responsive layout slice) | UI cleanup thread / codex/ui-workbench-implementation | 0272172c | PR71 implementation complete; App.tsx/CSS edit reservation released; scoped harness remains owned by this thread | Wait for exact-head Windows CI; inspect scoped/broad results before review |
+| CA-01 | responsive slice scoped pass; broad CI pending | UI cleanup thread / codex/ui-workbench-implementation | 0272172c | PR71 implementation complete; App.tsx/CSS edit reservation released; scoped harness remains owned by this thread | Scoped Windows merge-preview passed; inspect remaining broad CI before review |
 | MESH-01 | implemented; local native/typecheck pass; Windows CI pending | UI cleanup thread / codex/mesh-ui-operation-form | d7010fc3 | PR74; basic form presentation complete; no production edit reservation; focused harness owned by this thread | Inspect exact-head scoped Windows CI before review |
 | Geometry #61 | external draft | codex/geometry-topology-2-0 / PR61 | See current PR head | Geometry topology/control work; coordinate any App.tsx overlap | Owned by its existing thread; not modified here |
 
@@ -27,7 +27,7 @@ Reviewed source: `2cf4b6a4b096ff08f3e7c8e928c542d25acca065`. Planning files reac
 | Draft / tasks | State | Owner | Evidence / remaining work |
 | --- | --- | --- | --- |
 | [Mesh](MESH_UI_REVIEW_DRAFT.md), MESH-01…05 | MESH-01 basic forms: local native pass; remaining scope and MESH-02…05 proposed | basic forms: PR74; remaining tasks unclaimed | Native Smooth and Undo spot checks recorded; layout, capability, persistence acceptance pending |
-| [Complex](COMPLEX_ANALYSIS_UI_REVIEW_DRAFT.md), CA-01…05 | CA-01 local native pass; Windows CI pending; CA-02…05 proposed | CA-01: UI cleanup thread / PR71; other tasks unclaimed | 1/z preset and explorer navigation observed; plot/layout and analytic workflows pending |
+| [Complex](COMPLEX_ANALYSIS_UI_REVIEW_DRAFT.md), CA-01…05 | CA-01 responsive slice scoped pass; broad CI pending; CA-02…05 proposed | CA-01: UI cleanup thread / PR71; other tasks unclaimed | 1/z preset and explorer navigation observed; plot/layout and analytic workflows pending |
 | [Topology](TOPOLOGY_UI_REVIEW_DRAFT.md), TOP-01…05 | proposed | unclaimed | Torus canonical χ=0 versus display mesh observed; view/algebra/persistence cleanup pending |
 | [Surfaces](SURFACES_UI_REVIEW_DRAFT.md), SURF-01…05 | proposed | unclaimed | Implicit preset switch and canonical Analysis panel observed; representation/derive/save journey pending |
 | [Graphs](GRAPHS_UI_REVIEW_DRAFT.md), GR-01…05 | GR-01 verified (via SHARED-01); GR-02…05 proposed | remaining tasks unclaimed | y=x preview/create/hide/show observed; remaining Graph layout/scientific-transfer tasks unclaimed |
@@ -79,3 +79,6 @@ Check remote main, this claim and branch HEAD. Use the screenshot evidence and s
 - 2026-11-15 — PR71 scoped Windows CI43713162444 has started: installation passed, typecheck/build running; native steps pending. Its earlier queued observation is retained as history, not a failure or PASS.
 
 - 2026-11-15 — MESH-01 local `npm run typecheck:noemit` completed successfully (exit0), including renderer and E2E TypeScript. Build and native execution results above remain scoped working-tree evidence. PR74 Windows CI still pending. PR71 exact-head scoped job has passed typecheck/core build and is executing its two native tests; no native CI PASS yet.
+
+- 2026-11-15 — PR71 Windows scoped run43713162444 PASSED: typecheck/core build and2native tests; layout18.0s, footer isolation16.8s, suite36.7s, retries disabled. Provenance correction: GitHub PR checkout tested synthetic merge-preview `5d8db77d81a4d457d8d05b7d692091d107d9777f` (headc3070451 into main562b9418), confirmed by checkout/build logs; this is NOT execution directly at headc3070451 or an actual merged commit. Earlier “exact-head scoped PR run” labels identify the associated PR head, not the checked-out source. [Structured observation](evidence/complex-layout-windows-ci.json). Artifact14160679861,587182bytes,SHA256a1470304be990a2eaaf61f5879ad807dfd6ccb670c8b25053ae569e2414bef81.
+- 2026-11-15 — PR71 remains draft:7broader workflows still queued/running. No merge or baseline approval. PR74 local typecheck/build/native test passed; Windows scoped jobs remain pending. Current implementation/CI scope is visible to other threads; no production edit reservation is held.
