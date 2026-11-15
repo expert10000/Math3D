@@ -1,0 +1,16 @@
+{
+  "schema": "math3d.windows-installed-qualification-plan/v1",
+  "repository": "expert10000/Math3D",
+  "targetPr": 61,
+  "targetCommit": null,
+  "binding": "Await actual PR61 merge commit; never substitute draft head or moving main",
+  "journeys": [
+    {"id":"WIN-INSTALL","name":"Fresh Windows install, Project seed and cold reopen","status":"missing","required":["trusted exact-source build","installer/executable/worker SHA256 and byte counts","real packaged app version","UI import/save of two Projects","cold-reopen successful activation","identities/hashes/selections/results/references and sidecar bytes retained"]},
+    {"id":"WIN-UPGRADE","name":"Same-product Windows upgrade and retained profile","status":"missing","required":["old/new exact installer sources and hashes","same application identity, product and channel","old app authored Graph and setting","backup profile inventory","candidate installed in same install root","saved Graph checkpoint/settings retained and opened"]},
+    {"id":"WIN-RECOVERY","name":"Installed Windows runtime loss, offline cold reopen and safe retry","status":"missing","required":["real bundled Python/VTK computation/save","actual worker process killed and executable made unavailable","successful offline workspace open","exact checkpoint/history/resource hashes and bytes retained","restore same worker bytes","respect actual advertised restart backoff without reset","UI capability refresh and fresh PID/handshake","explicit real retry with matching output hashes"]}
+  ],
+  "fixtureStatus":"prepared-not-executed",
+  "windowsSigning":"separate release gate; no approval or unsigned bypass",
+  "cloudflare":"excluded",
+  "releaseApproved":false
+}
