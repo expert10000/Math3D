@@ -1,7 +1,5 @@
 name: Surface Complex Mesh UI follow-up native regression
 on:
-  push:
-    branches: [codex/ui-followup-four]
   pull_request:
     branches: [main]
     paths:
