@@ -247,6 +247,10 @@ for (const { format, offset } of [{ format: "folder", offset: .5 }, { format: "z
     expect(returned.project.workspace.results).toEqual(packageBefore.project.workspace.results);
     expect(returned.project.workspace.scientificSelections).toEqual(packageBefore.project.workspace.scientificSelections);
     expect(returned.resources.sidecars()).toEqual(packageBefore.resources.sidecars());
+    await explorer(page);
+    await expect(reopenedPair).toBeVisible();
+    await expect(reopenedPair).toContainText("Both scientific sources verified");
+    await expectDifference(reopenedPair.getByTestId("field-difference-view"));
     await page.screenshot({ path: test.info().outputPath(`two-scientific-${format}-difference-${offset}-browser.png`), fullPage: true });
     if (format === "zip" && offset === .5) for (const mode of ["corrupt", "missing"]) {
       const activeBefore = await active(page);
