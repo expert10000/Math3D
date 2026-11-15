@@ -18,7 +18,7 @@ Reviewed source: `2cf4b6a4b096ff08f3e7c8e928c542d25acca065`. Planning files reac
 | Task | State | Owner / branch | Reviewed base | Owned scope | Next check |
 | --- | --- | --- | --- | --- | --- |
 | SHARED-01 | verified (scoped) | this cleanup thread / codex/ui-cleanup-first-slice | 2cf4b6a4 | Production footer patch merged; no further App.tsx edits reserved by this task | Closed: scoped Windows native CI passed at fa27817f; no file reservation |
-| CA-01 | claimed (responsive layout slice) | UI cleanup thread / codex/ui-workbench-implementation | 0272172c | App.tsx analytic Explorer layout JSX only (around111000–111340); new ComplexExplorerLayout component/CSS; focused native layout test and scoped workflow | Check responsive Z/W/Inspector bounds at1100 and800px; preserve math handlers and existing layout state |
+| CA-01 | implemented; verification pending (responsive layout slice) | UI cleanup thread / codex/ui-workbench-implementation | 0272172c | App.tsx analytic Explorer layout JSX only (around111000–111340); new complexExplorerLayout.css; focused native layout test and scoped workflow | Check responsive Z/W/Inspector bounds at1100 and800px; preserve math handlers and existing layout state |
 | Geometry #61 | external draft | codex/geometry-topology-2-0 / PR61 | See current PR head | Geometry topology/control work; coordinate any App.tsx overlap | Owned by its existing thread; not modified here |
 
 ## Workbench backlog
@@ -26,7 +26,7 @@ Reviewed source: `2cf4b6a4b096ff08f3e7c8e928c542d25acca065`. Planning files reac
 | Draft / tasks | State | Owner | Evidence / remaining work |
 | --- | --- | --- | --- |
 | [Mesh](MESH_UI_REVIEW_DRAFT.md), MESH-01…05 | proposed | unclaimed | Native Smooth and Undo spot checks recorded; layout, capability, persistence acceptance pending |
-| [Complex](COMPLEX_ANALYSIS_UI_REVIEW_DRAFT.md), CA-01…05 | proposed | unclaimed | 1/z preset and explorer navigation observed; plot/layout and analytic workflows pending |
+| [Complex](COMPLEX_ANALYSIS_UI_REVIEW_DRAFT.md), CA-01…05 | CA-01 responsive slice implemented; verification pending; CA-02…05 proposed | CA-01: UI cleanup thread / PR71; other tasks unclaimed | 1/z preset and explorer navigation observed; plot/layout and analytic workflows pending |
 | [Topology](TOPOLOGY_UI_REVIEW_DRAFT.md), TOP-01…05 | proposed | unclaimed | Torus canonical χ=0 versus display mesh observed; view/algebra/persistence cleanup pending |
 | [Surfaces](SURFACES_UI_REVIEW_DRAFT.md), SURF-01…05 | proposed | unclaimed | Implicit preset switch and canonical Analysis panel observed; representation/derive/save journey pending |
 | [Graphs](GRAPHS_UI_REVIEW_DRAFT.md), GR-01…05 | proposed | SHARED-01 verified; other tasks unclaimed | y=x preview/create/hide/show observed; remaining Graph layout/scientific-transfer tasks unclaimed |
@@ -59,3 +59,7 @@ Check remote main, this claim and branch HEAD. Use the screenshot evidence and s
 - 2026-11-15 — SHARED-01 closed as scoped verified on source/harness `fa27817fb69c38dc0b6dae8bc2ec108cab03b13a`; Windows CI run43710641247 passed. No production file is reserved by this thread. Other threads should pull current main and claim one proposed module task with exact file regions before editing. This documentation-only handoff does not transfer acceptance to its new commit. Next implementation: select an unclaimed module task after checking current source and active claims.
 
 - 2026-11-15 — Claimed CA-01 responsive layout slice from0272172c. Exact scope above; other module tasks remain unclaimed. No ownership of scientific models, Geometry #61 or unrelated App.tsx regions. Claim published before substantive edits.
+
+- 2026-11-15 — CA-01 responsive slice implemented: Inspector stacks below plots when usable workbench width is at most900px; plot grids stack at640px. Existing view conditions, handlers and layout state retained; layout buttons expose aria-pressed. Focused native regression added for800/1100/1600px. Local `npm run typecheck:noemit` passed (exit0); native CI is pending; full CA-01 and preset-column cleanup are not yet accepted.
+
+- 2026-11-15 — Published [draft PR71](https://github.com/expert10000/Math3D/pull/71), current implementation/harness `d6ff29e0f06972dafb1c5a7ec18fedd6ba3b38a5`. Local typecheck passed and Playwright discovery found the focused test; neither is a native execution PASS. Exact-head scoped CI: [push43712479395](https://github.com/expert10000/Math3D/actions/runs/43712479395) and [PR43712485637](https://github.com/expert10000/Math3D/actions/runs/43712485637), queued at last check. Local core build running. CA-01 remains implemented/verification pending, no merge or acceptance approval. Other module tasks remain proposed/unclaimed. The current reservation is the analytic Explorer JSX/CSS and focused harness only.
