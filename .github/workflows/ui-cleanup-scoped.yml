@@ -1,11 +1,11 @@
 name: UI cleanup scoped native regression
 on:
   push:
-    branches: [main, codex/ui-cleanup-first-slice]
-    paths: ['renderer/src/App.tsx','tests/e2e/workspace-status-scope.spec.ts','.github/workflows/ui-cleanup-scoped.yml']
+    branches: [main, codex/ui-cleanup-first-slice, codex/ui-workbench-implementation]
+    paths: ['renderer/src/App.tsx','tests/e2e/workspace-status-scope.spec.ts','renderer/src/math/complexExplorerLayout.css','tests/e2e/complex-explorer-layout.spec.ts','.github/workflows/ui-cleanup-scoped.yml']
   pull_request:
     branches: [main]
-    paths: ['renderer/src/App.tsx','tests/e2e/workspace-status-scope.spec.ts','.github/workflows/ui-cleanup-scoped.yml']
+    paths: ['renderer/src/App.tsx','tests/e2e/workspace-status-scope.spec.ts','renderer/src/math/complexExplorerLayout.css','tests/e2e/complex-explorer-layout.spec.ts','.github/workflows/ui-cleanup-scoped.yml']
 permissions:
   contents: read
 jobs:
@@ -30,14 +30,14 @@ jobs:
           key: ${{ runner.os }}-electron-cache-${{ hashFiles('package-lock.json') }}
       - run: npm ci --foreground-scripts && npm --prefix renderer ci --foreground-scripts
       - run: npm run typecheck:noemit && npm run build:core
-      - name: Native workbench footer isolation and retained Mesh return
+      - name: Native footer isolation and Complex Explorer layout
         shell: bash
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: ui-evidence/native.json
         run: |
           mkdir -p ui-evidence
           git rev-parse HEAD > ui-evidence/source.txt
-          npx playwright test tests/e2e/workspace-status-scope.spec.ts --workers=1 --retries=0 --reporter=list,json
+          npx playwright test tests/e2e/workspace-status-scope.spec.ts tests/e2e/complex-explorer-layout.spec.ts --workers=1 --retries=0 --reporter=list,json
       - uses: actions/upload-artifact@v7
         if: always()
         with:

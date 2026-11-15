@@ -1,0 +1,26 @@
+/* Respond to usable workbench width, including the app's open docks. */
+.complex-explorer-layout {
+  container-type: inline-size;
+  min-width: 0;
+}
+.complex-explorer-workspace {
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+}
+.complex-explorer-workspace > *,
+.complex-explorer-plane-grid > * {
+  min-width: 0;
+}
+.complex-explorer-inspector {
+  overflow-wrap: anywhere;
+}
+@container (max-width: 900px) {
+  .complex-explorer-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@container (max-width: 640px) {
+  /* Inline view-specific proportions apply when there is room for them. */
+  .complex-explorer-plane-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
