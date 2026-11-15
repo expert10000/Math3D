@@ -34409,6 +34409,8 @@ const App: React.FC = () => {
   const [meshComponentBrowserKind, setMeshComponentBrowserKind] = useState<"face" | "edge" | "vertex">("face");
   const [meshComponentBrowserQuery, setMeshComponentBrowserQuery] = useState("");
   const [meshComponentBrowserOpen, setMeshComponentBrowserOpen] = useState(false);
+  const [meshRegionShape, setMeshRegionShape] = useState<"box" | "lasso" | null>(null);
+  const [meshRegionVisibility, setMeshRegionVisibility] = useState<"frontmost" | "through" | "xray">("frontmost");
   const [linkedMeshModifiers, setLinkedMeshModifiers] = useState<readonly LinkedMeshModifier[]>(() => {
     const history = initialSurfaceMeshTopologySession?.history ?? [];
     const settings = initialSurfaceMeshTopologySession?.modifierSettings ?? [];
@@ -61726,6 +61728,19 @@ case "mobius":
     setMeshMultiSelectionSet(createUnifiedSelectionSet(selections));
     setSurfaceMeshTopologyStatus(`${direction === "grow" ? "Grew" : "Shrank"} selection to ${selections.length} ${kind} components.`);
   }, [buildMeshBrowserSelection, meshComponentBrowserKind, meshMultiSelectionSet.items, surfaceMeshData]);
+  const handleSelectMeshScreenRegion = useCallback((ids: readonly string[]) => {
+    const accepted = ids.map((id) => ({ id, selection: buildMeshBrowserSelection(meshComponentBrowserKind, id) }))
+      .filter((item): item is { id: string; selection: UnifiedSelection } =>
+        !!item.selection && evaluateUnifiedSelectionFilter(item.selection, unifiedSelectionFilter).accepted);
+    const selections = accepted.map((item) => item.selection);
+    if (selections.length) {
+      handleSelectMeshBrowserComponent(accepted[0].id, false);
+      setMeshMultiSelectionSet(createUnifiedSelectionSet(selections));
+      setSceneSelection(sceneSelectionFromUnified(selections[0]));
+    }
+    setSurfaceMeshTopologyStatus(`Selected ${selections.length} ${meshComponentBrowserKind} components by ${meshRegionShape ?? "region"}.`);
+    setMeshRegionShape(null);
+  }, [buildMeshBrowserSelection, handleSelectMeshBrowserComponent, meshComponentBrowserKind, meshRegionShape, unifiedSelectionFilter]);
 
   const handleCreateGeometryFromMesh = useCallback((kind: MeshDerivedGeometryKind) => {
     const mesh = surfaceMeshData;
@@ -85330,6 +85345,15 @@ case "mobius":
                             <button type="button" onClick={() => handleExpandMeshBrowserSelection("grow")}>Grow</button>
                             <button type="button" onClick={() => handleExpandMeshBrowserSelection("shrink")}>Shrink</button>
                           </div>
+                          <div style={{ display: "flex", gap: 4 }}>
+                            <select aria-label="Region visibility" value={meshRegionVisibility}
+                              onChange={(event) => setMeshRegionVisibility(event.target.value as "frontmost" | "through" | "xray")}>
+                              <option value="frontmost">Frontmost</option><option value="through">Through object</option><option value="xray">X-ray</option>
+                            </select>
+                            <button type="button" aria-pressed={meshRegionShape === "box"} onClick={() => setMeshRegionShape(meshRegionShape === "box" ? null : "box")}>Box select</button>
+                            <button type="button" aria-pressed={meshRegionShape === "lasso"} onClick={() => setMeshRegionShape(meshRegionShape === "lasso" ? null : "lasso")}>Lasso select</button>
+                          </div>
+                          {meshRegionShape && <span>Drag on the Mesh viewport to {meshRegionShape} select {meshComponentBrowserKind}s.</span>}
                           <div style={{ maxHeight: 120, overflow: "auto", display: "flex", gap: 3, flexWrap: "wrap" }}>
                             {meshComponentBrowserIds.map((id) => <button key={`${meshComponentBrowserKind}:${id}`} type="button"
                               onClick={(event) => handleSelectMeshBrowserComponent(id, event.ctrlKey || event.metaKey || event.shiftKey)}>{meshComponentBrowserKind} {id}</button>)}
@@ -87053,6 +87077,15 @@ case "mobius":
                               <button type="button" onClick={() => handleExpandMeshBrowserSelection("grow")}>Grow</button>
                               <button type="button" onClick={() => handleExpandMeshBrowserSelection("shrink")}>Shrink</button>
                             </div>
+                            <div style={{ display: "flex", gap: 4 }}>
+                              <select aria-label="Region visibility" value={meshRegionVisibility}
+                                onChange={(event) => setMeshRegionVisibility(event.target.value as "frontmost" | "through" | "xray")}>
+                                <option value="frontmost">Frontmost</option><option value="through">Through object</option><option value="xray">X-ray</option>
+                              </select>
+                              <button type="button" aria-pressed={meshRegionShape === "box"} onClick={() => setMeshRegionShape(meshRegionShape === "box" ? null : "box")}>Box select</button>
+                              <button type="button" aria-pressed={meshRegionShape === "lasso"} onClick={() => setMeshRegionShape(meshRegionShape === "lasso" ? null : "lasso")}>Lasso select</button>
+                            </div>
+                            {meshRegionShape && <span>Drag on the Mesh viewport to {meshRegionShape} select {meshComponentBrowserKind}s.</span>}
                             <div style={{ maxHeight: 120, overflow: "auto", display: "flex", gap: 3, flexWrap: "wrap" }}>
                               {meshComponentBrowserIds.map((id) => <button key={`${meshComponentBrowserKind}:${id}`} type="button"
                                 onClick={(event) => handleSelectMeshBrowserComponent(id, event.ctrlKey || event.metaKey || event.shiftKey)}>{meshComponentBrowserKind} {id}</button>)}
@@ -89977,6 +90010,10 @@ case "mobius":
                         ) : (
                         <SurfaceViewer
                               surfaceId={primarySurfaceId}
+                              meshRegionSelection={surfaceViewerKind === "mesh" && meshRegionShape && surfaceMeshData
+                                ? { mesh: surfaceMeshData, kind: meshComponentBrowserKind, shape: meshRegionShape,
+                                  visibility: meshRegionVisibility, onSelect: handleSelectMeshScreenRegion }
+                                : null}
                               renderQuality={surfaceRenderQuality}
                               meshInteractionQualityMode={meshInteractionQualityMode}
                               meshInteractionRestoreDelayMs={meshInteractionRestoreDelayMs}
