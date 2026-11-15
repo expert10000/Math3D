@@ -24,7 +24,7 @@ Reviewed source: `2cf4b6a4b096ff08f3e7c8e928c542d25acca065`. Planning files reac
 | Geometry #61 | external draft | codex/geometry-topology-2-0 / PR61 | See current PR head | Geometry topology/control work; coordinate any App.tsx overlap | Owned by its existing thread; not modified here |
 | SURF-01 | implemented; focused unit pass | research UI chat / codex/ui-four-slices | bceb01c6 | Compact source/derived header in SurfaceAnalysisComputationPanel; no `App.tsx`, Surface owner or Geometry changes | Renderer typecheck and native source check pending |
 | GR-03 | implemented; focused native pass | research UI chat / codex/ui-four-slices | bceb01c6 | `Graph2DAuthoringPanel.tsx` editor dialog focus/error affordance and scoped `graphsWorkspace.css`; no Graph scientific owners or Gallery changes | Final typecheck and exact-commit CI pending |
-| MESH-02 | claimed | research UI chat / codex/ui-four-slices | bceb01c6 | Disabled Run explanation in `MeshOperationsPanel.tsx` near expanded Run and one `App.tsx` callback at the Mesh panel invocation near 84326; no operation handler or MESH-01 form grouping changes | Verify missing-source/runtime reasons and Compute Center navigation while result details remain available |
+| MESH-02 | implemented; focused unit pass | research UI chat / codex/ui-four-slices | bceb01c6 | Disabled Run explanation in `MeshOperationsPanel.tsx` near expanded Run and one `App.tsx` callback at the Mesh panel invocation; no operation handler or MESH-01 form grouping changes | Native Compute Center handoff and final typecheck pending |
 
 ## Workbench backlog
 
@@ -61,6 +61,7 @@ Check remote main, this claim and branch HEAD. Use the screenshot evidence and s
 - 2026-11-15 — Claimed GR-03 after SURF-01's focused unit pass. Scope is the Graph authoring dialog's focus, action visibility and validation recovery. The unrelated Graph Gallery and Graph scientific state remain with their owners.
 - 2026-11-15 — GR-03 native Windows Electron source run: `npx playwright test tests/e2e/graph-authoring-recovery.spec.ts --reporter=line`, 1 passed, 0 skipped after two test-locator corrections (ambiguous accessible labels). At 760×600 it checks a Domain error link focuses its numeric input, Preview stays in view after dialog scroll, Back returns focus to Preview, and Cancel returns focus to Add Graph. `npm run build:core` passed from the working tree; build identity marked dirty. Exact-commit CI and broad editor modes remain open.
 - 2026-11-15 — Claimed MESH-02 after the GR-03 native pass. The adjacent MESH-01 form grouping is in PR74 with its production reservation released; this slice only adds disabled Run reasons and an existing Compute Center handoff. Reconcile PR74 before merge if both touch the Run region.
+- 2026-11-15 — MESH-02 uses the existing Run eligibility cases to distinguish missing Mesh/implicit sources, missing Boolean operand, busy execution, and unavailable Mesh or CGAL runtime. Only a runtime blocker offers the Compute Center Runtimes action. The result section stays outside the Run gating. Focused Vitest: 2 passed; native route and final typecheck pending.
 
 - 2026-11-15 — Review prepared from 2cf4b6a4; all five native workspaces inspected in an isolated profile. Planning committed before the first shared implementation; actual code/test evidence will be appended separately.
 
