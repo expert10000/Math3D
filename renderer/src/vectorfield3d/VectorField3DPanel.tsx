@@ -871,6 +871,10 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
       components: expressions.map((source, index) => vectorField3DExpression(source,
         document.source.field.kind === "expressions" ? document.source.field.components[index]!.unit : "m/s")) as
         [VectorField3DExpression, VectorField3DExpression, VectorField3DExpression] } }) : document;
+  // Verification publishes source artifacts; same-generation view/probe edits remain current.
+  const publishPreviewDocument = (next: VectorField3DDocument) => setDocument(current =>
+    current.identity.id === next.identity.id && current.identity.revision === next.identity.revision &&
+    current.identity.structuralHash === next.identity.structuralHash ? current : next);
   const publishProbeCursor = () => {
     if (!workspace.probe || busy || lineBusy) return;
     try {
@@ -931,12 +935,12 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
       fingerprint = opened.source.fingerprint;
       const { artifact: result, volumes } = await previewVerifiedVectorField3D(next,
         opened.source.manifestJson, fingerprint, bridge, initial => {
-          if (epoch === previewEpoch.current) { setArtifact(initial.artifact); setDocument(next); }
+          if (epoch === previewEpoch.current) { setArtifact(initial.artifact); publishPreviewDocument(next); }
         }, () => new Promise(resolve => setTimeout(resolve, 120)));
       if (epoch !== previewEpoch.current) return;
       if (next.workspace?.probe) setProbeArtifact(sampleVectorField3DProbe(next, next.workspace.probe,
         { manifestJson: opened.source.manifestJson, fingerprint, volumes }));
-      setArtifact(result); setDocument(next); setSourceVerification("verified");
+      setArtifact(result); publishPreviewDocument(next); setSourceVerification("verified");
       previewReady = true;
     } catch (cause) { if (epoch === previewEpoch.current) {
       setArtifact(null); setSourceVerification("failed");
@@ -2468,7 +2472,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
       {inspectorSection === "all" ? "Overview" :
         inspectorSection[0]!.toUpperCase() + inspectorSection.slice(1)}</h5>
     {!fieldLayer && <div data-gf06-section="analyze" className="field-explorer-compare-inspector">
-      <VectorField3DComparisonPanel document={document} project={project}
+      <VectorField3DComparisonPanel document={document} project={project} disabled={busy || lineBusy}
         onSelectSourceA={onSelectComparisonSource && !busy && !lineBusy ? id => {
           const entry = project?.workspace.entries.find(item => item.module === "vector3d" && item.expected.id === id);
           if (entry?.checkpoint.format !== "math3d.vector-field3d-document") return;
