@@ -3064,26 +3064,40 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
 
     return (
       <div data-testid="topology-algebra-view" style={{ display: "grid", gap: 10 }}>
-        <section data-testid="topology-algebra-provenance" style={{ border: "1px solid #bfdbfe", borderRadius: 10, background: "#eff6ff", padding: "9px 10px", display: "grid", gap: 5, fontSize: 11 }}>
+        <section data-testid="topology-algebra-provenance" style={{ border: "1px solid #bfdbfe", borderRadius: 10, background: "#eff6ff", padding: "9px 10px", display: "grid", gap: 6, fontSize: 11 }}>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <strong>Exact cellular Algebra</strong>
-            <span style={{ fontWeight: 700, color: algebraAuthority.status === "exact" ? "#166534" : "#b91c1c" }}>
+            <span data-testid="topology-algebra-eligibility" style={{ fontWeight: 700, color: algebraAuthority.status === "exact" ? "#166534" : "#b91c1c" }}>
               {algebraAuthority.status === "exact" ? "ELIGIBLE" : algebraAuthority.status.toUpperCase()}
             </span>
           </div>
-          <div>Canonical basis: {result.topologyObject.canonical.vertices.length} zero-cells · {result.topologyObject.canonical.edges.length} one-cells · {result.topologyObject.canonical.faces.length} two-cells.</div>
-          {sourceProvenance ? (
-            <>
-              <div><strong>Document:</strong> {sourceProvenance.documentId}</div>
-              <div><strong>Source generation:</strong> revision {sourceProvenance.revision} · generation {sourceProvenance.generation}</div>
-              <div style={{ overflowWrap: "anywhere" }}><strong>Source structural hash:</strong> {sourceProvenance.structuralHash}</div>
-              <div style={{ overflowWrap: "anywhere" }}><strong>Canonical complex hash:</strong> {canonicalHash}</div>
-              <div style={{ overflowWrap: "anywhere" }}><strong>Matrix artifact:</strong> {algebraAuthority.status === "exact" ? algebraAuthority.boundary.handle.artifactId : "withheld"}</div>
-            </>
-          ) : (
-            <div style={{ color: "#b91c1c" }}>Canonical cellular algebra is not eligible; exact matrices and homology are withheld.</div>
+          <div data-testid="topology-algebra-summary" style={{ display: "grid", gap: 4 }}>
+            <div><strong>Canonical cell basis:</strong> {result.topologyObject.canonical.vertices.length} zero-cells · {result.topologyObject.canonical.edges.length} one-cells · {result.topologyObject.canonical.faces.length} two-cells.</div>
+            <div><strong>Exact boundaries:</strong> {algebraAuthority.status === "exact" ? "available for this canonical complex" : "withheld for this source"}</div>
+            <div><strong>Chain condition:</strong> {result.cellularBoundaryOperators.value?.chainCondition.holds ? "PASS" : result.cellularBoundaryOperators.status}</div>
+            <div style={{ color: "#475569" }}>Cellular results use exact incidences of the canonical finite complex, not triangles from the displayed R³ realization. A local eligibility status is not a published Sage result.</div>
+          </div>
+          {algebraAuthority.status !== "exact" && (
+            <div data-testid="topology-algebra-ineligibility" role="status" style={{ color: "#b91c1c" }}>
+              Exact cellular algebra is withheld (status: {algebraAuthority.status}). The required canonical boundary data are unavailable; inspect Structure diagnostics and the construction source before retrying. No integral homology conclusion is implied.
+            </div>
           )}
-          <div style={{ color: "#475569" }}>Results derive from the canonical finite complex and exact cell incidences, never from the displayed R³ realization.</div>
+          <details data-testid="topology-algebra-provenance-details" style={{ borderTop: "1px solid #bfdbfe", paddingTop: 5 }}>
+            <summary style={{ cursor: "pointer", fontWeight: 700 }}>Source, hashes and matrix artifact</summary>
+            <div style={{ display: "grid", gap: 4, marginTop: 7 }}>
+              {sourceProvenance ? (
+                <>
+                  <div><strong>Document:</strong> {sourceProvenance.documentId}</div>
+                  <div><strong>Source generation:</strong> revision {sourceProvenance.revision} · generation {sourceProvenance.generation}</div>
+                  <div style={{ overflowWrap: "anywhere" }}><strong>Source structural hash:</strong> {sourceProvenance.structuralHash}</div>
+                  <div style={{ overflowWrap: "anywhere" }}><strong>Canonical complex hash:</strong> {canonicalHash}</div>
+                  <div style={{ overflowWrap: "anywhere" }}><strong>Matrix artifact:</strong> {algebraAuthority.status === "exact" ? algebraAuthority.boundary.handle.artifactId : "withheld"}</div>
+                </>
+              ) : (
+                <div>Source provenance and exact matrix artifacts unavailable for this eligibility state.</div>
+              )}
+            </div>
+          </details>
         </section>
 
         <section

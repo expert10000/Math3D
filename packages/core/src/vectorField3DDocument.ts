@@ -57,11 +57,16 @@ export type VectorField3DOverlayRegion = Readonly<{
   bounds: readonly [readonly [number, number], readonly [number, number]];
   vectorChannel: "speed" | "p" | "q" | "r"; visible: boolean }>;
 export type FieldExplorerInspectorSection = "all" | "layer" | "probe" | "analyze" | "provenance";
+export type FieldExplorerDifferenceSettings = Readonly<{
+  visible: boolean; channel: "magnitude" | "p" | "q" | "r";
+}>;
 export type FieldExplorerWorkflow = Readonly<{
   inspectorSection: FieldExplorerInspectorSection;
   comparisonSource: DocumentIdentity | null;
   comparisonResolution: 5 | 9 | 13 | 16;
   comparisonVisible: boolean;
+  /** Optional display state; legacy documents keep their original canonical bytes. */
+  differenceView?: FieldExplorerDifferenceSettings;
 }>;
 export type VectorField3DWorkspace = Readonly<{
   /** Optional display state. Omitted on legacy documents to retain their canonical bytes. */
@@ -263,10 +268,16 @@ const normalizeVectorField3DDocumentUncached = (value: unknown): ValidationResul
         ...(Object.prototype.hasOwnProperty.call(workspace, "explorer") ? ["explorer"] : [])]) ||
       Object.prototype.hasOwnProperty.call(workspace, "explorer") &&
         (!record(workspace.explorer) || !exact(workspace.explorer,
-          ["inspectorSection", "comparisonSource", "comparisonResolution", "comparisonVisible"]) ||
+          ["inspectorSection", "comparisonSource", "comparisonResolution", "comparisonVisible",
+            ...(Object.prototype.hasOwnProperty.call(workspace.explorer, "differenceView") ? ["differenceView"] : [])]) ||
           !["all", "layer", "probe", "analyze", "provenance"].includes(workspace.explorer.inspectorSection as string) ||
           ![5, 9, 13, 16].includes(workspace.explorer.comparisonResolution as number) ||
           typeof workspace.explorer.comparisonVisible !== "boolean" ||
+          Object.prototype.hasOwnProperty.call(workspace.explorer, "differenceView") &&
+            (!record(workspace.explorer.differenceView) ||
+              !exact(workspace.explorer.differenceView, ["visible", "channel"]) ||
+              typeof workspace.explorer.differenceView.visible !== "boolean" ||
+              !["magnitude", "p", "q", "r"].includes(workspace.explorer.differenceView.channel as string)) ||
           workspace.explorer.comparisonSource !== null &&
             (!isDocumentIdentity(workspace.explorer.comparisonSource) ||
               !workspace.explorer.comparisonSource.id.startsWith("math3d:vector-field3d:") ||

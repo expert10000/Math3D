@@ -14,4 +14,11 @@ describe("scene operation history", () => {
     expect(operations.map((entry) => entry.id)).toEqual(["mesh:m1", "geometry:g1"]);
     expect(nextUndoableSceneOperation(operations, new Set(["mesh:m1"]))?.id).toBe("geometry:g1");
   });
+  it("keeps one object identity while undo moves from the Mesh edit to its Geometry source edit", () => {
+    const operations = mergeSceneOperations([operation("resize", 10)], [operation("bevel", 20)]);
+    expect(new Set(operations.map((entry) => entry.objectId))).toEqual(new Set(["geometry:box"]));
+    expect(nextUndoableSceneOperation(operations, new Set())?.id).toBe("mesh:bevel");
+    expect(nextUndoableSceneOperation(operations, new Set(["mesh:bevel"]))?.id).toBe("geometry:resize");
+    expect(nextUndoableSceneOperation(operations, new Set(["mesh:bevel", "geometry:resize"]))).toBeNull();
+  });
 });

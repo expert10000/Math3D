@@ -24,5 +24,7 @@ describe("robust scene selection", () => {
     const box = [[0, 0], [10, 0], [10, 10], [0, 10]] as const;
     expect(selectScreenRegion(candidates, box, "frontmost")).toEqual(["front"]);
     expect(selectScreenRegion(candidates, box, "through")).toEqual(["front", "behind"]);
+    expect(selectScreenRegion(candidates, box, "xray")).toEqual(["front", "behind"]);
+    expect(selectScreenRegion(candidates, [[20, 20], [30, 20], [30, 30]], "xray")).toEqual([]);
   });
 });

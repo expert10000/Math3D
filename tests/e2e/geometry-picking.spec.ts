@@ -308,6 +308,7 @@ test("selected Geometry object follows direct Mesh navigation and returns to its
     app = launched.app;
     const page = launched.page;
     await resetStorage(page);
+    await page.setViewportSize({ width: 1600, height: 900 });
     await openProceduralGeometry(page, "box");
     await page.getByTestId("geometry-workflow-step-transform").click();
     await commitDeterministicGeometryPick(page, "object");
@@ -334,24 +335,37 @@ test("selected Geometry object follows direct Mesh navigation and returns to its
     await browser.getByRole("combobox", { name: "Region visibility" }).selectOption("through");
     await browser.getByRole("button", { name: "Box select" }).click();
     const regionOverlay = page.getByTestId("mesh-region-selection-overlay");
-    const regionBounds = await regionOverlay.boundingBox();
-    expect(regionBounds).not.toBeNull();
-    await page.mouse.move(regionBounds!.x + 8, regionBounds!.y + 8);
-    await page.mouse.down();
-    await page.mouse.move(regionBounds!.x + regionBounds!.width - 8, regionBounds!.y + regionBounds!.height - 8, { steps: 5 });
-    await page.mouse.up();
+    const dragVisibleRegion = async (lasso: boolean) => {
+      await expect(regionOverlay).toBeVisible();
+      const bounds = await regionOverlay.boundingBox(), viewport = page.viewportSize();
+      expect(bounds).not.toBeNull(); expect(viewport).not.toBeNull();
+      const left = Math.max(0, bounds!.x) + 8, top = Math.max(0, bounds!.y) + 8;
+      const right = Math.min(viewport!.width, bounds!.x + bounds!.width) - 8;
+      const bottom = Math.min(viewport!.height, bounds!.y + bounds!.height) - 8;
+      expect(right).toBeGreaterThan(left); expect(bottom).toBeGreaterThan(top);
+      await page.mouse.move(left, top); await page.mouse.down();
+      if (lasso) await page.mouse.move(right, top, { steps: 5 });
+      await page.mouse.move(right, bottom, { steps: 5 });
+      if (lasso) await page.mouse.move(left, bottom, { steps: 5 });
+      await page.mouse.up();
+    };
+    await dragVisibleRegion(false);
     await expect(regionOverlay).toHaveCount(0);
     await expect(page.getByText(/Selected \d+ face components by box/).first()).toBeVisible();
     expect(Number((await page.getByText(/Selected \d+ face components by box/).first().innerText()).match(/Selected (\d+)/)?.[1])).toBeGreaterThan(0);
     await browser.getByRole("button", { name: "Lasso select" }).click();
-    await page.mouse.move(regionBounds!.x + 8, regionBounds!.y + 8);
-    await page.mouse.down();
-    await page.mouse.move(regionBounds!.x + regionBounds!.width - 8, regionBounds!.y + 8);
-    await page.mouse.move(regionBounds!.x + regionBounds!.width - 8, regionBounds!.y + regionBounds!.height - 8);
-    await page.mouse.move(regionBounds!.x + 8, regionBounds!.y + regionBounds!.height - 8);
-    await page.mouse.up();
+    await dragVisibleRegion(true);
     await expect(page.getByText(/Selected \d+ face components by lasso/).first()).toBeVisible();
     expect(Number((await page.getByText(/Selected \d+ face components by lasso/).first().innerText()).match(/Selected (\d+)/)?.[1])).toBeGreaterThan(0);
+    await browser.getByRole("combobox", { name: "Region visibility" }).selectOption("xray");
+    await expect(browser.getByRole("combobox", { name: "Region visibility" })).toHaveValue("xray");
+    await page.setViewportSize({ width: 960, height: 600 });
+    const compactFacePick = page.getByTestId("mesh-context-toolbar").getByRole("button", { name: "Face", exact: true });
+    await expect(compactFacePick).toBeVisible();
+    await compactFacePick.focus();
+    await page.keyboard.press("Enter");
+    await expect(compactFacePick).toHaveAttribute("aria-pressed", "true");
+    await page.setViewportSize({ width: 1600, height: 900 });
     await browser.getByRole("button", { name: "face 0", exact: true }).click();
     await page.getByRole("button", { name: "Subdivide Face", exact: true }).first().click();
     const modifiers = page.getByTestId("linked-mesh-modifiers").first();
@@ -365,6 +379,140 @@ test("selected Geometry object follows direct Mesh navigation and returns to its
     await derived.getByRole("combobox", { name: "Mesh-derived Geometry kind" }).selectOption("face-plane");
     await derived.getByRole("button", { name: "Create in Geometry" }).click();
     await expect(page.getByText(/Derived object created: Plane Through Face Centroid/).first()).toBeVisible();
+  } finally {
+    if (app) await app.close().catch(() => undefined);
+    await removeProfileDir(profileDir);
+  }
+});
+
+test("shared scene history undoes and redoes Geometry and Mesh edits on one object", async () => {
+  test.setTimeout(120_000);
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-shared-history-"));
+  let app: ElectronApplication | null = null;
+  try {
+    const launched = await launchApp(profileDir);
+    app = launched.app;
+    const page = launched.page;
+    await resetStorage(page);
+    await openProceduralGeometry(page, "box");
+    await page.getByTestId("geometry-workflow-step-transform").click();
+    await commitDeterministicGeometryPick(page, "object");
+    await clickFirstVisibleButton(page, "Mesh");
+    await expect(page.getByTestId("mesh-context-selection-label")).toContainText(/Selected object:/);
+    await clickFirstVisibleButton(page, "Geometry");
+    await page.getByTestId("scene-representations").getByLabel(/Editable Mesh/).check();
+    await page.getByTestId("scene-representations").getByRole("button", { name: "Edit Mesh", exact: true }).click();
+    const browser = page.getByTestId("mesh-component-browser");
+    await browser.getByRole("button", { name: "Show component selection list" }).click();
+    await browser.getByRole("button", { name: "face 0", exact: true }).click();
+    await page.getByRole("button", { name: "Subdivide Face", exact: true }).first().click();
+    const history = page.getByTestId("scene-history").first();
+    await expect(history.getByTestId("scene-history-operation").first()).toContainText("Mesh");
+    await expect(history.getByTestId("scene-history-operation").first()).toContainText(/subdivide/i);
+    await history.getByRole("button", { name: "Undo", exact: true }).click();
+    await expect(history.getByRole("button", { name: "Redo", exact: true })).toBeEnabled();
+    await clickFirstVisibleButton(page, "Geometry");
+    await expect(page.getByTestId("geometry-context-selection-label")).toContainText(/Box/);
+    const geometryHistory = page.getByTestId("scene-history").first();
+    await expect(geometryHistory.getByTestId("scene-history-operation").first()).toContainText("Geometry");
+    await geometryHistory.getByRole("button", { name: "Undo", exact: true }).click();
+    await geometryHistory.getByRole("button", { name: "Redo", exact: true }).click();
+    await expect(geometryHistory.getByRole("button", { name: "Redo", exact: true })).toBeEnabled();
+    await geometryHistory.getByRole("button", { name: "Redo", exact: true }).click();
+    await expect(geometryHistory.getByTestId("scene-history-operation").first()).toContainText("Mesh");
+  } finally {
+    if (app) await app.close().catch(() => undefined);
+    await removeProfileDir(profileDir);
+  }
+});
+
+test("linked modifier replays after a Geometry edit and can recover from changed topology", async () => {
+  test.setTimeout(120_000);
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-linked-modifier-"));
+  let app: ElectronApplication | null = null;
+  try {
+    const launched = await launchApp(profileDir);
+    app = launched.app;
+    const page = launched.page;
+    await resetStorage(page);
+    await openProceduralGeometry(page, "box");
+    await page.getByTestId("geometry-workflow-step-transform").click();
+    await commitDeterministicGeometryPick(page, "object");
+    await clickFirstVisibleButton(page, "Mesh");
+    await clickFirstVisibleButton(page, "Geometry");
+    await page.getByTestId("scene-representations").getByLabel(/Editable Mesh/).check();
+    await page.getByTestId("scene-representations").getByRole("button", { name: "Edit Mesh", exact: true }).click();
+    const browser = page.getByTestId("mesh-component-browser");
+    await browser.getByRole("button", { name: "Show component selection list" }).click();
+    await browser.getByRole("button", { name: "face 0", exact: true }).click();
+    await page.getByRole("button", { name: "Subdivide Face", exact: true }).first().click();
+    await expect(page.getByTestId("linked-mesh-modifiers").first()).toContainText("Face Subdivide");
+    await clickFirstVisibleButton(page, "Geometry");
+    await page.getByTestId("geometry-professional-panel-object").click();
+    await page.getByTestId("geometry-object-param-width").fill("3");
+    await clickFirstVisibleButton(page, "Mesh");
+    await page.getByTestId("mesh-panel-tools").click();
+    await page.getByTestId("mesh-workspace-left-tab-topology").click();
+    const modifiers = page.getByTestId("linked-mesh-modifiers").first();
+    await expect(modifiers).toContainText("applied", { timeout: 20_000 });
+    await clickFirstVisibleButton(page, "Geometry");
+    await page.getByTestId("geometry-professional-panel-object").click();
+    await page.getByTestId("geometry-object-param-widthSegments").fill("2");
+    await clickFirstVisibleButton(page, "Mesh");
+    await page.getByTestId("mesh-panel-tools").click();
+    await page.getByTestId("mesh-workspace-left-tab-topology").click();
+    await expect(modifiers).toContainText("failed", { timeout: 20_000 });
+    await modifiers.getByRole("checkbox").first().uncheck();
+    await expect(modifiers).toContainText("disabled");
+    await modifiers.getByRole("button", { name: "Detach", exact: true }).click();
+    await expect(page.getByTestId("linked-mesh-modifiers")).toHaveCount(0);
+    await expect(page.getByTestId("scene-representations")).toContainText(/detached/i);
+  } finally {
+    if (app) await app.close().catch(() => undefined);
+    await removeProfileDir(profileDir);
+  }
+});
+
+test("a Mesh face region opens its source and result Geometry with a retained link", async () => {
+  test.setTimeout(120_000);
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-derived-region-"));
+  let app: ElectronApplication | null = null;
+  try {
+    const launched = await launchApp(profileDir);
+    app = launched.app;
+    const page = launched.page;
+    await resetStorage(page);
+    await openProceduralGeometry(page, "box");
+    await page.getByTestId("geometry-workflow-step-transform").click();
+    await commitDeterministicGeometryPick(page, "object");
+    await clickFirstVisibleButton(page, "Mesh");
+    await clickFirstVisibleButton(page, "Geometry");
+    await page.getByTestId("scene-representations").getByLabel(/Editable Mesh/).check();
+    await page.getByTestId("scene-representations").getByRole("button", { name: "Edit Mesh", exact: true }).click();
+    const browser = page.getByTestId("mesh-component-browser");
+    await browser.getByRole("button", { name: "Show component selection list" }).click();
+    await browser.getByRole("button", { name: "face 0", exact: true }).click();
+    const derived = page.getByTestId("mesh-derived-geometry");
+    await derived.getByRole("combobox", { name: "Mesh-derived Geometry kind" }).selectOption("face-region-surface");
+    await derived.getByRole("button", { name: "Create in Geometry" }).click();
+    await expect(page.getByText(/Geometry \/ Workspace/i).first()).toBeVisible();
+    await clickFirstVisibleButton(page, "Mesh");
+    await page.getByTestId("mesh-panel-tools").click();
+    await page.getByTestId("mesh-workspace-left-tab-topology").click();
+    await expect(derived).toContainText("Face region · linked");
+    await derived.getByRole("button", { name: "Source", exact: true }).click();
+    await expect(page.getByText(/Geometry \/ Workspace/i).first()).toBeVisible();
+    await expect(page.getByTestId("geometry-context-selection-label")).toContainText(/Mesh Snapshot/i);
+    await app.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.webContents.send("app:menu-command", { command: "edit:delete-object" });
+    });
+    await clickFirstVisibleButton(page, "Mesh");
+    await page.getByTestId("mesh-panel-tools").click();
+    await page.getByTestId("mesh-workspace-left-tab-topology").click();
+    await expect(derived).toContainText("Face region · missing");
+    await derived.getByRole("button", { name: "Result", exact: true }).click();
+    await expect(page.getByText(/Geometry \/ Workspace/i).first()).toBeVisible();
+    await expect(page.getByTestId("geometry-context-selection-label")).toContainText(/face region/i);
   } finally {
     if (app) await app.close().catch(() => undefined);
     await removeProfileDir(profileDir);

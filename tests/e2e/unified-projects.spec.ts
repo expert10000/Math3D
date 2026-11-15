@@ -827,10 +827,17 @@ test("PRJ11 restores Geometry objects and construction lineage, then edits, save
   let ctx: LaunchedSurfaceApp | null = null;
   try {
     ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
-    const page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    let page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    const regionMesh = { label: "Face region", positions: [0, 0, 0, 1, 0, 0, 0, 1, 0], indices: [0, 1, 2], normals: null, uvs: null, source: { kind: "detachedMesh" } };
+    const regionTransform = { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } };
+    const regionSource = { id: "region-source", name: "Region source", mesh: regionMesh, transform: regionTransform,
+      visible: true, material: { color: 0x8aa4ff, opacity: 1 } };
+    const regionResult = { ...regionSource, id: "region-result", name: "Derived face region",
+      derivedRegion: { sourceObjectId: "region-source", faceIndices: [0], sourceRevision: 2, status: "linked" } };
     const base = projectCore.geometryDocumentFromSceneDocument({ id: "restored-geometry", title: "Native construction", createdAt: 0, updatedAt: 0,
       objects: [{ id: "research-box", type: "box", name: "Research box", params: { width: 2, height: 3, depth: 4 }, visible: true, material: { color: 0x3366ff, opacity: 1 }, transform: { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } } }],
-      extensions: { "math3d.geometry.live-derived.v1": [{ id: "research-center", type: "object-centroid", sourceKind: "object", sourceObjectId: "research-box", dependent: true }] } });
+      extensions: { "math3d.geometry.live-derived.v1": [{ id: "research-center", type: "object-centroid", sourceKind: "object", sourceObjectId: "research-box", dependent: true }],
+        "math3d.geometry.datasetMeshObjects.v1": [regionSource, regionResult] } });
     const document = projectCore.createGeometryDocument({ ...base, metadata: { ...base.metadata, constructionCreatedAt: { "research-center": 0 } }, display: { ...base.display, constructions: { "research-center": { name: "Research centroid", visible: true, createdAt: 0 } } } });
     const project = projectCore.createMath3DProject(projectCore.createMixedWorkspaceDocument({ entries: [{ module: "geometry", checkpoint: document, expected: document.identity, replay: null }], activeDocumentIds: [document.identity.id], constructions: [{ kind: "scene-script", source: "", normalizedSceneScript: "" }], results: [], relations: [], artifacts: [], committedSelection: null }), { stableKey: "native-geometry-project", title: "Native Geometry project" });
     await page.getByTestId("projects-toggle").click();
@@ -848,13 +855,17 @@ test("PRJ11 restores Geometry objects and construction lineage, then edits, save
     await showProjectGallery(page); await panel.getByTestId("project-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Saved");
     saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     expect(saved.workspace.entries[0].expected.id).toBe(document.identity.id); expect(saved.workspace.entries[0].expected.structuralHash).not.toBe(document.identity.structuralHash);
-    await page.reload(); await page.getByTestId("projects-toggle").click(); await panel.getByTestId("project-view-saved").click();
+    const profile = ctx.profileDir;
+    await ctx.app.close(); ctx = await launchSurfaceApp({}, profile);
+    page = ctx.page; panel = page.getByTestId("project-explorer-panel");
+    await page.getByTestId("projects-toggle").click(); await panel.getByTestId("project-view-saved").click();
     await panel.getByTestId("project-restore-saved").click(); await panel.getByTestId("project-import-open").click();
     await expect(page.getByTestId("project-geometry-editor")).toContainText(document.identity.id);
     await page.getByRole("button", { name: "Close project explorer" }).click(); await expect(page.getByTestId("project-geometry-param-width")).toHaveValue("5");
     await showProjectGallery(page); await panel.getByTestId("project-save").click();
     saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     expect(saved.workspace.entries[0].checkpoint.source.extensions["math3d.geometry.live-derived.v1"]).toEqual(document.source.extensions["math3d.geometry.live-derived.v1"]);
+    expect(saved.workspace.entries[0].checkpoint.source.extensions["math3d.geometry.datasetMeshObjects.v1"]).toEqual([regionSource, regionResult]);
     expect(saved.workspace.constructions).toEqual(project.workspace.constructions);
     await panel.screenshot({ path: test.info().outputPath("restored-geometry-project.png") });
   } finally { await closeSurfaceApp(ctx); }
