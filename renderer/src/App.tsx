@@ -80803,7 +80803,8 @@ case "mobius":
         onCurrentProjectChange={(project, resources) => { activeNotebookProjectRef.current = project; activeNotebookProjectResourcesRef.current = resources ?? null; setNotebookProjectVersion((version) => version + 1); }}
         verifiedQuantumScene={verifiedQuantumSceneTitle && quantumSceneReference ? { format: verifiedQuantumSceneFormat, title: verifiedQuantumSceneTitle, ...quantumSceneReference } : null}
         onImportQuantumScene={() => handleMenuCommand("file:open-quantum-scene")}
-        onOpenCasGallery={() => { setProjectsOpen(false); setNumberTheoryWorkspaceOpen(false); setCasWorkspaceOpen(true); }}
+        onOpenCasGallery={() => { setProjectsOpen(false); setNumberTheoryWorkspaceOpen(false); setCasWorkspaceOpen(true);
+          requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-testid="workspace-nav-cas"]')?.focus({ preventScroll: true })); }}
         onImportScientificScene={() => handleMenuCommand("file:open-scientific-scene")}
         onOpenQuantumScene={async (reference) => {
           if (!window.quantumScenes?.openReference) throw new TypeError("Verified quantum scenes are available only in the desktop app.");

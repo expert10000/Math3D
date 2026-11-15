@@ -1652,6 +1652,12 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     setStudyFocus(previous => ({ id: study.id, token: (previous?.token ?? 0) + 1 }));
     setQuick(false); setViewerCompanion(false); setDetailView(true); setDetailPage("overview");
     onOpenChange(true);
+    // Opening a guided copy replaces its card. Move focus into the new Project
+    // context instead of leaving keyboard users on the document body.
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+      const heading = document.querySelector<HTMLElement>('#project-explorer-panel h2');
+      if (heading) { heading.tabIndex = -1; heading.focus({ preventScroll: true }); }
+    }));
   };
   useEffect(() => {
     if (hasOpenProject && project && !preview && !managed && activeProjectDocumentId)
@@ -1792,6 +1798,15 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     setDetailView(true);
     setViewerCompanion(true);
     setQuick(true);
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+      const selectors = module === "vector3d" ? ['[data-testid="scientific-field-explorer"] h3'] :
+        module === "graph2d" ? ['[data-testid="graphs-workspace"]'] :
+        ['[data-testid="project-source-view"]', '[data-testid="module-workspace"]'];
+      selectors.push('#project-explorer-panel h2');
+      const target = selectors.map(selector => document.querySelector<HTMLElement>(selector))
+        .find(element => element && element.getClientRects().length);
+      if (target) { target.tabIndex = -1; target.focus({ preventScroll: true }); }
+    }));
   };
   const meshGeometryAvailability = (id: string) => {
     const entry = project?.workspace.entries.find(item => item.expected.id === id);

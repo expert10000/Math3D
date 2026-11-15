@@ -308,10 +308,14 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   const previewEpoch = useRef(0);
   useEffect(() => {
     cancelRequested.current = false;
-    const previous = globalThis.document.activeElement as HTMLElement | null;
-    dialogRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    const focusFrame = requestAnimationFrame(() => requestAnimationFrame(() => {
+      const heading = dialogRef.current?.querySelector<HTMLElement>("h3");
+      if (heading) { heading.tabIndex = -1; heading.focus({ preventScroll: true }); }
+    }));
     return () => { cancelRequested.current = true; cancelRunRef.current?.(); probeEpoch.current++;
-      previewEpoch.current++; previous?.focus(); };
+      previewEpoch.current++; cancelAnimationFrame(focusFrame);
+      requestAnimationFrame(() => globalThis.document.querySelector<HTMLElement>(
+        '[data-testid="workspace-nav-graphs"]')?.focus({ preventScroll: true })); };
   }, []);
   useEffect(() => {
     if (!focusSelectionRequest) return;
