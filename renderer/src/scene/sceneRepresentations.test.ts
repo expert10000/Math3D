@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildSceneEntities, selectActiveRepresentation } from "./sceneRepresentations";
+import { availableSceneRepresentationActions, buildSceneEntities, selectActiveRepresentation } from "./sceneRepresentations";
 
 describe("scene representations", () => {
   it("shows one entity for a Geometry object and its linked mesh", () => {
@@ -13,6 +13,8 @@ describe("scene representations", () => {
       { kind: "editable-mesh", state: "modified-linked" },
     ]);
     expect(selectActiveRepresentation(entities[0], "mesh:box-mesh").id).toBe("mesh:box-mesh");
+    expect(availableSceneRepresentationActions(entities[0], "mesh:unrelated")).toEqual(["Edit Definition", "Edit Geometry", "Generate Mesh"]);
+    expect(availableSceneRepresentationActions(entities[0], "mesh:box-mesh")).toContain("Detach Mesh");
   });
 
   it("marks older mesh revisions stale and detached meshes independent", () => {

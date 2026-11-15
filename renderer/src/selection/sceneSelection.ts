@@ -24,7 +24,9 @@ export type SelectionTransfer = {
 
 export const sceneSelectionFromUnified = (selection: UnifiedSelection | null): SceneSelection | null => {
   if (!selection || selection.lifecycle !== "selected") return null;
-  const componentId = selection.selectionType === "face"
+  const componentId = selection.semanticEntityId && selection.selectionType !== "object"
+    ? `${selection.selectionType}:${selection.semanticEntityId}`
+    : selection.selectionType === "face"
     ? selection.faceId == null ? null : `face:${selection.faceId}`
     : selection.selectionType === "edge"
       ? selection.edgeId == null ? null : `edge:${selection.edgeId}`
@@ -32,7 +34,9 @@ export const sceneSelectionFromUnified = (selection: UnifiedSelection | null): S
         ? selection.vertexId == null ? null : `vertex:${selection.vertexId}`
         : null;
   return {
-    objectId: selection.sourceSceneEntityId ?? selection.sceneEntityId ?? selection.objectId,
+    objectId: selection.workspace === "mesh"
+      ? selection.sourceSceneEntityId ?? selection.sceneEntityId ?? selection.objectId
+      : selection.sceneEntityId ?? selection.objectId,
     representationId: selection.sceneEntityId ?? selection.meshKey ?? null,
     kind: selection.selectionType,
     componentIds: componentId ? [componentId] : [],

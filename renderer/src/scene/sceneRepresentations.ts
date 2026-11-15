@@ -89,3 +89,20 @@ export const selectActiveRepresentation = (
   preferredId: string | null | undefined
 ): SceneRepresentation =>
   entity.representations.find((representation) => representation.id === preferredId) ?? entity.representations[0];
+
+export const availableSceneRepresentationActions = (
+  entity: SceneEntity | null,
+  activeMeshId: string | null
+): readonly SceneRepresentationAction[] => {
+  if (!entity) return [];
+  const geometry = entity.representations.find((representation) => representation.kind !== "editable-mesh");
+  const mesh = entity.representations.find((representation) => representation.id === activeMeshId && representation.kind === "editable-mesh");
+  const actions: SceneRepresentationAction[] = [];
+  if (geometry?.kind === "parametric") actions.push("Edit Definition");
+  if (geometry) actions.push("Edit Geometry", "Generate Mesh");
+  if (mesh) {
+    actions.push("Edit Mesh");
+    if (geometry && mesh.state !== "detached") actions.push("Update Mesh", "Detach Mesh", "Return to Source");
+  }
+  return actions;
+};

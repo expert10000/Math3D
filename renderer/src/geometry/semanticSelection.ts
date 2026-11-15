@@ -351,13 +351,31 @@ export const mapGeometrySemanticSelectionToMesh = (input: {
 }): UnifiedSelection | null => {
   const source = input.selection;
   if (!source || source.workspace !== "geometry") return null;
+  const mesh = input.mesh ?? null;
+  const vertexCount = mesh ? Math.floor(mesh.positions.length / 3) : 0;
+  const faceCount = mesh ? Math.floor((mesh.indices?.length ?? vertexCount) / 3) : 0;
+  const edge = source.edgeVertices;
+  const edgeExists = edge && mesh ? (() => {
+    const indices = mesh.indices;
+    for (let face = 0; face < faceCount; face += 1) {
+      const vertices = indices
+        ? [indices[face * 3], indices[face * 3 + 1], indices[face * 3 + 2]]
+        : [face * 3, face * 3 + 1, face * 3 + 2];
+      if (vertices.includes(edge[0]) && vertices.includes(edge[1])) return true;
+    }
+    return false;
+  })() : false;
+  const componentExists = !mesh || source.selectionType === "object"
+    || source.selectionType === "face" && source.faceId != null && source.faceId >= 0 && source.faceId < faceCount
+    || source.selectionType === "edge" && edgeExists
+    || source.selectionType === "vertex" && source.vertexId != null && source.vertexId >= 0 && source.vertexId < vertexCount;
   const mapped = unifiedSelectionFromMeshTopology({
-    mode: source.selectionType,
+    mode: componentExists ? source.selectionType : "object",
     objectId: input.meshObjectId,
     objectLabel: input.meshLabel,
     objectType: "mesh",
     meshKey: input.meshObjectId,
-    mesh: input.mesh ?? null,
+    mesh,
     topologyVersion: input.topologyVersion ?? source.topologyVersion,
     faceIndex: source.faceId,
     edgeVertices: source.edgeVertices,
@@ -372,8 +390,8 @@ export const mapGeometrySemanticSelectionToMesh = (input: {
   if (!mapped) return null;
   return {
     ...mapped,
-    semanticEntityId: source.semanticEntityId ?? null,
-    semanticKind: source.semanticKind ?? null,
-    semanticAliasIds: source.semanticAliasIds,
+    semanticEntityId: componentExists ? source.semanticEntityId ?? null : null,
+    semanticKind: componentExists ? source.semanticKind ?? null : null,
+    semanticAliasIds: componentExists ? source.semanticAliasIds : undefined,
   };
 };

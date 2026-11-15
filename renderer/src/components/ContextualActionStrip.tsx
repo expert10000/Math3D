@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { CommandPreviewLegend } from "./CommandPreviewLegend";
 import { ContextualRenderedActionButton } from "./ContextualActionButtons";
+import { applyAndContinueOperation, beginOperation, cancelOperation, commitOperation, validateOperation, type OperationWorkspace } from "../selection/operationTransaction";
 
 export type ContextualActionStripOption<T extends string> = {
   id: T;
@@ -21,6 +22,12 @@ type ContextualActionStripProps<T extends string> = {
   previewLabel?: ReactNode;
   previewTestId?: string;
   applyPreviewTestId?: string;
+  operationParameters?: Readonly<Record<string, string | number | boolean>>;
+  operationValidationErrors?: readonly string[];
+  operationWorkspace?: OperationWorkspace;
+  operationSnapshot?: unknown;
+  onCancelPreview?: () => void;
+  onApplyAndContinue?: () => void;
   confirmationLabel?: ReactNode;
   confirmationTestId?: string;
   lastCommandLabel?: ReactNode;
@@ -84,6 +91,12 @@ export function ContextualActionStrip<T extends string>({
   previewLabel,
   previewTestId,
   applyPreviewTestId,
+  operationParameters,
+  operationValidationErrors = [],
+  operationWorkspace,
+  operationSnapshot,
+  onCancelPreview,
+  onApplyAndContinue,
   confirmationLabel,
   confirmationTestId,
   lastCommandLabel,
@@ -107,6 +120,28 @@ export function ContextualActionStrip<T extends string>({
   zIndex = 8,
   children,
 }: ContextualActionStripProps<T>) {
+  const cloneOperationSnapshot = (snapshot: unknown): unknown => structuredClone(snapshot);
+  const operationTransaction = () => validateOperation(beginOperation({
+    id: `${testId}:${Date.now()}`,
+    workspace: operationWorkspace ?? "geometry",
+    label: typeof previewLabel === "string" ? previewLabel : "Operation preview",
+    selectionSummary: typeof selectionLabel === "string" ? selectionLabel : "Selection",
+    snapshot: operationSnapshot,
+    clone: cloneOperationSnapshot,
+    parameters: operationParameters,
+  }), () => operationValidationErrors);
+  const applyOperation = (continueEditing: boolean) => {
+    const transaction = operationTransaction();
+    if (transaction.errors.length) return;
+    if (continueEditing) {
+      applyAndContinueOperation(transaction, `${transaction.id}:next`, cloneOperationSnapshot);
+      (onApplyAndContinue ?? onPrimaryAction)?.();
+    } else {
+      commitOperation(transaction, cloneOperationSnapshot);
+      onPrimaryAction?.();
+      onCancelPreview?.();
+    }
+  };
   useEffect(() => {
     if (!keyboardShortcutsEnabled) return;
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -125,12 +160,12 @@ export function ContextualActionStrip<T extends string>({
       }
       if (event.key === "Enter" && canRunPrimaryAction && onPrimaryAction) {
         event.preventDefault();
-        onPrimaryAction();
+        applyOperation(false);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [canRunPrimaryAction, canUndoLast, keyboardShortcutsEnabled, onPrimaryAction, onUndoLast]);
+  }, [canRunPrimaryAction, canUndoLast, keyboardShortcutsEnabled, onApplyAndContinue, onPrimaryAction, onUndoLast, operationParameters, operationSnapshot, operationValidationErrors, operationWorkspace, previewLabel, selectionLabel, testId]);
 
   return (
     <div
@@ -227,11 +262,19 @@ export function ContextualActionStrip<T extends string>({
           >
             {previewLabel}
           </span>
+          {operationParameters && Object.keys(operationParameters).length > 0 && (
+            <span data-testid={`${testId}-operation-parameters`} title={Object.entries(operationParameters).map(([key, value]) => `${key}: ${value}`).join(", ")} style={{ color: "#475467", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis" }}>
+              {Object.entries(operationParameters).map(([key, value]) => `${key}: ${value}`).join(", ")}
+            </span>
+          )}
+          {operationValidationErrors.length > 0 && (
+            <span role="alert" style={{ color: "#b42318" }}>{operationValidationErrors[0]}</span>
+          )}
           <button
             type="button"
             data-testid={applyPreviewTestId}
-            onClick={onPrimaryAction}
-            disabled={!canRunPrimaryAction || !onPrimaryAction}
+            onClick={() => applyOperation(false)}
+            disabled={!canRunPrimaryAction || !onPrimaryAction || operationValidationErrors.length > 0}
             title={
               canRunPrimaryAction
                 ? "Apply the visible contextual preview. Shortcut: Enter."
@@ -248,8 +291,18 @@ export function ContextualActionStrip<T extends string>({
               pointerEvents: "auto",
             }}
           >
-            Apply preview
+            Apply
           </button>
+          {onApplyAndContinue && (
+            <button type="button" onClick={() => applyOperation(true)} disabled={!canRunPrimaryAction || operationValidationErrors.length > 0} style={{ pointerEvents: "auto", fontSize: 11 }}>
+              Apply and Continue
+            </button>
+          )}
+          {onCancelPreview && (
+            <button type="button" onClick={() => { cancelOperation(operationTransaction(), cloneOperationSnapshot); onCancelPreview(); }} style={{ pointerEvents: "auto", fontSize: 11 }}>
+              Cancel
+            </button>
+          )}
         </>
       )}
       {children}

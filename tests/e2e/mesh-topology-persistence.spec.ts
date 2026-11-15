@@ -310,12 +310,12 @@ test.describe("Mesh topology persistence and handoff", () => {
             button.click()
           );
         },
-        chipLabel: "Mesh Object",
-        selectionLabel: /Selected mesh object:/,
+        chipLabel: "Object",
+        selectionLabel: /Selected object:/,
         preview: "Preview: open selected mesh in Geometry",
         viewportPreview: "Viewport preview: open selected mesh in Geometry",
         wholeObjectBadgeTestId: "mesh-object-selection-glow",
-        wholeObjectBadgeLabel: "Whole mesh selected",
+        wholeObjectBadgeLabel: "Whole object selected",
         actionExpectations: [
           { testId: "mesh-context-promote-mesh-object", label: "Open in Geometry", enabled: true },
           { testId: "mesh-context-save-edited", label: "Save edited" },
@@ -365,12 +365,12 @@ test.describe("Mesh topology persistence and handoff", () => {
             button.click()
           );
         },
-        chipLabel: "Mesh Object",
-        selectionLabel: /Selected mesh object:/,
+        chipLabel: "Object",
+        selectionLabel: /Selected object:/,
         preview: "Preview: open selected mesh in Geometry",
         viewportPreview: "Viewport preview: open selected mesh in Geometry",
         wholeObjectBadgeTestId: "mesh-object-selection-glow",
-        wholeObjectBadgeLabel: "Whole mesh selected",
+        wholeObjectBadgeLabel: "Whole object selected",
         actionExpectations: [
           { testId: "mesh-context-promote-mesh-object", label: "Open in Geometry", enabled: true },
           { testId: "mesh-context-save-edited", label: "Save edited" },
@@ -389,12 +389,12 @@ test.describe("Mesh topology persistence and handoff", () => {
         selectObject: async () => {
           await commitGeometryEntityPick(page, "object");
         },
-        chipLabel: "Geometry Object",
-        selectionLabel: /Selected geometry object:/i,
-        preview: "Preview: open selected Geometry object details",
-        viewportPreview: "Viewport preview: open selected Geometry object details",
+        chipLabel: "Object",
+        selectionLabel: /Selected object:/i,
+        preview: "Preview: open selected object details",
+        viewportPreview: "Viewport preview: open selected object details",
         wholeObjectBadgeTestId: "geometry-object-selection-glow",
-        wholeObjectBadgeLabel: "Whole Geometry object selected",
+        wholeObjectBadgeLabel: "Whole object selected",
         actionExpectations: [
           { testId: "geometry-context-open-object", label: "Open Object Details", enabled: true },
           { testId: "geometry-context-transform", label: "Transform" },
@@ -747,7 +747,7 @@ test.describe("Mesh topology persistence and handoff", () => {
       );
       await expect(page.getByTestId("mesh-roundtrip-source-preview-banner")).toContainText(/Latest topology step:/);
       await expect(page.getByTestId("mesh-roundtrip-update-original")).toContainText(
-        /Apply this state to Geometry Object/
+        /Apply this state to Object/
       );
       await expect(page.getByTestId("mesh-roundtrip-update-original")).toBeEnabled();
       await page.getByTestId("mesh-roundtrip-update-original").click();

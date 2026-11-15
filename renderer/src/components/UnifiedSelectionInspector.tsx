@@ -11,6 +11,7 @@ type UnifiedSelectionInspectorProps = {
   activeRepresentationId?: string | null;
   onSelectRepresentation?: (id: string) => void;
   onRepresentationAction?: (action: SceneRepresentationAction) => void;
+  representationActions?: readonly SceneRepresentationAction[];
   title?: string;
   materialInfo?: string | null;
   creaseInfo?: string | null;
@@ -75,19 +76,24 @@ export const UnifiedSelectionInspector = ({
   activeRepresentationId = null,
   onSelectRepresentation,
   onRepresentationAction,
+  representationActions = [],
   title = "Selection inspector",
   materialInfo = null,
   creaseInfo = null,
 }: UnifiedSelectionInspectorProps) => {
-  const multiSelection = selectionSet && selectionSet.count > 1 ? selectionSet : null;
-  const activeSelection = selection ?? selectionSet?.activeSelection ?? null;
+  const localSelection = selection ?? selectionSet?.activeSelection ?? null;
+  const localObjectId = localSelection?.workspace === "mesh"
+    ? localSelection.sourceSceneEntityId ?? localSelection.sceneEntityId ?? localSelection.objectId
+    : localSelection?.sceneEntityId ?? localSelection?.objectId;
+  const activeSelection = sceneSelection && localObjectId !== sceneSelection.objectId ? null : localSelection;
+  const multiSelection = activeSelection && selectionSet && selectionSet.count > 1 ? selectionSet : null;
   const selectedItems = multiSelection?.items ?? [];
   const adjacentVertices = uniqueSorted(selectedItems.flatMap((item) => item.adjacency.vertices));
   const adjacentEdges = uniqueSorted(selectedItems.flatMap((item) => item.adjacency.edges));
   const adjacentFaces = uniqueSorted(selectedItems.flatMap((item) => item.adjacency.faces));
   const boundaryCount = selectedItems.filter((item) => item.topologyFlags.hasTopology && item.topologyFlags.boundary).length;
   const nonManifoldCount = selectedItems.filter((item) => item.topologyFlags.hasTopology && item.topologyFlags.nonManifold).length;
-  const stateLabel = multiSelection ? "selected" : activeSelection ? activeSelection.state : "none";
+  const stateLabel = multiSelection || sceneSelection ? "selected" : activeSelection ? activeSelection.state : "none";
   const multiObjectLabel =
     multiSelection && multiSelection.objectLabels.length === 1
       ? multiSelection.objectLabels[0]
@@ -147,7 +153,7 @@ export const UnifiedSelectionInspector = ({
           ))}
           {onRepresentationAction && (
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-              {(["Edit Definition", "Edit Geometry", "Generate Mesh", "Edit Mesh", "Update Mesh", "Detach Mesh", "Return to Source"] as const).map((action) => (
+              {representationActions.map((action) => (
                 <button key={action} type="button" onClick={() => onRepresentationAction(action)} style={{ fontSize: 10 }}>
                   {action}
                 </button>
@@ -246,7 +252,9 @@ export const UnifiedSelectionInspector = ({
         <span>{materialInfo ?? "n/a"}</span>
       </div>
     ) : (
-      <div style={{ color: "#64748b" }}>No selected entity.</div>
+      <div style={{ color: "#64748b" }}>
+        {sceneSelection ? `${sceneSelection.kind} on ${sceneSelection.objectId} (open its representation to inspect components)` : "No selected entity."}
+      </div>
     )}
   </div>
   );

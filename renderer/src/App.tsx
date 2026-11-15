@@ -290,7 +290,7 @@ import {
 } from "./selection/unifiedSelection";
 import { sharedPickEntityId } from "./selection/pickContract";
 import { sceneSelectionFromUnified, type SceneSelection } from "./selection/sceneSelection";
-import { buildSceneEntities, type SceneRepresentationAction } from "./scene/sceneRepresentations";
+import { availableSceneRepresentationActions, buildSceneEntities, type SceneRepresentationAction } from "./scene/sceneRepresentations";
 import {
   addSelectionHistoryEntry,
   bookmarkSelectionEntry,
@@ -12810,6 +12810,8 @@ const App: React.FC = () => {
   });
   const [sceneSelection, setSceneSelection] = useState<SceneSelection | null>(null);
   const [activeRepresentationByEntity, setActiveRepresentationByEntity] = useState<Record<string, string>>({});
+  const [cancelledGeometryPreviewKey, setCancelledGeometryPreviewKey] = useState<string | null>(null);
+  const [cancelledMeshPreviewKey, setCancelledMeshPreviewKey] = useState<string | null>(null);
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -13238,6 +13240,7 @@ const App: React.FC = () => {
     const saved = readGeometryEditSessionSnapshot()?.selectedObjectId;
     return typeof saved === "string" && saved.length > 0 ? saved : null;
   });
+  const [geometrySelectionExplicitlyCleared, setGeometrySelectionExplicitlyCleared] = useState(false);
   const [geometryCompareObjectAId, setGeometryCompareObjectAId] = useState<string | null>(null);
   const [geometryCompareObjectBId, setGeometryCompareObjectBId] = useState<string | null>(null);
   const [geometryLineQuickMenu, setGeometryLineQuickMenu] = useState<{
@@ -13357,6 +13360,7 @@ const App: React.FC = () => {
     }
     if (geometryCreatePlacementModeActive && geometryPendingPlacementObjectId) return;
     if (info.meshKey) {
+      setGeometrySelectionExplicitlyCleared(false);
       setGeometrySelectedObjectId(info.meshKey);
       if (geometryProceduralPanelTab === "construct" && geometryProbeSelectionMode === "object") {
         const slot = geometryMathPickTargetSlot;
@@ -13400,6 +13404,10 @@ const App: React.FC = () => {
     }
     setGeometryProceduralPick(null);
     setGeometryProceduralHoverPick(null);
+    setGeometrySelectedObjectId(null);
+    setGeometrySelectionExplicitlyCleared(true);
+    setGeometryMultiSelectionSet(createUnifiedSelectionSet([]));
+    setSceneSelection(null);
     if (geometryCreatePlacementModeActive && geometryPendingPlacementObjectId) {
       setGeometryCreatePlacementStatus("Click a mesh, helper plane, or visible ground-plane area to place the pending object.");
       return;
@@ -15601,13 +15609,15 @@ const App: React.FC = () => {
       return;
     }
     if (!geometrySelectedObjectId) {
+      if (geometrySelectionExplicitlyCleared) return;
       setGeometrySelectedObjectId(ids[0]);
       return;
     }
+    if (geometrySelectionExplicitlyCleared) setGeometrySelectionExplicitlyCleared(false);
     if (!ids.includes(geometrySelectedObjectId)) {
       setGeometrySelectedObjectId(ids[0]);
     }
-  }, [geometryObjects, geometryDatasetMeshObjects, geometrySelectedObjectId]);
+  }, [geometryObjects, geometryDatasetMeshObjects, geometrySelectedObjectId, geometrySelectionExplicitlyCleared]);
   useEffect(() => {
     const activeIds = new Set([...geometryObjects.map((o) => o.id), ...geometryDatasetMeshObjects.map((o) => o.id)]);
     setGeometryLockedObjectIds((prev) => {
@@ -25326,11 +25336,12 @@ const App: React.FC = () => {
   );
   const geometryVisibleContextualViewportPreview = useMemo(
     () =>
+      cancelledGeometryPreviewKey ? null :
       applyContextualViewportPreviewAccessibility(
         geometryAppliedContextualViewportPreview?.preview ?? geometryContextualViewportPreview,
         commandPreviewHighVisibility
       ),
-    [commandPreviewHighVisibility, geometryAppliedContextualViewportPreview, geometryContextualViewportPreview]
+    [cancelledGeometryPreviewKey, commandPreviewHighVisibility, geometryAppliedContextualViewportPreview, geometryContextualViewportPreview]
   );
   const geometryArmedLineOperationPreviewGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
     if (geometryMode !== "procedural" || geometryArmedLineOperation !== "extend") return null;
@@ -41965,6 +41976,9 @@ const App: React.FC = () => {
         handleStopGeometryCameraTour();
         handleStopSurfacesCameraTour();
         setGeometryProceduralPick(null);
+        setGeometrySelectedObjectId(null);
+        setGeometrySelectionExplicitlyCleared(true);
+        setSceneSelection(null);
         setGeometryProceduralHoverPick(null);
         setGeometryMultiSelectionSet(createUnifiedSelectionSet([]));
         setGeometryHistoryPreviewStepId(null);
@@ -42760,6 +42774,9 @@ const App: React.FC = () => {
     setSurfaceMeshHoverPick(null);
     setSurfaceMeshTopologySelectionCleared(true);
     setMeshMultiSelectionSet(createUnifiedSelectionSet([]));
+    setSceneSelection(null);
+    setGeometrySelectedObjectId(null);
+    setGeometrySelectionExplicitlyCleared(true);
     setSurfaceMeshTopologyFeedback(null);
     setSurfaceMeshTopologyHistoryPreviewId(null);
     setSurfaceMeshTopologyHistoryPreviewMode("after");
@@ -60840,11 +60857,12 @@ case "mobius":
   );
   const meshVisibleContextualViewportPreview = useMemo(
     () =>
+      cancelledMeshPreviewKey ? null :
       applyContextualViewportPreviewAccessibility(
         meshAppliedContextualViewportPreview?.preview ?? meshContextualViewportPreview,
         commandPreviewHighVisibility
       ),
-    [commandPreviewHighVisibility, meshAppliedContextualViewportPreview, meshContextualViewportPreview]
+    [cancelledMeshPreviewKey, commandPreviewHighVisibility, meshAppliedContextualViewportPreview, meshContextualViewportPreview]
   );
 
   const surfaceMeshTopologyBreadcrumb = useMemo(() => {
@@ -72604,14 +72622,55 @@ case "mobius":
       sourceGeometryId: surfaceMeshData.source.kind === "geometryObject"
         ? surfaceMeshData.source.objectId ?? null
         : meshGeometryRoundTripSource?.objectId ?? null,
-      sourceRevision: null,
+      sourceRevision: meshPromotionTrace && surfaceMeshData.source.kind === "geometryObject"
+        && meshPromotionTrace.sourceGeometryObjectId === surfaceMeshData.source.objectId
+        ? getGlobalGeometryMeshRelationStore().relations[meshPromotionTrace.relationId]?.sourceRevision ?? null
+        : null,
       modified: surfaceMeshTopologyHistory.length > 0,
       detached: surfaceMeshData.source.kind === "detachedMesh",
       invalid: Boolean(surfaceMeshData.validation && !surfaceMeshData.validation.ok),
     }] : [],
     relations: Object.values(getGlobalGeometryMeshRelationStore().relations),
-  }), [geometryObjects, geometryDatasetMeshObjects, geometryObjectRevisionById, surfaceMeshData, surfaceMeshLabel, meshGeometryRoundTripSource?.objectId, surfaceMeshTopologyHistory.length]);
+  }), [geometryObjects, geometryDatasetMeshObjects, geometryObjectRevisionById, surfaceMeshData, surfaceMeshLabel, meshGeometryRoundTripSource?.objectId, meshPromotionTrace, surfaceMeshTopologyHistory.length]);
   const sceneEntityById = useMemo(() => new Map(sceneEntities.map((entity) => [entity.id, entity])), [sceneEntities]);
+  const lastGeometryMeshWorkspaceRef = useRef<"geometry" | "mesh" | null>(null);
+  useEffect(() => {
+    const workspace = mode === "geometry" && geometryMode === "procedural"
+      ? "geometry"
+      : mode === "surfaces" && surfaceViewerKind === "mesh"
+        ? "mesh"
+        : null;
+    if (!workspace) return;
+    const previous = lastGeometryMeshWorkspaceRef.current;
+    lastGeometryMeshWorkspaceRef.current = workspace;
+    if (!previous || previous === workspace || !sceneSelection?.objectId.startsWith("geometry:")) return;
+    const sourceId = sceneSelection.objectId.slice("geometry:".length);
+    if (workspace === "mesh") {
+      if (surfaceMeshData?.source.kind === "geometryObject" && surfaceMeshData.source.objectId === sourceId) return;
+      if (!bakeGeometryObjectToDatasetById(sourceId)) {
+        setSurfaceMeshTopologyStatus("The selected Geometry object cannot be opened as a Mesh representation.");
+      }
+      return;
+    }
+    if (meshPromotionTrace?.sourceGeometryObjectId === sourceId && geometryMeshSemanticSelectionLink?.geometry) {
+      handleOpenMeshPromotionSourceGeometryObject();
+    } else if (resolveGeometrySceneObjectById(sourceId)) {
+      setGeometrySelectedObjectId(sourceId);
+    }
+  }, [bakeGeometryObjectToDatasetById, geometryMeshSemanticSelectionLink, geometryMode, handleOpenMeshPromotionSourceGeometryObject, meshPromotionTrace?.sourceGeometryObjectId, mode, resolveGeometrySceneObjectById, sceneSelection?.objectId, surfaceMeshData, surfaceViewerKind]);
+  useEffect(() => {
+    if (!sceneSelection) return;
+    const entity = sceneEntityById.get(sceneSelection.objectId);
+    const representation = mode === "geometry"
+      ? entity?.representations.find((entry) => entry.kind !== "editable-mesh")
+      : mode === "surfaces" && surfaceViewerKind === "mesh"
+        ? entity?.representations.find((entry) => entry.id === `mesh:${surfaceMeshLabel}`)
+        : null;
+    if (!entity || !representation) return;
+    setActiveRepresentationByEntity((current) => current[entity.id] === representation.id
+      ? current
+      : { ...current, [entity.id]: representation.id });
+  }, [mode, sceneEntityById, sceneSelection, surfaceMeshLabel, surfaceViewerKind]);
   const handleSceneRepresentationAction = useCallback((action: SceneRepresentationAction) => {
     const logicalId = sceneSelection?.objectId ?? (geometrySelectedObjectId ? `geometry:${geometrySelectedObjectId}` : null);
     const sourceId = logicalId?.startsWith("geometry:")
@@ -72638,6 +72697,11 @@ case "mobius":
       return;
     }
     if (action === "Edit Definition" || action === "Edit Geometry" || action === "Return to Source") {
+      if (meshPromotionTrace?.sourceGeometryObjectId === source.id && geometryMeshSemanticSelectionLink?.geometry) {
+        handleOpenMeshPromotionSourceGeometryObject();
+        setGeometryRightPanelTab("selection");
+        return;
+      }
       setGeometrySelectedObjectId(source.id);
       setGeometryMode("procedural");
       setGeometryProceduralPanelTab("object");
@@ -72649,9 +72713,15 @@ case "mobius":
     if (action === "Edit Mesh" && surfaceMeshData?.source.kind === "geometryObject" && surfaceMeshData.source.objectId === source.id) {
       setDatasetKind("mesh");
       setSurfaceViewerKind("mesh");
+      skipSurfacesAutoBrowseOnModeChangeRef.current = true;
       setSurfacesPanelState("work");
-      setSurfacesLeftTab("analysis");
+      setSurfacesLeftTab("scene");
+      setMeshWorkspaceLeftTab("operations");
       setMode("surfaces");
+      return;
+    }
+    if (action === "Generate Mesh" && surfaceMeshTopologyHistory.length && surfaceMeshData?.source.kind === "geometryObject" && surfaceMeshData.source.objectId === source.id) {
+      setSurfaceMeshTopologyStatus("The active mesh has topology edits. Detach it before generating a replacement.");
       return;
     }
     if (action === "Update Mesh") {
@@ -72666,7 +72736,7 @@ case "mobius":
     if (!bakeGeometryObjectToDatasetById(source.id)) {
       setGeometryCreateActionStatus(`${action} could not open a mesh for ${source.name}.`);
     }
-  }, [bakeGeometryObjectToDatasetById, geometrySelectedObjectId, handleRegenerateGeometryMeshRelation, meshGeometryRoundTripSource?.objectId, resolveGeometrySceneObjectById, sceneSelection?.objectId, setMeshDataset, surfaceMeshData, surfaceMeshTopologyHistory.length]);
+  }, [bakeGeometryObjectToDatasetById, geometryMeshSemanticSelectionLink, geometrySelectedObjectId, handleOpenMeshPromotionSourceGeometryObject, handleRegenerateGeometryMeshRelation, meshGeometryRoundTripSource?.objectId, meshPromotionTrace?.sourceGeometryObjectId, resolveGeometrySceneObjectById, sceneSelection?.objectId, setMeshDataset, surfaceMeshData, surfaceMeshTopologyHistory.length]);
   const unifiedObjectModel = useMemo(() => {
     const raw: Array<Omit<UnifiedObjectNode, "derivedProductIds">> = [];
     const addRaw = (node: Omit<UnifiedObjectNode, "derivedProductIds">) => {
@@ -77775,6 +77845,28 @@ case "mobius":
     unifiedObjectModel.nodeById.get(unifiedSelectedNode.parentId)?.name
       ? `Source object: ${unifiedObjectModel.nodeById.get(unifiedSelectedNode.parentId)?.name}`
       : null;
+  const geometryOperationParameters: Record<string, string | number | boolean> = geometryProbeSelectionMode === "face"
+    ? { distance: geometryFaceExtrudeDistance }
+    : geometryProbeSelectionMode === "edge"
+      ? { ratio: geometryEdgeSplitRatio }
+      : geometryProbeSelectionMode === "vertex"
+        ? { amount: geometryVertexMoveAmount }
+        : {};
+  const meshOperationParameters: Record<string, string | number | boolean> = surfaceMeshTopologyPickMode === "face"
+    ? { operation: surfaceMeshTopologyPreviewOperation, face: selectedSurfaceMeshTopologyFaceId }
+    : surfaceMeshTopologyPickMode === "edge"
+      ? { operation: surfaceMeshTopologyPreviewOperation, edge: selectedSurfaceMeshTopologyEdgeId }
+      : surfaceMeshTopologyPickMode === "vertex"
+        ? { operation: surfaceMeshTopologyPreviewOperation, vertex: selectedSurfaceMeshTopologyVertexId }
+        : {};
+  const geometryOperationPreviewKey = `${geometryCurrentSelectionKey ?? "none"}:${geometryContextToolbarPreviewLabel ?? ""}:${JSON.stringify(geometryOperationParameters)}`;
+  const meshOperationPreviewKey = `${filteredMeshUnifiedSelection ? getUnifiedSelectionKey(filteredMeshUnifiedSelection) ?? "none" : "none"}:${meshContextToolbarPreviewLabel ?? ""}:${JSON.stringify(meshOperationParameters)}`;
+  useEffect(() => {
+    if (cancelledGeometryPreviewKey && cancelledGeometryPreviewKey !== geometryOperationPreviewKey) setCancelledGeometryPreviewKey(null);
+  }, [cancelledGeometryPreviewKey, geometryOperationPreviewKey]);
+  useEffect(() => {
+    if (cancelledMeshPreviewKey && cancelledMeshPreviewKey !== meshOperationPreviewKey) setCancelledMeshPreviewKey(null);
+  }, [cancelledMeshPreviewKey, meshOperationPreviewKey]);
   const surfacesLayoutUsesLeftBrowseWork =
     surfacesLayoutVariant === "layout1" || surfacesLayoutVariant === "layout3" || surfacesLayoutVariant === "layout4";
   const surfacesBrowseUsesCardPresets = surfacesLayoutVariant === "layout3" || surfacesLayoutVariant === "layout4";
@@ -86378,6 +86470,7 @@ case "mobius":
                             if (sceneSelection) setActiveRepresentationByEntity((current) => ({ ...current, [sceneSelection.objectId]: id }));
                           }}
                           onRepresentationAction={handleSceneRepresentationAction}
+                          representationActions={availableSceneRepresentationActions(sceneEntityById.get(sceneSelection?.objectId ?? "") ?? null, surfaceMeshData ? `mesh:${surfaceMeshLabel}` : null)}
                           title="Unified selection"
                           materialInfo={meshUnifiedInspectorMaterialInfo}
                           creaseInfo={meshUnifiedInspectorCreaseInfo}
@@ -88589,9 +88682,15 @@ case "mobius":
                                 meshContextToolbarSelectionSummary)
                           }
                           selectionTestId="mesh-context-selection-label"
-                          previewLabel={meshContextToolbarPreviewLabel}
+                          previewLabel={cancelledMeshPreviewKey === meshOperationPreviewKey ? null : meshContextToolbarPreviewLabel}
                           previewTestId="mesh-context-preview"
                           applyPreviewTestId="mesh-context-apply-preview"
+                          operationParameters={meshOperationParameters}
+                          operationWorkspace="mesh"
+                          operationSnapshot={surfaceMeshData ? { label: surfaceMeshData.label, vertices: surfaceMeshData.positions.length / 3, faces: (surfaceMeshData.indices?.length ?? surfaceMeshData.positions.length / 3) / 3 } : null}
+                          operationValidationErrors={meshContextCanRunPrimaryAction ? [] : ["Select a valid Mesh target before applying."]}
+                          onCancelPreview={() => setCancelledMeshPreviewKey(meshOperationPreviewKey)}
+                          onApplyAndContinue={() => { handleRunMeshContextPrimaryAction(); setCancelledMeshPreviewKey(null); }}
                           confirmationLabel={meshContextToolbarConfirmationLabel}
                           confirmationTestId="mesh-context-confirmation"
                           lastCommandLabel={meshContextToolbarLastCommandLabel}
@@ -89369,7 +89468,7 @@ case "mobius":
                                 handleClearSurfaceMeshTopologyContextSelection();
                                 handleSelectMeshWorkspaceEntry(meshKey, Boolean(modifiers?.ctrlKey || modifiers?.metaKey));
                                 const picked = meshWorkspaceEntries.find((entry) => entry.id === meshKey);
-                                setSurfaceMeshTopologyStatus(`Selected mesh object: ${picked?.name ?? surfaceMeshLabel}.`);
+                                setSurfaceMeshTopologyStatus(`Selected object: ${picked?.name ?? surfaceMeshLabel}.`);
                               }
                             : undefined
                         }
@@ -106103,9 +106202,15 @@ case "mobius":
                         geometryContextToolbarSelectionLabel
                   }
                   selectionTestId="geometry-context-selection-label"
-                  previewLabel={geometryContextToolbarPreviewLabel}
+                  previewLabel={cancelledGeometryPreviewKey === geometryOperationPreviewKey ? null : geometryContextToolbarPreviewLabel}
                   previewTestId="geometry-context-preview"
                   applyPreviewTestId="geometry-context-apply-preview"
+                  operationParameters={geometryOperationParameters}
+                  operationWorkspace="geometry"
+                  operationSnapshot={geometrySelectedSceneObject ? { id: geometrySelectedSceneObject.id, revision: geometryObjectRevisionById[geometrySelectedSceneObject.id] ?? 0 } : null}
+                  operationValidationErrors={geometryContextCanRunPrimaryAction ? [] : ["Select a valid Geometry target before applying."]}
+                  onCancelPreview={() => setCancelledGeometryPreviewKey(geometryOperationPreviewKey)}
+                  onApplyAndContinue={() => { handleRunGeometryContextPrimaryAction(); setCancelledGeometryPreviewKey(null); }}
                   confirmationLabel={geometryContextToolbarConfirmationLabel}
                   confirmationTestId="geometry-context-confirmation"
                   lastCommandLabel={geometryActiveSelectionCardLastCommandLabel}
@@ -108125,6 +108230,7 @@ case "mobius":
                                 if (sceneSelection) setActiveRepresentationByEntity((current) => ({ ...current, [sceneSelection.objectId]: id }));
                               }}
                               onRepresentationAction={handleSceneRepresentationAction}
+                              representationActions={availableSceneRepresentationActions(sceneEntityById.get(sceneSelection?.objectId ?? "") ?? null, surfaceMeshData ? `mesh:${surfaceMeshLabel}` : null)}
                               title="Unified selection"
                               materialInfo={geometryUnifiedInspectorMaterialInfo}
                               creaseInfo={geometryUnifiedInspectorCreaseInfo}

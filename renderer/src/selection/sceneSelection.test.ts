@@ -16,6 +16,7 @@ describe("scene selection transfer", () => {
   it("uses one logical object identity across workbenches", () => {
     const selection = unifiedSelectionFromGeometryObject({ objectId: "box", objectLabel: "Box", sceneEntityId: "geometry:box" });
     expect(sceneSelectionFromUnified(selection)).toMatchObject({ objectId: "geometry:box", kind: "object" });
+    expect(sceneSelectionFromUnified(selection && { ...selection, lifecycle: "hover" })).toBeNull();
     expect(transferSceneSelection(edge, "mesh:box", [{ oldId: "edge:e-42", newIds: ["edge:1-2", "edge:2-3"], status: "split" }]))
       .toMatchObject({ selection: { objectId: "geometry:box", representationId: "mesh:box", componentIds: ["edge:1-2", "edge:2-3"] } });
   });

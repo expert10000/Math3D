@@ -300,6 +300,37 @@ test("Geometry pick readout commits object, face, edge, and vertex modes", async
   }
 });
 
+test("selected Geometry object follows direct Mesh navigation and returns to its source", async () => {
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-shared-scene-selection-"));
+  let app: ElectronApplication | null = null;
+  try {
+    const launched = await launchApp(profileDir);
+    app = launched.app;
+    const page = launched.page;
+    await resetStorage(page);
+    await openProceduralGeometry(page, "box");
+    await page.getByTestId("geometry-workflow-step-transform").click();
+    await commitDeterministicGeometryPick(page, "object");
+    const sourceId = await page.getByTestId("geometry-pick-object-id").innerText();
+    await page.getByTestId("geometry-context-toolbar").getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(page.getByTestId("geometry-context-preview")).toHaveCount(0);
+    await expect(page.getByTestId("shared-scene-selection")).toContainText(`geometry:${sourceId}`);
+    await clickFirstVisibleButton(page, "Mesh");
+    await expect(page.getByText(/Mesh \/ Workspace/i).first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId("mesh-context-selection-label")).toContainText(/Selected object:/, { timeout: 20_000 });
+    await clickFirstVisibleButton(page, "Geometry");
+    await expect(page.getByTestId("shared-scene-selection")).toContainText(`geometry:${sourceId}`, { timeout: 20_000 });
+    await expect(page.getByTestId("scene-representations")).toContainText("Editable Mesh");
+    await page.getByTestId("scene-representations").getByLabel(/Editable Mesh/).check();
+    await expect(page.getByTestId("shared-scene-selection")).toContainText(`geometry:${sourceId}`);
+    await page.getByTestId("scene-representations").getByRole("button", { name: "Edit Mesh", exact: true }).click();
+    await expect(page.getByTestId("mesh-context-selection-label")).toContainText(/Selected object:/);
+  } finally {
+    if (app) await app.close().catch(() => undefined);
+    await removeProfileDir(profileDir);
+  }
+});
+
 test("Geometry analysis shortcuts focus their controls and Pick modes stay in sync", async () => {
   const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-geometry-controls-"));
   let app: ElectronApplication | null = null;
@@ -417,12 +448,12 @@ test("Geometry canvas picker commits a visible object pick", async () => {
       selectObject: async () => {
         await commitDeterministicGeometryPick(page, "object", { useContextOrInspectorMode: true });
       },
-      chipLabel: "Geometry Object",
-      selectionLabel: /Selected geometry object:/i,
-      preview: "Preview: open selected Geometry object details",
-      viewportPreview: "Viewport preview: open selected Geometry object details",
+      chipLabel: "Object",
+      selectionLabel: /Selected object:/i,
+      preview: "Preview: open selected object details",
+      viewportPreview: "Viewport preview: open selected object details",
       wholeObjectBadgeTestId: "geometry-object-selection-glow",
-      wholeObjectBadgeLabel: "Whole Geometry object selected",
+      wholeObjectBadgeLabel: "Whole object selected",
       actionExpectations: [
         { testId: "geometry-context-open-object", label: "Open Object Details", enabled: true },
         { testId: "geometry-context-transform", label: "Transform" },
