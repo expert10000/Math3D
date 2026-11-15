@@ -100,6 +100,50 @@ html[data-theme="dot"] {
   color-scheme: light;
 }
 
+/* The full Geometry Workbook keeps its own light inline panels. Give that
+   research handoff the same readable palette as the surrounding dark UI. */
+.geometry-full-workbook { container: workbook-layout / inline-size; }
+html[data-theme="dark"] .geometry-full-workbook > div:first-child,
+html[data-theme="dark"] .geometry-full-workbook > div:nth-child(2) > div {
+  background: var(--workspace-section-bg) !important;
+  color: var(--text) !important;
+  border-color: var(--workspace-control-border) !important;
+}
+html[data-theme="dark"] .geometry-full-workbook > div:first-child :is(div, label, span),
+html[data-theme="dark"] .geometry-full-workbook > div:nth-child(2) > div:first-child :is(div, span, label, summary),
+html[data-theme="dark"] .geometry-full-workbook > div:nth-child(2) > div:nth-child(2) :is(div, span, label, summary),
+html[data-theme="dark"] .geometry-full-workbook > div:nth-child(2) > div:nth-child(3) > :is(div:first-child, div:last-child) :is(div, span, label, summary) {
+  color: var(--text) !important;
+}
+html[data-theme="dark"] .geometry-full-workbook > div:nth-child(2) > div:nth-child(3) > div:nth-child(2) {
+  color: #0f172a !important;
+}
+html[data-theme="dark"] .geometry-full-workbook :is(button, summary, details, select, textarea, input:not([type="checkbox"]):not([type="range"])) {
+  background: var(--workspace-control-bg) !important;
+  color: var(--workspace-control-text) !important;
+  border-color: var(--workspace-control-border) !important;
+}
+html[data-theme="dark"] .geometry-full-workbook button[aria-pressed="true"] {
+  background: var(--workspace-control-active-bg) !important;
+  border-color: var(--workspace-control-active-border) !important;
+}
+html[data-theme="dark"] .geometry-full-workbook :focus-visible {
+  outline: 3px solid var(--workspace-control-active-border);
+  outline-offset: 2px;
+}
+@media (forced-colors: active) {
+  .geometry-full-workbook :focus-visible { outline: 3px solid Highlight; outline-offset: 2px; }
+  .geometry-full-workbook button[aria-pressed="true"] { border: 2px solid Highlight !important; }
+}
+@container workbook-layout (max-width: 1000px) {
+  .geometry-full-workbook > div:nth-child(2) {
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-auto-rows: minmax(280px, auto);
+    overflow: auto;
+  }
+  .geometry-full-workbook > div:nth-child(2) > div { min-height: 280px; }
+}
+
 /* ---- Layout: let React fill the whole Electron window ---- */
 html,
 body,
