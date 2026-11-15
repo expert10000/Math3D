@@ -23,7 +23,7 @@ Reviewed source: `2cf4b6a4b096ff08f3e7c8e928c542d25acca065`. Planning files reac
 | TOP-01 | merged; scoped Windows CI passed | UI cleanup thread / codex/topology-ui-navigation | 5adad7af | TopologyScreen.tsx center navigation/header around6920–7010; new focused native test/workflow; no App.tsx or topology owner changes | Distinguish construction guide from representations; assert unchanged Torus canonical counts and source revision across views |
 | TOP-03 | PR77 retargeted to main; review correction; current-head Windows CI pending | UI cleanup thread / codex/topology-count-layers | PR75 head d0ce8ea5; main state bceb01c6 | TopologyScreen.tsx preset summary, Structure count labels, Mesh snapshot status; focused tests and docs; NO App.tsx/Geometry #61/model math | Preserve V/E/F/χ and hashes across Torus views; verify imported Mesh snapshot distinct; require native Windows CI |
 | Geometry #61 | external draft | codex/geometry-topology-2-0 / PR61 | See current PR head | Geometry topology/control work; coordinate any App.tsx overlap | Owned by its existing thread; not modified here |
-| GR-04 | claimed; reproduction first | research UI chat / codex/ui-next-four | 04784cc1 | Graph plot/overlay presentation in `Graph2DPlot.tsx`, `GraphsWorkspace.tsx` and scoped CSS; new native reproduction harness; no Graph math, source owner or Gallery edits | Reproduce strips after cross-workbench navigation and hide/show before changing rendering |
+| GR-04 | implemented; native verification pending | research UI chat / codex/ui-next-four | 04784cc1 | Graph interval plot presentation in `Graph2DPlot.tsx` and `GraphsWorkspace.tsx`; scoped native reproduction; no Graph math, source owner or Gallery edits | Rebuild and verify hidden interval bars disappear, visible bars return, and plot clipping holds |
 
 ## Workbench backlog
 
@@ -55,6 +55,7 @@ Check remote main, this claim and branch HEAD. Use the screenshot evidence and s
 
 ## Handoff log
 
+- 2026-11-15 — GR-04 reproduced on a Windows Electron source build at claim `e4181bb1`: after Complex→Graphs, adding `f`, hiding it left two green/blue horizontal bars at the plot bottom; showing it and visiting Mesh→Graphs retained the bars. Source inspection identified `graph2d-interval-overlays` for the selected Cartesian function: the plot still received current interval analysis when its object style was hidden. The fix only gates plotted interval bars on that style's visibility and adds the existing plot clip path to the interval group. Inspector analysis and Graph mathematical results are unchanged. Focused native rerun pending.
 - 2026-11-15 — Review prepared from 2cf4b6a4; all five native workspaces inspected in an isolated profile. Planning committed before the first shared implementation; actual code/test evidence will be appended separately.
 
 - 2026-11-15 — Five drafts and17 before captures on main; production footer patch merged via PR70. Shared App.tsx region is released (patch complete); other threads may claim nonoverlapping tasks after reading current main. Automated regression fixture corrected for intentional 3D Complex map generation; final source-bound CI pending.

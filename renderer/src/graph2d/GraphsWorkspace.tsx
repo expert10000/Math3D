@@ -4969,7 +4969,8 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           linkedCursorProbe={fieldCursorProjection?.status === "matched" ? fieldCursorProjection.value :
             curveCursorProjection?.status === "matched" ? curveCursorProjection.value : null}
           hoverProbe={parameterPreviewActive ? null : hoverSelection?.probe} overlays={parameterPreviewActive ? [] : differentialOverlays}
-          intervals={!parameterPreviewActive && intervals && isGraph2DIntervalAnalysisCurrent(intervals, document) ? intervals : null}
+          intervals={!parameterPreviewActive && intervals && isGraph2DIntervalAnalysisCurrent(intervals, document) &&
+            document.display.objects.some(style => style.objectId === intervals.objectId && style.visible) ? intervals : null}
           focusedIntervalId={focusedInterval && focusedInterval.resultId === intervals?.resultId ?
             focusedInterval.intervalId : null}
           area={!parameterPreviewActive && area && isGraph2DIntegralCurrent(area, document) ? area : null}
