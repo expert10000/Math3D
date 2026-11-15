@@ -22,7 +22,7 @@ Reviewed source: `2cf4b6a4b096ff08f3e7c8e928c542d25acca065`. Planning files reac
 | MESH-01 | implemented; local native/typecheck pass; Windows CI pending | UI cleanup thread / codex/mesh-ui-operation-form | d7010fc3 | PR74; basic form presentation complete; no production edit reservation; focused harness owned by this thread | Inspect exact-head scoped Windows CI before review |
 | TOP-01 | implemented; local native pass; Windows CI pending | UI cleanup thread / codex/topology-ui-navigation | 5adad7af | TopologyScreen.tsx center navigation/header around6920–7010; new focused native test/workflow; no App.tsx or topology owner changes | Distinguish construction guide from representations; assert unchanged Torus canonical counts and source revision across views |
 | Geometry #61 | external draft | codex/geometry-topology-2-0 / PR61 | See current PR head | Geometry topology/control work; coordinate any App.tsx overlap | Owned by its existing thread; not modified here |
-| SURF-01 | claimed | research UI chat / codex/ui-four-slices | bceb01c6 | New compact representation header and `App.tsx` Surface viewer insertion near 87500; no Surface owner or Geometry changes | Show source and selected derived mesh identities/revisions, then run focused renderer and native checks |
+| SURF-01 | claimed | research UI chat / codex/ui-four-slices | bceb01c6 | Compact source/derived header at top of SurfaceAnalysisComputationPanel in `SurfaceAnalysisWorkspacePanels.tsx`; no `App.tsx`, Surface owner or Geometry changes | Show source and selected derived mesh identities/revisions, then run focused renderer and native checks |
 
 ## Workbench backlog
 
