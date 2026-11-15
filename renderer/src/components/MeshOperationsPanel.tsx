@@ -1220,7 +1220,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
   const booleanActiveLabel = activeMeshLabel?.trim() || "Active Mesh";
   const booleanOperandLabel = selectedBooleanOperand?.name?.trim() || "Operand B";
   const hasUsableResult = !!lastResult && lastResult.status !== "error" && (lastResult.afterFaces != null || lastResult.afterVertices != null);
-  const latestComparisonEntry = operationHistory.find((entry) => !entry.undoneAt && entry.topologyHistoryEntryId)?.topologyHistoryEntryId;
+  const latestComparisonEntry = !operationHistory[0]?.undoneAt ? operationHistory[0]?.topologyHistoryEntryId : null;
   const validationForActiveMesh =
     lastValidation && activeMeshLabel && lastValidation.meshLabel === activeMeshLabel
       ? lastValidation.validation

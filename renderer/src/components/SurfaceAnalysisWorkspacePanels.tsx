@@ -89,7 +89,7 @@ export function SurfaceAnalysisComputationPanel({
   onOpenConfiguration: () => void;
   derivedMesh: { available: boolean; label: string; vertexCount: number; faceCount: number };
   derivedMeshLifecycle?: {
-    selected: { id: string; label: string; state: string; sourceRevision: number; meshRevision: number; method: string; backend: string; backendVersion: string | null; variant: string; correspondence: string; mappedVertexCount: number; watertight: boolean | null; boundaryEdgeCount: number | null; staleReason?: string; historyCount: number; geometryAvailable: boolean } | null;
+    selected: { id: string; label: string; sourceLabel: string; state: string; sourceRevision: number; meshRevision: number; method: string; backend: string; backendVersion: string | null; variant: string; correspondence: string; mappedVertexCount: number; watertight: boolean | null; boundaryEdgeCount: number | null; staleReason?: string; historyCount: number; geometryAvailable: boolean } | null;
     records: ReadonlyArray<{ id: string; label: string; state: string }>;
     status: string;
     backendAvailability: "ready" | "checking" | "unavailable" | "browser-limited";
@@ -202,7 +202,7 @@ export function SurfaceAnalysisComputationPanel({
             <strong>Numerical input · {definition.representation}</strong>
             <span>Domain: {domainSummary} · sampling: {samplingSummary}</span>
             <span>Precision: {definition.sampling.tolerance == null ? "no configured tolerance" : `tolerance ${definition.sampling.tolerance}`} · units: {definition.units.length} · frame: {definition.orientation.description}</span>
-            <span>Backend: {typeof Worker !== "undefined" ? "Surface Analysis worker available" : "local sampler"} · {curvatureState === "unavailable" ? "source unavailable" : "ready to compute"}</span>
+            <span>Backend: {typeof Worker !== "undefined" ? "Surface Analysis worker supported" : "local sampler"} · {curvatureState === "unavailable" ? "source unavailable" : "ready to compute"}</span>
           </div>
           <span data-testid="surface-curvature-execution-state" style={{ color: curvatureExecution === "failed" ? "#b42318" : "#475467", fontSize: 9.5 }}>Execution: {curvatureExecution ?? "idle"}</span>
           <div style={{ display: "grid", gridTemplateColumns: curvatureExecution === "running" || curvatureExecution === "progressive" || curvatureExecution === "queued" ? "1fr 1fr" : "1fr", gap: 4 }}>
@@ -300,7 +300,7 @@ export function SurfaceAnalysisComputationPanel({
         </div>}
         {derivedMeshLifecycle?.selected && <div data-testid="surface-derived-mesh-handoff-preview" role="status" style={{ display: "grid", gap: 2, padding: 6, border: "1px solid #c7d7ee", borderRadius: 6, background: "#fff", fontSize: 9.5 }}>
           <strong>Before handoff · {derivedMeshLifecycle.selected.label}</strong>
-          <span>Source: {definition.identity.label} r{derivedMeshLifecycle.selected.sourceRevision} → derived Mesh r{derivedMeshLifecycle.selected.meshRevision} ({derivedMeshLifecycle.selected.state}).</span>
+          <span>Source: {derivedMeshLifecycle.selected.sourceLabel} r{derivedMeshLifecycle.selected.sourceRevision} → derived Mesh r{derivedMeshLifecycle.selected.meshRevision} ({derivedMeshLifecycle.selected.state}).</span>
           <span>Bake / Promote creates a separate editable Mesh snapshot with this Surface revision as lineage. Open in Mesh Analysis navigates to the selected Mesh without baking.</span>
           <span style={{ color: derivedMeshLifecycle.selected.geometryAvailable ? "#166534" : "#9a3412" }}>Geometry bytes: {derivedMeshLifecycle.selected.geometryAvailable ? "available for handoff" : "unavailable in this session; regenerate the live tessellation first"}.</span>
         </div>}

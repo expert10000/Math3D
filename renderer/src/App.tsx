@@ -80812,6 +80812,7 @@ case "mobius":
                       selected: activeSurfaceDerivedMeshRecord ? {
                         id: activeSurfaceDerivedMeshRecord.identity.meshId,
                         label: activeSurfaceDerivedMeshRecord.label,
+                        sourceLabel: activeSurfaceDerivedMeshRecord.identity.source.label,
                         state: activeSurfaceDerivedMeshRecord.identity.state,
                         sourceRevision: activeSurfaceDerivedMeshRecord.identity.source.surfaceRevision,
                         meshRevision: activeSurfaceDerivedMeshRecord.identity.meshRevision,
