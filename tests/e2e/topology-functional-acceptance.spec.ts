@@ -153,7 +153,20 @@ test('TOP-05 Mesh workbench handoff: changed source cannot silently stay current
     await resetSurfaceAppState(page);
     await page.getByTestId('workspace-nav-mesh').click();
     await expect(page.getByTestId('app-status-bar')).toContainText('Box');
-    const workerBeforeTopology = await page.locator('[data-testid="worker-status"]').allTextContents();
+    const meshToolsBefore = page.getByRole('button', { name: 'Mesh tools', exact: true });
+    for (const button of await meshToolsBefore.all()) if (await button.isVisible()) { await button.click(); break; }
+    const meshCardBefore = page.getByTestId('mesh-workspace-operation-registry').first();
+    await expect(meshCardBefore).toBeVisible();
+    await meshCardBefore.getByTestId('mesh-workspace-operation-registry-row-smooth').click();
+    const runBefore = meshCardBefore.getByTestId('mesh-workspace-operation-registry-run-smooth');
+    const initialMeshGate = {
+      enabled: await runBefore.isEnabled(),
+      workerText: (await meshCardBefore.innerText()).slice(0, 100),
+    };
+    await test.info().attach('top05-e6-initial-mesh-gate.json', {
+      body: Buffer.from(JSON.stringify(initialMeshGate, null, 2)),
+      contentType: 'application/json',
+    });
     await page.getByTestId('workspace-nav-topology').click();
     const interop = page.getByTestId('topology-interoperability-panel');
     const analyze = interop.getByTestId('topology-analyze-current-mesh');
@@ -191,7 +204,7 @@ test('TOP-05 Mesh workbench handoff: changed source cannot silently stay current
             .map((el) => el.getAttribute('data-testid')),
         };
       });
-      const evidence = { ...gate, workerBeforeTopology };
+      const evidence = { ...gate, initialMeshGate };
       console.log('TOP05-E6 Mesh gate evidence:', JSON.stringify(evidence));
       await test.info().attach('top05-e6-mesh-gate.json', {
         body: Buffer.from(JSON.stringify(evidence, null, 2)),
