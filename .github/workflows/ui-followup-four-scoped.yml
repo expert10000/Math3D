@@ -44,7 +44,7 @@ jobs:
         run: |
           mkdir -p ui-evidence
           git rev-parse HEAD > ui-evidence/source.txt
-          npx playwright test tests/e2e/surface-functional.spec.ts tests/e2e/complex-numerical-results.spec.ts tests/e2e/complex-exact-mvp.spec.ts tests/e2e/mesh-operations-card.spec.ts --grep 'Test 3|Test 8|publishes qualified numerical evidence|analyzes 1/z|expands rows' --workers=1 --retries=0 --reporter=list,json
+          npx playwright test tests/e2e/surface-functional.spec.ts tests/e2e/complex-numerical-results.spec.ts tests/e2e/complex-exact-mvp.spec.ts tests/e2e/mesh-operations-card.spec.ts --grep 'Test 3|Test 8|publishes qualified numerical evidence|analyzes 1/z|keeps Mesh result actions' --workers=1 --retries=0 --reporter=list,json
       - uses: actions/upload-artifact@v7
         if: always()
         with:

@@ -368,6 +368,23 @@ test.describe("Mesh Operations card", () => {
     await expect(leftPanel).toHaveJSProperty("scrollTop", 0);
   });
 
+  test("keeps Mesh result actions above the registry without a worker", async () => {
+    ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
+    const { page } = ctx;
+    await resetSurfaceAppState(page);
+    await selectSection(page, "Mesh");
+    const card = await openWorkspaceOperationsCard(page);
+    const quick = card.getByTestId("mesh-workspace-operation-registry-quick-actions");
+    const presets = card.getByTestId("mesh-workspace-operation-registry-presets");
+    await expect(quick).toBeVisible();
+    await expect(quick).toContainText("Last operation: none yet");
+    expect((await quick.boundingBox())!.y).toBeLessThan((await presets.boundingBox())!.y);
+    await expect(quick.getByRole("button", { name: "Details" })).toBeDisabled();
+    await expect(quick.getByRole("button", { name: "Undo" })).toBeDisabled();
+    await expect(quick.getByRole("button", { name: "Validate" })).toBeVisible();
+    await expect(quick.getByRole("button", { name: "Compare" })).toBeDisabled();
+  });
+
   test("expands rows, changes parameters, and records a Decimate run", async () => {
     ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
     const { page } = ctx;
