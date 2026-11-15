@@ -6,6 +6,7 @@ on:
       - 'tests/e2e/topology-functional-acceptance.spec.ts'
       - 'renderer/src/topology/topologyPersistence.test.ts'
       - 'renderer/src/topology/meshSnapshotHandoff.test.ts'
+      - 'renderer/src/topology/algebraPublication.test.ts'
       - '.github/workflows/topology-functional-acceptance.yml'
   pull_request:
     branches: [main]
@@ -38,8 +39,8 @@ jobs:
           key: ${{ runner.os }}-electron-cache-${{ hashFiles('package-lock.json') }}
       - run: npm ci --foreground-scripts && npm --prefix renderer ci --foreground-scripts
       - run: npm run typecheck:noemit && npm run build:core
-      - name: Topology persistence and Mesh snapshot lifecycle unit qualification
-        run: npm --prefix renderer test -- src/topology/topologyPersistence.test.ts src/topology/meshSnapshotHandoff.test.ts
+      - name: Topology persistence, Mesh lifecycle and Sage publication unit qualification
+        run: npm --prefix renderer test -- src/topology/topologyPersistence.test.ts src/topology/meshSnapshotHandoff.test.ts src/topology/algebraPublication.test.ts
       - name: Native edit / undo / redo and three preset examples
         shell: bash
         env:
