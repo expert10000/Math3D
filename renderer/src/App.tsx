@@ -83164,6 +83164,7 @@ case "mobius":
             </div>
           ) : (
             <div
+              data-testid="surface-workflow-strip"
               style={{
                 width: "100%",
                 border: "1px solid #dbe4f0",
@@ -83177,6 +83178,11 @@ case "mobius":
                 flexWrap: "wrap",
               }}
             >
+              <details data-testid="surface-workflow-stages">
+                <summary style={{ cursor: "pointer", color: "#334155", fontSize: 11, fontWeight: 700 }}>
+                  Workflow navigation · {SURFACE_WORKFLOW_STEPS.find(step => step.id === surfaceWorkflowActiveStepId)?.label} · show stages
+                </summary>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, flexWrap: "wrap", paddingTop: 6 }}>
               {SURFACE_WORKFLOW_STEPS.map((step, index) => {
               const stepState = surfaceWorkflowStepStateById[step.id];
               const isDisabled = stepState === "disabled";
@@ -83228,6 +83234,8 @@ case "mobius":
                 </React.Fragment>
               );
             })}
+                </div>
+              </details>
               {mode === "surfaces" && (
               <>
                 <span style={{ color: "#94a3b8", fontSize: 11 }}>|</span>
