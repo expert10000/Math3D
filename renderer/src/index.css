@@ -1,4 +1,7 @@
 /* ---- Global typography / rendering ---- */
+.surface-workflow-strip [data-testid="surface-workflow-stages"][open] + [data-testid="surface-workflow-preview-primary"] {
+  display: none;
+}
 :root {
   --bg: #f7f4ee;
   --bg-2: #eef2f6;
