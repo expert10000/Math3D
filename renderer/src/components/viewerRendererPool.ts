@@ -10,6 +10,20 @@ const MAX_IDLE_RENDERERS = 5;
 const idleRenderers: Array<{ renderer: THREE.WebGLRenderer; antialias: boolean; role: ViewerRendererRole }> = [];
 const rendererIdentity = new WeakMap<THREE.WebGLRenderer, { antialias: boolean; role: ViewerRendererRole }>();
 let pageUnloading = false;
+let parkingHost: HTMLDivElement | null = null;
+
+const parkCanvas = (canvas: HTMLCanvasElement): void => {
+  if (typeof document === "undefined") {
+    canvas.remove();
+    return;
+  }
+  if (!parkingHost) {
+    parkingHost = document.createElement("div");
+    parkingHost.style.cssText = "position:fixed;left:-100000px;top:0;width:0;height:0;overflow:hidden;visibility:hidden;pointer-events:none";
+    document.body.appendChild(parkingHost);
+  }
+  parkingHost.appendChild(canvas);
+};
 
 const destroyRenderer = (renderer: THREE.WebGLRenderer): void => {
   renderer.renderLists.dispose();
@@ -22,6 +36,8 @@ if (typeof window !== "undefined") {
   window.addEventListener("pagehide", () => {
     pageUnloading = true;
     for (const { renderer } of idleRenderers.splice(0)) destroyRenderer(renderer);
+    parkingHost?.remove();
+    parkingHost = null;
   }, { once: true });
 }
 
@@ -46,14 +62,27 @@ export const releaseViewerRenderer = (renderer: THREE.WebGLRenderer): void => {
   renderer.setRenderTarget(null);
   renderer.renderLists.dispose();
   renderer.resetState();
-  renderer.domElement.remove();
   if (pageUnloading || idleRenderers.length >= MAX_IDLE_RENDERERS) {
     destroyRenderer(renderer);
   } else {
     const { antialias, role } = rendererIdentity.get(renderer) ?? { antialias: true, role: "general" };
-    // Keep the backing buffer while this bounded context is idle. Shrinking it
-    // to 1x1 on every route exit forces ANGLE to allocate a new multisampled
-    // buffer on the next Surface/Volume visit.
+    // Keep the bounded canvas attached while idle. Detaching or shrinking it
+    // can make ANGLE allocate a new backing buffer on the next viewer visit.
+    parkCanvas(renderer.domElement);
     idleRenderers.push({ renderer, antialias, role });
   }
+};
+
+// Three.js writes canvas.width/height on every setSize call, even when the
+// dimensions are unchanged. That discards the drawing buffer and makes ANGLE
+// allocate it again on each resize notification or pooled-viewer mount.
+export const setViewerRendererPixelRatio = (renderer: THREE.WebGLRenderer, ratio: number): void => {
+  if (renderer.getPixelRatio() !== ratio) renderer.setPixelRatio(ratio);
+};
+
+export const setViewerRendererSize = (
+  renderer: THREE.WebGLRenderer, width: number, height: number, updateStyle = true,
+): void => {
+  const current = renderer.getSize(new THREE.Vector2());
+  if (current.x !== width || current.y !== height) renderer.setSize(width, height, updateStyle);
 };

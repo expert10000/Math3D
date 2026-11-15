@@ -39,7 +39,7 @@ import {
 import { debugLog } from "../utils/debugLog";
 import { configureOrbitControlsForTouch, installViewerTouchGestures } from "../utils/viewerTouchGestures";
 import { readFullMeshPreviewBuffer, type FullMeshPreviewBufferPayload } from "../mesh/fullMeshPreviewBufferStore";
-import { acquireViewerRenderer, releaseViewerRenderer } from "./viewerRendererPool";
+import { acquireViewerRenderer, releaseViewerRenderer, setViewerRendererPixelRatio, setViewerRendererSize } from "./viewerRendererPool";
 import { startViewerAnimationLoop } from "./viewerAnimationLoop";
 
 export type ColorMode = CoreColorMode;
@@ -3941,8 +3941,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const qualityScale =
       renderQuality === "performance" ? 1 : renderQuality === "sharp" ? 1.75 : 1.15;
     const targetPixelRatio = devicePixelRatio * qualityScale;
-    renderer.setPixelRatio(Math.min(targetPixelRatio, maxPixelRatio));
-    renderer.setSize(width, height, false);
+    setViewerRendererPixelRatio(renderer, Math.min(targetPixelRatio, maxPixelRatio));
+    setViewerRendererSize(renderer, Math.round(width), Math.round(height), false);
     renderer.setClearColor(sceneBackgroundColor, sceneBackgroundAlpha);
     renderer.domElement.style.width = "100%";
     renderer.domElement.style.height = "100%";
@@ -6051,10 +6051,10 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       const h = Math.max(1, Math.round(rawHeight));
       const nextDevicePixelRatio = Math.max(1, window.devicePixelRatio || 1);
       const nextTargetPixelRatio = nextDevicePixelRatio * qualityScale;
-      renderer.setPixelRatio(Math.min(nextTargetPixelRatio, maxPixelRatio));
+      setViewerRendererPixelRatio(renderer, Math.min(nextTargetPixelRatio, maxPixelRatio));
       camera.aspect = w / h;
       updatePerspectiveCameraClipping(camera, controls.target, radiusRef.current);
-      renderer.setSize(w, h, false);
+      setViewerRendererSize(renderer, w, h, false);
       renderResizeFrame();
 
       if (!reframe) return;

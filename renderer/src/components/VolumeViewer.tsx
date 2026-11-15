@@ -29,7 +29,7 @@ import {
 import { vtkSmooth } from "../services/vtkMeshClient";
 import { configureOrbitControlsForTouch, installViewerTouchGestures } from "../utils/viewerTouchGestures";
 import AxisGizmo from "./AxisGizmo";
-import { acquireViewerRenderer, releaseViewerRenderer } from "./viewerRendererPool";
+import { acquireViewerRenderer, releaseViewerRenderer, setViewerRendererPixelRatio, setViewerRendererSize } from "./viewerRendererPool";
 import { startViewerAnimationLoop } from "./viewerAnimationLoop";
 import { applyCameraOrientation, CAMERA_ORIENTATION_LABEL, orbitCameraAroundTarget, type CameraOrientation } from "./cameraOrientation";
 import {
@@ -862,8 +862,8 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     // the four simultaneous drawing buffers on high-DPI displays; the spatial
     // pane retains a modest supersample for its 3D geometry.
     const maxPixelRatio = viewPreset === "free" ? 1.25 : 1;
-    renderer.setPixelRatio(Math.min(Math.max(1, window.devicePixelRatio || 1), maxPixelRatio));
-    renderer.setSize(mount.clientWidth || 1, mount.clientHeight || 1);
+    setViewerRendererPixelRatio(renderer, Math.min(Math.max(1, window.devicePixelRatio || 1), maxPixelRatio));
+    setViewerRendererSize(renderer, mount.clientWidth || 1, mount.clientHeight || 1);
     mount.appendChild(renderer.domElement);
 
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -988,7 +988,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
       const h = mount.clientHeight || 1;
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
-      renderer.setSize(w, h);
+      setViewerRendererSize(renderer, w, h);
     };
 
     // Establish the correct aspect before any automatic fit effect runs.
