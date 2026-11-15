@@ -1,4 +1,6 @@
 import { expect, test } from "@playwright/test";
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState } from "./helpers/surfaceAppHarness";
 import { graphEditor, openGraphType } from "./helpers/graphAuthoring";
 
@@ -15,6 +17,10 @@ test("Graph editor keeps actions visible and returns focus to invalid fields", a
     await minimum.fill("1000");
     const recovery = editor.getByRole("button", { name: /Go to Domain: Domain minimum must be less than maximum/ });
     await expect(recovery).toBeVisible();
+    if (process.env.MATH3D_UI_CAPTURE_DIR) {
+      mkdirSync(process.env.MATH3D_UI_CAPTURE_DIR, { recursive: true });
+      await editor.screenshot({ path: join(process.env.MATH3D_UI_CAPTURE_DIR, "graph-editor-error-source-build.png") });
+    }
     await recovery.click();
     await expect(minimum).toBeFocused();
     await minimum.fill("-10");

@@ -40,11 +40,21 @@ const initialPiecewiseDraft = () => graph2DAuthoringPresets.piecewise[0]!.draft(
 
 const errorField = (error: string): { label: string; selector: string } => {
   if (/label/i.test(error)) return { label: "Name", selector: 'input[aria-label*="name" i]' };
-  if (/domain|bound|minimum|maximum|angular|parameter|time horizon|time direction/i.test(error))
+  if (/x\(t\)/i.test(error)) return { label: "x(t) expression", selector: 'input[aria-label="Parametric x expression"]' };
+  if (/y\(t\)/i.test(error)) return { label: "y(t) expression", selector: 'input[aria-label="Parametric y expression"]' };
+  if (/r\(θ\)/i.test(error)) return { label: "Polar expression", selector: 'input[aria-label="Polar radius expression"]' };
+  if (/Y bound/i.test(error)) return { label: "Y domain", selector: 'input[aria-label*="y minimum" i]' };
+  if (/State minimum/i.test(error)) return { label: "State domain", selector: 'input[aria-label="ODE state minimum"]' };
+  if (/Time horizon/i.test(error)) return { label: "Time horizon", selector: 'input[aria-label="Phase portrait time horizon"]' };
+  if (/Field density/i.test(error)) return { label: "Arrow density", selector: 'input[aria-label="Phase portrait arrow density"]' };
+  if (/initial point/i.test(error)) return { label: "Initial point", selector: 'input[aria-label="Trajectory initial x"], input[aria-label^="Phase seed"]' };
+  if (/initial time/i.test(error)) return { label: "Initial time", selector: 'input[aria-label="ODE initial time"]' };
+  if (/slope field/i.test(error)) return { label: "Slope field", selector: 'select[aria-label="Trajectory slope field"]' };
+  if (/domain|bound|minimum|maximum|angular|parameter|time direction/i.test(error))
     return { label: "Domain", selector: 'input[aria-label*="minimum" i], input[type="number"]' };
   if (/color|line width|line style/i.test(error)) return { label: "Style", selector: 'input[type="color"], input[aria-label*="width" i]' };
   if (/row|point table|data series/i.test(error)) return { label: "Data", selector: "textarea" };
-  if (/initial point|initial time|seed/i.test(error)) return { label: "Initial value", selector: 'input[aria-label*="initial" i]' };
+  if (/seed/i.test(error)) return { label: "Initial value", selector: 'input[aria-label*="initial" i], input[aria-label^="Phase seed"]' };
   return { label: "Expression", selector: '.graph2d-formula-input input, .graph2d-function-editor input:not([type="checkbox"])' };
 };
 
