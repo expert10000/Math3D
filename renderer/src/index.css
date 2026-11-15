@@ -678,3 +678,12 @@ html[data-theme="dark"] .gallery-scan-card:hover .gallery-scan-card-action-btn {
   color: #e5edf8;
   box-shadow: 0 1px 5px rgba(0, 0, 0, 0.32);
 }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
