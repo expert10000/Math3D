@@ -290,7 +290,7 @@ import {
 } from "./selection/unifiedSelection";
 import { sharedPickEntityId } from "./selection/pickContract";
 import { sceneSelectionFromUnified, type SceneSelection } from "./selection/sceneSelection";
-import { buildSceneEntities } from "./scene/sceneRepresentations";
+import { buildSceneEntities, type SceneRepresentationAction } from "./scene/sceneRepresentations";
 import {
   addSelectionHistoryEntry,
   bookmarkSelectionEntry,
@@ -72612,6 +72612,61 @@ case "mobius":
     relations: Object.values(getGlobalGeometryMeshRelationStore().relations),
   }), [geometryObjects, geometryDatasetMeshObjects, geometryObjectRevisionById, surfaceMeshData, surfaceMeshLabel, meshGeometryRoundTripSource?.objectId, surfaceMeshTopologyHistory.length]);
   const sceneEntityById = useMemo(() => new Map(sceneEntities.map((entity) => [entity.id, entity])), [sceneEntities]);
+  const handleSceneRepresentationAction = useCallback((action: SceneRepresentationAction) => {
+    const logicalId = sceneSelection?.objectId ?? (geometrySelectedObjectId ? `geometry:${geometrySelectedObjectId}` : null);
+    const sourceId = logicalId?.startsWith("geometry:")
+      ? logicalId.slice("geometry:".length)
+      : surfaceMeshData?.source.kind === "geometryObject"
+        ? surfaceMeshData.source.objectId ?? null
+        : meshGeometryRoundTripSource?.objectId ?? null;
+    const source = sourceId ? resolveGeometrySceneObjectById(sourceId) : null;
+    if (action === "Detach Mesh") {
+      if (!surfaceMeshData) {
+        setSurfaceMeshTopologyStatus("No active mesh is available to detach.");
+        return;
+      }
+      const detached = toDetachedMeshData(surfaceMeshData, surfaceMeshData.label);
+      setMeshDataset(detached, "mesh:detach");
+      setMeshGeometryRoundTripSource(null);
+      setGeometryMeshSemanticSelectionLink(null);
+      setSceneSelection((current) => current ? { ...current, objectId: `mesh:${detached.label}`, representationId: `mesh:${detached.label}` } : null);
+      setSurfaceMeshTopologyStatus(`Detached mesh: ${detached.label}. Geometry source remains available in its history.`);
+      return;
+    }
+    if (!source) {
+      setGeometryCreateActionStatus("The Geometry source is unavailable for this action.");
+      return;
+    }
+    if (action === "Edit Definition" || action === "Edit Geometry" || action === "Return to Source") {
+      setGeometrySelectedObjectId(source.id);
+      setGeometryMode("procedural");
+      setGeometryProceduralPanelTab("object");
+      setGeometryRightPanelTab("selection");
+      setMode("geometry");
+      setGeometryCreateActionStatus(`${action}: ${source.name}.`);
+      return;
+    }
+    if (action === "Edit Mesh" && surfaceMeshData?.source.kind === "geometryObject" && surfaceMeshData.source.objectId === source.id) {
+      setDatasetKind("mesh");
+      setSurfaceViewerKind("mesh");
+      setSurfacesPanelState("work");
+      setSurfacesLeftTab("analysis");
+      setMode("surfaces");
+      return;
+    }
+    if (action === "Update Mesh") {
+      if (surfaceMeshTopologyHistory.length && surfaceMeshData?.source.kind === "geometryObject" && surfaceMeshData.source.objectId === source.id) {
+        setSurfaceMeshTopologyStatus("This linked mesh has topology edits. Detach it before replacing it from Geometry.");
+        return;
+      }
+      const relation = Object.values(getGlobalGeometryMeshRelationStore().relations)
+        .find((entry) => entry.sourceGeometryId === source.id && entry.status === "stale");
+      if (relation) handleRegenerateGeometryMeshRelation(relation);
+    }
+    if (!bakeGeometryObjectToDatasetById(source.id)) {
+      setGeometryCreateActionStatus(`${action} could not open a mesh for ${source.name}.`);
+    }
+  }, [bakeGeometryObjectToDatasetById, geometrySelectedObjectId, handleRegenerateGeometryMeshRelation, meshGeometryRoundTripSource?.objectId, resolveGeometrySceneObjectById, sceneSelection?.objectId, setMeshDataset, surfaceMeshData, surfaceMeshTopologyHistory.length]);
   const unifiedObjectModel = useMemo(() => {
     const raw: Array<Omit<UnifiedObjectNode, "derivedProductIds">> = [];
     const addRaw = (node: Omit<UnifiedObjectNode, "derivedProductIds">) => {
@@ -86322,6 +86377,7 @@ case "mobius":
                           onSelectRepresentation={(id) => {
                             if (sceneSelection) setActiveRepresentationByEntity((current) => ({ ...current, [sceneSelection.objectId]: id }));
                           }}
+                          onRepresentationAction={handleSceneRepresentationAction}
                           title="Unified selection"
                           materialInfo={meshUnifiedInspectorMaterialInfo}
                           creaseInfo={meshUnifiedInspectorCreaseInfo}
@@ -108068,6 +108124,7 @@ case "mobius":
                               onSelectRepresentation={(id) => {
                                 if (sceneSelection) setActiveRepresentationByEntity((current) => ({ ...current, [sceneSelection.objectId]: id }));
                               }}
+                              onRepresentationAction={handleSceneRepresentationAction}
                               title="Unified selection"
                               materialInfo={geometryUnifiedInspectorMaterialInfo}
                               creaseInfo={geometryUnifiedInspectorCreaseInfo}

@@ -1,7 +1,7 @@
 import type React from "react";
 import type { SelectionResult, UnifiedSelectionSet } from "../selection/unifiedSelection";
 import type { SceneSelection } from "../selection/sceneSelection";
-import type { SceneEntity } from "../scene/sceneRepresentations";
+import type { SceneEntity, SceneRepresentationAction } from "../scene/sceneRepresentations";
 
 type UnifiedSelectionInspectorProps = {
   selection: SelectionResult | null;
@@ -10,6 +10,7 @@ type UnifiedSelectionInspectorProps = {
   sceneEntity?: SceneEntity | null;
   activeRepresentationId?: string | null;
   onSelectRepresentation?: (id: string) => void;
+  onRepresentationAction?: (action: SceneRepresentationAction) => void;
   title?: string;
   materialInfo?: string | null;
   creaseInfo?: string | null;
@@ -73,6 +74,7 @@ export const UnifiedSelectionInspector = ({
   sceneEntity = null,
   activeRepresentationId = null,
   onSelectRepresentation,
+  onRepresentationAction,
   title = "Selection inspector",
   materialInfo = null,
   creaseInfo = null,
@@ -143,6 +145,15 @@ export const UnifiedSelectionInspector = ({
               <span>{representation.label} · {representation.state}</span>
             </label>
           ))}
+          {onRepresentationAction && (
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+              {(["Edit Definition", "Edit Geometry", "Generate Mesh", "Edit Mesh", "Update Mesh", "Detach Mesh", "Return to Source"] as const).map((action) => (
+                <button key={action} type="button" onClick={() => onRepresentationAction(action)} style={{ fontSize: 10 }}>
+                  {action}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
       {multiSelection ? (

@@ -2,6 +2,9 @@ import type { GeometryMeshRelation } from "../geometry/geometryMeshRelations";
 
 export type SceneRepresentationKind = "parametric" | "evaluated" | "editable-mesh";
 export type SceneRepresentationState = "linked" | "modified-linked" | "detached" | "stale" | "invalid";
+export type SceneRepresentationAction =
+  | "Edit Definition" | "Edit Geometry" | "Generate Mesh" | "Edit Mesh"
+  | "Update Mesh" | "Detach Mesh" | "Return to Source";
 
 export type SceneRepresentation = {
   readonly id: string;
