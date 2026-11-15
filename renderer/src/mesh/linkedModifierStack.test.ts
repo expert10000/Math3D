@@ -25,4 +25,20 @@ describe("linked mesh modifiers", () => {
     expect(result.results[0].status).toBe("failed");
     expect(result.mesh).toBe(changed);
   });
+  it("replays a moved source, blocks later edits on failure, and resumes after disabling the failed edit", () => {
+    const moved = { ...base, positions: new Float32Array([0, 0, 1, 1, 0, 1, 0, 1, 1]) };
+    const valid = { id: "subdivide", definition: definition(0), enabled: true,
+      sourceConnectivity: meshConnectivityKey(base) };
+    const invalid = { id: "missing-face", definition: definition(99), enabled: true };
+    const movedReplay = replayLinkedMeshModifiers(moved, [valid]);
+    expect(movedReplay.ok).toBe(true);
+    expect(movedReplay.mesh.positions[2]).toBe(1);
+    const blocked = replayLinkedMeshModifiers(moved, [invalid, valid]);
+    expect(blocked.results.map((result) => result.status)).toEqual(["failed", "blocked"]);
+    expect(blocked.mesh).toBe(moved);
+    const recovered = replayLinkedMeshModifiers(moved, [{ ...invalid, enabled: false }, valid]);
+    expect(recovered.results.map((result) => result.status)).toEqual(["disabled", "applied"]);
+    expect(recovered.ok).toBe(true);
+    expect(recovered.mesh.indices?.length).toBeGreaterThan(moved.indices!.length);
+  });
 });
