@@ -185,3 +185,28 @@ test('TOP-05 Mesh workbench handoff: changed source cannot silently stay current
     await closeSurfaceApp(ctx);
   }
 });
+
+test('TOP-05 non-manifold: Dunce cap withholds formal surface classification without inventing a manifold', async () => {
+  test.setTimeout(180_000);
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await bootTopology();
+    const { page } = ctx;
+    await page.getByTestId('topology-preset-card-dunce_cap').click();
+    const provenance = page.getByTestId('topology-source-provenance');
+    const sourceHash = await provenance.locator('[title]').first().getAttribute('title');
+    const canonicalHash = await page.getByTestId('topology-canonical-provenance').getAttribute('title');
+    expect(sourceHash).toBeTruthy();
+    expect(canonicalHash).toBeTruthy();
+    const views = page.getByRole('group', { name: 'Representation views' });
+    await views.getByRole('button', { name: 'Algebra View' }).click();
+    const classification = page.getByTestId('topology-surface-classification');
+    await expect(classification).toContainText('WITHHELD');
+    await expect(page.getByTestId('topology-surface-classification-label')).toContainText('No formal surface name');
+    await expect(classification.getByText(/WITHHELD:/).first()).toBeVisible();
+    await expect(provenance.locator('[title]').first()).toHaveAttribute('title', sourceHash!);
+    await expect(page.getByTestId('topology-canonical-provenance')).toHaveAttribute('title', canonicalHash!);
+  } finally {
+    await closeSurfaceApp(ctx);
+  }
+});
