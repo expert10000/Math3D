@@ -6920,14 +6920,20 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
         />
       )}
       <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: "grid", gridTemplateRows: "auto minmax(0,1fr)" }}>
-        <div style={{ display: "grid", gap: 7, marginBottom: 8 }}>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+        <section aria-label="Topology navigation" data-testid="topology-navigation" style={{ display: "grid", gap: 7, marginBottom: 8 }}>
+          <div data-testid="topology-navigation-source" style={{ fontSize: 11, overflowWrap: "anywhere" }}>
+            <strong>Topic:</strong> {TOPOLOGY_TOPIC_TABS.find((topic) => topic.id === topicTab)?.label} · <strong>Source:</strong> {diagram.name}
+            <span style={{ color: buildStale ? "#b45309" : "#475569" }}> · {buildStale ? "Derived views need rebuild" : "Derived views current"}</span>
+          </div>
+          <div role="group" aria-label="Construction guide" aria-describedby="topology-guide-note" style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            <strong style={{ width: "100%", fontSize: 11 }}>Construction guide</strong>
+            <span id="topology-guide-note" style={{ width: "100%", fontSize: 10, color: "#475569" }}>Highlights follow the view or animation; they do not certify completed checks.</span>
             {CONSTRUCTION_PROGRESS_STEPS.map((step, index) => {
               const active = index === constructionProgressIndex;
-              const done = index < constructionProgressIndex;
               return (
                 <button
                   key={`construction-step-${step}`}
+                  aria-current={active ? "step" : undefined}
                   type="button"
                   onClick={() => {
                     if (index <= 0) {
@@ -6949,8 +6955,8 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
                   }}
                   style={{
                     borderRadius: 999,
-                    border: "1px solid " + (active ? "var(--workspace-control-active-border)" : done ? "#bfdbfe" : "var(--workspace-control-border)"),
-                    background: active ? "var(--workspace-control-active-bg)" : done ? "#eff6ff" : "var(--workspace-control-bg)",
+                    border: "1px solid " + (active ? "var(--workspace-control-active-border)" : "var(--workspace-control-border)"),
+                    background: active ? "var(--workspace-control-active-bg)" : "var(--workspace-control-bg)",
                     fontSize: 10,
                     fontWeight: active ? 700 : 600,
                     padding: "4px 9px",
@@ -6961,7 +6967,8 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
               );
             })}
           </div>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          <div role="group" aria-label="Representation views" style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", borderTop: "1px solid #dbe4f0", paddingTop: 6 }}>
+            <strong style={{ width: "100%", fontSize: 11 }}>Representation views</strong>
             {([
               ["diagram", "Diagram View"],
               ["quotient", "Quotient Structure View"],
@@ -6973,6 +6980,7 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
             ] as const).map(([id, label]) => (
               <button
                 key={`topology-view-${id}`}
+                aria-pressed={activeView === id}
                 type="button"
                 onClick={() => {
                   if (id !== "diagram") ensureBuilt();
@@ -7005,7 +7013,7 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
               </select>
             </label>
           </div>
-        </div>
+        </section>
         <div
           style={{
             border: "1px solid #dbe4f0",
