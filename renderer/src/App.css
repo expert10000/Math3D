@@ -66,3 +66,6 @@ input:disabled {
   opacity: 0.48;
   cursor: not-allowed;
 }
+.surface-workflow-strip:has([data-testid="surface-workflow-stages"][open]) > [data-testid="surface-workflow-preview-primary"] {
+  display: none;
+}

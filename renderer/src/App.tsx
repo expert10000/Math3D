@@ -83165,6 +83165,7 @@ case "mobius":
           ) : (
             <div
               data-testid="surface-workflow-strip"
+              className="surface-workflow-strip"
               style={{
                 width: "100%",
                 border: "1px solid #dbe4f0",
@@ -83236,6 +83237,13 @@ case "mobius":
             })}
                 </div>
               </details>
+              <button type="button" data-testid="surface-workflow-preview-primary"
+                onClick={() => handleSurfaceWorkflowStepClick("preview")}
+                disabled={surfaceWorkflowStepStateById.preview === "disabled"}
+                style={{ borderRadius: 999, border: "1px solid #d1d5db", background: "#ffffff", color: "#334155",
+                  fontWeight: 650, fontSize: 11, padding: "3px 10px", whiteSpace: "nowrap" }}>
+                Preview
+              </button>
               {mode === "surfaces" && (
               <>
                 <span style={{ color: "#94a3b8", fontSize: 11 }}>|</span>
