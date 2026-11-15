@@ -36,7 +36,7 @@ test("Mesh Run explains a missing implicit source beside the disabled action", a
     await expect(card.getByTestId("mesh-workspace-operation-registry-run-implicit-preview")).toBeDisabled();
     await expect(card.getByTestId("mesh-workspace-operation-registry-run-blocker")).toContainText("Open an implicit Surface source first");
     await expect(card.getByTestId("mesh-workspace-operation-registry-last-result")).toBeAttached();
-    await capture(card.getByTestId("mesh-workspace-operation-registry-run-blocker"), "mesh-run-blocker");
+    await capture(card.getByTestId("mesh-workspace-operation-registry-run-action"), "mesh-run-blocker");
   } finally { await closeSurfaceApp(app); }
 });
 

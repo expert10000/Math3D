@@ -2334,22 +2334,24 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                       {cgalError && <div style={{ color: "#b42318" }}>{cgalError}</div>}
                     </>
                   )}
-                  <button
-                    data-testid={`${testId}-run-${operation}`}
-                    type="button"
-                    onClick={runExpandedOperation}
-                    disabled={!expandedCanRun}
-                    style={{ justifySelf: "start", fontWeight: 800 }}
-                  >
-                    {operationBusy ? "Working..." : getMeshOperationRowRunLabel(expandedOperation)}
-                  </button>
-                  {expandedRunBlocker && <div data-testid={`${testId}-run-blocker`} role="status"
-                    style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, color: "#9a3412", fontSize: 10.5 }}>
-                    <span>Run unavailable: {expandedRunBlocker.reason}</span>
-                    {expandedRunBlocker.runtime && onOpenComputeCenter && <button type="button" onClick={onOpenComputeCenter}>
-                      Open Compute Center
-                    </button>}
-                  </div>}
+                  <div data-testid={`${testId}-run-action`} style={{ display: "grid", justifyItems: "start", gap: 5 }}>
+                    <button
+                      data-testid={`${testId}-run-${operation}`}
+                      type="button"
+                      onClick={runExpandedOperation}
+                      disabled={!expandedCanRun}
+                      style={{ justifySelf: "start", fontWeight: 800 }}
+                    >
+                      {operationBusy ? "Working..." : getMeshOperationRowRunLabel(expandedOperation)}
+                    </button>
+                    {expandedRunBlocker && <div data-testid={`${testId}-run-blocker`} role="status"
+                      style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, color: "#9a3412", fontSize: 10.5 }}>
+                      <span>Run unavailable: {expandedRunBlocker.reason}</span>
+                      {expandedRunBlocker.runtime && onOpenComputeCenter && <button type="button" onClick={onOpenComputeCenter}>
+                        Open Compute Center
+                      </button>}
+                    </div>}
+                  </div>
                 </div>
               )}
                 </div>
