@@ -99,6 +99,10 @@ try {
   # Upgrade in place. User profile stays outside the install directory.
   $currentExe = Invoke-InstalledNsis $record.currentInstaller.path $installRoot
   $record.currentInstalledExe = Get-BinaryIdentity $currentExe
+  if (-not $record.priorInstalledExe.version -or -not $record.currentInstalledExe.version -or
+      $record.priorInstalledExe.version -eq $record.currentInstalledExe.version) {
+    throw 'Upgrade requires independently identifiable, different installed ProductVersion values'
+  }
   if ($record.priorInstalledExe.sha256 -eq $record.currentInstalledExe.sha256) {
     throw 'Upgrade did not replace installed executable bytes'
   }
