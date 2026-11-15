@@ -34,7 +34,7 @@ A successful isolated harness would prove E8-01 through E8-05 **for the exact bi
 
 ## Running the manual workflow (only with real artifacts)
 
-Use **Actions → TOP-05 Installed Windows E8 (manual artifact qualification) → Run workflow** after this workflow exists on the default branch, with prior and target installer provenance and the retained-profile fixture. Supply the independently computed SHA-256 of each downloaded installer and its independently checked exact source commit SHA. A dedicated GitHub runner performs the install and attached Playwright checks, then uploads `top05-installed-e8-evidence`, including `qualification.json`, exact versions/hashes and test reports.
+Use **Actions → TOP-05 Installed Windows E8 (manual artifact qualification) → Run workflow** after this workflow exists on the default branch, with prior and target installer provenance and the retained-profile fixture. Supply the independently computed SHA-256 of each downloaded installer. The workflow verifies that each installer Actions run succeeded and automatically records its exact source commit SHA. A dedicated GitHub runner performs the install and attached Playwright checks, then uploads `top05-installed-e8-evidence`, including `qualification.json`, exact versions/hashes and test reports.
 
 **Do not dispatch with guessed artifact IDs, substitute source-built executable output, or treat successful installer download as installed-app qualification.** Release signing credentials and private user profiles are never requested in chat or placed in repository files.
 
