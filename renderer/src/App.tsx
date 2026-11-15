@@ -38056,7 +38056,8 @@ const App: React.FC = () => {
           ? "Covering Map Lab - cover space, base space, fibers, deck transformations"
         : "Function Explorer - general complex functions";
   const otherComplexFunctionExprSafe = (otherComplexFunctionExpr || "z").trim() || "z";
-  const otherComplexExprNormalized = otherComplexFunctionExprSafe.replace(/\s+/g, "");
+  const otherComplexExpressionIsDefault = !otherComplexFunctionExpr.trim();
+  const otherComplexExprNormalized = otherComplexFunctionExpr.trim().replace(/\s+/g, "");
   const otherComplexCorePresets = useMemo(
     () =>
       FUNCTION_EXPLORER_CORE_PRESET_IDS.map((id) => FUNCTION_EXPLORER_OTHER_PRESETS.find((preset) => preset.id === id)).filter(
@@ -38133,6 +38134,16 @@ const App: React.FC = () => {
     () => compileComplexMapExpressions(complexMapSpec.reExpr, complexMapSpec.imExpr, { inputMode: "fz", fExpr: otherComplexFunctionExprSafe }),
     [complexMapSpec.reExpr, complexMapSpec.imExpr, otherComplexFunctionExprSafe]
   );
+  const otherComplexExpressionStatus = otherComplexCompiled2d.error
+    ? `Expression needs attention: ${otherComplexCompiled2d.error}`
+    : otherComplexExpressionIsDefault
+      ? "No f(z) expression entered; Function Explorer previews default f(z) = z."
+      : "Expression accepted for preview. Domain and branch behavior are assessed separately.";
+  const otherComplexBranchStatus = otherComplexCompiled2d.error
+    ? "Branch profile unavailable until the expression is accepted."
+    : otherComplexBranchProfile.id === "none"
+      ? "No supported branch profile detected for this expression."
+      : `Detected branch profile: ${otherComplexBranchProfile.label}.`;
   const evalOtherComplexW = useCallback((u: number, v: number) => {
     const reFn = otherComplexCompiled2d.reFn;
     const imFn = otherComplexCompiled2d.imFn;
@@ -109432,9 +109443,13 @@ case "mobius":
                         <div style={{ fontSize: 11, opacity: 0.75 }}>
                           Supports z, +, -, *, /, ^, sin, cos, tan, exp, log, sqrt, abs.
                         </div>
-                        {otherComplexCompiled2d.error && (
-                          <div style={{ fontSize: 11, color: "#b42318" }}>{otherComplexCompiled2d.error}</div>
-                        )}
+                        <div data-testid="complex-function-status" role={otherComplexCompiled2d.error ? "alert" : "status"}
+                          style={{ fontSize: 11, color: otherComplexCompiled2d.error ? "#b42318" : "#334155" }}>
+                          {otherComplexExpressionStatus}
+                        </div>
+                        <div data-testid="complex-branch-profile-status" style={{ fontSize: 11, color: "#475569" }}>
+                          {otherComplexBranchStatus}
+                        </div>
                       </div>
                       <div style={{ ...cardStyle, display: "grid", gap: 8 }}>
                         <div style={{ fontWeight: 700, fontSize: 12 }}>Domain / Resolution</div>
@@ -111337,7 +111352,10 @@ case "mobius":
                         <SharedInspectorShell
                           activeCategory={otherComplexInspectorCategory}
                           onCategoryChange={selectOtherComplexInspectorCategory}
-                          summary={<div style={{ display: "grid", gap: 2 }}><strong>Complex Function Explorer</strong><span>Complex / {otherComplexBranchProfile.label}</span><span>{otherComplexCompiled2d.error ? "Needs attention" : "Ready"}</span></div>}
+                          summary={<div style={{ display: "grid", gap: 2 }}><strong>Complex Function Explorer</strong>
+                            <span>f(z) = {otherComplexFunctionExprSafe}{otherComplexExpressionIsDefault ? " (default)" : ""}</span>
+                            <span>{otherComplexCompiled2d.error ? "Expression needs attention" : otherComplexExpressionIsDefault ? "Default preview" : "Expression accepted"}</span>
+                            <span>{otherComplexBranchStatus}</span></div>}
                         >
                         {otherComplexSheetTracker && otherComplexBranchProfile.id !== "none" && (
                           <div style={{ border: "1px solid #dbe2ea", borderRadius: 8, padding: "6px 8px", background: "#f8fafc", display: "grid", gap: 2, fontSize: 11 }}>
