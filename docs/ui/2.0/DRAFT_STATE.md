@@ -18,6 +18,13 @@ This snapshot was checked against GitHub PR metadata and PR-head-associated work
 
 [#76](https://github.com/expert10000/Math3D/pull/76) covers research-route theme and 200% zoom accessibility, outside these five workbench backlogs. It is ready for review but still has native Windows high-contrast and installed-candidate limits. The table records evidence, not approval to merge or a new 2.0 qualification baseline.
 
+### Follow-up after the initial snapshot
+
+- [#81](https://github.com/expert10000/Math3D/pull/81) now points to `e8764ca04`. `GraphsWorkspace.test.tsx` was corrected for More → Navigation → Inspector (`804d4f2ce`); focused Vitest 3/3 and local `npm run typecheck:noemit` passed. The branch merged main's existing PRJ18 saved-Mesh navigation fix and resolved its documentation conflict. Current-head [CI Build](https://github.com/expert10000/Math3D/actions/runs/43742228090) and both focused UI workflows passed. Graph2D and Unified Projects were still running. [Release flagship](https://github.com/expert10000/Math3D/actions/runs/43742227881) failed in the separate algebra Project gallery route; the final evidence job failed as a consequence. Keep #81 draft.
+- [#82](https://github.com/expert10000/Math3D/pull/82) now points to `453c553c1` after a main merge that resolved only `DRAFT_STATE.md`; its application code auto-merged. The new-head [focused UI](https://github.com/expert10000/Math3D/actions/runs/43743131261) and [release flagship](https://github.com/expert10000/Math3D/actions/runs/43743131262) runs passed. CI Build, Graph2D, Unified Projects and other broad jobs were still running. Keep #82 draft for overlap review.
+- [#78](https://github.com/expert10000/Math3D/pull/78) now points to `d2cb54d4d` after the same documentation-only conflict resolution and main merge. The new-head [focused UI](https://github.com/expert10000/Math3D/actions/runs/43743656810) passed; [release flagship](https://github.com/expert10000/Math3D/actions/runs/43743656821) failed its desktop journey and final evidence job. Other broad jobs were still running. Keep #78 draft.
+- The algebra route correction is isolated in [draft #87](https://github.com/expert10000/Math3D/pull/87), head `9ca60d733`: wait for the saved Surface breadcrumb and enter the full gallery only when needed. The exact native SAGE-F01/F02 journey passed locally 1/1 after a source core build; current-head [release flagship](https://github.com/expert10000/Math3D/actions/runs/43745195442) was running. This test-only PR does not make #78 or #81 green until integrated and rerun.
+
 ## How threads cooperate
 
 1. Pull current main and read this file before editing. Inspect the current claim and current source; this review SHA is evidence, not permission to overwrite newer work.
