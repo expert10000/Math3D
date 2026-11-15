@@ -167,6 +167,26 @@ test('TOP-05 Mesh workbench handoff: changed source cannot silently stay current
       body: Buffer.from(JSON.stringify(initialMeshGate, null, 2)),
       contentType: 'application/json',
     });
+    // Establish baseline worker readiness independently of Topology navigation.
+    // Do not force-enable, fake readiness, or delete the subsequent stale/refresh checks.
+    try {
+      await expect(runBefore, 'Mesh worker must become ready before any Topology switch').toBeEnabled({ timeout: 45_000 });
+    } catch (error) {
+      const baseline = {
+        initialMeshGate,
+        afterWait: {
+          enabled: await runBefore.isEnabled(),
+          workerText: (await meshCardBefore.innerText()).slice(0, 180),
+        },
+        statusBar: await page.getByTestId('app-status-bar').innerText(),
+      };
+      console.log('TOP05-E6 startup worker gate:', JSON.stringify(baseline));
+      await test.info().attach('top05-e6-startup-blocker.json', {
+        body: Buffer.from(JSON.stringify(baseline, null, 2)),
+        contentType: 'application/json',
+      });
+      throw error;
+    }
     await page.getByTestId('workspace-nav-topology').click();
     const interop = page.getByTestId('topology-interoperability-panel');
     const analyze = interop.getByTestId('topology-analyze-current-mesh');
