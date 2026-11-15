@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { analyzeGraph2DDerivative, createGraph2DWorkspaceProject, createMath3DProject, createMixedWorkspaceDocument, createVolumeDocument, getGraph2DPresetCatalog,
-  instantiateGraph2DPreset, migrateProjectScientificSelections, parseMath3DProject, promoteGraph2DToCurve, replaceMath3DProjectWorkspace, serializeMath3DProject, serializeMixedWorkspaceDocument, structuralHash, createProjectStudyFromDocuments } from "@math3d/core";
+  instantiateGraph2DPreset, migrateProjectScientificSelections, parseMath3DProject, promoteGraph2DToCurve, replaceMath3DProjectWorkspace, serializeMath3DProject, serializeMixedWorkspaceDocument, structuralHash, createProjectStudyFromDocuments, pinProjectFieldExplorerBaseline } from "@math3d/core";
+import { portableScientificProjectFixture } from "../../../tests/fixtures/graph-field/portableScientificProject";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { VolumeDocumentAdapter } from "../volume/volumeDocumentAdapter";
 import { exportProjectFile, exportProjectCheckpointFile, inspectProjectCompatibility, MAX_PROJECT_IMPORT_BYTES, mergeProjectLiveWorkspace, previewProjectImport } from "./projectTransfer";
@@ -19,11 +20,11 @@ const store = () => {
   return { values, getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); }, removeItem: (key: string) => { values.delete(key); } };
 };
 describe("PRJ06 project transfer and compatibility", () => {
-  it("retains an explicit live active-document choice through the Graph checkpoint merge", () => {
+  it("retains legacy active-document union for non-field Graph captures", () => {
     const { project, graph, curve } = fixture();
     const live = createMixedWorkspaceDocument({ ...project.workspace, activeDocumentIds: [curve.document.identity.id] });
     const merged = mergeProjectLiveWorkspace(project.workspace, live);
-    expect(merged.activeDocumentIds).toEqual([curve.document.identity.id]);
+    expect(merged.activeDocumentIds).toEqual([graph.identity.id, curve.document.identity.id]);
     expect(merged.entries.map(entry => entry.expected.id)).toContain(graph.identity.id);
     const retained = createMixedWorkspaceDocument({ ...project.workspace,
       activeDocumentIds: [graph.identity.id, curve.document.identity.id] });
@@ -31,6 +32,16 @@ describe("PRJ06 project transfer and compatibility", () => {
       activeDocumentIds: [graph.identity.id], relations: [] });
     expect(mergeProjectLiveWorkspace(retained, partial).activeDocumentIds)
       .toEqual([graph.identity.id, curve.document.identity.id]);
+  });
+  it("retains the explicitly active Field Explorer source through the Graph checkpoint merge", () => {
+    const { project, graph } = fixture(), a = portableScientificProjectFixture();
+    const pinned = pinProjectFieldExplorerBaseline(a.project, a.document, "transfer-field-B");
+    const retained = createMixedWorkspaceDocument({ ...project.workspace,
+      entries: [...project.workspace.entries, ...pinned.project.workspace.entries],
+      activeDocumentIds: [graph.identity.id, a.document.identity.id] });
+    const live = createMixedWorkspaceDocument({ ...retained, activeDocumentIds: [pinned.baseline.identity.id, graph.identity.id] });
+    expect(mergeProjectLiveWorkspace(retained, live).activeDocumentIds)
+      .toEqual([pinned.baseline.identity.id, graph.identity.id]);
   });
   it("keeps staged Project evidence when the live capture has all documents but no results", () => {
     const { project } = fixture();
