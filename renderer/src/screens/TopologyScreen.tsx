@@ -2303,52 +2303,61 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
 
     return (
       <div style={{ display: "grid", gap: 8 }}>
-        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-          <span style={{ fontSize: 11, fontWeight: 700 }}>Geometry tools</span>
-          {([
-            ["select", "Select/Drag"],
-            ["addVertex", "Add Vertex"],
-            ["addEdge", "Add Edge"],
-          ] as const).map(([id, label]) => (
-            <button
-              key={`diagram-tool-${id}`}
-              type="button"
-              onClick={() => {
-                setToolMode(id);
-                setPendingEdgeStartId(null);
-              }}
-              style={{
-                borderRadius: 999,
-                border: "1px solid " + (toolMode === id ? "#0a66c2" : "#d1d5db"),
-                background: toolMode === id ? "#e6f0ff" : "#fff",
-                fontSize: 11,
-                fontWeight: toolMode === id ? 700 : 600,
-                padding: "4px 10px",
-              }}
-            >
-              {label}
+        <div data-testid="topology-diagram-toolbar" role="toolbar" aria-label="Diagram editing" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, padding: "6px 8px", border: "1px solid #dbe4f0", borderRadius: 9, background: "#f8fafc" }}>
+          <div role="group" aria-label="Drawing tool" style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: "#475569" }}>Tool</span>
+            {([
+              ["select", "Select/Drag"],
+              ["addVertex", "Add Vertex"],
+              ["addEdge", "Add Edge"],
+            ] as const).map(([id, label]) => (
+              <button
+                key={`diagram-tool-${id}`}
+                type="button"
+                aria-pressed={toolMode === id}
+                onClick={() => {
+                  setToolMode(id);
+                  setPendingEdgeStartId(null);
+                }}
+                style={{
+                  borderRadius: 7,
+                  border: "1px solid " + (toolMode === id ? "#0a66c2" : "#d1d5db"),
+                  background: toolMode === id ? "#e6f0ff" : "#fff",
+                  fontSize: 11,
+                  fontWeight: toolMode === id ? 700 : 600,
+                  padding: "4px 8px",
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div role="group" aria-label="Diagram edit actions" style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: "#475569" }}>Edit</span>
+            <button type="button" onClick={handleRemoveSelectedVertex} disabled={!selectedVertexId} title={selectedVertexId ? `Remove selected vertex ${selectedVertexId}` : "Select a vertex first"}>
+              Remove Vertex
             </button>
-          ))}
-          <label style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 4 }}>
+            <button type="button" onClick={handleRemoveSelectedEdge} disabled={!selectedEdgeId} title={selectedEdgeId ? `Remove selected edge ${selectedEdgeId}` : "Select an edge first"}>
+              Remove Edge
+            </button>
+          </div>
+          <div role="group" aria-label="Diagram history" style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: "#475569" }}>History</span>
+            <button type="button" data-testid="topology-source-undo" onClick={handleUndo} disabled={commandHistoryState.undoCount === 0} title={commandHistoryState.undoCount ? "Undo diagram edit (Ctrl+Z)" : "No diagram edit to undo"}>
+              Undo
+            </button>
+            <button type="button" data-testid="topology-source-redo" onClick={handleRedo} disabled={commandHistoryState.redoCount === 0} title={commandHistoryState.redoCount ? "Redo diagram edit (Ctrl+Y)" : "No diagram edit to redo"}>
+              Redo
+            </button>
+          </div>
+          <label style={{ fontSize: 10, display: "flex", alignItems: "center", gap: 4 }}>
             <input
               type="checkbox"
               checked={appendCreatedEdgesToBoundary}
               onChange={(event) => setAppendCreatedEdgesToBoundary(event.target.checked)}
             />
-            append new edges to face boundary
+            Append new edges to face boundary
           </label>
-          <button type="button" onClick={handleRemoveSelectedVertex} disabled={!selectedVertexId}>
-            Remove Vertex
-          </button>
-          <button type="button" onClick={handleRemoveSelectedEdge} disabled={!selectedEdgeId}>
-            Remove Edge
-          </button>
-          <button type="button" data-testid="topology-source-undo" onClick={handleUndo} disabled={commandHistoryState.undoCount === 0}>
-            Undo
-          </button>
-          <button type="button" data-testid="topology-source-redo" onClick={handleRedo} disabled={commandHistoryState.redoCount === 0}>
-            Redo
-          </button>
         </div>
 
         <svg
@@ -6433,12 +6442,12 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
                   style={{ border: `1px solid ${adapterMeshFreshness.state === "current" ? "#86efac" : "#fbbf24"}`, borderRadius: 7, background: adapterMeshFreshness.state === "current" ? "#f0fdf4" : "#fffbeb", padding: 6, display: "grid", gap: 3 }}
                 >
                   <div style={{ fontWeight: 800 }}>
-                    Snapshot {adapterMeshFreshness.state.toUpperCase()} · result {adapterMeshFreshness.resultState}
+                    Imported Mesh snapshot (read-only) · {adapterMeshFreshness.state.toUpperCase()} · result {adapterMeshFreshness.resultState}
                   </div>
                   <div>Source: {adapterResult.meshHandoff.source.meshId} · revision {adapterResult.meshHandoff.source.meshRevision}</div>
                   <div style={{ overflowWrap: "anywhere" }}>Snapshot hash: {adapterResult.meshHandoff.snapshotHash}</div>
                   <div>
-                    Stable IDs: {adapterResult.meshHandoff.snapshot.vertexIds.length} vertices · {adapterResult.meshHandoff.snapshot.edges.length} edges · {adapterResult.meshHandoff.snapshot.faces.length} triangles
+                    Snapshot mesh elements (not diagram canonical cells): {adapterResult.meshHandoff.snapshot.vertexIds.length} vertices · {adapterResult.meshHandoff.snapshot.edges.length} edges · {adapterResult.meshHandoff.snapshot.faces.length} triangles
                   </div>
                   <div>{adapterMeshFreshness.reason}</div>
                 </div>
@@ -6539,7 +6548,7 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
                   word: {selectedPresetBoundaryWord}
                 </div>
                 <div style={{ fontSize: 10, color: "#334155" }}>
-                  Canonical quotient: V={buildResult.quotient.vertices.length}, E={buildResult.quotient.edges.length}, F={buildResult.quotient.faces.length}, χ={buildResult.quotient.invariants?.eulerCharacteristic ?? "?"}
+                  <strong>Construction quotient cells (before canonical reduction):</strong> V={buildResult.quotient.vertices.length}, E={buildResult.quotient.edges.length}, F={buildResult.quotient.faces.length}, χ={buildResult.quotient.invariants?.eulerCharacteristic ?? "?"}
                 </div>
                 <div style={{ fontSize: 10, color: "#334155" }}>
                   Recognized teaching hints: orientable=
@@ -7033,17 +7042,18 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
         <section>
           <h2 style={styles.h2}>A. Structure</h2>
           <div style={{ fontSize: 11, display: "grid", gap: 4 }}>
+            <div style={{ fontSize: 10, color: "#475569" }} data-testid="topology-count-layers-note">Counts below describe different representations; do not compare display triangles or snapshot mesh elements with canonical cells.</div>
             <div data-testid="topology-count-source">
-              <strong>Source diagram cells:</strong> V {topologyCountLayers.source.vertices}, E {topologyCountLayers.source.edges}, F {topologyCountLayers.source.faces}
+              <strong>Source diagram cells (before quotient):</strong> V {topologyCountLayers.source.vertices}, E {topologyCountLayers.source.edges}, F {topologyCountLayers.source.faces}
             </div>
             <div data-testid="topology-count-refinement">
-              <strong>Build refinement cells:</strong> V {topologyCountLayers.refinement.vertices}, E {topologyCountLayers.refinement.edges}, F {topologyCountLayers.refinement.faces}
+              <strong>Construction refinement cells (intermediate):</strong> V {topologyCountLayers.refinement.vertices}, E {topologyCountLayers.refinement.edges}, F {topologyCountLayers.refinement.faces}
             </div>
             <div data-testid="topology-count-canonical">
-              <strong>Canonical quotient cells:</strong> V {topologyCountLayers.canonical.vertices}, E {topologyCountLayers.canonical.edges}, F {topologyCountLayers.canonical.faces}; χ = {topologyCountLayers.canonical.eulerCharacteristic}
+              <strong>Canonical quotient cells (authoritative topology):</strong> V {topologyCountLayers.canonical.vertices}, E {topologyCountLayers.canonical.edges}, F {topologyCountLayers.canonical.faces}; χ = {topologyCountLayers.canonical.eulerCharacteristic}
             </div>
             <div data-testid="topology-count-display">
-              <strong>Display geometry only:</strong> {topologyCountLayers.display.meshVertices} mesh vertices, {topologyCountLayers.display.triangles} triangles, {topologyCountLayers.display.curveSamples} curve samples
+              <strong>Display geometry (visualization, not canonical cells):</strong> {topologyCountLayers.display.meshVertices} mesh vertices, {topologyCountLayers.display.triangles} triangles, {topologyCountLayers.display.curveSamples} curve samples
             </div>
             <div
               data-testid="topology-source-provenance"
