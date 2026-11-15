@@ -43,7 +43,7 @@ These are bounded manual UI observations. Save/cold-reopen, exact identity/hash 
 
 | ID | State | Bounded implementation |
 | --- | --- | --- |
-| TOP-01 | proposed | Separate construction progress from representation/view selection; name the active topic and authoritative source once. |
+| TOP-01 | navigation slice implemented; local native pass; CI/typecheck pending | Separate construction progress from representation/view selection; name the active topic and authoritative source once. |
 | TOP-02 | proposed | Make add/remove/undo controls a compact diagram toolbar; retain keyboard and source command semantics. |
 | TOP-03 | proposed | Keep canonical cells, build refinement, display geometry and imported Mesh snapshot counts explicitly separated. |
 | TOP-04 | proposed | Improve algebra summary and explain ineligibility reasons before raw hashes, while retaining complete inspectable provenance. |
@@ -93,3 +93,11 @@ Screenshots are native source-app review captures at the reviewed commit. They d
 ## Handoff to another thread
 
 Read DRAFT_STATE first. Claim one task with owner/branch/base SHA, exact owned files/regions, start time and next check before editing. Treat `renderer/src/App.tsx` as a shared serial-edit resource; coordinate a minimal patch rather than concurrent broad rewrites. Keep Geometry work owned by #61 separate. When handing off, record implemented commit, tests actually run, evidence and remaining checks; never mark verified from an unexecuted plan.
+
+## Implementation update — 2026-11-15
+
+The first TOP-01 slice separates Construction guide from Representation views, names the current topic/source and build freshness, and exposes current guide/view states accessibly. Guide highlights explicitly do not certify completed checks. Existing handlers, source owners and mathematical results are unchanged.
+
+Local core build passed (renderer37.10s). Corrected native regression passed1test,0skips/0retries: test5.389s, suite6.991s. Torus retained canonicalV1/E2/F1/χ0 and unchanged source revision, source hash and canonical hash across Diagram/Complex/Algebra/Realization/Quotient views and return through the guide. The first attempt failed because innerText capture was compared to textContent; the fix uses the displayed-text matcher without removing hash assertions. Both reports are retained. This is a working-tree source-app build based on5adad7af, not clean-commit/Windows or complete persistence qualification. Typecheck and scoped CI are pending until DRAFT_STATE records completion.
+
+TOP-03 follow-up observed in the native review: Selected polygon preset calls buildResult.quotient counts “Canonical quotient” (TorusV1/E3/F2), while Structure correctly displays topologyCountLayers.canonicalV1/E2/F1. These are distinct count layers and χ remains0. Clarify the preset-card label in a separately claimed slice; do not silently change the mathematical owner or discard either representation.
