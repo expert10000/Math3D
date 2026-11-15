@@ -2,13 +2,13 @@ import * as THREE from "three";
 
 // Module navigation used to allocate a new WebGL context for every Mesh and
 // Volume visit. Chromium can retain the native allocations of lost contexts
-// long after their JavaScript owners are collected. Retain at most one context
-// for each pane of the four-view Volume layout. The orthogonal panes use a
-// non-antialiased context and the spatial pane shares its antialiased context
-// with Mesh and Surface routes.
-const MAX_IDLE_RENDERERS = 4;
-const idleRenderers: Array<{ renderer: THREE.WebGLRenderer; antialias: boolean }> = [];
-const rendererAntialias = new WeakMap<THREE.WebGLRenderer, boolean>();
+// long after their JavaScript owners are collected. Keep the four Volume
+// contexts separate from the Surface/Mesh context so their drawing buffers
+// can remain stable across route changes.
+type ViewerRendererRole = "general" | "volume-spatial" | "volume-slice";
+const MAX_IDLE_RENDERERS = 5;
+const idleRenderers: Array<{ renderer: THREE.WebGLRenderer; antialias: boolean; role: ViewerRendererRole }> = [];
+const rendererIdentity = new WeakMap<THREE.WebGLRenderer, { antialias: boolean; role: ViewerRendererRole }>();
 let pageUnloading = false;
 
 const destroyRenderer = (renderer: THREE.WebGLRenderer): void => {
@@ -25,13 +25,15 @@ if (typeof window !== "undefined") {
   }, { once: true });
 }
 
-export const acquireViewerRenderer = (antialias = true): THREE.WebGLRenderer => {
-  const index = idleRenderers.findIndex(entry => entry.antialias === antialias);
+export const acquireViewerRenderer = (antialias = true, role: ViewerRendererRole = "general"): THREE.WebGLRenderer => {
+  if (role === "volume-spatial" && !antialias || role === "volume-slice" && antialias)
+    throw new TypeError("Volume renderer role and antialias setting disagree.");
+  const index = idleRenderers.findIndex(entry => entry.antialias === antialias && entry.role === role);
   const renderer = index >= 0
     ? idleRenderers.splice(index, 1)[0]!.renderer
     : new THREE.WebGLRenderer({ antialias, alpha: true });
   if (index < 0) {
-    rendererAntialias.set(renderer, antialias);
+    rendererIdentity.set(renderer, { antialias, role });
     if (idleRenderers.length >= MAX_IDLE_RENDERERS) destroyRenderer(idleRenderers.shift()!.renderer);
   }
   renderer.resetState();
@@ -48,13 +50,10 @@ export const releaseViewerRenderer = (renderer: THREE.WebGLRenderer): void => {
   if (pageUnloading || idleRenderers.length >= MAX_IDLE_RENDERERS) {
     destroyRenderer(renderer);
   } else {
-    const antialias = rendererAntialias.get(renderer) ?? true;
-    // The shared spatial/Surface/Mesh context can have a full-window backing
-    // buffer. Orthogonal slices keep their smaller, stable buffers between visits.
-    if (antialias) {
-      renderer.setSize(1, 1, false);
-      renderer.setPixelRatio(1);
-    }
-    idleRenderers.push({ renderer, antialias });
+    const { antialias, role } = rendererIdentity.get(renderer) ?? { antialias: true, role: "general" };
+    // Keep the backing buffer while this bounded context is idle. Shrinking it
+    // to 1x1 on every route exit forces ANGLE to allocate a new multisampled
+    // buffer on the next Surface/Volume visit.
+    idleRenderers.push({ renderer, antialias, role });
   }
 };

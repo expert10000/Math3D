@@ -855,7 +855,8 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     camera.position.set(2.6, 2.4, 2.8);
     camera.lookAt(0, 0, 0);
 
-    const renderer = acquireViewerRenderer(viewPreset === "free");
+    const renderer = acquireViewerRenderer(viewPreset === "free",
+      viewPreset === "free" ? "volume-spatial" : "volume-slice");
     renderer.localClippingEnabled = true;
     // Orthogonal slices display sampled source pixels in small panes. Bound
     // the four simultaneous drawing buffers on high-DPI displays; the spatial
