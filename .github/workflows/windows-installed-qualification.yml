@@ -44,18 +44,31 @@ jobs:
       - name: Refuse draft/head evidence and verify build sources
         shell: pwsh
         run: |
-          if ($env:TARGET -notmatch '^[a-f0-9]{40}$' -or $env:OLD_SOURCE -notmatch '^[a-f0-9]{40}$') { throw 'Full source commits required.' }
-          if ($env:BUILD_RUN -notmatch '^\d+$' -or $env:OLD_BUILD_RUN -notmatch '^\d+$') { throw 'Numeric build run IDs required.' }
-          $pr=gh api repos/expert10000/Math3D/pulls/61 | ConvertFrom-Json
-          if ($LASTEXITCODE -ne 0 -or -not $pr.merged -or $pr.merge_commit_sha -ne $env:TARGET) { throw 'PR61 must be merged and exactly match the target; no draft installer qualification.' }
-          foreach ($pair in @(@($env:BUILD_RUN,$env:TARGET),@($env:OLD_BUILD_RUN,$env:OLD_SOURCE))) {
-            $run=gh run view $pair[0] --repo expert10000/Math3D --json headSha,conclusion | ConvertFrom-Json
-            if ($LASTEXITCODE -ne 0 -or $run.conclusion -ne 'success' -or $run.headSha -ne $pair[1]) { throw 'Installer build source or result mismatch.' }
+          $evidenceRoot=Join-Path $env:RUNNER_TEMP 'windows-installed-qualification-input'
+          New-Item -ItemType Directory -Path $evidenceRoot | Out-Null
+          $gate=[ordered]@{schema='math3d/windows-installed-input-gate/v1';status='incomplete';releaseApproved=$false;sourceCommit=$env:TARGET;oldSourceCommit=$env:OLD_SOURCE;harnessCommit=$env:GITHUB_SHA;harnessRef=$env:GITHUB_REF;buildRunId=$env:BUILD_RUN;oldBuildRunId=$env:OLD_BUILD_RUN;candidateArtifact=$env:CANDIDATE_ARTIFACT;oldArtifact=$env:OLD_ARTIFACT;runId=$env:GITHUB_RUN_ID;runAttempt=$env:GITHUB_RUN_ATTEMPT}
+          try {
+            if ($env:GITHUB_REF -ne 'refs/heads/main') { throw 'Qualification harness must run from reviewed main.' }
+            if ($env:TARGET -notmatch '^[a-f0-9]{40}$' -or $env:OLD_SOURCE -notmatch '^[a-f0-9]{40}$') { throw 'Full source commits required.' }
+            if ($env:BUILD_RUN -notmatch '^\d+$' -or $env:OLD_BUILD_RUN -notmatch '^\d+$') { throw 'Numeric build run IDs required.' }
+            $pr=gh api repos/expert10000/Math3D/pulls/61 | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0 -or -not $pr.merged -or $pr.merge_commit_sha -ne $env:TARGET) { throw 'PR61 must be merged and exactly match the target; no draft installer qualification.' }
+            foreach ($pair in @(@($env:BUILD_RUN,$env:TARGET),@($env:OLD_BUILD_RUN,$env:OLD_SOURCE))) {
+              $run=gh run view $pair[0] --repo expert10000/Math3D --json headSha,conclusion,workflowName,url | ConvertFrom-Json
+              if ($LASTEXITCODE -ne 0 -or $run.conclusion -ne 'success' -or $run.headSha -ne $pair[1]) { throw 'Installer build source or result mismatch.' }
+              if ($pair[0] -eq $env:BUILD_RUN) { $gate['candidateBuild']=$run } else { $gate['oldBuild']=$run }
+            }
+            gh run download $env:BUILD_RUN --repo expert10000/Math3D --name $env:CANDIDATE_ARTIFACT --dir candidate
+            if ($LASTEXITCODE -ne 0) { throw 'Candidate artifact missing.' }
+            gh run download $env:OLD_BUILD_RUN --repo expert10000/Math3D --name $env:OLD_ARTIFACT --dir old
+            if ($LASTEXITCODE -ne 0) { throw 'Old artifact missing.' }
+            $gate.status='passed'
+          } catch {
+            $gate.status='failed';$gate.failure=$_.Exception.Message
+            throw
+          } finally {
+            $gate | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $evidenceRoot 'input-gate.json') -Encoding utf8
           }
-          gh run download $env:BUILD_RUN --repo expert10000/Math3D --name $env:CANDIDATE_ARTIFACT --dir candidate
-          if ($LASTEXITCODE -ne 0) { throw 'Candidate artifact missing.' }
-          gh run download $env:OLD_BUILD_RUN --repo expert10000/Math3D --name $env:OLD_ARTIFACT --dir old
-          if ($LASTEXITCODE -ne 0) { throw 'Old artifact missing.' }
       - name: Install harness dependencies only
         run: npm ci --ignore-scripts
       - name: Qualify installed packages without rebuilding application source
@@ -69,4 +82,5 @@ jobs:
           name: windows-installed-qualification-evidence
           if-no-files-found: warn
           path: |
+            ${{ runner.temp }}/windows-installed-qualification-input/*.json
             ${{ runner.temp }}/windows-installed-qualification/*.json

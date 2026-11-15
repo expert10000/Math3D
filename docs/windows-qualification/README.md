@@ -2,7 +2,7 @@
 
 This harness waits for draft PR #61 to be completed and merged. It does not build or test a candidate from the current draft, qualify a moving `main`, inherit the accepted f7258881 source milestone, approve a release, or bypass Windows signing. Cloudflare is excluded.
 
-The plan is `tests/windows-qualification/plan.json`; **WIN-INSTALL, WIN-UPGRADE and WIN-RECOVERY all start `missing`**. The tiny branch CI checks only the harness's provenance guards, fixture bytes and PowerShell/JavaScript syntax. A green harness check is not an installed-app acceptance result.
+The plan is `tests/windows-qualification/plan.json`; **WIN-INSTALL, WIN-UPGRADE and WIN-RECOVERY all start `missing`**. The harness CI checks only provenance guards, fixture bytes, failure receipts and PowerShell/JavaScript syntax. A green harness check is not an installed-app acceptance result.
 
 ## Prepared isolated profile seed
 
@@ -14,7 +14,7 @@ The isolated profile is a **seed kit until execution**. On a disposable Windows 
 
 ## Package input contract
 
-A trusted build at the final PR61 merge commit must provide a candidate artifact with `candidate.json`, its exact NSIS installer, final executable and bundled worker. A trusted previous-version build provides `old.json` and corresponding files. The manual workflow verifies both build runs succeeded and their GitHub head commits equal the declared sources. If a builder checks out another source behind a different workflow head, this workflow refuses it; establish suitable trusted provenance rather than silently rebinding the package.
+A trusted build at the final PR61 merge commit must provide a candidate artifact with `candidate.json`, its exact NSIS installer, final executable and bundled worker. A trusted previous-version build provides `old.json` and corresponding files. The manual workflow verifies both build runs succeeded and their GitHub head commits equal the declared sources, then checks the manifest hashes and sizes of **all six** artifact files before starting an installer. The build-run head SHA and manifest are necessary checks; they do not prove which source a build script checked out internally. Review the trusted builder's checkout/provenance receipt before treating a successful installed run as exact-source qualification. The current repository does not yet supply these package artifacts or that receipt.
 
 Create each manifest **on the trusted package build runner** after producing the final bytes:
 
@@ -28,7 +28,7 @@ An old stable app and a Dev candidate are different products and **cannot** coun
 
 ## Manual qualification after merge
 
-Review and merge the harness workflow into the default branch before using GitHub’s manual Run workflow control (GitHub exposes workflow_dispatch there). Then select the required harness ref. The prepared `.github/workflows/windows-installed-qualification.yml` is manual-only and requires:
+Review and merge the harness workflow into the default branch before using GitHub’s manual Run workflow control (GitHub exposes workflow_dispatch there). Select `main` as the harness ref; another ref is rejected. The prepared `.github/workflows/windows-installed-qualification.yml` is manual-only and requires:
 
 - `source_commit`: full actual PR61 merge SHA; the workflow independently checks PR61 is merged and equals it.
 - Candidate `build_run_id` and `candidate_artifact` containing `candidate.json` and referenced bytes.
@@ -46,7 +46,7 @@ Computation uses the existing application operation test hook and delegates to t
 
 ## Evidence and acceptance
 
-`qualification.json` records candidate/old installer, installed executable/worker hashes and sizes, exact source, separate harness commit, merged PR61 SHA, run ID/attempt, individual journey states and failures. Driver receipts retain actual Project hashes, histories/selections, sidecar hashes/bytes, worker binary hash, PIDs, handshakes, backoff and real output hashes. Interrupted stages stay `missing`/`incomplete`; failures never become passes. No skipped, cancelled or absent journey satisfies `requireComplete`.
+`input-gate.json` records the selected harness ref/SHA, requested source and build runs, resolved build-run names/URLs and any input/download failure. `qualification.json` starts before package preflight so a bad or missing artifact leaves a failed receipt without executing an installer. It records candidate/old installer, installed executable/worker hashes and sizes, exact source, separate harness commit, merged PR61 SHA, run ID/attempt, individual journey states and failures. Driver receipts retain actual Project hashes, histories/selections, sidecar hashes/bytes, worker binary hash, PIDs, handshakes, backoff and real output hashes. Interrupted stages stay `missing`/`incomplete`; failures never become passes. No skipped, cancelled or absent journey satisfies `requireComplete`.
 
 Run host-independent checks now:
 
