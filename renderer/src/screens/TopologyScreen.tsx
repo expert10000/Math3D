@@ -6539,7 +6539,7 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
                   word: {selectedPresetBoundaryWord}
                 </div>
                 <div style={{ fontSize: 10, color: "#334155" }}>
-                  <strong>Computed canonical quotient cells (current diagram):</strong> V={buildResult.quotient.vertices.length}, E={buildResult.quotient.edges.length}, F={buildResult.quotient.faces.length}, χ={buildResult.quotient.invariants?.eulerCharacteristic ?? "?"}
+                  <strong>Construction quotient cells (before canonical reduction):</strong> V={buildResult.quotient.vertices.length}, E={buildResult.quotient.edges.length}, F={buildResult.quotient.faces.length}, χ={buildResult.quotient.invariants?.eulerCharacteristic ?? "?"}
                 </div>
                 <div style={{ fontSize: 10, color: "#334155" }}>
                   Recognized teaching hints: orientable=
