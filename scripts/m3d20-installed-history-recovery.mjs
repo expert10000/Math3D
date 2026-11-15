@@ -124,9 +124,25 @@ async function center(page, state) {
   await page.getByTestId("top-compute-center-button").click();
   const panel = page.getByTestId("compute-center");
   await expect(panel.getByRole("button", {name:/^Refresh/})).toBeEnabled({timeout:90000});
+  const snapshot=await page.evaluate(()=>window.pythonWorkerDiagnostics.getStatus());
+  if(state === "ready" && !snapshot.available && snapshot.restartRetryAfter > Date.now()) {
+    const waitMs=snapshot.restartRetryAfter-Date.now();
+    assert(waitMs<=305000,"Unexpected restart backoff exceeds production five-minute window");
+    result.restartBackoff={before:snapshot,waitMs,respectedWithoutReset:true};
+    // Respect the real production circuit, rather than weakening/resetting it.
+    while(Date.now() <= snapshot.restartRetryAfter+1000)
+      await page.waitForTimeout(Math.min(1000,Math.max(1,snapshot.restartRetryAfter+1001-Date.now())));
+    result.restartBackoff.waitCompletedAt=new Date().toISOString();
+  }
   await panel.getByRole("button", {name:"Refresh",exact:true}).click();
-  for (const route of ["python", "vtk"])
-    await expect(panel.getByTestId(`runtime-route-${route}`).getByLabel(state,{exact:true})).toBeVisible({timeout:90000});
+  try {
+    for (const route of ["python", "vtk"])
+      await expect(panel.getByTestId(`runtime-route-${route}`).getByLabel(state,{exact:true})).toBeVisible({timeout:90000});
+  } catch(error) {
+    result.failureDiagnostics=await page.evaluate(()=>window.pythonWorkerDiagnostics.getStatus());
+    result.failureComputeCenter=await panel.innerText();
+    throw error;
+  }
   await panel.getByRole("button",{name:"Close",exact:true}).click();
 }
 async function observe(app) {
