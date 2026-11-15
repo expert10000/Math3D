@@ -18,6 +18,15 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+/* Three-plane views also adapt to the space left beside the Inspector. */
+.complex-explorer-plots {
+  container: complex-plots / inline-size;
+}
+@container complex-plots (max-width: 760px) {
+  .complex-explorer-plane-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)) !important;
+  }
+}
 @container (max-width: 640px) {
   /* Inline view-specific proportions apply when there is room for them. */
   .complex-explorer-plane-grid {
