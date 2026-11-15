@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "task": "SHARED-01",
+  "repository": "expert10000/Math3D",
+  "sourceCommit": "fa27817fb69c38dc0b6dae8bc2ec108cab03b13a",
+  "harnessCommit": "fa27817fb69c38dc0b6dae8bc2ec108cab03b13a",
+  "target": "main",
+  "coverage": "scoped",
+  "workflowRunId": 43710641247,
+  "jobId": 132801209981,
+  "attempt": 1,
+  "status": "passed",
+  "platform": "windows-2022",
+  "commands": [
+    "npm ci --foreground-scripts && npm --prefix renderer ci --foreground-scripts",
+    "npm run typecheck:noemit && npm run build:core",
+    "npx playwright test tests/e2e/workspace-status-scope.spec.ts --workers=1 --retries=0 --reporter=list,json"
+  ],
+  "nativeTests": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "retries": 0,
+    "testDurationSeconds": 16.0,
+    "suiteDurationSeconds": 17.3
+  },
+  "artifact": {
+    "id": 14159909121,
+    "name": "ui-cleanup-footer-evidence",
+    "bytes": 2234,
+    "sha256": "c79f33647cd85bb231b70906b4d6533444732c2ee548e5ebf4fe69c6099f3e64",
+    "digestSource": "GitHub API and upload log"
+  },
+  "limitations": [
+    "Presentation/footer and retained-scene regression only",
+    "No scientific milestone baseline or installer qualification inherited",
+    "Earlier failed head run43709751019 retained separately"
+  ],
+  "completedAt": "2026-11-15T11:59:54Z"
+}
