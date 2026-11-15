@@ -172,7 +172,31 @@ test('TOP-05 Mesh workbench handoff: changed source cannot silently stay current
     await card.getByTestId('mesh-workspace-operation-registry-smooth-output-replace').check();
     await card.getByTestId('mesh-workspace-operation-registry-smooth-iterations').fill('2');
     const run = card.getByTestId('mesh-workspace-operation-registry-run-smooth');
-    await expect(run).toBeEnabled({ timeout: 45_000 });
+    try {
+      await expect(run).toBeEnabled({ timeout: 45_000 });
+    } catch (error) {
+      // Diagnostic-only: preserve the failure and the real worker/mesh gate.
+      const gate = await page.evaluate(() => {
+        const card = document.querySelector('[data-testid="mesh-workspace-operation-registry"]');
+        const runButton = card?.querySelector('[data-testid="mesh-workspace-operation-registry-run-smooth"]') as HTMLButtonElement | null;
+        const workerStatus = Array.from(document.querySelectorAll('[data-testid="worker-status"]')).map((el) => (el as HTMLElement).innerText);
+        return {
+          runDisabled: runButton?.disabled ?? null,
+          workerStatus,
+          appStatusBar: (document.querySelector('[data-testid="app-status-bar"]') as HTMLElement | null)?.innerText ?? null,
+          meshOperationsHeading: (card as HTMLElement | null)?.innerText.slice(0, 900) ?? null,
+          activeWorkbench: Array.from(document.querySelectorAll('[data-testid^="workspace-nav-"]'))
+            .filter((el) => el.getAttribute('aria-pressed') === 'true')
+            .map((el) => el.getAttribute('data-testid')),
+        };
+      });
+      console.log('TOP05-E6 Mesh gate evidence:', JSON.stringify(gate));
+      await test.info().attach('top05-e6-mesh-gate.json', {
+        body: Buffer.from(JSON.stringify(gate, null, 2)),
+        contentType: 'application/json',
+      });
+      throw error;
+    }
     await run.click();
     await expect(card.getByTestId('mesh-workspace-operation-registry-last-result')).toContainText(/success|warning/, { timeout: 90_000 });
 
