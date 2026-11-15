@@ -40,6 +40,8 @@ jobs:
           key: ${{ runner.os }}-electron-cache-${{ hashFiles('package-lock.json') }}
       - run: npm ci --foreground-scripts && npm --prefix renderer ci --foreground-scripts
       - run: npm run typecheck:noemit && npm run build:core
+      - name: Prepare required Python/VTK worker for source-built Windows Electron
+        uses: ./.github/actions/source-python-worker
       - name: Topology persistence, Mesh lifecycle and Sage publication unit qualification
         run: npm --prefix renderer test -- src/topology/topologyPersistence.test.ts src/topology/meshSnapshotHandoff.test.ts src/topology/algebraPublication.test.ts
       - name: Native edit / undo / redo and three preset examples
