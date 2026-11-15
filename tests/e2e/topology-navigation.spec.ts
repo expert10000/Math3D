@@ -23,7 +23,7 @@ test('Topology guide and representation controls preserve the canonical Torus so
     await expect(page.getByTestId('topology-count-refinement')).toContainText('Construction refinement cells (intermediate)');
     await expect(page.getByTestId('topology-count-layers-note')).toContainText('different representations');
     await expect(page.getByText('Construction quotient cells (before canonical reduction):')).toBeVisible();
-    await expect(page.getByText(/Construction quotient cells \(before canonical reduction\):/)).toContainText('V=1, E=3, F=2');
+    await expect(page.getByText('Construction quotient cells (before canonical reduction):').locator('..')).toContainText('V=1, E=3, F=2');
     const canonicalCounts = await counts.innerText();
     const provenance = page.getByTestId('topology-source-provenance');
     const sourceText = await provenance.innerText();
