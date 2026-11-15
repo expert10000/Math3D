@@ -1,7 +1,8 @@
-import type React from "react";
+import { useState, type CSSProperties } from "react";
 import type { SelectionResult, UnifiedSelectionSet } from "../selection/unifiedSelection";
 import type { SceneSelection } from "../selection/sceneSelection";
 import type { SceneEntity, SceneRepresentationAction } from "../scene/sceneRepresentations";
+import type { NamedSceneSelection } from "../selection/robustSceneSelection";
 
 type UnifiedSelectionInspectorProps = {
   selection: SelectionResult | null;
@@ -12,6 +13,10 @@ type UnifiedSelectionInspectorProps = {
   onSelectRepresentation?: (id: string) => void;
   onRepresentationAction?: (action: SceneRepresentationAction) => void;
   representationActions?: readonly SceneRepresentationAction[];
+  namedSelections?: readonly NamedSceneSelection[];
+  onSaveNamedSelection?: (name: string) => void;
+  onRestoreNamedSelection?: (id: string) => void;
+  onDeleteNamedSelection?: (id: string) => void;
   title?: string;
   materialInfo?: string | null;
   creaseInfo?: string | null;
@@ -47,19 +52,19 @@ const uniqueSorted = <T extends number | string>(values: readonly T[]): T[] => {
   });
 };
 
-const rowStyle: React.CSSProperties = {
+const rowStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "116px minmax(0, 1fr)",
   gap: "4px 8px",
   alignItems: "baseline",
 };
 
-const labelStyle: React.CSSProperties = {
+const labelStyle: CSSProperties = {
   color: "#556",
   fontWeight: 600,
 };
 
-const multiSummaryStyle: React.CSSProperties = {
+const multiSummaryStyle: CSSProperties = {
   border: "1px solid #bfdbfe",
   borderRadius: 7,
   background: "#eff6ff",
@@ -77,10 +82,15 @@ export const UnifiedSelectionInspector = ({
   onSelectRepresentation,
   onRepresentationAction,
   representationActions = [],
+  namedSelections = [],
+  onSaveNamedSelection,
+  onRestoreNamedSelection,
+  onDeleteNamedSelection,
   title = "Selection inspector",
   materialInfo = null,
   creaseInfo = null,
 }: UnifiedSelectionInspectorProps) => {
+  const [selectionName, setSelectionName] = useState("");
   const localSelection = selection ?? selectionSet?.activeSelection ?? null;
   const localObjectId = localSelection?.workspace === "mesh"
     ? localSelection.sourceSceneEntityId ?? localSelection.sceneEntityId ?? localSelection.objectId
@@ -135,6 +145,19 @@ export const UnifiedSelectionInspector = ({
         <div data-testid="shared-scene-selection" style={{ color: "#334155" }}>
           Scene: {sceneSelection.objectId} · {sceneSelection.kind}
           {sceneSelection.componentIds.length ? ` ${sceneSelection.componentIds.join(", ")}` : ""}
+        </div>
+      )}
+      {sceneSelection && onSaveNamedSelection && (
+        <div data-testid="named-scene-selections" style={{ display: "grid", gap: 4 }}>
+          <strong>Selection sets</strong>
+          <div style={{ display: "flex", gap: 4 }}>
+            <input aria-label="Selection set name" value={selectionName} onChange={(event) => setSelectionName(event.target.value)} placeholder="Name selection" style={{ minWidth: 0, flex: 1 }} />
+            <button type="button" disabled={!selectionName.trim()} onClick={() => { onSaveNamedSelection(selectionName); setSelectionName(""); }}>Save</button>
+          </div>
+          {namedSelections.filter((set) => set.selection.objectId === sceneSelection.objectId).map((set) => <div key={set.id} style={{ display: "flex", gap: 4, alignItems: "center" }}>
+            <button type="button" onClick={() => onRestoreNamedSelection?.(set.id)}>{set.name} ({set.selection.componentIds.length || 1})</button>
+            <button type="button" aria-label={`Delete ${set.name}`} onClick={() => onDeleteNamedSelection?.(set.id)}>×</button>
+          </div>)}
         </div>
       )}
       {sceneEntity && (
