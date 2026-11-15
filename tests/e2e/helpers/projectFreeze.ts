@@ -63,7 +63,12 @@ export const editFreezeProject = async (page: Page, fixture: ReturnType<typeof p
     await editor.getByTestId("project-source-undo").click(); expect(JSON.parse(await editor.getByTestId("project-source-definition").inputValue())).toEqual(source);
     await editor.getByTestId("project-source-redo").click(); expect(JSON.parse(await editor.getByTestId("project-source-definition").inputValue())).toEqual(changed);
   }
-  await controls.open(fixture.targets.mesh!); await page.getByTestId("project-mesh-study-view").click();
+  await controls.open(fixture.targets.mesh!);
+  const meshIdentity = fixture.docs.find(document => document.identity.id === fixture.targets.mesh)!.identity;
+  await expect(page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id", meshIdentity.id);
+  await expect(editor).toHaveAttribute("data-document-id", meshIdentity.id);
+  await expect(editor).toHaveAttribute("data-source-hash", meshIdentity.structuralHash);
+  await page.getByTestId("project-mesh-study-view").click();
   await page.getByTestId("project-mesh-translate-0").fill("1"); await page.getByTestId("project-mesh-apply").click();
   await page.getByTestId("project-mesh-study-view").click();
   await page.getByTestId("project-mesh-undo").click();
