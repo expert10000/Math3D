@@ -23,7 +23,7 @@ Reviewed source: `2cf4b6a4b096ff08f3e7c8e928c542d25acca065`. Planning files reac
 | TOP-01 | implemented; local native pass; Windows CI pending | UI cleanup thread / codex/topology-ui-navigation | 5adad7af | TopologyScreen.tsx center navigation/header around6920–7010; new focused native test/workflow; no App.tsx or topology owner changes | Distinguish construction guide from representations; assert unchanged Torus canonical counts and source revision across views |
 | Geometry #61 | external draft | codex/geometry-topology-2-0 / PR61 | See current PR head | Geometry topology/control work; coordinate any App.tsx overlap | Owned by its existing thread; not modified here |
 | SURF-01 | implemented; focused unit pass | research UI chat / codex/ui-four-slices | bceb01c6 | Compact source/derived header in SurfaceAnalysisComputationPanel; no `App.tsx`, Surface owner or Geometry changes | Renderer typecheck and native source check pending |
-| GR-03 | claimed | research UI chat / codex/ui-four-slices | bceb01c6 | `Graph2DAuthoringPanel.tsx` editor dialog focus/error affordance and scoped `graphsWorkspace.css`; no Graph scientific owners or Gallery changes | Verify keyboard return, sticky actions and field recovery in native Graph editor |
+| GR-03 | implemented; focused native pass | research UI chat / codex/ui-four-slices | bceb01c6 | `Graph2DAuthoringPanel.tsx` editor dialog focus/error affordance and scoped `graphsWorkspace.css`; no Graph scientific owners or Gallery changes | Final typecheck and exact-commit CI pending |
 
 ## Workbench backlog
 
@@ -58,6 +58,7 @@ Check remote main, this claim and branch HEAD. Use the screenshot evidence and s
 - 2026-11-15 — Claimed SURF-01 from `bceb01c6` for a compact Surface viewer header. This branch will take GR-03, MESH-02 and CA-03 serially after each prior slice is implemented and checked; no reservation of those later scopes is implied by this claim.
 - 2026-11-15 — SURF-01 shows the canonical Surface label, representation and revision alongside a selected derived mesh's own state, mesh revision and source revision. An unregistered live tessellation is named explicitly. Focused Vitest: 2 passed; renderer typecheck and native check are pending. No scientific owner or document mutation changed.
 - 2026-11-15 — Claimed GR-03 after SURF-01's focused unit pass. Scope is the Graph authoring dialog's focus, action visibility and validation recovery. The unrelated Graph Gallery and Graph scientific state remain with their owners.
+- 2026-11-15 — GR-03 native Windows Electron source run: `npx playwright test tests/e2e/graph-authoring-recovery.spec.ts --reporter=line`, 1 passed, 0 skipped after two test-locator corrections (ambiguous accessible labels). At 760×600 it checks a Domain error link focuses its numeric input, Preview stays in view after dialog scroll, Back returns focus to Preview, and Cancel returns focus to Add Graph. `npm run build:core` passed from the working tree; build identity marked dirty. Exact-commit CI and broad editor modes remain open.
 
 - 2026-11-15 — Review prepared from 2cf4b6a4; all five native workspaces inspected in an isolated profile. Planning committed before the first shared implementation; actual code/test evidence will be appended separately.
 

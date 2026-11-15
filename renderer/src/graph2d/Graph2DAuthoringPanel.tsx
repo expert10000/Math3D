@@ -38,11 +38,22 @@ const initialInequalityDraft = () => graph2DAuthoringPresets.inequality[0]!.draf
 const initialPointDraft = () => graph2DAuthoringPresets["point-series"][0]!.draft();
 const initialPiecewiseDraft = () => graph2DAuthoringPresets.piecewise[0]!.draft();
 
+const errorField = (error: string): { label: string; selector: string } => {
+  if (/label/i.test(error)) return { label: "Name", selector: 'input[aria-label*="name" i]' };
+  if (/domain|bound|minimum|maximum|angular|parameter|time horizon|time direction/i.test(error))
+    return { label: "Domain", selector: 'input[aria-label*="minimum" i], input[type="number"]' };
+  if (/color|line width|line style/i.test(error)) return { label: "Style", selector: 'input[type="color"], input[aria-label*="width" i]' };
+  if (/row|point table|data series/i.test(error)) return { label: "Data", selector: "textarea" };
+  if (/initial point|initial time|seed/i.test(error)) return { label: "Initial value", selector: 'input[aria-label*="initial" i]' };
+  return { label: "Expression", selector: '.graph2d-formula-input input, .graph2d-function-editor input:not([type="checkbox"])' };
+};
+
 export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, onPaletteChange, onBrowsePhasePortraits,
   editRequest, placement = "desktop" }: Props) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const chooserRef = useRef<HTMLDivElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
+  const returningFromPreviewRef = useRef(false);
   const pendingCreateCount = useRef<number | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Graph2DFunctionDraft>(initialDraft);
@@ -74,8 +85,16 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
   const showEditor = () => { setChoosing(false); setPreviewing(false); setPreviewPlot(null); setOpen(true); };
   useLayoutEffect(() => {
     if (!open) return;
-    dialogRef.current?.querySelector<HTMLElement>(previewing ? ".graph2d-editor-preview button" : ".graph2d-function-editor input, .graph2d-function-editor textarea, .graph2d-function-editor select")?.focus();
+    const target = previewing ? ".graph2d-editor-preview button" : returningFromPreviewRef.current
+      ? '.graph2d-function-editor button[type="submit"]' : ".graph2d-function-editor input, .graph2d-function-editor textarea, .graph2d-function-editor select";
+    dialogRef.current?.querySelector<HTMLElement>(target)?.focus();
+    returningFromPreviewRef.current = false;
   }, [open, choosing, previewing, mode]);
+  const focusError = (error: string) => {
+    const field = dialogRef.current?.querySelector<HTMLElement>(errorField(error).selector);
+    field?.scrollIntoView({ block: "center" });
+    field?.focus();
+  };
   useLayoutEffect(() => { if (choosing) chooserRef.current?.querySelector<HTMLElement>(".graph2d-type-grid button")?.focus(); }, [choosing]);
   const handleDialogKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if ((event.target as HTMLElement).closest(".graph2d-formula-dialog, .graph2d-preset-dialog")) return;
@@ -419,6 +438,10 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
       <header><div><h2>{editingId ? `Edit ${previewLabel}` : "Add Graph"}</h2>
         <p>{previewing ? "Review the graph before saving." : "Edit the expression and properties. Formula fields include a live preview."}</p></div>
         <button type="button" aria-label="Close graph editor" onClick={closeEditor}>×</button></header>
+      {!previewing && errors.length > 0 && <div className="graph2d-editor-error-summary" aria-label="Graph fields to correct">
+        {errors.map((error, index) => <button key={`${index}-${error}`} type="button" onClick={() => focusError(error)}
+          aria-label={`Go to ${errorField(error).label}: ${error}`}>{errorField(error).label}: {error}</button>)}
+      </div>}
       {previewing ? <div className="graph2d-editor-preview" aria-label="Graph preview">
         <h3>{previewLabel}</h3><p>{mode.replaceAll("-", " ")}</p><pre>{previewExpressions.join("\n")}</pre>
         {previewPlot && <Graph2DDraftPlotPreview preview={previewPlot} />}
@@ -428,7 +451,7 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
         </dl>
         {errors.length > 0 && <p className="graph2d-draft-error" role="alert">{errors[0]}</p>}
         {message && <p className="graph2d-draft-error" role="alert">{message}</p>}
-        <div className="graph2d-function-actions"><button type="button" onClick={() => setPreviewing(false)}>Back to editor</button>
+        <div className="graph2d-function-actions"><button type="button" onClick={() => { returningFromPreviewRef.current = true; setPreviewing(false); }}>Back to editor</button>
           <button type="button" disabled={errors.length > 0} onClick={save}>{editingId ? "Save changes" : "Create graph"}</button>
           <button type="button" onClick={closeEditor}>Cancel</button></div>
       </div> : <>
