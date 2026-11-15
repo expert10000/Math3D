@@ -16,6 +16,8 @@ The eight focused Windows Electron interaction cases pass together. The global C
 
 [Guided Study](media/ui/ui-guided-study.png), [source pins](media/ui/ui-guided-study-source-pins.png), [research palette](media/ui/ui-research-palette.png) and [narrow browser preview](media/ui/ui-browser-narrow-preview.png) have adjacent [desktop](media/ui/ui-desktop-build-identity.json) and [browser](media/ui/ui-browser-build-identity.json) build identity receipts. These are source-build captures. Their receipts include the source commit and renderer or web output hash; the desktop source had test-worktree changes at capture time. They are not installed release candidate screenshots.
 
+The [theme and zoom source check](UI_THEME_CONTRAST_SOURCE.md) adds clean-commit captures for the Gallery → Study → Workbook → Graph source path in light, dark and forced-colors modes at 200% zoom. It verifies keyboard focus, source-pin status, section stacking and selected text contrast along that route.
+
 ## Reproduce
 
 1. Run `npx vitest run renderer/src/projects/researchCommands.test.ts renderer/src/projects/flagshipNarrativeMatrix.test.ts --maxWorkers=1`.
@@ -23,4 +25,4 @@ The eight focused Windows Electron interaction cases pass together. The global C
 3. Run `npx playwright test tests/e2e/project-curated-gallery.spec.ts tests/e2e/research-command-palette.spec.ts tests/e2e/project-study-compact.spec.ts tests/e2e/research-navigation-acceptance.spec.ts --reporter=list`.
 4. Build web and run `npx playwright test -c playwright.graph2d.config.ts tests/graph2d-web/curatedGalleryFallback.spec.ts --reporter=list`.
 
-**Remaining gates:** installed desktop package, hosted browser, Android device, external QWZ/SSH/hydrogen bundles, dark/light theme and high contrast snapshots, and full keyboard/zoom coverage across the other ten built-in routes. The [Gallery matrix](CURATED_STUDY_GALLERY.md) tracks those separately.
+**Remaining gates:** installed desktop package, hosted browser, Android device, external QWZ/SSH/hydrogen bundles, native Windows high-contrast verification, and full keyboard/zoom coverage across the other ten built-in routes. The [Gallery matrix](CURATED_STUDY_GALLERY.md) tracks those separately.
