@@ -325,6 +325,24 @@ test("selected Geometry object follows direct Mesh navigation and returns to its
     await expect(page.getByTestId("shared-scene-selection")).toContainText(`geometry:${sourceId}`);
     await page.getByTestId("scene-representations").getByRole("button", { name: "Edit Mesh", exact: true }).click();
     await expect(page.getByTestId("mesh-context-selection-label")).toContainText(/Selected object:/);
+    await expect(page.getByTestId("scene-history").first()).toBeVisible();
+    const browser = page.getByTestId("mesh-component-browser");
+    await browser.getByRole("button", { name: "Show component selection list" }).click();
+    await browser.getByRole("textbox", { name: "Component ID filter" }).fill("0");
+    await browser.getByRole("button", { name: "face 0", exact: true }).click();
+    await expect(page.getByTestId("mesh-context-selection-label")).toContainText(/face/i);
+    await page.getByRole("button", { name: "Subdivide Face", exact: true }).first().click();
+    const modifiers = page.getByTestId("linked-mesh-modifiers").first();
+    await expect(modifiers).toContainText("Face Subdivide");
+    await modifiers.getByRole("checkbox").first().uncheck();
+    await expect(modifiers.getByRole("checkbox").first()).not.toBeChecked();
+    await modifiers.getByRole("checkbox").first().check();
+    await expect(modifiers.getByRole("checkbox").first()).toBeChecked();
+    await browser.getByRole("button", { name: "face 0", exact: true }).click();
+    const derived = page.getByTestId("mesh-derived-geometry");
+    await derived.getByRole("combobox", { name: "Mesh-derived Geometry kind" }).selectOption("face-plane");
+    await derived.getByRole("button", { name: "Create in Geometry" }).click();
+    await expect(page.getByText(/Derived object created: Plane Through Face Centroid/).first()).toBeVisible();
   } finally {
     if (app) await app.close().catch(() => undefined);
     await removeProfileDir(profileDir);
