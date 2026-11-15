@@ -8364,7 +8364,8 @@ onChangeImplicitExpr,
       </div>
 
       <div style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Material</div>
+        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Rendering · material</div>
+        <div style={{ fontSize: 11, color: "#64748b", marginBottom: 6 }}>Changes appearance only; it does not change the sampled Surface or analysis results.</div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
           <span style={{ minWidth: 80 }}>Roughness</span>
@@ -8445,7 +8446,8 @@ onChangeImplicitExpr,
       )}
 
       <div style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Mesh resolution</div>
+        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Sampling · mesh resolution</div>
+        <div style={{ fontSize: 11, color: "#64748b", marginBottom: 6 }}>Changes generated geometry and numerical sampling; use Domain for bounds.</div>
         {viewerKind === "graph" && (
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ minWidth: 80 }}>Graph</span>
@@ -13326,7 +13328,7 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
 
       {(showDomainPicker || isImplicitViewer) && (
         <div id="surfaces-inspector-domain-card" tabIndex={-1} style={workflowCardStyle("domain")}>
-          <div style={inspectorSectionTitle}>Domain</div>
+          <div style={inspectorSectionTitle}>Sampling domain</div>
           <div style={{ marginTop: -2, marginBottom: 7 }}>{renderWorkflowStatus("Domain", "domain")}</div>
           <div style={{ fontSize: 11, marginBottom: 6 }}>
             <strong>Resolution:</strong> {Math.round(activeResolution)}

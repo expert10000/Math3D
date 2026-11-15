@@ -25,7 +25,7 @@ Reviewed source: `2cf4b6a4b096ff08f3e7c8e928c542d25acca065`. Planning files reac
 | TOP-02 | merged; scoped Windows CI passed | UI cleanup thread / codex/topology-diagram-toolbar | main at claim, after TOP-03 merge | TopologyScreen.tsx `renderDiagramView()` toolbar near Geometry tools; focused native regression and workflow only; no App.tsx or topology adapter | Check tool mode/disabled remove/Undo-Redo and Torus source/hash preservation on Windows |
 | TOP-04 | implemented (draft PR80); Windows CI pending | UI cleanup thread / codex/topology-algebra-summary | PR79 head 03d3b6c0 (stacked until PR79 merges) | TopologyScreen.tsx renderAlgebraView provenance card only; focused e2e/workflow; no App.tsx or science adapters | Preserve exact eligibility, matrix/artifact and source hashes; Windows native check |
 | Geometry #61 | external draft | codex/geometry-topology-2-0 / PR61 | See current PR head | Geometry topology/control work; coordinate any App.tsx overlap | Owned by its existing thread; not modified here |
-| SURF-03 | claimed | UI follow-up / codex/ui-followup-four | 19484d0d | Surface domain/sampling labels in `surfacePanels.tsx` and compute readiness near Run in `SurfaceAnalysisWorkspacePanels.tsx`; focused UI check | Distinguish numerical inputs from display controls; verify source-build behavior |
+| SURF-03 | implemented; verification pending | UI follow-up / codex/ui-followup-four | 19484d0d | Surface domain/sampling labels in `surfacePanels.tsx` and compute readiness near Run in `SurfaceAnalysisWorkspacePanels.tsx`; focused UI check | Verify source-build behavior and numerical identity |
 
 ## Workbench backlog
 
