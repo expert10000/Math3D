@@ -1,7 +1,7 @@
 import { readFileSync, existsSync, rmSync } from "node:fs";
 import path from "node:path";
 import { expect, test } from '@playwright/test';
-import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, type LaunchedSurfaceApp } from './helpers/surfaceAppHarness';
+import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, resizeSurfaceAppWindow, type LaunchedSurfaceApp } from './helpers/surfaceAppHarness';
 
 const bootTopology = async () => {
   const ctx = await launchSurfaceApp({ MATH3D_GPU_MODE: 'software', MATH3D_SKIP_AUTOSAVE_RECOVERY: '1' });
@@ -15,6 +15,7 @@ test('TOP-05 edit: add a real diagram vertex, undo and redo without losing sourc
   let ctx: LaunchedSurfaceApp | null = null;
   try {
     ctx = await bootTopology();
+    await resizeSurfaceAppWindow(ctx, 1440, 1000);
     const { page } = ctx;
     await page.getByTestId('topology-preset-card-torus_square').click();
     const nav = page.getByRole('group', { name: 'Representation views' });
@@ -33,7 +34,8 @@ test('TOP-05 edit: add a real diagram vertex, undo and redo without losing sourc
     expect(initialCanonicalHash).toBeTruthy();
 
     await toolbar.getByRole('button', { name: 'Add Vertex' }).click();
-    await svg.click({ position: { x: 260, y: 175 } });
+    await svg.scrollIntoViewIfNeeded();
+    await svg.click({ position: { x: 140, y: 115 } });
     await expect(circles).toHaveCount(initialCount + 1);
     const undo = toolbar.getByTestId('topology-source-undo');
     const redo = toolbar.getByTestId('topology-source-redo');
@@ -167,7 +169,7 @@ test('TOP-05 Mesh workbench handoff: changed source cannot silently stay current
     const card = page.getByTestId('mesh-workspace-operation-registry').first();
     await expect(card).toBeVisible();
     await card.getByTestId('mesh-workspace-operation-registry-row-smooth').click();
-    await card.getByRole('group', { name: 'Output', exact: true }).getByLabel('Replace', { exact: true }).check();
+    await card.getByTestId('mesh-workspace-operation-registry-smooth-output-replace').check();
     await card.getByTestId('mesh-workspace-operation-registry-smooth-iterations').fill('2');
     const run = card.getByTestId('mesh-workspace-operation-registry-run-smooth');
     await expect(run).toBeEnabled({ timeout: 45_000 });
