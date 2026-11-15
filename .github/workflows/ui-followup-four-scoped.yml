@@ -1,0 +1,56 @@
+name: Surface Complex Mesh UI follow-up native regression
+on:
+  push:
+    branches: [codex/ui-followup-four]
+  pull_request:
+    branches: [main]
+    paths:
+      - renderer/src/App.tsx
+      - renderer/src/surfacePanels.tsx
+      - renderer/src/components/SurfaceAnalysisWorkspacePanels.tsx
+      - renderer/src/components/MeshOperationsPanel.tsx
+      - tests/e2e/surface-functional.spec.ts
+      - tests/e2e/complex-numerical-results.spec.ts
+      - tests/e2e/mesh-operations-card.spec.ts
+      - .github/workflows/ui-followup-four-scoped.yml
+permissions:
+  contents: read
+jobs:
+  ui-followup-four:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    env:
+      NODE_OPTIONS: --max-old-space-size=6144
+      electron_config_cache: '${{ github.workspace }}\.cache\electron'
+      MATH3D_ELECTRON_DOWNLOAD_TIMEOUT_MS: '600000'
+      MATH3D_ELECTRON_EXTRACT_TIMEOUT_MS: '180000'
+      MATH3D_ELECTRON_DOWNLOAD_RETRIES: '2'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+          cache: npm
+      - uses: actions/cache@v6
+        with:
+          path: ${{ env.electron_config_cache }}
+          key: ${{ runner.os }}-electron-cache-${{ hashFiles('package-lock.json') }}
+      - run: npm ci --foreground-scripts && npm --prefix renderer ci --foreground-scripts
+      - run: npm run typecheck:noemit && npm run build:core
+      - name: Native Surface, Complex and Mesh UI
+        shell: bash
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: ui-evidence/native.json
+          MATH3D_UI_CAPTURE_DIR: ui-evidence/captures
+        run: |
+          mkdir -p ui-evidence
+          git rev-parse HEAD > ui-evidence/source.txt
+          npx playwright test tests/e2e/surface-functional.spec.ts tests/e2e/complex-numerical-results.spec.ts tests/e2e/mesh-operations-card.spec.ts --grep 'Test 3|Test 8|publishes qualified numerical evidence|expands rows' --workers=1 --retries=0 --reporter=list,json
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ui-followup-four-source-evidence
+          path: |
+            ui-evidence/**
+            dist/build-identity.json
+            test-results/playwright/**
