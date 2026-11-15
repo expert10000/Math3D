@@ -19,6 +19,7 @@ Reviewed source: `2cf4b6a4b096ff08f3e7c8e928c542d25acca065`. Planning files reac
 | --- | --- | --- | --- | --- | --- |
 | SHARED-01 | verified (scoped) | this cleanup thread / codex/ui-cleanup-first-slice | 2cf4b6a4 | Production footer patch merged; no further App.tsx edits reserved by this task | Closed: scoped Windows native CI passed at fa27817f; no file reservation |
 | CA-01 | local native pass; Windows CI pending (responsive layout slice) | UI cleanup thread / codex/ui-workbench-implementation | 0272172c | PR71 implementation complete; App.tsx/CSS edit reservation released; scoped harness remains owned by this thread | Wait for exact-head Windows CI; inspect scoped/broad results before review |
+| MESH-01 | claimed (basic-operation forms) | UI cleanup thread / codex/mesh-ui-operation-form | d7010fc3 | MeshOperationsPanel.tsx basic Clean/Decimate/Smooth presentation only; new mesh-operation-form.spec.ts and mesh-ui-scoped.yml; no App.tsx edits | Group Source/Parameters/Output/Run; native Smooth→New object→Undo; preserve current handlers |
 | Geometry #61 | external draft | codex/geometry-topology-2-0 / PR61 | See current PR head | Geometry topology/control work; coordinate any App.tsx overlap | Owned by its existing thread; not modified here |
 
 ## Workbench backlog
@@ -70,3 +71,5 @@ Check remote main, this claim and branch HEAD. Use the screenshot evidence and s
 - 2026-11-15 — Windows run43712597498 remains queued. Local native execution is scoped Linux evidence only; CA-01 remains short of Windows/full acceptance and PR71 remains draft. Production editing reservation released. The branch will be refreshed with current main coordination updates so its eventual merge preserves other threads’ state. No milestone approval changed.
 
 - 2026-11-15 — PR71 refreshed with main through562b9418; current head `c307045171859a7302e73aec3efcf12ef9cf01da`. Production App/CSS and focused native test blobs are unchanged from86b1e0c0. [Exact-head scoped PR run43713162444](https://github.com/expert10000/Math3D/actions/runs/43713162444) queued. Earlier pending runs remain separate records; they cannot qualify this refreshed head automatically. Next action: inspect this run and relevant broad checks, fix any indicated failure, then request review. No production edit reservation remains active for CA-01.
+
+- 2026-11-15 — MESH-01 basic-operation form slice claimed fromd7010fc3 before edits. Scope: Clean/Decimate/Smooth form presentation in MeshOperationsPanel.tsx and new focused harness/workflow. No App.tsx, Boolean wizard, scientific owner or Geometry #61 edits. PR71 current exact-head scoped CI43713162444 rechecked: still queued; no Windows acceptance inferred.
