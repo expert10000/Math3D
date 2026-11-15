@@ -2303,52 +2303,61 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
 
     return (
       <div style={{ display: "grid", gap: 8 }}>
-        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-          <span style={{ fontSize: 11, fontWeight: 700 }}>Geometry tools</span>
-          {([
-            ["select", "Select/Drag"],
-            ["addVertex", "Add Vertex"],
-            ["addEdge", "Add Edge"],
-          ] as const).map(([id, label]) => (
-            <button
-              key={`diagram-tool-${id}`}
-              type="button"
-              onClick={() => {
-                setToolMode(id);
-                setPendingEdgeStartId(null);
-              }}
-              style={{
-                borderRadius: 999,
-                border: "1px solid " + (toolMode === id ? "#0a66c2" : "#d1d5db"),
-                background: toolMode === id ? "#e6f0ff" : "#fff",
-                fontSize: 11,
-                fontWeight: toolMode === id ? 700 : 600,
-                padding: "4px 10px",
-              }}
-            >
-              {label}
+        <div data-testid="topology-diagram-toolbar" role="toolbar" aria-label="Diagram editing" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, padding: "6px 8px", border: "1px solid #dbe4f0", borderRadius: 9, background: "#f8fafc" }}>
+          <div role="group" aria-label="Drawing tool" style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: "#475569" }}>Tool</span>
+            {([
+              ["select", "Select/Drag"],
+              ["addVertex", "Add Vertex"],
+              ["addEdge", "Add Edge"],
+            ] as const).map(([id, label]) => (
+              <button
+                key={`diagram-tool-${id}`}
+                type="button"
+                aria-pressed={toolMode === id}
+                onClick={() => {
+                  setToolMode(id);
+                  setPendingEdgeStartId(null);
+                }}
+                style={{
+                  borderRadius: 7,
+                  border: "1px solid " + (toolMode === id ? "#0a66c2" : "#d1d5db"),
+                  background: toolMode === id ? "#e6f0ff" : "#fff",
+                  fontSize: 11,
+                  fontWeight: toolMode === id ? 700 : 600,
+                  padding: "4px 8px",
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div role="group" aria-label="Diagram edit actions" style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: "#475569" }}>Edit</span>
+            <button type="button" onClick={handleRemoveSelectedVertex} disabled={!selectedVertexId} title={selectedVertexId ? `Remove selected vertex ${selectedVertexId}` : "Select a vertex first"}>
+              Remove Vertex
             </button>
-          ))}
-          <label style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 4 }}>
+            <button type="button" onClick={handleRemoveSelectedEdge} disabled={!selectedEdgeId} title={selectedEdgeId ? `Remove selected edge ${selectedEdgeId}` : "Select an edge first"}>
+              Remove Edge
+            </button>
+          </div>
+          <div role="group" aria-label="Diagram history" style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: "#475569" }}>History</span>
+            <button type="button" data-testid="topology-source-undo" onClick={handleUndo} disabled={commandHistoryState.undoCount === 0} title={commandHistoryState.undoCount ? "Undo diagram edit (Ctrl+Z)" : "No diagram edit to undo"}>
+              Undo
+            </button>
+            <button type="button" data-testid="topology-source-redo" onClick={handleRedo} disabled={commandHistoryState.redoCount === 0} title={commandHistoryState.redoCount ? "Redo diagram edit (Ctrl+Y)" : "No diagram edit to redo"}>
+              Redo
+            </button>
+          </div>
+          <label style={{ fontSize: 10, display: "flex", alignItems: "center", gap: 4 }}>
             <input
               type="checkbox"
               checked={appendCreatedEdgesToBoundary}
               onChange={(event) => setAppendCreatedEdgesToBoundary(event.target.checked)}
             />
-            append new edges to face boundary
+            Append new edges to face boundary
           </label>
-          <button type="button" onClick={handleRemoveSelectedVertex} disabled={!selectedVertexId}>
-            Remove Vertex
-          </button>
-          <button type="button" onClick={handleRemoveSelectedEdge} disabled={!selectedEdgeId}>
-            Remove Edge
-          </button>
-          <button type="button" data-testid="topology-source-undo" onClick={handleUndo} disabled={commandHistoryState.undoCount === 0}>
-            Undo
-          </button>
-          <button type="button" data-testid="topology-source-redo" onClick={handleRedo} disabled={commandHistoryState.redoCount === 0}>
-            Redo
-          </button>
         </div>
 
         <svg
