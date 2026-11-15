@@ -12,12 +12,12 @@ describe("curated Gallery platform actions", () => {
     const unavailable = renderToStaticMarkup(<CuratedStudyCard {...common} item={item}
       quantumImportAvailable={false} onImportQuantumScene={noop} />);
     expect(unavailable).toContain("Scene import requires the desktop app.");
-    expect(unavailable).toMatch(/data-testid="curated-study-import-quantum-qwz" disabled=""/);
+    expect(unavailable).toMatch(/data-testid="curated-study-import-quantum-qwz"[^>]*aria-label="Choose verified QWZ scene bundle"[^>]*disabled=""/);
     const desktop = renderToStaticMarkup(<CuratedStudyCard {...common} item={item}
       quantumImportAvailable onImportQuantumScene={noop} />);
     expect(desktop).not.toContain("Scene import requires the desktop app.");
     expect(desktop).toContain("Choose verified scene bundle");
-    expect(desktop).not.toMatch(/data-testid="curated-study-import-quantum-qwz" disabled=""/);
+    expect(desktop).not.toMatch(/data-testid="curated-study-import-quantum-qwz"[^>]*disabled=""/);
   });
 
   it("leaves CAS examples available without a quantum scene chooser", () => {
