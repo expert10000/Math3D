@@ -33,3 +33,7 @@
     grid-template-columns: minmax(0, 1fr) !important;
   }
 }
+.complex-explorer-plane-grid svg {
+  box-sizing: border-box;
+  max-width: 100%;
+}
