@@ -38057,6 +38057,7 @@ const App: React.FC = () => {
         : "Function Explorer - general complex functions";
   const otherComplexFunctionExprSafe = (otherComplexFunctionExpr || "z").trim() || "z";
   const otherComplexExpressionIsDefault = !otherComplexFunctionExpr.trim();
+  const otherComplexIdentityDefault = otherComplexFunctionExprSafe.replace(/\s+/g, "") === "z";
   const otherComplexExprNormalized = otherComplexFunctionExpr.trim().replace(/\s+/g, "");
   const otherComplexCorePresets = useMemo(
     () =>
@@ -38138,6 +38139,8 @@ const App: React.FC = () => {
     ? `Expression needs attention: ${otherComplexCompiled2d.error}`
     : otherComplexExpressionIsDefault
       ? "No f(z) expression entered; Function Explorer previews default f(z) = z."
+      : otherComplexIdentityDefault
+        ? "Function Explorer previews the default identity function f(z) = z."
       : "Expression accepted for preview. Domain and branch behavior are assessed separately.";
   const otherComplexBranchStatus = otherComplexCompiled2d.error
     ? "Branch profile unavailable until the expression is accepted."
@@ -111353,8 +111356,8 @@ case "mobius":
                           activeCategory={otherComplexInspectorCategory}
                           onCategoryChange={selectOtherComplexInspectorCategory}
                           summary={<div style={{ display: "grid", gap: 2 }}><strong>Complex Function Explorer</strong>
-                            <span>f(z) = {otherComplexFunctionExprSafe}{otherComplexExpressionIsDefault ? " (default)" : ""}</span>
-                            <span>{otherComplexCompiled2d.error ? "Expression needs attention" : otherComplexExpressionIsDefault ? "Default preview" : "Expression accepted"}</span>
+                            <span>f(z) = {otherComplexFunctionExprSafe}{otherComplexIdentityDefault ? " (default)" : ""}</span>
+                            <span>{otherComplexCompiled2d.error ? "Expression needs attention" : otherComplexIdentityDefault ? "Default preview" : "Expression accepted"}</span>
                             <span>{otherComplexBranchStatus}</span></div>}
                         >
                         {otherComplexSheetTracker && otherComplexBranchProfile.id !== "none" && (

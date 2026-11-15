@@ -14,7 +14,9 @@ test("Function Explorer distinguishes default, invalid and branch-profile messag
     const input = page.getByRole("textbox", { name: "Complex function expression" });
     const expressionStatus = page.getByTestId("complex-function-status");
     const branchStatus = page.getByTestId("complex-branch-profile-status");
-    await expect(input).toHaveValue("");
+    await expect(input).toHaveValue("z");
+    await expect(expressionStatus).toContainText("default identity function f(z) = z");
+    await input.fill("");
     await expect(expressionStatus).toContainText("previews default f(z) = z");
     await expect(branchStatus).toContainText("No supported branch profile detected");
     await input.fill("1/(");
