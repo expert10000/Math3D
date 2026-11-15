@@ -6433,12 +6433,12 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
                   style={{ border: `1px solid ${adapterMeshFreshness.state === "current" ? "#86efac" : "#fbbf24"}`, borderRadius: 7, background: adapterMeshFreshness.state === "current" ? "#f0fdf4" : "#fffbeb", padding: 6, display: "grid", gap: 3 }}
                 >
                   <div style={{ fontWeight: 800 }}>
-                    Snapshot {adapterMeshFreshness.state.toUpperCase()} · result {adapterMeshFreshness.resultState}
+                    Imported Mesh snapshot (read-only) · {adapterMeshFreshness.state.toUpperCase()} · result {adapterMeshFreshness.resultState}
                   </div>
                   <div>Source: {adapterResult.meshHandoff.source.meshId} · revision {adapterResult.meshHandoff.source.meshRevision}</div>
                   <div style={{ overflowWrap: "anywhere" }}>Snapshot hash: {adapterResult.meshHandoff.snapshotHash}</div>
                   <div>
-                    Stable IDs: {adapterResult.meshHandoff.snapshot.vertexIds.length} vertices · {adapterResult.meshHandoff.snapshot.edges.length} edges · {adapterResult.meshHandoff.snapshot.faces.length} triangles
+                    Snapshot mesh elements (not diagram canonical cells): {adapterResult.meshHandoff.snapshot.vertexIds.length} vertices · {adapterResult.meshHandoff.snapshot.edges.length} edges · {adapterResult.meshHandoff.snapshot.faces.length} triangles
                   </div>
                   <div>{adapterMeshFreshness.reason}</div>
                 </div>
@@ -6539,7 +6539,7 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
                   word: {selectedPresetBoundaryWord}
                 </div>
                 <div style={{ fontSize: 10, color: "#334155" }}>
-                  Canonical quotient: V={buildResult.quotient.vertices.length}, E={buildResult.quotient.edges.length}, F={buildResult.quotient.faces.length}, χ={buildResult.quotient.invariants?.eulerCharacteristic ?? "?"}
+                  <strong>Construction quotient cells (before canonical reduction):</strong> V={buildResult.quotient.vertices.length}, E={buildResult.quotient.edges.length}, F={buildResult.quotient.faces.length}, χ={buildResult.quotient.invariants?.eulerCharacteristic ?? "?"}
                 </div>
                 <div style={{ fontSize: 10, color: "#334155" }}>
                   Recognized teaching hints: orientable=
@@ -6920,14 +6920,20 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
         />
       )}
       <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: "grid", gridTemplateRows: "auto minmax(0,1fr)" }}>
-        <div style={{ display: "grid", gap: 7, marginBottom: 8 }}>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+        <section aria-label="Topology navigation" data-testid="topology-navigation" style={{ display: "grid", gap: 7, marginBottom: 8 }}>
+          <div data-testid="topology-navigation-source" style={{ fontSize: 11, overflowWrap: "anywhere" }}>
+            <strong>Topic:</strong> {TOPOLOGY_TOPIC_TABS.find((topic) => topic.id === topicTab)?.label} · <strong>Source:</strong> {diagram.name}
+            <span style={{ color: buildStale ? "#b45309" : "#475569" }}> · {buildStale ? "Derived views need rebuild" : "Derived views current"}</span>
+          </div>
+          <div role="group" aria-label="Construction guide" aria-describedby="topology-guide-note" style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            <strong style={{ width: "100%", fontSize: 11 }}>Construction guide</strong>
+            <span id="topology-guide-note" style={{ width: "100%", fontSize: 10, color: "#475569" }}>Highlights follow the view or animation; they do not certify completed checks.</span>
             {CONSTRUCTION_PROGRESS_STEPS.map((step, index) => {
               const active = index === constructionProgressIndex;
-              const done = index < constructionProgressIndex;
               return (
                 <button
                   key={`construction-step-${step}`}
+                  aria-current={active ? "step" : undefined}
                   type="button"
                   onClick={() => {
                     if (index <= 0) {
@@ -6949,8 +6955,8 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
                   }}
                   style={{
                     borderRadius: 999,
-                    border: "1px solid " + (active ? "var(--workspace-control-active-border)" : done ? "#bfdbfe" : "var(--workspace-control-border)"),
-                    background: active ? "var(--workspace-control-active-bg)" : done ? "#eff6ff" : "var(--workspace-control-bg)",
+                    border: "1px solid " + (active ? "var(--workspace-control-active-border)" : "var(--workspace-control-border)"),
+                    background: active ? "var(--workspace-control-active-bg)" : "var(--workspace-control-bg)",
                     fontSize: 10,
                     fontWeight: active ? 700 : 600,
                     padding: "4px 9px",
@@ -6961,7 +6967,8 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
               );
             })}
           </div>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          <div role="group" aria-label="Representation views" style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", borderTop: "1px solid #dbe4f0", paddingTop: 6 }}>
+            <strong style={{ width: "100%", fontSize: 11 }}>Representation views</strong>
             {([
               ["diagram", "Diagram View"],
               ["quotient", "Quotient Structure View"],
@@ -6973,6 +6980,7 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
             ] as const).map(([id, label]) => (
               <button
                 key={`topology-view-${id}`}
+                aria-pressed={activeView === id}
                 type="button"
                 onClick={() => {
                   if (id !== "diagram") ensureBuilt();
@@ -7005,7 +7013,7 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
               </select>
             </label>
           </div>
-        </div>
+        </section>
         <div
           style={{
             border: "1px solid #dbe4f0",
@@ -7025,17 +7033,18 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
         <section>
           <h2 style={styles.h2}>A. Structure</h2>
           <div style={{ fontSize: 11, display: "grid", gap: 4 }}>
+            <div style={{ fontSize: 10, color: "#475569" }} data-testid="topology-count-layers-note">Counts below describe different representations; do not compare display triangles or snapshot mesh elements with canonical cells.</div>
             <div data-testid="topology-count-source">
-              <strong>Source diagram cells:</strong> V {topologyCountLayers.source.vertices}, E {topologyCountLayers.source.edges}, F {topologyCountLayers.source.faces}
+              <strong>Source diagram cells (before quotient):</strong> V {topologyCountLayers.source.vertices}, E {topologyCountLayers.source.edges}, F {topologyCountLayers.source.faces}
             </div>
             <div data-testid="topology-count-refinement">
-              <strong>Build refinement cells:</strong> V {topologyCountLayers.refinement.vertices}, E {topologyCountLayers.refinement.edges}, F {topologyCountLayers.refinement.faces}
+              <strong>Construction refinement cells (intermediate):</strong> V {topologyCountLayers.refinement.vertices}, E {topologyCountLayers.refinement.edges}, F {topologyCountLayers.refinement.faces}
             </div>
             <div data-testid="topology-count-canonical">
-              <strong>Canonical quotient cells:</strong> V {topologyCountLayers.canonical.vertices}, E {topologyCountLayers.canonical.edges}, F {topologyCountLayers.canonical.faces}; χ = {topologyCountLayers.canonical.eulerCharacteristic}
+              <strong>Canonical quotient cells (authoritative topology):</strong> V {topologyCountLayers.canonical.vertices}, E {topologyCountLayers.canonical.edges}, F {topologyCountLayers.canonical.faces}; χ = {topologyCountLayers.canonical.eulerCharacteristic}
             </div>
             <div data-testid="topology-count-display">
-              <strong>Display geometry only:</strong> {topologyCountLayers.display.meshVertices} mesh vertices, {topologyCountLayers.display.triangles} triangles, {topologyCountLayers.display.curveSamples} curve samples
+              <strong>Display geometry (visualization, not canonical cells):</strong> {topologyCountLayers.display.meshVertices} mesh vertices, {topologyCountLayers.display.triangles} triangles, {topologyCountLayers.display.curveSamples} curve samples
             </div>
             <div
               data-testid="topology-source-provenance"
