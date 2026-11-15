@@ -19,6 +19,19 @@ const store = () => {
   return { values, getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); }, removeItem: (key: string) => { values.delete(key); } };
 };
 describe("PRJ06 project transfer and compatibility", () => {
+  it("retains an explicit live active-document choice through the Graph checkpoint merge", () => {
+    const { project, graph, curve } = fixture();
+    const live = createMixedWorkspaceDocument({ ...project.workspace, activeDocumentIds: [curve.document.identity.id] });
+    const merged = mergeProjectLiveWorkspace(project.workspace, live);
+    expect(merged.activeDocumentIds).toEqual([curve.document.identity.id]);
+    expect(merged.entries.map(entry => entry.expected.id)).toContain(graph.identity.id);
+    const retained = createMixedWorkspaceDocument({ ...project.workspace,
+      activeDocumentIds: [graph.identity.id, curve.document.identity.id] });
+    const partial = createMixedWorkspaceDocument({ ...live, entries: live.entries.filter(entry => entry.module === "graph2d"),
+      activeDocumentIds: [graph.identity.id], relations: [] });
+    expect(mergeProjectLiveWorkspace(retained, partial).activeDocumentIds)
+      .toEqual([graph.identity.id, curve.document.identity.id]);
+  });
   it("keeps staged Project evidence when the live capture has all documents but no results", () => {
     const { project } = fixture();
     const live = createMixedWorkspaceDocument({ ...project.workspace, results: [], relations: [] });
