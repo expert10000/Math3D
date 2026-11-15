@@ -18,7 +18,7 @@ Reviewed source: `2cf4b6a4b096ff08f3e7c8e928c542d25acca065`. Planning files reac
 | Task | State | Owner / branch | Reviewed base | Owned scope | Next check |
 | --- | --- | --- | --- | --- | --- |
 | SHARED-01 | verified (scoped) | this cleanup thread / codex/ui-cleanup-first-slice | 2cf4b6a4 | Production footer patch merged; no further App.tsx edits reserved by this task | Closed: scoped Windows native CI passed at fa27817f; no file reservation |
-| CA-01 | implemented; verification pending (responsive layout slice) | UI cleanup thread / codex/ui-workbench-implementation | 0272172c | App.tsx analytic Explorer layout JSX only (around111000–111340); new complexExplorerLayout.css; focused native layout test and scoped workflow | Check responsive Z/W/Inspector bounds at1100 and800px; preserve math handlers and existing layout state |
+| CA-01 | local native pass; Windows CI pending (responsive layout slice) | UI cleanup thread / codex/ui-workbench-implementation | 0272172c | PR71 implementation complete; App.tsx/CSS edit reservation released; scoped harness remains owned by this thread | Wait for exact-head Windows CI; inspect scoped/broad results before review |
 | Geometry #61 | external draft | codex/geometry-topology-2-0 / PR61 | See current PR head | Geometry topology/control work; coordinate any App.tsx overlap | Owned by its existing thread; not modified here |
 
 ## Workbench backlog
@@ -26,10 +26,10 @@ Reviewed source: `2cf4b6a4b096ff08f3e7c8e928c542d25acca065`. Planning files reac
 | Draft / tasks | State | Owner | Evidence / remaining work |
 | --- | --- | --- | --- |
 | [Mesh](MESH_UI_REVIEW_DRAFT.md), MESH-01…05 | proposed | unclaimed | Native Smooth and Undo spot checks recorded; layout, capability, persistence acceptance pending |
-| [Complex](COMPLEX_ANALYSIS_UI_REVIEW_DRAFT.md), CA-01…05 | proposed | unclaimed | 1/z preset and explorer navigation observed; plot/layout and analytic workflows pending |
+| [Complex](COMPLEX_ANALYSIS_UI_REVIEW_DRAFT.md), CA-01…05 | CA-01 local native pass; Windows CI pending; CA-02…05 proposed | CA-01: UI cleanup thread / PR71; other tasks unclaimed | 1/z preset and explorer navigation observed; plot/layout and analytic workflows pending |
 | [Topology](TOPOLOGY_UI_REVIEW_DRAFT.md), TOP-01…05 | proposed | unclaimed | Torus canonical χ=0 versus display mesh observed; view/algebra/persistence cleanup pending |
 | [Surfaces](SURFACES_UI_REVIEW_DRAFT.md), SURF-01…05 | proposed | unclaimed | Implicit preset switch and canonical Analysis panel observed; representation/derive/save journey pending |
-| [Graphs](GRAPHS_UI_REVIEW_DRAFT.md), GR-01…05 | proposed | SHARED-01 verified; other tasks unclaimed | y=x preview/create/hide/show observed; remaining Graph layout/scientific-transfer tasks unclaimed |
+| [Graphs](GRAPHS_UI_REVIEW_DRAFT.md), GR-01…05 | GR-01 verified (via SHARED-01); GR-02…05 proposed | remaining tasks unclaimed | y=x preview/create/hide/show observed; remaining Graph layout/scientific-transfer tasks unclaimed |
 
 ## SHARED-01 evidence and implementation state
 
@@ -60,4 +60,11 @@ Check remote main, this claim and branch HEAD. Use the screenshot evidence and s
 
 - 2026-11-15 — Claimed CA-01 responsive layout slice from0272172c. Exact scope above; other module tasks remain unclaimed. No ownership of scientific models, Geometry #61 or unrelated App.tsx regions. Claim published before substantive edits.
 
-- 2026-11-15 — CA-01 responsive slice implemented: Inspector stacks below plots when usable workbench width is at most900px; plot grids stack at640px. Existing view conditions, handlers and layout state retained; layout buttons expose aria-pressed. Focused native regression added for800/1100/1600px. Local typecheck and CI are pending; full CA-01 and preset-column cleanup are not yet accepted.
+- 2026-11-15 — CA-01 responsive slice implemented: Inspector stacks below plots when usable workbench width is at most900px; plot grids stack at640px. Existing view conditions, handlers and layout state retained; layout buttons expose aria-pressed. Focused native regression added for800/1100/1600px. Local `npm run typecheck:noemit` passed (exit0); native CI is pending; full CA-01 and preset-column cleanup are not yet accepted.
+
+- 2026-11-15 — Published [draft PR71](https://github.com/expert10000/Math3D/pull/71), initial implementation/harness `d6ff29e0f06972dafb1c5a7ec18fedd6ba3b38a5`. Local typecheck passed and Playwright discovery found the focused test; neither is a native execution PASS. Exact-head scoped CI: [push43712479395](https://github.com/expert10000/Math3D/actions/runs/43712479395) and [PR43712485637](https://github.com/expert10000/Math3D/actions/runs/43712485637), queued at last check. Local core build running. CA-01 remains implemented/verification pending, no merge or acceptance approval. Other module tasks remain proposed/unclaimed. The current reservation is the analytic Explorer JSX/CSS and focused harness only.
+
+- 2026-11-15 — PR71 current head `86b1e0c07f7ad861ffea5a9e9139e93bcf2654e9` includes adaptive three-plane grids and border-inclusive SVG sizing. [Exact-head scoped Windows CI43712597498](https://github.com/expert10000/Math3D/actions/runs/43712597498) is queued. Local typecheck exit0, focused Playwright discovery1test, and `npm run build:core` exit0 (renderer39.69s) passed in the working tree based on879e1b34; this local build is not clean-commit/native CI evidence. CA-01 stays verification pending. GR-01 is reconciled as verified by the existing fa27817f SHARED-01 run; no new Graphs acceptance is inferred.
+
+- 2026-11-15 — CA-01 local Linux native execution completed: 1passed, 0failed, 0skipped, 0retries; all9 combinations of800/1100/1600px and2-pane/FocusZ/3-pane. Test8.843s; suite10.024s. [Raw Playwright report](evidence/complex-layout-native-report.json). Built from working tree based on879e1b34; App/CSS/test blobs match PR71 head86b1e0c0. Rebuilt renderer passed38.44s and includes the final SVG border-sizing rule. An earlier local run used the pre-border-fix bundle and failed the bounds assertion (1failure); it is not superseded as an exact-head CI run. No assertions were removed.
+- 2026-11-15 — Windows run43712597498 remains queued. Local native execution is scoped Linux evidence only; CA-01 remains short of Windows/full acceptance and PR71 remains draft. Production editing reservation released. The branch will be refreshed with current main coordination updates so its eventual merge preserves other threads’ state. No milestone approval changed.
