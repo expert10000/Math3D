@@ -18,7 +18,11 @@ test('Topology guide and representation controls preserve the canonical Torus so
     await expect(nav.getByTestId('topology-navigation-source')).toContainText(/Source:.*Torus/);
     await views.getByRole('button', { name: 'Quotient Structure View', exact: true }).click();
     const counts = page.getByTestId('topology-count-canonical');
-    await expect(counts).toContainText('V 1, E 2, F 1; χ = 0');
+    await expect(counts).toContainText('Canonical quotient cells (authoritative topology): V 1, E 2, F 1; χ = 0');
+    await expect(page.getByTestId('topology-count-source')).toContainText('Source diagram cells (before quotient)');
+    await expect(page.getByTestId('topology-count-refinement')).toContainText('Construction refinement cells (intermediate)');
+    await expect(page.getByTestId('topology-count-layers-note')).toContainText('different representations');
+    await expect(page.getByText('Computed canonical quotient cells (current diagram):')).toBeVisible();
     const canonicalCounts = await counts.innerText();
     const provenance = page.getByTestId('topology-source-provenance');
     const sourceText = await provenance.innerText();
@@ -36,7 +40,7 @@ test('Topology guide and representation controls preserve the canonical Torus so
       await expect(provenance).toHaveText(sourceText, { useInnerText: true });
       await expect(provenance.locator('[title]').first()).toHaveAttribute('title', sourceHash!);
       await expect(page.getByTestId('topology-canonical-provenance')).toHaveAttribute('title', canonicalHash!);
-      await expect(page.getByTestId('topology-count-display')).toContainText('Display geometry only');
+      await expect(page.getByTestId('topology-count-display')).toContainText('Display geometry (visualization, not canonical cells)');
     }
     await guide.getByRole('button', { name: '1. Diagram', exact: true }).click();
     await expect(views.getByRole('button', { name: 'Diagram View', exact: true })).toHaveAttribute('aria-pressed', 'true');
