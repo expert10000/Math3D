@@ -43,7 +43,7 @@ These are bounded manual UI observations. Save/cold-reopen, exact identity/hash 
 
 | ID | State | Bounded implementation |
 | --- | --- | --- |
-| MESH-01 | proposed | Group the operation form into Source, Parameters, Output and Run; retain all existing operation IDs and handlers. |
+| MESH-01 | basic-operation slice implemented; local native pass; CI pending | Group the operation form into Source, Parameters, Output and Run; retain all existing operation IDs and handlers. |
 | MESH-02 | proposed | Show engine/capability reason adjacent to disabled Run, with a link to existing Compute Center; keep offline results inspectable. |
 | MESH-03 | proposed | Make Last operation, Undo, Validate and Compare reachable without scrolling the full registry. |
 | MESH-04 | proposed | Clarify raw indexed topology versus connected interpretation; coordinate with Geometry #61 and do not silently weld. |
@@ -96,3 +96,9 @@ Screenshots are native source-app review captures at the reviewed commit. They d
 ## Handoff to another thread
 
 Read DRAFT_STATE first. Claim one task with owner/branch/base SHA, exact owned files/regions, start time and next check before editing. Treat `renderer/src/App.tsx` as a shared serial-edit resource; coordinate a minimal patch rather than concurrent broad rewrites. Keep Geometry work owned by #61 separate. When handing off, record implemented commit, tests actually run, evidence and remaining checks; never mark verified from an unexecuted plan.
+
+## Implementation update — 2026-11-15
+
+The first MESH-01 slice groups Clean normals, Decimate and Smooth into Source, Parameters, Output and Run fieldsets. Source and the New object/Replace choice are repeated together beside the existing Run action. Existing operation IDs, handlers, runtime gates, history and undo are preserved. Boolean/CGAL/implicit form restructuring remains outside this slice.
+
+Local source-app core build passed (renderer39.42s). Native Linux regression passed1test in6.847s (suite8.349s),0skips/0retries: all three forms expose the groups and update the Run summary; Smooth creates a new result and Undo returns to Box. This is a working-tree build based ond7010fc3, not clean exact-commit CI or full identity/hash/save-reopen acceptance. Windows CI and typecheck results remain pending until recorded in DRAFT_STATE.
