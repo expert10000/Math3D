@@ -16,7 +16,7 @@ TOP-01/#75, TOP-03/#77, TOP-02/#79 and TOP-04/#80 have previously merged and eac
 | TOP05-E2 | Torus/Möbius/Klein: select presets, verify expected Euler χ=0, provenance present and mutually distinct; Algebra entry | same E2E | MISSING execution | Native Windows PASS, no conflation of count layers |
 | TOP05-E3 | Revisioned read-only Mesh snapshot: capture data, stable locate-back references, mutation isolation, same revision CURRENT and changed revision STALE | `renderer/src/topology/meshSnapshotHandoff.test.ts` | MISSING current-head rerun | Vitest PASS, exact source-bound report |
 | TOP05-E4 | Replayable Topology v3 document: edit/Undo, round-trip serialization, exact identity/canonical hash, results provenance, unavailable artifact bytes, rejection of fabricated/stale content | `renderer/src/topology/topologyPersistence.test.ts` | MISSING current-head rerun | Vitest PASS |
-| TOP05-E5 | Actual native Save→close process→cold reopen file using native Electron dialogs, verify IDs/revisions, results and missing bytes | **no current E2E** | MISSING | Separate installed/native file journey, not page.reload alone |
+| TOP05-E5 | Native save through Electron IPC→close process→restart isolated profile→open saved file; compare identity/canonical hash/replay metadata | `tests/e2e/topology-functional-acceptance.spec.ts` | MISSING execution (test authored) | Source-built native Windows cold-reopen PASS; installed-app and missing-byte recovery independently pending |
 | TOP05-E6 | Actual Mesh workbench→Topology snapshot, source edit→stale UI→refresh/re-analyze; invalid source and frame refusal | **no current E2E** | MISSING | Cross-workbench UI run with source/revision/hash checks |
 | TOP05-E7 | Ineligible/non-manifold diagram and Sage offline fallback; no false classification, missing artifact recovery | **no current E2E** | MISSING | Bounded native and scientific/job evidence |
 | TOP05-E8 | Installed Windows application save/cold reopen + runtime recovery and representative Project export/import | existing Integration Lab release owner | MISSING | Installed-app evidence with executable and installer hashes |
@@ -33,4 +33,4 @@ TOP-01/#75, TOP-03/#77, TOP-02/#79 and TOP-04/#80 have previously merged and eac
 
 ## Current next steps
 
-Run scoped Windows qualification, inspect Playwright and Vitest evidence, fix test harness errors transparently without weakening scientific assertions, then make E5/E6 separate executable journeys. Preserve Geometry #61 and the scientific command adapter files throughout.
+Run scoped Windows qualification including newly authored native file cold reopen. Inspect Playwright and Vitest evidence; fix harness errors transparently without weakening scientific assertions. A source-built Electron process cold reopen is not installed-app evidence; E6 cross-workbench snapshot refresh and E8 installer evidence remain distinct. Preserve Geometry #61 and the scientific command adapter files throughout.
