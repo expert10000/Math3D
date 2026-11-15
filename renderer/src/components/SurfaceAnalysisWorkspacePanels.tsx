@@ -89,7 +89,7 @@ export function SurfaceAnalysisComputationPanel({
   onOpenConfiguration: () => void;
   derivedMesh: { available: boolean; label: string; vertexCount: number; faceCount: number };
   derivedMeshLifecycle?: {
-    selected: { id: string; label: string; state: string; sourceRevision: number; meshRevision: number; method: string; backend: string; backendVersion: string | null; variant: string; correspondence: string; mappedVertexCount: number; watertight: boolean | null; boundaryEdgeCount: number | null; staleReason?: string; historyCount: number } | null;
+    selected: { id: string; label: string; state: string; sourceRevision: number; meshRevision: number; method: string; backend: string; backendVersion: string | null; variant: string; correspondence: string; mappedVertexCount: number; watertight: boolean | null; boundaryEdgeCount: number | null; staleReason?: string; historyCount: number; geometryAvailable: boolean } | null;
     records: ReadonlyArray<{ id: string; label: string; state: string }>;
     status: string;
     backendAvailability: "ready" | "checking" | "unavailable" | "browser-limited";
@@ -298,11 +298,17 @@ export function SurfaceAnalysisComputationPanel({
           <span>Mapping: {derivedMeshLifecycle.selected.correspondence} · {derivedMeshLifecycle.selected.mappedVertexCount.toLocaleString()} vertices · {derivedMeshLifecycle.selected.historyCount} history entries</span>
           {derivedMeshLifecycle.selected.staleReason && <span style={{ color: "#9a3412" }}>{derivedMeshLifecycle.selected.staleReason}</span>}
         </div>}
+        {derivedMeshLifecycle?.selected && <div data-testid="surface-derived-mesh-handoff-preview" role="status" style={{ display: "grid", gap: 2, padding: 6, border: "1px solid #c7d7ee", borderRadius: 6, background: "#fff", fontSize: 9.5 }}>
+          <strong>Before handoff · {derivedMeshLifecycle.selected.label}</strong>
+          <span>Source: {definition.identity.label} r{derivedMeshLifecycle.selected.sourceRevision} → derived Mesh r{derivedMeshLifecycle.selected.meshRevision} ({derivedMeshLifecycle.selected.state}).</span>
+          <span>Bake / Promote creates a separate editable Mesh snapshot with this Surface revision as lineage. Open in Mesh Analysis navigates to the selected Mesh without baking.</span>
+          <span style={{ color: derivedMeshLifecycle.selected.geometryAvailable ? "#166534" : "#9a3412" }}>Geometry bytes: {derivedMeshLifecycle.selected.geometryAvailable ? "available for handoff" : "unavailable in this session; regenerate the live tessellation first"}.</span>
+        </div>}
         {derivedMeshLifecycle && <>
           <div data-testid="surface-derived-mesh-primary-actions" role="group" aria-label="Surface Mesh workflows" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 4 }}>
             <button type="button" data-testid="surface-derived-mesh-live" disabled={!derivedMesh.available} onClick={derivedMeshLifecycle.onShowLive}>Mesh (live)</button>
-            <button type="button" data-testid="surface-derived-mesh-bake" disabled={!derivedMeshLifecycle.selected} onClick={derivedMeshLifecycle.onBake}>Bake to Mesh</button>
-            <button type="button" data-testid="surface-derived-mesh-open-analysis" disabled={!derivedMeshLifecycle.selected} onClick={onOpenDerivedMesh}>Open in Mesh Analysis</button>
+            <button type="button" data-testid="surface-derived-mesh-bake" disabled={!derivedMeshLifecycle.selected?.geometryAvailable || derivedMeshLifecycle.selected.state === "stale" || derivedMeshLifecycle.selected.sourceRevision !== definition.identity.surfaceRevision} onClick={derivedMeshLifecycle.onBake}>Bake to Mesh</button>
+            <button type="button" data-testid="surface-derived-mesh-open-analysis" disabled={!derivedMeshLifecycle.selected?.geometryAvailable || derivedMeshLifecycle.selected.state === "stale"} onClick={onOpenDerivedMesh}>Open in Mesh Analysis</button>
           </div>
           <div style={{ color: "#64748b", fontSize: 9.5 }}>Mesh follows the current Surface. Bake creates an independently editable snapshot. Open sends the selected live or saved mesh to Mesh Analysis.</div>
           <div data-testid="surface-derived-mesh-backend-actions" style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 4 }}>

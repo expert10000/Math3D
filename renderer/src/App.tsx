@@ -80824,6 +80824,7 @@ case "mobius":
                         boundaryEdgeCount: activeDerivedSurfaceMeshBackendSummary?.validation?.boundaryEdgeCount ?? null,
                         staleReason: activeSurfaceDerivedMeshRecord.identity.staleReason,
                         historyCount: activeSurfaceDerivedMeshRecord.history.length,
+                        geometryAvailable: surfaceDerivedMeshPayloadCacheRef.current.has(activeSurfaceDerivedMeshRecord.identity.meshId) && surfaceDerivedMeshGeometryCacheRef.current.has(activeSurfaceDerivedMeshRecord.identity.meshId),
                       } : null,
                       records: activeSourceDerivedMeshRecords.map((record) => ({ id: record.identity.meshId, label: record.label, state: record.identity.state })),
                       status: surfaceDerivedMeshStatus,
