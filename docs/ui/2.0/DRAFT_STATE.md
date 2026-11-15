@@ -22,6 +22,7 @@ Reviewed source: `2cf4b6a4b096ff08f3e7c8e928c542d25acca065`. Planning files reac
 | MESH-01 | implemented; local native/typecheck pass; Windows CI pending | UI cleanup thread / codex/mesh-ui-operation-form | d7010fc3 | PR74; basic form presentation complete; no production edit reservation; focused harness owned by this thread | Inspect exact-head scoped Windows CI before review |
 | TOP-01 | implemented; local native pass; Windows CI pending | UI cleanup thread / codex/topology-ui-navigation | 5adad7af | TopologyScreen.tsx center navigation/header around6920–7010; new focused native test/workflow; no App.tsx or topology owner changes | Distinguish construction guide from representations; assert unchanged Torus canonical counts and source revision across views |
 | Geometry #61 | external draft | codex/geometry-topology-2-0 / PR61 | See current PR head | Geometry topology/control work; coordinate any App.tsx overlap | Owned by its existing thread; not modified here |
+| SURF-01 | claimed | research UI chat / codex/ui-four-slices | bceb01c6 | New compact representation header and `App.tsx` Surface viewer insertion near 87500; no Surface owner or Geometry changes | Show source and selected derived mesh identities/revisions, then run focused renderer and native checks |
 
 ## Workbench backlog
 
@@ -52,6 +53,8 @@ Reviewed source: `2cf4b6a4b096ff08f3e7c8e928c542d25acca065`. Planning files reac
 Check remote main, this claim and branch HEAD. Use the screenshot evidence and source files linked in each draft, then inspect current code. Add a dated handoff entry below with owner, branch, last commit, completed checks and the first remaining check. Never infer that this document's proposals were executed.
 
 ## Handoff log
+
+- 2026-11-15 — Claimed SURF-01 from `bceb01c6` for a compact Surface viewer header. This branch will take GR-03, MESH-02 and CA-03 serially after each prior slice is implemented and checked; no reservation of those later scopes is implied by this claim.
 
 - 2026-11-15 — Review prepared from 2cf4b6a4; all five native workspaces inspected in an isolated profile. Planning committed before the first shared implementation; actual code/test evidence will be appended separately.
 
