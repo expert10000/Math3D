@@ -72,11 +72,19 @@ jobs:
           PRIOR_SOURCE: ${{ inputs.prior_source_commit }}
           CURRENT_SOURCE: ${{ inputs.current_source_commit }}
         run: |
+          $ErrorActionPreference = 'Stop'
           foreach ($candidate in @(
             @{ Run=$env:PRIOR_RUN_ID; Commit=$env:PRIOR_SOURCE },
             @{ Run=$env:CURRENT_RUN_ID; Commit=$env:CURRENT_SOURCE }
           )) {
-            if ($candidate.Run -notmatch '^\\d+
+            if ($candidate.Run -notmatch '^[0-9]+$' -or $candidate.Commit -notmatch '^[0-9a-fA-F]{40}$') { throw 'Invalid installer run or SHA' }
+            $result = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$($candidate.Run)" | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0 -or $result.conclusion -ne "success") { throw "Installer source run not successful: $($candidate.Run)" }
+            if ($result.head_sha.ToLowerInvariant() -ne $candidate.Commit.ToLowerInvariant()) { throw "Installer source SHA mismatch: $($candidate.Run)" }
+          }
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.prior_artifact }}
           run-id: ${{ inputs.prior_run_id }}
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/top05-input/prior
@@ -113,6 +121,8 @@ jobs:
             -PriorInstallerSha256 $env:PRIOR_SHA256 `
             -CurrentInstallerPath (Join-Path $env:RUNNER_TEMP "top05-input/current/$env:CURRENT_FILENAME") `
             -CurrentInstallerSha256 $env:CURRENT_SHA256 `
+            -PriorSourceCommit $env:PRIOR_SOURCE `
+            -CurrentSourceCommit $env:CURRENT_SOURCE `
             -ExistingProfileFixture (Join-Path $env:RUNNER_TEMP 'top05-input/profile') `
             -EvidenceDir (Join-Path $env:RUNNER_TEMP 'top05-installed-evidence')
       - name: Copy evidence into workspace
