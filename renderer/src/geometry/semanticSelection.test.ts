@@ -223,4 +223,22 @@ describe("Geometry semantic selection", () => {
       sourceRevision: 6,
     });
   });
+
+  it("keeps the object selected when a Geometry component has no mesh match", () => {
+    const edge = { ...objectSelection, selectionType: "edge" as const, edgeId: "0-4", edgeVertices: [0, 4] as const };
+    const mapped = mapGeometrySemanticSelectionToMesh({
+      selection: edge,
+      meshObjectId: "mesh-1",
+      meshLabel: "Triangle",
+      mesh: {
+        label: "Triangle",
+        positions: Float32Array.from([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+        indices: Uint32Array.from([0, 1, 2]),
+        normals: null,
+        uvs: null,
+        source: { kind: "proceduralObjects" },
+      },
+    });
+    expect(mapped?.selectionType).toBe("object");
+  });
 });

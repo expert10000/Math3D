@@ -317,6 +317,8 @@ const builtinImplementationEntries: Array<[GeometryAnalysisResultKind, GeometryA
   ["topology-summary", ({ snapshot }) => {
     const topologySummary = computeGeometryAnalysisTopologySummary(snapshot.mesh);
     const warnings = [...snapshot.readiness.notes];
+    warnings.unshift("Counts follow raw mesh indices; coincident seam vertices remain separate.");
+    if (topologySummary.boundaryEdgeCount > 0) warnings.unshift(`Indexed mesh has ${topologySummary.boundaryEdgeCount} boundary edges; this is not a closed solid.`);
     if (!topologySummary.manifold) warnings.unshift(`Non-manifold edges detected: ${topologySummary.nonManifoldEdgeCount}.`);
     return {
       algorithm: "triangle-incidence-topology-v1",
@@ -329,9 +331,10 @@ const builtinImplementationEntries: Array<[GeometryAnalysisResultKind, GeometryA
           ["vertices", topologySummary.vertexCount],
           ["edges", topologySummary.edgeCount],
           ["faces", topologySummary.faceCount],
-          ["Euler characteristic", topologySummary.eulerCharacteristic],
-          ["boundaries", topologySummary.boundaryCount],
-          ["manifold", topologySummary.manifold],
+          ["Raw indexed Euler characteristic", topologySummary.eulerCharacteristic],
+          ["boundary components", topologySummary.boundaryCount],
+          ["boundary edges", topologySummary.boundaryEdgeCount],
+          ["non-manifold edges", topologySummary.nonManifoldEdgeCount],
         ],
       }],
       summary: {
