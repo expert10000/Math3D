@@ -1,11 +1,15 @@
 import type React from "react";
 import type { SelectionResult, UnifiedSelectionSet } from "../selection/unifiedSelection";
 import type { SceneSelection } from "../selection/sceneSelection";
+import type { SceneEntity } from "../scene/sceneRepresentations";
 
 type UnifiedSelectionInspectorProps = {
   selection: SelectionResult | null;
   selectionSet?: UnifiedSelectionSet | null;
   sceneSelection?: SceneSelection | null;
+  sceneEntity?: SceneEntity | null;
+  activeRepresentationId?: string | null;
+  onSelectRepresentation?: (id: string) => void;
   title?: string;
   materialInfo?: string | null;
   creaseInfo?: string | null;
@@ -66,6 +70,9 @@ export const UnifiedSelectionInspector = ({
   selection,
   selectionSet = null,
   sceneSelection = null,
+  sceneEntity = null,
+  activeRepresentationId = null,
+  onSelectRepresentation,
   title = "Selection inspector",
   materialInfo = null,
   creaseInfo = null,
@@ -120,6 +127,22 @@ export const UnifiedSelectionInspector = ({
         <div data-testid="shared-scene-selection" style={{ color: "#334155" }}>
           Scene: {sceneSelection.objectId} · {sceneSelection.kind}
           {sceneSelection.componentIds.length ? ` ${sceneSelection.componentIds.join(", ")}` : ""}
+        </div>
+      )}
+      {sceneEntity && (
+        <div data-testid="scene-representations" style={{ display: "grid", gap: 3 }}>
+          <strong>Representations</strong>
+          {sceneEntity.representations.map((representation) => (
+            <label key={representation.id} style={{ display: "flex", gap: 5, alignItems: "center" }}>
+              <input
+                type="radio"
+                name={`representation-${sceneEntity.id}`}
+                checked={(activeRepresentationId ?? sceneEntity.representations[0]?.id) === representation.id}
+                onChange={() => onSelectRepresentation?.(representation.id)}
+              />
+              <span>{representation.label} · {representation.state}</span>
+            </label>
+          ))}
         </div>
       )}
       {multiSelection ? (

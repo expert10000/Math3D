@@ -290,6 +290,7 @@ import {
 } from "./selection/unifiedSelection";
 import { sharedPickEntityId } from "./selection/pickContract";
 import { sceneSelectionFromUnified, type SceneSelection } from "./selection/sceneSelection";
+import { buildSceneEntities } from "./scene/sceneRepresentations";
 import {
   addSelectionHistoryEntry,
   bookmarkSelectionEntry,
@@ -5482,6 +5483,7 @@ type UnifiedObjectNode = {
   sceneRole?: UnifiedSceneRole;
   objectRefId?: string;
   sceneIdentity?: SceneEntityIdentity;
+  representationBadges?: string[];
   visible?: boolean | null;
   canToggleVisibility?: boolean;
   canDelete?: boolean;
@@ -12807,6 +12809,7 @@ const App: React.FC = () => {
     return isGeometryProbeSelectionModeLocal(saved) ? saved : readStoredGeometryContextualPickMode() ?? "object";
   });
   const [sceneSelection, setSceneSelection] = useState<SceneSelection | null>(null);
+  const [activeRepresentationByEntity, setActiveRepresentationByEntity] = useState<Record<string, string>>({});
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -72590,6 +72593,25 @@ case "mobius":
     setMeshPromotionStatus(`Opened first-class ${relation.role} relation with ${relation.sourceKind} source r${relation.sourceRevision}.`);
   }, [geometryDatasetMeshObjects, resolveGeometrySceneMeshById, setMeshDataset]);
 
+  const sceneEntities = useMemo(() => buildSceneEntities({
+    geometry: [
+      ...geometryObjects.map((object) => ({ id: object.id, name: object.name, revision: geometryObjectRevisionById[object.id] ?? 0, parametric: true })),
+      ...geometryDatasetMeshObjects.map((object) => ({ id: object.id, name: object.name, revision: geometryObjectRevisionById[object.id] ?? 0, parametric: false })),
+    ],
+    meshes: surfaceMeshData ? [{
+      id: surfaceMeshLabel,
+      name: surfaceMeshLabel,
+      sourceGeometryId: surfaceMeshData.source.kind === "geometryObject"
+        ? surfaceMeshData.source.objectId ?? null
+        : meshGeometryRoundTripSource?.objectId ?? null,
+      sourceRevision: null,
+      modified: surfaceMeshTopologyHistory.length > 0,
+      detached: surfaceMeshData.source.kind === "detachedMesh",
+      invalid: Boolean(surfaceMeshData.validation && !surfaceMeshData.validation.ok),
+    }] : [],
+    relations: Object.values(getGlobalGeometryMeshRelationStore().relations),
+  }), [geometryObjects, geometryDatasetMeshObjects, geometryObjectRevisionById, surfaceMeshData, surfaceMeshLabel, meshGeometryRoundTripSource?.objectId, surfaceMeshTopologyHistory.length]);
+  const sceneEntityById = useMemo(() => new Map(sceneEntities.map((entity) => [entity.id, entity])), [sceneEntities]);
   const unifiedObjectModel = useMemo(() => {
     const raw: Array<Omit<UnifiedObjectNode, "derivedProductIds">> = [];
     const addRaw = (node: Omit<UnifiedObjectNode, "derivedProductIds">) => {
@@ -72611,6 +72633,7 @@ case "mobius":
         sceneRole: "primaryObject",
         objectRefId: obj.id,
         sceneIdentity,
+        representationBadges: sceneEntityById.get(`geometry:${obj.id}`)?.representations.map((representation) => representation.kind === "editable-mesh" ? "Mesh" : "Geometry"),
         sourceVersion: sceneIdentity?.revision,
         provenanceSource: sceneIdentity?.sourceKind,
         visible: obj.visible,
@@ -72645,6 +72668,7 @@ case "mobius":
         sceneRole: meshSceneRole,
         objectRefId: obj.id,
         sceneIdentity,
+        representationBadges: sceneEntityById.get(`geometry:${obj.id}`)?.representations.map((representation) => representation.kind === "editable-mesh" ? "Mesh" : "Geometry"),
         sourceVersion: sceneIdentity?.revision,
         provenanceSource: sceneIdentity?.sourceKind,
         linkedObjectIds: sceneIdentity?.dependencyIds.flatMap((dependencyId) => {
@@ -73173,6 +73197,7 @@ case "mobius":
     geometryObjects,
     geometryDatasetMeshObjects,
     geometrySceneIdentityIndex,
+    sceneEntityById,
     datasetKind,
     surfaceViewerKind,
     activeEqSurfaceId,
@@ -86292,6 +86317,11 @@ case "mobius":
                           selection={meshUnifiedInspectorSelection}
                           selectionSet={meshMultiSelectionSet}
                           sceneSelection={sceneSelection}
+                          sceneEntity={sceneEntityById.get(sceneSelection?.objectId ?? "") ?? null}
+                          activeRepresentationId={activeRepresentationByEntity[sceneSelection?.objectId ?? ""]}
+                          onSelectRepresentation={(id) => {
+                            if (sceneSelection) setActiveRepresentationByEntity((current) => ({ ...current, [sceneSelection.objectId]: id }));
+                          }}
                           title="Unified selection"
                           materialInfo={meshUnifiedInspectorMaterialInfo}
                           creaseInfo={meshUnifiedInspectorCreaseInfo}
@@ -108033,6 +108063,11 @@ case "mobius":
                               selection={geometryUnifiedInspectorSelection}
                               selectionSet={geometryMultiSelectionSet}
                               sceneSelection={sceneSelection}
+                              sceneEntity={sceneEntityById.get(sceneSelection?.objectId ?? "") ?? null}
+                              activeRepresentationId={activeRepresentationByEntity[sceneSelection?.objectId ?? ""]}
+                              onSelectRepresentation={(id) => {
+                                if (sceneSelection) setActiveRepresentationByEntity((current) => ({ ...current, [sceneSelection.objectId]: id }));
+                              }}
                               title="Unified selection"
                               materialInfo={geometryUnifiedInspectorMaterialInfo}
                               creaseInfo={geometryUnifiedInspectorCreaseInfo}
@@ -117222,6 +117257,9 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
                 }}
               >
                 {compactNodeName(node.name)}
+                {node.representationBadges && node.representationBadges.length > 1
+                  ? ` · ${node.representationBadges.join(" + ")}`
+                  : ""}
               </span>
               <span
                 style={{
