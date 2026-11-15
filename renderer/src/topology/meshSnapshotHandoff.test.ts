@@ -116,6 +116,41 @@ describe("revisioned Mesh to Topology handoff", () => {
     expect(handoff.snapshot.sourceObjectRevision).toBe("r4");
   });
 
+  it("keeps the old read-only snapshot stale until a revisioned re-analysis replaces it", () => {
+    const mesh = tetrahedron();
+    const initial = createRevisionedMeshTopologyHandoff({
+      mesh,
+      sourceObjectId: "mesh-refresh",
+      sourceObjectRevision: "r11",
+    }, { capturedAt: 100 });
+    const originalHash = initial.snapshotHash;
+    const originalSource = structuredClone(initial.source);
+    const current = { sourceObjectId: "mesh-refresh", sourceObjectRevision: "r11" };
+    expect(evaluateMeshTopologyHandoffFreshness(initial, current).state).toBe("current");
+    expect(evaluateMeshTopologyHandoffFreshness(initial, null)).toMatchObject({
+      state: "source-unavailable", resultState: "stale",
+    });
+    expect(evaluateMeshTopologyHandoffFreshness(initial, {
+      sourceObjectId: "different-mesh", sourceObjectRevision: "r11",
+    }).state).toBe("source-unavailable");
+
+    current.sourceObjectRevision = "r12";
+    const stale = evaluateMeshTopologyHandoffFreshness(initial, current);
+    expect(stale).toMatchObject({ state: "stale", resultState: "stale" });
+    expect(stale.reason).toContain("Re-analyze");
+
+    const refreshed = createRevisionedMeshTopologyHandoff({ mesh, ...current }, { capturedAt: 101 });
+    expect(evaluateMeshTopologyHandoffFreshness(refreshed, current)).toMatchObject({
+      state: "current", resultState: "current",
+    });
+    expect(refreshed.source.meshRevision).toBe("r12");
+    expect(refreshed.locateBack.vertices.v0.qualifiedId).toBe("mesh-refresh@r12/v0");
+    expect(initial.source).toEqual(originalSource);
+    expect(initial.snapshotHash).toBe(originalHash);
+    expect(initial.locateBack.vertices.v0.qualifiedId).toBe("mesh-refresh@r11/v0");
+    expect(evaluateMeshTopologyHandoffFreshness(initial, current).state).toBe("stale");
+  });
+
   it("locates canonical vertices, edges, and faces in the originating Mesh snapshot", () => {
     const handoff = createRevisionedMeshTopologyHandoff({
       mesh: tetrahedron(),
