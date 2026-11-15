@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "task": "CA-01 responsive slice / SHARED-01 regression",
+  "repository": "expert10000/Math3D",
+  "target": "pr-merge-preview",
+  "sourceCommit": "5d8db77d81a4d457d8d05b7d692091d107d9777f",
+  "associatedHeadCommit": "c307045171859a7302e73aec3efcf12ef9cf01da",
+  "baseCommit": "562b941871d58f9c1790025d3f0ace618e3b39e2",
+  "pullRequest": 71,
+  "workflowRunId": 43713162444,
+  "jobId": 132808956246,
+  "attempt": 1,
+  "status": "passed",
+  "coverage": "scoped",
+  "platform": "windows-2022",
+  "checks": [
+    "npm run typecheck:noemit",
+    "npm run build:core",
+    "complex-explorer-layout.spec.ts",
+    "workspace-status-scope.spec.ts"
+  ],
+  "counts": {
+    "passed": 2,
+    "failed": 0,
+    "skipped": 0,
+    "retries": 0
+  },
+  "durationSeconds": {
+    "layoutTest": 18.0,
+    "footerTest": 16.8,
+    "suite": 36.7
+  },
+  "artifact": {
+    "id": 14160679861,
+    "bytes": 587182,
+    "sha256": "a1470304be990a2eaaf61f5879ad807dfd6ccb670c8b25053ae569e2414bef81",
+    "digestSource": "GitHub API"
+  },
+  "limitations": [
+    "Synthetic merge preview, not actual merge or direct head execution",
+    "Seven broader CI workflows still incomplete",
+    "No installer or scientific milestone baseline approval"
+  ]
+}

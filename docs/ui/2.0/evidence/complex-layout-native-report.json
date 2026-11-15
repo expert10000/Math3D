@@ -1,0 +1,120 @@
+{
+  "config": {
+    "configFile": "/workspace/scratch/e4f87eaeef23/ui-implementation/playwright.config.ts",
+    "rootDir": "/workspace/scratch/e4f87eaeef23/ui-implementation/tests/e2e",
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/workspace/scratch/e4f87eaeef23/ui-implementation/test-results/playwright",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "",
+        "name": "",
+        "testDir": "/workspace/scratch/e4f87eaeef23/ui-implementation/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 180000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list"
+      ],
+      [
+        "json"
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "runAgents": "none",
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.58.2",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "complex-explorer-layout.spec.ts",
+      "file": "complex-explorer-layout.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "Complex Explorer allocates plot and Inspector space at native workbench widths",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 8843,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [
+                    {
+                      "text": "[ensure-electron] initial state: path.txt exists: true; path.txt value: \"electron\"; executable exists: true; expected executable: /workspace/scratch/e4f87eaeef23/native-acceptance/node_modules/electron/dist/electron\n"
+                    },
+                    {
+                      "text": "[ensure-electron] initial dist: 20 entries: LICENSE, LICENSES.chromium.html, chrome-sandbox, chrome_100_percent.pak, chrome_200_percent.pak, chrome_crashpad_handler, electron, icudtl.dat, libEGL.so, libGLESv2.so, libffmpeg.so, libvk_swiftshader.so, libvulkan.so.1, locales, resources, resources.pak, snapshot_blob.bin, v8_context_snapshot.bin, version, vk_swiftshader_icd.json\n"
+                    },
+                    {
+                      "text": "[ensure-electron] Marker + executable already valid, skipping repair\n"
+                    }
+                  ],
+                  "retry": 0,
+                  "startTime": "2026-11-15T12:16:32.808Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "1825a7c6fdb0cab8d5bc-bdadd353a07761850b82",
+          "file": "complex-explorer-layout.spec.ts",
+          "line": 4,
+          "column": 5
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-11-15T12:16:31.667Z",
+    "duration": 10023.951000000001,
+    "expected": 1,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}
