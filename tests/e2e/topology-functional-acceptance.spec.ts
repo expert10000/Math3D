@@ -139,3 +139,47 @@ test('TOP-05 native cold reopen: file replay, identities and source/canonical pr
     else if (profileDir) rmSync(profileDir, { recursive: true, force: true });
   }
 });
+
+test('TOP-05 Mesh workbench handoff: changed source cannot silently stay current', async () => {
+  test.setTimeout(240_000);
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp({ MATH3D_GPU_MODE: 'software', MATH3D_SKIP_AUTOSAVE_RECOVERY: '1' });
+    const { page } = ctx;
+    await resetSurfaceAppState(page);
+    await page.getByTestId('workspace-nav-mesh').click();
+    await expect(page.getByTestId('app-status-bar')).toContainText('Box');
+    await page.getByTestId('workspace-nav-topology').click();
+    const interop = page.getByTestId('topology-interoperability-panel');
+    const analyze = interop.getByTestId('topology-analyze-current-mesh');
+    await expect(analyze).toBeEnabled();
+    await analyze.click();
+    const status = interop.getByTestId('topology-mesh-snapshot-status');
+    await expect(status).toContainText('CURRENT');
+    const captured = await status.innerText();
+    expect(captured).toContain('Snapshot hash:');
+
+    await page.getByTestId('workspace-nav-mesh').click();
+    const tools = page.getByRole('button', { name: 'Mesh tools', exact: true });
+    for (const button of await tools.all()) if (await button.isVisible()) { await button.click(); break; }
+    const card = page.getByTestId('mesh-workspace-operation-registry').first();
+    await expect(card).toBeVisible();
+    await card.getByTestId('mesh-workspace-operation-registry-row-smooth').click();
+    await card.getByRole('group', { name: 'Output', exact: true }).getByLabel('Replace', { exact: true }).check();
+    await card.getByTestId('mesh-workspace-operation-registry-smooth-iterations').fill('2');
+    const run = card.getByTestId('mesh-workspace-operation-registry-run-smooth');
+    await expect(run).toBeEnabled({ timeout: 45_000 });
+    await run.click();
+    await expect(card.getByTestId('mesh-workspace-operation-registry-last-result')).toContainText(/success|warning/, { timeout: 90_000 });
+
+    await page.getByTestId('workspace-nav-topology').click();
+    await expect(status).toContainText(/STALE|SOURCE-UNAVAILABLE/);
+    await expect(status).toContainText('result stale');
+    await expect(analyze).toBeEnabled();
+    await analyze.click();
+    await expect(status).toContainText('CURRENT');
+    await expect(status).toContainText('result current');
+  } finally {
+    await closeSurfaceApp(ctx);
+  }
+});
