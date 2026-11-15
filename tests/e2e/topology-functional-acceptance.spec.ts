@@ -1,3 +1,5 @@
+import { readFileSync, existsSync, rmSync } from "node:fs";
+import path from "node:path";
 import { expect, test } from '@playwright/test';
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, type LaunchedSurfaceApp } from './helpers/surfaceAppHarness';
 
@@ -80,5 +82,60 @@ test('TOP-05 presets: Torus, Mobius and Klein retain distinct source and canonic
     expect(hashes.size).toBe(3);
   } finally {
     await closeSurfaceApp(ctx);
+  }
+});
+
+test('TOP-05 native cold reopen: file replay, identities and source/canonical provenance survive process restart', async () => {
+  test.setTimeout(240_000);
+  let ctx: LaunchedSurfaceApp | null = null;
+  let profileDir: string | null = null;
+  try {
+    ctx = await bootTopology();
+    profileDir = ctx.profileDir;
+    const savedPath = path.join(profileDir, 'torus-qualification.math3d-topology');
+    await ctx.page.getByTestId('topology-preset-card-torus_square').click();
+    const originalSourceHash = await ctx.page.getByTestId('topology-source-provenance').locator('[title]').first().getAttribute('title');
+    const originalCanonicalHash = await ctx.page.getByTestId('topology-canonical-provenance').getAttribute('title');
+    expect(originalSourceHash).toBeTruthy();
+    expect(originalCanonicalHash).toBeTruthy();
+
+    // Keep the production IPC save path: only replace the OS file-picker response.
+    await ctx.app.evaluate(({ dialog }, filePath) => {
+      Object.defineProperty(dialog, 'showSaveDialog', {
+        configurable: true,
+        value: async () => ({ canceled: false, filePath }),
+      });
+    }, savedPath);
+    await ctx.page.getByTestId('topology-document-persistence').getByRole('button', { name: 'Save .math3d-topology' }).click();
+    await expect(ctx.page.getByTestId('topology-document-audit')).toContainText('v3');
+    await expect.poll(() => existsSync(savedPath)).toBe(true);
+    const file = JSON.parse(readFileSync(savedPath, 'utf8'));
+    expect(file.payload.persistence.document.identity.structuralHash).toBeTruthy();
+    expect(file.payload.persistence.canonicalHash).toBe(originalCanonicalHash);
+    const identity = file.payload.persistence.document.identity;
+
+    // Process teardown, not page.reload. Retain only this isolated temporary profile.
+    await ctx.app.close();
+    ctx = null;
+    ctx = await launchSurfaceApp({ MATH3D_GPU_MODE: 'software', MATH3D_SKIP_AUTOSAVE_RECOVERY: '1' }, profileDir);
+    await ctx.page.getByTestId('workspace-nav-topology').click();
+    await ctx.app.evaluate(({ dialog }, filePath) => {
+      Object.defineProperty(dialog, 'showOpenDialog', {
+        configurable: true,
+        value: async () => ({ canceled: false, filePaths: [filePath] }),
+      });
+    }, savedPath);
+    await ctx.page.getByTestId('topology-document-persistence').getByRole('button', { name: 'Load .math3d-topology' }).click();
+    await expect(ctx.page.getByTestId('topology-document-audit')).toContainText(/v3|replay/i);
+    await expect(ctx.page.getByTestId('topology-count-canonical')).toContainText('V 1, E 2, F 1; χ = 0');
+    await expect(ctx.page.getByTestId('topology-source-provenance').locator('[title]').first()).toHaveAttribute('title', originalSourceHash!);
+    await expect(ctx.page.getByTestId('topology-canonical-provenance')).toHaveAttribute('title', originalCanonicalHash!);
+    await expect(ctx.page.getByTestId('topology-persistence-status')).toContainText('Replay:');
+    const afterFile = JSON.parse(readFileSync(savedPath, 'utf8'));
+    expect(afterFile.payload.persistence.document.identity).toEqual(identity);
+    expect(afterFile.payload.persistence.canonicalHash).toBe(originalCanonicalHash);
+  } finally {
+    if (ctx) await closeSurfaceApp(ctx);
+    else if (profileDir) rmSync(profileDir, { recursive: true, force: true });
   }
 });
