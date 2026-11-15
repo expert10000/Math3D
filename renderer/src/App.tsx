@@ -76999,19 +76999,23 @@ case "mobius":
     }
     const items: string[] = [];
     items.push(statusViewerLabel);
-    if (unifiedSelectedNode) {
+    // These workbenches own independent documents/views. Keep the retained 3D
+    // scene available for return, without presenting it as their active source.
+    const showSceneStatus = mode !== "graphs" && mode !== "topology" && mode !== "mobius";
+    if (mode === "graphs") items.push(`document r${graph2dDocument.identity.revision}`);
+    if (showSceneStatus && unifiedSelectedNode) {
       items.push(unifiedSelectedNode.name);
       if (unifiedObjectTypeLabel && unifiedObjectTypeLabel !== "n/a") {
         items.push(`type ${unifiedObjectTypeLabel}`);
       }
     }
-    if (statusMeshLabel) items.push(statusMeshLabel);
-    items.push(statusCameraLabel);
+    if (showSceneStatus && statusMeshLabel) items.push(statusMeshLabel);
+    if (showSceneStatus) items.push(statusCameraLabel);
     if (mode === "geometry" && geometryViewerSourceLabel) items.push(geometryViewerSourceLabel);
     if (mode === "surfaces") items.push(`${lightPreset} lighting`);
     if (statusPickedPointLabel) items.push(statusPickedPointLabel);
     items.push(`display ${displayMode}`);
-    items.push(meshFooterAnalysisStatus);
+    if (showSceneStatus) items.push(meshFooterAnalysisStatus);
     if (mode === "surfaces") {
       items.push(compareLayoutEnabled ? "compare mode active" : "compare mode off");
       if (IS_REPLAY_MODE) {
@@ -77034,6 +77038,7 @@ case "mobius":
     curveRenderState.samplePoints.length,
     curveSamplingMode,
     displayMode,
+    graph2dDocument.identity.revision,
     IS_REPLAY_MODE,
     lightPreset,
     meshFooterAnalysisStatus,
