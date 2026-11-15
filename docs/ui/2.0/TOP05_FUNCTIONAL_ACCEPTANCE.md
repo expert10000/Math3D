@@ -44,3 +44,11 @@ Expanded pending scope: source-revision reanalysis Vitest, actual Mesh→Topolog
 ## Offline scientific publication regression
 
 Windows TOP-05 qualification additionally runs the existing `algebraPublication.test.ts` suite, which separately asserts that unavailable Sage reports only a labeled local Z/2Z fallback, timed-out jobs do not masquerade as exact results, and stale exact publications are rejected. This is existing mathematical/job unit evidence, not a native runtime-recovery journey, and does not qualify non-manifold/ineligible native UI cases.
+
+## Run 43738247846 and E6 worker-gate diagnostic continuation
+
+Run [43738247846](https://github.com/expert10000/Math3D/actions/runs/43738247846) at source head `8992d6ad931ec4d4b27dcadca4450041591c80c8` completed **FAIL** overall: source-built Windows typecheck/core build PASS, 13/13 Vitest PASS, native 4/5 PASS. Source-built native passes were E1 Torus real edit/Undo/Redo/Undo (1440×1000 only), E2 Torus/Möbius/Klein, E5 IPC file cold-process reopen and replay, and E7 Dunce-cap non-manifold classification WITHHELD. E6 FAIL: Run Smooth remained disabled 45 seconds after Mesh→Topology→Mesh, before any source revision mutation could occur. E6 snapshot staleness/refresh therefore remains untested in the native journey even though the source lifecycle unit tests pass.
+
+[Issue #85](https://github.com/expert10000/Math3D/issues/85) owns diagnosis. Current test instrumentation on head `9a72dbe20fe8407601fa33ad8e04499637368888` captures worker status both before navigation and after returning to Mesh, status bar text, visible operation panel summary, active workbench and disabled Run control, attaches JSON and rethrows the same failure. This is not a workaround, bypass or accepted scientific result. No production changes or scientific adapter edits.
+
+**Installed-app E8 is still MISSING.** The existing PowerShell script accepts exact installer and installed-executable paths, checks their SHA-256 identities and runs the native cold-reopen test with the installed binary. There is no supplied installed executable and matching installer in this runtime, so the script has not been executed and no installed-app qualification may be inferred from the source-built CI.
