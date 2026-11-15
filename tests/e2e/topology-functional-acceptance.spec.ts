@@ -153,6 +153,7 @@ test('TOP-05 Mesh workbench handoff: changed source cannot silently stay current
     await resetSurfaceAppState(page);
     await page.getByTestId('workspace-nav-mesh').click();
     await expect(page.getByTestId('app-status-bar')).toContainText('Box');
+    const workerBeforeTopology = await page.locator('[data-testid="worker-status"]').allTextContents();
     await page.getByTestId('workspace-nav-topology').click();
     const interop = page.getByTestId('topology-interoperability-panel');
     const analyze = interop.getByTestId('topology-analyze-current-mesh');
@@ -190,9 +191,10 @@ test('TOP-05 Mesh workbench handoff: changed source cannot silently stay current
             .map((el) => el.getAttribute('data-testid')),
         };
       });
-      console.log('TOP05-E6 Mesh gate evidence:', JSON.stringify(gate));
+      const evidence = { ...gate, workerBeforeTopology };
+      console.log('TOP05-E6 Mesh gate evidence:', JSON.stringify(evidence));
       await test.info().attach('top05-e6-mesh-gate.json', {
-        body: Buffer.from(JSON.stringify(gate, null, 2)),
+        body: Buffer.from(JSON.stringify(evidence, null, 2)),
         contentType: 'application/json',
       });
       throw error;
