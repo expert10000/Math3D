@@ -28,7 +28,7 @@ Reviewed source: `2cf4b6a4b096ff08f3e7c8e928c542d25acca065`. Planning files reac
 | SURF-03 | implemented; verification pending | UI follow-up / codex/ui-followup-four | 19484d0d | Surface domain/sampling labels in `surfacePanels.tsx` and compute readiness near Run in `SurfaceAnalysisWorkspacePanels.tsx`; focused UI check | Verify source-build behavior and numerical identity |
 | CA-04 | implemented; verification pending | UI follow-up / codex/ui-followup-four | 115aaa90 | `App.tsx` Function Explorer residue/contour action preflight near publication buttons only; focused UI check | Verify selected contour and branch policy update before execution |
 | SURF-04 | implemented; verification pending | UI follow-up / codex/ui-followup-four | dd1821e0 | `SurfaceAnalysisWorkspacePanels.tsx` derived Mesh bridge handoff copy and disabled resource actions; focused UI check | Verify target, lineage and missing bytes before Bake/Open |
-| MESH-03 | claimed | UI follow-up / codex/ui-followup-four | c971714f | `MeshOperationsPanel.tsx` compact top result actions and narrow `surfacePanels.tsx`/`App.tsx` compare callback wiring; focused UI check | Reach Last operation, Undo, Validate, Compare before registry scroll |
+| MESH-03 | implemented; verification pending | UI follow-up / codex/ui-followup-four | c971714f | `MeshOperationsPanel.tsx` compact top result actions and narrow `surfacePanels.tsx`/`App.tsx` compare callback wiring; focused UI check | Reach Last operation, Undo, Validate, Compare before registry scroll |
 
 ## Workbench backlog
 

@@ -144,6 +144,7 @@ export type MeshOperationsPanelProps = {
   onRestoreOperationHistoryEntry?: (entryId: string) => void;
   onUndoLastOperation?: () => void;
   canUndoLastOperation?: boolean;
+  onCompareLastOperation?: (topologyHistoryEntryId: string) => void;
   onApplySavedOperationPreset?: (presetId: string) => void | Promise<void>;
   onSaveOperationPreset?: () => void;
   canSaveOperationPreset?: boolean;
@@ -911,6 +912,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
   onRestoreOperationHistoryEntry,
   onUndoLastOperation,
   canUndoLastOperation = false,
+  onCompareLastOperation,
   onApplySavedOperationPreset,
   onSaveOperationPreset,
   canSaveOperationPreset = false,
@@ -1218,6 +1220,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
   const booleanActiveLabel = activeMeshLabel?.trim() || "Active Mesh";
   const booleanOperandLabel = selectedBooleanOperand?.name?.trim() || "Operand B";
   const hasUsableResult = !!lastResult && lastResult.status !== "error" && (lastResult.afterFaces != null || lastResult.afterVertices != null);
+  const latestComparisonEntry = operationHistory.find((entry) => !entry.undoneAt && entry.topologyHistoryEntryId)?.topologyHistoryEntryId;
   const validationForActiveMesh =
     lastValidation && activeMeshLabel && lastValidation.meshLabel === activeMeshLabel
       ? lastValidation.validation
@@ -1304,6 +1307,18 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
         <span style={{ color: workerReady ? "#166534" : "#b42318", fontSize: 10, fontWeight: 800 }}>
           {workerReady ? "worker ready" : workerStatusText}
         </span>
+      </div>
+      <div data-testid={`${testId}-quick-actions`} role="group" aria-label="Latest Mesh operation actions" style={{ border: "1px solid #bbf7d0", borderRadius: 6, background: "#fff", padding: 6, display: "grid", gap: 4, fontSize: 10 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 6 }}>
+          <strong>Last operation: {lastResult?.label ?? "none yet"}</strong>
+          <span style={{ color: resultStatusColor }}>{lastResult?.status ?? "ready"}</span>
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+          <button type="button" data-testid={`${testId}-quick-details`} onClick={showResultDetails} disabled={!lastResult}>Details</button>
+          <button type="button" data-testid={`${testId}-quick-undo`} onClick={onUndoLastOperation} disabled={!canUndoLastOperation || operationBusy}>Undo</button>
+          <button type="button" data-testid={`${testId}-quick-validate`} onClick={() => void (lastResult?.boolean ? (onValidateResult ?? onValidate) : onValidate)()} disabled={!meshReady || !cgalReady || operationBusy}>Validate</button>
+          <button type="button" data-testid={`${testId}-quick-compare`} onClick={() => latestComparisonEntry && onCompareLastOperation?.(latestComparisonEntry)} disabled={!latestComparisonEntry || !onCompareLastOperation}>Compare</button>
+        </div>
       </div>
       <div data-testid={`${testId}-presets`} style={{ display: "grid", gap: 5, borderBottom: "1px solid #bbf7d0", paddingBottom: 6 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>

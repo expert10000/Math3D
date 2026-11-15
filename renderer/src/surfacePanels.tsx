@@ -861,6 +861,7 @@ export type SurfacesLeftPanelProps = {
   onRestoreMeshOperationHistoryEntry: (entryId: string) => void;
   onUndoLatestMeshOperation: () => void;
   canUndoLatestMeshOperation: boolean;
+  onCompareLatestMeshOperation: (topologyHistoryEntryId: string) => void;
   onApplyMeshOperationPreset: (presetId: MeshOperationPresetId) => void | Promise<void>;
   onApplyMeshOperationSavedPreset: (presetId: string) => void | Promise<void>;
   onSaveMeshOperationPreset: () => void;
@@ -1563,6 +1564,7 @@ export const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onRestoreMeshOperationHistoryEntry,
   onUndoLatestMeshOperation,
   canUndoLatestMeshOperation,
+  onCompareLatestMeshOperation,
   onApplyMeshOperationPreset,
   onApplyMeshOperationSavedPreset,
   onSaveMeshOperationPreset,
@@ -6435,6 +6437,7 @@ onChangeImplicitExpr,
               onRestoreOperationHistoryEntry={onRestoreMeshOperationHistoryEntry}
               onUndoLastOperation={onUndoLatestMeshOperation}
               canUndoLastOperation={canUndoLatestMeshOperation}
+              onCompareLastOperation={onCompareLatestMeshOperation}
               onApplyOperationPreset={onApplyMeshOperationPreset}
               onApplySavedOperationPreset={onApplyMeshOperationSavedPreset}
               onSaveOperationPreset={onSaveMeshOperationPreset}

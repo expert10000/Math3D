@@ -497,9 +497,14 @@ test.describe("Mesh Operations card", () => {
     const runResult = await runMeshOperationHook(page, "decimate");
     expect(runResult.ok, runResult.error).toBeTruthy();
     await expectLastOperation(card, /Decimate/i);
+    const quickActions = card.getByTestId("mesh-workspace-operation-registry-quick-actions");
+    await expect(quickActions).toContainText(/Last operation: Decimate/i);
+    await expect(card.getByTestId("mesh-workspace-operation-registry-quick-undo")).toBeVisible();
+    await expect(card.getByTestId("mesh-workspace-operation-registry-quick-validate")).toBeVisible();
+    await expect(card.getByTestId("mesh-workspace-operation-registry-quick-compare")).toBeVisible();
     const showResultDetails = card.getByTestId("mesh-workspace-operation-registry-show-result-details");
     await expect(showResultDetails).toBeEnabled();
-    await showResultDetails.click();
+    await card.getByTestId("mesh-workspace-operation-registry-quick-details").click();
     await expect(card.getByTestId("mesh-workspace-operation-registry-last-result")).toBeFocused();
     await expect(card.getByTestId("mesh-workspace-operation-registry-send-to-geometry")).toBeEnabled();
     await expect(card.getByTestId("mesh-workspace-operation-registry-presets")).toContainText(/Presets/i);

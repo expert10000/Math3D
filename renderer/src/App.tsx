@@ -79525,6 +79525,7 @@ case "mobius":
                   onRestoreMeshOperationHistoryEntry={restoreMeshOperationHistoryEntry}
                   onUndoLatestMeshOperation={undoLatestMeshOperation}
                   canUndoLatestMeshOperation={canUndoLatestMeshOperation}
+                  onCompareLatestMeshOperation={(entryId) => previewSurfaceMeshTopologyHistoryEntry(entryId, "after")}
                   onApplyMeshOperationPreset={handleApplyMeshOperationPreset}
                   onApplyMeshOperationSavedPreset={handleApplyGeometryOperationPreset}
                   onSaveMeshOperationPreset={handleSaveMeshOperationPreset}
