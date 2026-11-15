@@ -80351,6 +80351,9 @@ case "mobius":
       setDisplayMode("workspace"); setShowRightPanel(true); setRightPanelTab("inspector");
       setSurfacePreviewFocusMode(false); setCleanScreenshotActive(false); setSurfaceDrawerPanel("left");
       setWorkspaceDockLayouts(layouts => ({ ...layouts, mesh: { ...(layouts.mesh ?? recommendedWorkspaceDockLayout("mesh")), leftCollapsed: false, rightCollapsed: false, viewerMaximized: false } }));
+      // This explicit Project target already supplies the mesh. Consume the
+      // workspace transition before the implicit Geometry-selection handoff.
+      lastGeometryMeshWorkspaceRef.current = "mesh";
       setActiveGraph2DTargetId(null); setMode("surfaces"); setDatasetKind("mesh"); setSurfaceViewerKind("mesh");
       setSurfacesPanelState("work"); setSurfacesLeftTab("object"); return true;
     }
