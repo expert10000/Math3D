@@ -18,6 +18,7 @@ Reviewed source: `2cf4b6a4b096ff08f3e7c8e928c542d25acca065`. Planning files reac
 | Task | State | Owner / branch | Reviewed base | Owned scope | Next check |
 | --- | --- | --- | --- | --- | --- |
 | SHARED-01 | verified (scoped) | this cleanup thread / codex/ui-cleanup-first-slice | 2cf4b6a4 | Production footer patch merged; no further App.tsx edits reserved by this task | Closed: scoped Windows native CI passed at fa27817f; no file reservation |
+| CA-01 | claimed (responsive layout slice) | UI cleanup thread / codex/ui-workbench-implementation | 0272172c | App.tsx analytic Explorer layout JSX only (around111000–111340); new ComplexExplorerLayout component/CSS; focused native layout test and scoped workflow | Check responsive Z/W/Inspector bounds at1100 and800px; preserve math handlers and existing layout state |
 | Geometry #61 | external draft | codex/geometry-topology-2-0 / PR61 | See current PR head | Geometry topology/control work; coordinate any App.tsx overlap | Owned by its existing thread; not modified here |
 
 ## Workbench backlog
@@ -56,3 +57,5 @@ Check remote main, this claim and branch HEAD. Use the screenshot evidence and s
 - 2026-11-15 — Concurrent main update `20694de5998addc05719b83e43c5d31040147a58` merged desktop accessibility #67. Its Project/card/focus/CSS edits are preserved. The only App.tsx delta from4fca is a CAS-gallery focus handler, outside the footer claim. Review the new accessibility changes before taking module layout tasks; the five drafts still explicitly describe their original2cf4b6a4 review source.
 
 - 2026-11-15 — SHARED-01 closed as scoped verified on source/harness `fa27817fb69c38dc0b6dae8bc2ec108cab03b13a`; Windows CI run43710641247 passed. No production file is reserved by this thread. Other threads should pull current main and claim one proposed module task with exact file regions before editing. This documentation-only handoff does not transfer acceptance to its new commit. Next implementation: select an unclaimed module task after checking current source and active claims.
+
+- 2026-11-15 — Claimed CA-01 responsive layout slice from0272172c. Exact scope above; other module tasks remain unclaimed. No ownership of scientific models, Geometry #61 or unrelated App.tsx regions. Claim published before substantive edits.
