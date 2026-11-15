@@ -27,6 +27,7 @@ Reviewed source: `2cf4b6a4b096ff08f3e7c8e928c542d25acca065`. Planning files reac
 | TOP-04 | merged; scoped Windows CI passed | UI cleanup thread / codex/topology-algebra-summary | PR79 head 03d3b6c0 (stacked until PR79 merges) | TopologyScreen.tsx renderAlgebraView provenance card only; focused e2e/workflow; no App.tsx or science adapters | Preserve exact eligibility, matrix/artifact and source hashes; Windows native check |
 | TOP-05 | evidence PR83 published; Windows CI pending; full qualification incomplete | UI cleanup thread / codex/topology-functional-acceptance | current main 2026-11-15 | new E2E acceptance tests + scoped workflow + docs only, no App.tsx/TopologyScreen.tsx or adapters | Execute edit/undo, Torus/Möbius/Klein, Mesh snapshot freshness and cold reopen, record each PASS/MISSING/FAIL |
 | Geometry #61 | external draft | codex/geometry-topology-2-0 / PR61 | See current PR head | Geometry topology/control work; coordinate any App.tsx overlap | Owned by its existing thread; not modified here |
+| FEX-CI-01 | claimed | Field Explorer thread / codex/field-explorer-difference-view | ef3a1bbe34beb43b91454521d26077453843be8f | tests/e2e/geometry-picking.spec.ts shared Geometry-to-Mesh selection case only: valid viewport and pointer-bounds setup. No App.tsx or Geometry #61 production changes. | CI43727506736 passed54/55 native cases; trace recorded drag at y668 outside the viewport on a zero-height overlay. Preserve all box/lasso/source-identity assertions and qualify the corrected harness. |
 
 ## Workbench backlog
 
