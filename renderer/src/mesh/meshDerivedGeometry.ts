@@ -11,6 +11,41 @@ export type MeshDerivedGeometryLineage = {
   readonly kind: MeshDerivedGeometryKind;
 };
 
+export type MeshFaceRegionLink = {
+  readonly sourceObjectId: string;
+  readonly faceIndices: readonly number[];
+  readonly sourceRevision: number;
+  readonly status: "linked" | "stale" | "missing" | "detached";
+};
+
+export function normalizeMeshFaceRegionLink(value: unknown): MeshFaceRegionLink | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Partial<MeshFaceRegionLink>;
+  if (typeof raw.sourceObjectId !== "string" || !raw.sourceObjectId.trim()) return null;
+  if (!Array.isArray(raw.faceIndices) || !raw.faceIndices.length ||
+      raw.faceIndices.some((index) => !Number.isSafeInteger(index) || index < 0)) return null;
+  if (!Number.isSafeInteger(raw.sourceRevision) || Number(raw.sourceRevision) < 0) return null;
+  if (raw.status !== "linked" && raw.status !== "stale" && raw.status !== "missing" && raw.status !== "detached") return null;
+  return { sourceObjectId: raw.sourceObjectId, faceIndices: [...new Set(raw.faceIndices)],
+    sourceRevision: Number(raw.sourceRevision), status: raw.status };
+}
+
+/** Keep the last valid result visible when its source disappears or changes incompatibly. */
+export function refreshMeshFaceRegionLink(
+  link: MeshFaceRegionLink,
+  source: SurfaceMeshData | null,
+  sourceRevision: number,
+): { link: MeshFaceRegionLink; mesh: SurfaceMeshData | null } | null {
+  if (link.status === "detached") return null;
+  if (!source) return link.status === "missing" ? null : { link: { ...link, status: "missing" }, mesh: null };
+  if (sourceRevision === link.sourceRevision && link.status !== "missing") return null;
+  const mesh = extractMeshFaceRegion(source, link.faceIndices);
+  return {
+    link: { ...link, sourceRevision, status: mesh ? "linked" : "stale" },
+    mesh,
+  };
+}
+
 export function meshVertex(mesh: SurfaceMeshData, index: number): { x: number; y: number; z: number } | null {
   const start = index * 3;
   if (!Number.isInteger(index) || index < 0 || start + 2 >= mesh.positions.length) return null;

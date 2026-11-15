@@ -26,4 +26,15 @@ describe("scene selection transfer", () => {
     expect(result.selection).toMatchObject({ kind: "object", componentIds: [], objectId: "geometry:box" });
     expect(result.notice).toMatch(/no verified match/);
   });
+  it("preserves all verified split targets and drops deleted components without duplicating survivors", () => {
+    const selected: SceneSelection = { ...edge, componentIds: ["edge:a", "edge:b", "edge:c"] };
+    const result = transferSceneSelection(selected, "mesh:box", [
+      { oldId: "edge:a", newIds: ["edge:1-2", "edge:2-3"], status: "split" },
+      { oldId: "edge:b", newIds: [], status: "deleted" },
+      { oldId: "edge:c", newIds: ["edge:2-3"], status: "merged" },
+    ]);
+    expect(result.selection).toMatchObject({ objectId: "geometry:box", representationId: "mesh:box",
+      kind: "edge", componentIds: ["edge:1-2", "edge:2-3"] });
+    expect(result.notice).toMatch(/2 components/);
+  });
 });
