@@ -23,6 +23,7 @@ Reviewed source: `2cf4b6a4b096ff08f3e7c8e928c542d25acca065`. Planning files reac
 | TOP-01 | merged; scoped Windows CI passed | UI cleanup thread / codex/topology-ui-navigation | 5adad7af | TopologyScreen.tsx center navigation/header around6920–7010; new focused native test/workflow; no App.tsx or topology owner changes | Distinguish construction guide from representations; assert unchanged Torus canonical counts and source revision across views |
 | TOP-03 | PR77 retargeted to main; review correction; current-head Windows CI pending | UI cleanup thread / codex/topology-count-layers | PR75 head d0ce8ea5; main state bceb01c6 | TopologyScreen.tsx preset summary, Structure count labels, Mesh snapshot status; focused tests and docs; NO App.tsx/Geometry #61/model math | Preserve V/E/F/χ and hashes across Torus views; verify imported Mesh snapshot distinct; require native Windows CI |
 | Geometry #61 | external draft | codex/geometry-topology-2-0 / PR61 | See current PR head | Geometry topology/control work; coordinate any App.tsx overlap | Owned by its existing thread; not modified here |
+| GR-04 | claimed; reproduction first | research UI chat / codex/ui-next-four | 04784cc1 | Graph plot/overlay presentation in `Graph2DPlot.tsx`, `GraphsWorkspace.tsx` and scoped CSS; new native reproduction harness; no Graph math, source owner or Gallery edits | Reproduce strips after cross-workbench navigation and hide/show before changing rendering |
 
 ## Workbench backlog
 
