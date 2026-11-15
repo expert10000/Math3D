@@ -1,7 +1,10 @@
 name: UI cleanup scoped native regression
 on:
   push:
-    branches: [codex/ui-cleanup-first-slice]
+    branches: [main, codex/ui-cleanup-first-slice]
+    paths: ['renderer/src/App.tsx','tests/e2e/workspace-status-scope.spec.ts','.github/workflows/ui-cleanup-scoped.yml']
+  pull_request:
+    branches: [main]
     paths: ['renderer/src/App.tsx','tests/e2e/workspace-status-scope.spec.ts','.github/workflows/ui-cleanup-scoped.yml']
 permissions:
   contents: read

@@ -22,13 +22,24 @@ test('independent Graphs, Topology and Complex footers do not inherit retained m
     await page.getByTestId('workspace-nav-topology').click();
     await expect(footer).toContainText('Topology quotient module');
     for(const stale of ['Box','type mesh','vertices','camera','analysis ready']) await expect(footer).not.toContainText(stale);
+    // Graphs/Topology are independent views and must not change the Box scene.
+    await page.getByTestId('workspace-nav-mesh').click();
+    await expect(footer).toContainText('Box');
+    await expect(footer).toContainText('type mesh');
     await page.getByTestId('workspace-nav-complex_analysis').click();
+    // The 3D Complex map intentionally generates/selects its own mesh before
+    // entering the analytic Explorer. Capture that real source boundary.
+    await expect(footer).toContainText('Complex viewer');
+    await expect(footer).toContainText('Complex Map Sweep');
+    await expect(footer).toContainText(/\d[\d,]* vertices \/ \d[\d,]* faces/);
+    const complexMeshCounts=(await footer.innerText()).match(/\d[\d,]* vertices \/ \d[\d,]* faces/)![0];
     await page.getByRole('button',{name:'Function Explorer',exact:true}).click();
     await expect(footer).toContainText('Complex Function Explorer');
-    for(const stale of ['Box','type mesh','vertices','camera','analysis ready']) await expect(footer).not.toContainText(stale);
+    for(const stale of ['Box','Complex Map Sweep','type mesh','vertices','camera','analysis ready']) await expect(footer).not.toContainText(stale);
     await page.getByTestId('workspace-nav-mesh').click();
     await expect(footer).toContainText('Mesh viewer');
-    await expect(footer).toContainText('Box');
+    await expect(footer).toContainText('Complex Map Sweep');
+    await expect(footer).toContainText(complexMeshCounts);
     await expect(footer).toContainText('type mesh');
     await expect(footer).toContainText(/\d[\d,]* vertices \/ \d[\d,]* faces/);
   } finally {await closeSurfaceApp(ctx);}
