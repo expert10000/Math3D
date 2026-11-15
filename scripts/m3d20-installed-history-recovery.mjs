@@ -180,6 +180,19 @@ async function journeyPhase() {
     await openMesh();
     const exportResources = async (name) => {
       panel=await openProjectPanel(page);
+      // Cold reopening selects the Project overview. Navigate its actual transfer
+      // page rather than trying to click the hidden export control behind it.
+      if(!await panel.getByTestId("project-export-resources").isVisible()) {
+        const more=panel.locator(".project-header-more");
+        if(await more.isVisible()) {
+          await more.locator("summary").click();
+          await more.getByRole("button",{name:"Import / export",exact:true}).click();
+        } else {
+          if(await panel.getAttribute("data-project-placement")) await panel.getByTestId("project-gallery-layout-toggle").click();
+          if(await panel.locator(".project-gallery-layout-detail").count()) await panel.getByTestId("project-detail-toggle").click();
+        }
+      }
+      await expect(panel.getByTestId("project-export-resources")).toBeVisible();
       const file=path.join(path.dirname(receiptPath),name);
       await app.evaluate(({session},file)=>session.defaultSession.once("will-download",(_event,item)=>item.setSavePath(file)),file);
       await panel.getByTestId("project-export-resources").click();
