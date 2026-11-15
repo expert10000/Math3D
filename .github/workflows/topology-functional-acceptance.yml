@@ -14,6 +14,7 @@ on:
       - 'tests/e2e/topology-functional-acceptance.spec.ts'
       - 'renderer/src/topology/topologyPersistence.test.ts'
       - 'renderer/src/topology/meshSnapshotHandoff.test.ts'
+      - 'renderer/src/topology/algebraPublication.test.ts'
       - '.github/workflows/topology-functional-acceptance.yml'
 permissions:
   contents: read
