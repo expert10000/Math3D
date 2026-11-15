@@ -45,7 +45,7 @@ These are bounded manual UI observations. Save/cold-reopen, exact identity/hash 
 
 | ID | State | Bounded implementation |
 | --- | --- | --- |
-| GR-01 | proposed | Fix shared footer ownership (SHARED-01) and retain the actual Graph scene label and document revision. |
+| GR-01 | verified (scoped, via SHARED-01) | Fix shared footer ownership (SHARED-01) and retain the actual Graph scene label and document revision. |
 | GR-02 | proposed | Clarify Gallery versus Add Graph and consolidate duplicate Inspector affordances while retaining accessible aliases. |
 | GR-03 | proposed | Improve long-form authoring/preview modal focus, sticky actions and field-specific error recovery. |
 | GR-04 | proposed | Investigate retained coloured strips/overlay clipping after cross-workbench navigation and hide/show; record reproduction before changing rendering. |
@@ -100,3 +100,7 @@ Screenshots are native source-app review captures at the reviewed commit. They d
 ## Handoff to another thread
 
 Read DRAFT_STATE first. Claim one task with owner/branch/base SHA, exact owned files/regions, start time and next check before editing. Treat `renderer/src/App.tsx` as a shared serial-edit resource; coordinate a minimal patch rather than concurrent broad rewrites. Keep Geometry work owned by #61 separate. When handing off, record implemented commit, tests actually run, evidence and remaining checks; never mark verified from an unexecuted plan.
+
+## Implementation update — 2026-11-15
+
+GR-01 is covered by SHARED-01: the Graphs footer preserves the Graph scene label and current document revision while excluding unrelated retained mesh facts. Production fix merged through PR70. Exact-head Windows scoped regression passed at `fa27817fb69c38dc0b6dae8bc2ec108cab03b13a`, [run43710641247](https://github.com/expert10000/Math3D/actions/runs/43710641247). GR-02…05 remain proposed. This does not qualify full Graph scientific-transfer or persistence acceptance.
