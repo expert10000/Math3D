@@ -28,7 +28,7 @@ An old stable app and a Dev candidate are different products and **cannot** coun
 
 ## Manual qualification after merge
 
-Use `.github/workflows/windows-installed-qualification.yml` from the prepared harness branch (or after the harness itself is merged). It is manual-only and requires:
+Review and merge the harness workflow into the default branch before using GitHub’s manual Run workflow control (GitHub exposes workflow_dispatch there). Then select the required harness ref. The prepared `.github/workflows/windows-installed-qualification.yml` is manual-only and requires:
 
 - `source_commit`: full actual PR61 merge SHA; the workflow independently checks PR61 is merged and equals it.
 - Candidate `build_run_id` and `candidate_artifact` containing `candidate.json` and referenced bytes.
