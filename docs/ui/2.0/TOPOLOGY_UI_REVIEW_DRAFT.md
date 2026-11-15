@@ -44,7 +44,7 @@ These are bounded manual UI observations. Save/cold-reopen, exact identity/hash 
 | ID | State | Bounded implementation |
 | --- | --- | --- |
 | TOP-01 | navigation slice implemented; local native pass; CI/typecheck pending | Separate construction progress from representation/view selection; name the active topic and authoritative source once. |
-| TOP-02 | proposed | Make add/remove/undo controls a compact diagram toolbar; retain keyboard and source command semantics. |
+| TOP-02 | compact toolbar implemented; native Windows CI pending | Make add/remove/undo controls a compact diagram toolbar; retain keyboard and source command semantics. |
 | TOP-03 | proposed | Keep canonical cells, build refinement, display geometry and imported Mesh snapshot counts explicitly separated. |
 | TOP-04 | proposed | Improve algebra summary and explain ineligibility reasons before raw hashes, while retaining complete inspectable provenance. |
 | TOP-05 | proposed | Qualify torus/Möbius/Klein/non-manifold examples, snapshot refresh/staleness, undo and Project cold reopen. |
@@ -101,3 +101,9 @@ The first TOP-01 slice separates Construction guide from Representation views, n
 Local core build passed (renderer37.10s). Corrected native regression passed1test,0skips/0retries: test5.389s, suite6.991s. Torus retained canonicalV1/E2/F1/χ0 and unchanged source revision, source hash and canonical hash across Diagram/Complex/Algebra/Realization/Quotient views and return through the guide. The first attempt failed because innerText capture was compared to textContent; the fix uses the displayed-text matcher without removing hash assertions. Both reports are retained. This is a working-tree source-app build based on5adad7af, not clean-commit/Windows or complete persistence qualification. Typecheck and scoped CI are pending until DRAFT_STATE records completion.
 
 TOP-03 follow-up observed in the native review: Selected polygon preset calls buildResult.quotient counts “Canonical quotient” (TorusV1/E3/F2), while Structure correctly displays topologyCountLayers.canonicalV1/E2/F1. These are distinct count layers and χ remains0. Clarify the preset-card label in a separately claimed slice; do not silently change the mathematical owner or discard either representation.
+
+## TOP-02 scoped diagram toolbar implementation
+
+The diagram editing controls are now grouped in a compact, wrapping toolbar: Tool (Select/Drag, Add Vertex, Add Edge), Edit (selection-dependent Remove Vertex/Edge), and History (Undo/Redo). Active tool mode is exposed by aria-pressed; unavailable actions keep their original disabled rules and show explanatory titles. The edge-to-boundary option remains available, retaining its original state setter. No diagram source, command adapter, keyboard shortcuts, cell counts, hashes or persistence model is changed.
+
+A native Electron test verifies toolbar groups, exclusive active mode across all three tools, guarded removal actions, boundary toggle, History visibility and unchanged Torus V1/E2/F1/χ0 plus source/canonical hashes while switching tools. This test does not itself exercise a diagram edit, delete, undo or redo. Windows scoped workflow runs typecheck, core build and the native regression; evidence is pending until CI completes.
