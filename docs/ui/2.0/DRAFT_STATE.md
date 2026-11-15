@@ -1,6 +1,6 @@
 # UI cleanup draft state — shared thread handoff
 
-Updated: 2026-11-15. Repository: expert10000/Math3D.
+Updated: 2026-11-16. Repository: expert10000/Math3D.
 Reviewed source: `2cf4b6a4b096ff08f3e7c8e928c542d25acca065`. Planning files reached main at `9f2a9f79abeb9d36225199fe899185863de74665`. First implementation `8448e91fda5c3c832037dd02a44292197363ac90` was merged by PR70 as `4fca932b2802d4b9085fbfe1134793f976c446fd`.
 
 ## Initial module and draft-PR snapshot (2026-11-15)
@@ -18,14 +18,14 @@ This initial snapshot was checked against GitHub PR metadata and PR-head-associa
 
 [#76](https://github.com/expert10000/Math3D/pull/76) covers research-route theme and 200% zoom accessibility, outside these five workbench backlogs. It is ready for review but still has native Windows high-contrast and installed-candidate limits. The table records evidence, not approval to merge or a new 2.0 qualification baseline.
 
-### Follow-up after the initial snapshot (2026-11-15)
+### Follow-up after the initial snapshot (verified through 2026-11-16)
 
 - [#81](https://github.com/expert10000/Math3D/pull/81) is at `e8764ca04`. The Graph Inspector assertion was corrected for More → Navigation → Inspector (`804d4f2ce`); focused Vitest 3/3 and local `npm run typecheck:noemit` passed. Nine of ten current-head workflows passed, including CI Build, both focused UI checks, Graph2D, Unified Projects and Mobile. [Release flagship](https://github.com/expert10000/Math3D/actions/runs/43742227881) failed in `sage-algebraic-locus-scene-desktop.spec.ts:49`: after a gallery layout click, `project-detail-toggle` was absent. Its final evidence job failed because the algebra journey failed. Keep #81 draft until #87 is integrated and #81 is refreshed and retested.
 - [#82](https://github.com/expert10000/Math3D/pull/82) is at `453c553c1` after the main merge and documentation conflict resolution. All nine current-head workflows passed, including [focused UI](https://github.com/expert10000/Math3D/actions/runs/43743131261), [release flagship](https://github.com/expert10000/Math3D/actions/runs/43743131262), CI Build, Graph2D, Unified Projects and Mobile. Keep #82 draft for the shared-region review with #78/#81.
-- [#78](https://github.com/expert10000/Math3D/pull/78) is at `0599ed7a5`. The Surface ridge test now explicitly selects Studies after a saved-project reopen; local `npm run build:core` and the full native journey passed 1/1. Six of nine current-head workflows passed, including [release flagship](https://github.com/expert10000/Math3D/actions/runs/43767820751), both focused UI checks, Gallery, Mobile and M3D20 batch. CI Build, Graph2D and Unified Projects remained in progress at this checkpoint. Keep #78 draft until their results and shared-region review are complete.
+- [#78](https://github.com/expert10000/Math3D/pull/78) is at `0599ed7a5`. The Surface ridge test now explicitly selects Studies after a saved-project reopen; local `npm run build:core` and the full native journey passed 1/1. All nine current-head workflows passed, including [release flagship](https://github.com/expert10000/Math3D/actions/runs/43767820751), both focused UI checks, [CI Build](https://github.com/expert10000/Math3D/actions/runs/43767820761), [Graph2D](https://github.com/expert10000/Math3D/actions/runs/43767820818), [Unified Projects](https://github.com/expert10000/Math3D/actions/runs/43767820648), Gallery, Mobile and M3D20 batch. Keep #78 draft for shared-region review.
 - The algebra route correction is isolated in [draft #87](https://github.com/expert10000/Math3D/pull/87), head `9ca60d733`: wait for the saved Surface breadcrumb and enter the full gallery only if the detail toggle is absent. The exact native SAGE-F01/F02 journey passed locally 1/1; all six current-head workflows passed, including [release flagship](https://github.com/expert10000/Math3D/actions/runs/43745195442) and Mobile after a targeted rerun. This directly addresses #81's observed selector failure, but #81 still needs a new current-head release run after integration.
 
-Suggested review order: review and integrate the test-only #87 first; then refresh #81 from main and rerun its release gate. Review #71/#74 shared `App.tsx` and Mesh Run regions before integrating #78; #78 can proceed independently of #81 once its remaining checks pass. Review #82 against the resulting #78/#81 code and refresh its gates last. Do not copy a passing check from one PR head to another.
+Suggested review order: review and integrate the test-only #87 first; then refresh #81 from main and rerun its release gate. Review #71/#74 shared `App.tsx` and Mesh Run regions before integrating #78; #78 can proceed independently of #81 after that review. Review #82 against the resulting #78/#81 code and refresh its gates last. Do not copy a passing check from one PR head to another.
 
 ## How threads cooperate
 
@@ -58,11 +58,11 @@ Suggested review order: review and integrate the test-only #87 first; then refre
 
 | Draft / tasks | State | Owner | Evidence / remaining work |
 | --- | --- | --- | --- |
-| [Mesh](MESH_UI_REVIEW_DRAFT.md), MESH-01…05 | MESH-01 #74, MESH-02 #78 and MESH-03 #82 implemented in drafts; MESH-04/05 proposed | respective PR owners; MESH-04/05 unclaimed | #74/#78 scoped CI and #82 current-head workflows passed; #78 broad CI is still running; operation-form overlap and full persistence acceptance pending |
-| [Complex](COMPLEX_ANALYSIS_UI_REVIEW_DRAFT.md), CA-01…05 | CA-01 #71, CA-02 #81, CA-03 #78 and CA-04 #82 implemented in drafts; CA-05 proposed | respective PR owners; CA-05 unclaimed | #81 current head passed all workflows except the algebra release route; #87 passed that route independently. #78 broad CI is still running; full analytic journey pending |
+| [Mesh](MESH_UI_REVIEW_DRAFT.md), MESH-01…05 | MESH-01 #74, MESH-02 #78 and MESH-03 #82 implemented in drafts; MESH-04/05 proposed | respective PR owners; MESH-04/05 unclaimed | #78/#82 current-head workflows passed; operation-form overlap and full persistence acceptance pending |
+| [Complex](COMPLEX_ANALYSIS_UI_REVIEW_DRAFT.md), CA-01…05 | CA-01 #71, CA-02 #81, CA-03 #78 and CA-04 #82 implemented in drafts; CA-05 proposed | respective PR owners; CA-05 unclaimed | #78/#82 current-head workflows passed; #81 passed all except the algebra release route, which #87 passed independently. Full analytic journey pending |
 | [Topology](TOPOLOGY_UI_REVIEW_DRAFT.md), TOP-01…05 | TOP-01/02/03/04 merged with scoped Windows passes; TOP-05 evidence draft #83 incomplete | TOP-05: UI cleanup thread / codex/topology-functional-acceptance | Native file cold reopen and Torus/Möbius/Klein passed in prior 4/5 run; Mesh snapshot E6 blocked by #85; narrow edit viewport and installed E8 remain unqualified |
-| [Surfaces](SURFACES_UI_REVIEW_DRAFT.md), SURF-01…05 | SURF-01 #78, SURF-02 #81, SURF-03/04 #82 implemented in drafts; SURF-05 proposed | respective PR owners; SURF-05 unclaimed | #78 release and scoped UI passed, with broad CI still running; #81 release awaits #87 integration; #82 current-head workflows passed. Representation/derive/save journey pending |
-| [Graphs](GRAPHS_UI_REVIEW_DRAFT.md), GR-01…05 | GR-01 verified via SHARED-01; GR-02/04 #81 and GR-03 #78 implemented in drafts; GR-05 proposed | respective PR owners; GR-05 unclaimed | #81 Graph2D and focused UI passed; #78 Graph2D is still running. Scientific-transfer journey pending |
+| [Surfaces](SURFACES_UI_REVIEW_DRAFT.md), SURF-01…05 | SURF-01 #78, SURF-02 #81, SURF-03/04 #82 implemented in drafts; SURF-05 proposed | respective PR owners; SURF-05 unclaimed | #78/#82 current-head workflows passed; #81 release awaits #87 integration. Representation/derive/save journey pending |
+| [Graphs](GRAPHS_UI_REVIEW_DRAFT.md), GR-01…05 | GR-01 verified via SHARED-01; GR-02/04 #81 and GR-03 #78 implemented in drafts; GR-05 proposed | respective PR owners; GR-05 unclaimed | #78/#81 current-head Graph2D and focused UI passed. Scientific-transfer journey pending |
 
 ## SHARED-01 evidence and implementation state
 
