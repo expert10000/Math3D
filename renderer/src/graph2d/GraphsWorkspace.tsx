@@ -4403,17 +4403,21 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
             }}>−</button>
           </div>
           <div className="graph2d-toolbar-secondary">
-            <button type="button" data-testid="graph-gallery-open" onClick={event => { galleryOpener.current = event.currentTarget; setGalleryStartCategory("All"); finishWheel(); closeGrid(true, false); setScalesOpen(false); setParametersOpen(false); setParameterPreview(null); setGalleryError(null); setGalleryOpen(true); }}>Gallery</button>
+            <button type="button" data-testid="graph-gallery-open" title="Preview curated scenes before opening one" onClick={event => { galleryOpener.current = event.currentTarget; setGalleryStartCategory("All"); finishWheel(); closeGrid(true, false); setScalesOpen(false); setParametersOpen(false); setParameterPreview(null); setGalleryError(null); setGalleryOpen(true); }}>Gallery</button>
             <div className="graph2d-toolbar-group" role="group" aria-label="Construction tools">
               <button type="button" ref={toolsOpener} aria-expanded={toolsOpen} onClick={() => { finishWheel(); closeGrid(true, false); cancelParameter(); setToolsOpen(!toolsOpen); }}>Tools</button>
             </div>
-            <div className="graph2d-toolbar-group" role="group" aria-label="Analysis">
-              <button type="button" disabled={!showRight} title={!showRight ? "Open the Inspector dock to view analysis." : undefined}
-                onClick={() => { finishWheel(); openInspector(); }}>Inspector</button>
+            <div className="graph2d-toolbar-group" role="group" aria-label="Services">
               <button type="button" data-testid="graph2d-toolbar-services" aria-pressed={leftSection === "services"}
                 onClick={() => { finishWheel(); setLeftSection("services"); }}>Services</button>
             </div>
             <details className="graph2d-toolbar-menu"><summary>More</summary><div className="graph2d-toolbar-menu-content">
+              <div className="graph2d-toolbar-group" role="group" aria-label="Navigation">
+                <span>Navigate</span>
+                <button type="button" title="Focus the Graph inspector" onClick={event => {
+                  event.currentTarget.closest("details")?.removeAttribute("open"); finishWheel(); openInspector();
+                }}>Inspector</button>
+              </div>
               <div className="graph2d-toolbar-group" role="group" aria-label="Authoring">
                 <span>Author</span>
                 <button type="button" disabled={!scientificImportAvailable || !onAuthoringCommit || scientificImportBusy}

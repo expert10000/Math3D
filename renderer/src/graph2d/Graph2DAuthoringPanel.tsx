@@ -337,6 +337,7 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
     <div className="graph2d-authoring-header"><h2>Graph objects</h2>
       <button type="button" onClick={event => { openerRef.current = event.currentTarget; setChoosing(true); }}
         disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add Graph</button></div>
+    <p className="graph2d-entry-help">Add Graph creates an object in this scene. Gallery lets you preview curated scenes before opening one.</p>
     {document.source.objects.length ? <ol className="graph2d-function-list">
       {document.source.objects.map((object, index) => {
         const style = document.display.objects[index]!;

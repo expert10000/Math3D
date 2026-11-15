@@ -108,6 +108,7 @@ html[data-theme="dark"] .graph2d-workspace {
 .graph2d-authoring .graph2d-left-palette button[aria-pressed="true"] { border-color:var(--workspace-control-active-border); background:var(--workspace-control-active-bg); }
 .graph2d-left-palette button:focus-visible { outline:2px solid var(--workspace-control-active-border); outline-offset:2px; }
 .graph2d-authoring-header { display: flex; align-items: start; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.graph2d-entry-help { margin: 0 0 10px; color: var(--muted); font-size: 12px; line-height: 1.4; }
 .graph2d-authoring[data-modal-only="true"] { display:none; }
 .graph2d-authoring button { border: 1px solid var(--workspace-control-border); border-radius: 7px; background: var(--workspace-control-bg); color:var(--workspace-control-text); padding: 4px 8px; font-weight:600; cursor: pointer; }
 .graph2d-authoring button:hover:not(:disabled) { background: var(--workspace-control-hover-bg); border-color:var(--gallery-card-border-active); }
