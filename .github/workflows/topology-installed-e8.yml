@@ -14,10 +14,6 @@ on:
         description: "Exact previous installer .exe filename inside the artifact"
         required: true
         type: string
-      prior_source_commit:
-        description: "Exact source commit SHA of previous installer Actions run"
-        required: true
-        type: string
       prior_sha256:
         description: "Independently verified SHA256 of previous installer (64 hex)"
         required: true
@@ -32,10 +28,6 @@ on:
         type: string
       current_filename:
         description: "Exact target installer .exe filename inside the artifact"
-        required: true
-        type: string
-      current_source_commit:
-        description: "Exact source commit SHA of target installer Actions run"
         required: true
         type: string
       current_sha256:
@@ -63,24 +55,24 @@ jobs:
         with:
           node-version: '24.15.0'
           cache: npm
-      - name: Verify both installer run source commits and successful outcomes
+      - name: Resolve installer source commits from successful runs
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
           PRIOR_RUN_ID: ${{ inputs.prior_run_id }}
           CURRENT_RUN_ID: ${{ inputs.current_run_id }}
-          PRIOR_SOURCE: ${{ inputs.prior_source_commit }}
-          CURRENT_SOURCE: ${{ inputs.current_source_commit }}
         run: |
           $ErrorActionPreference = 'Stop'
-          foreach ($candidate in @(
-            @{ Run=$env:PRIOR_RUN_ID; Commit=$env:PRIOR_SOURCE },
-            @{ Run=$env:CURRENT_RUN_ID; Commit=$env:CURRENT_SOURCE }
+          foreach ($item in @(
+            @{ Run=$env:PRIOR_RUN_ID; Output='PRIOR_SOURCE' },
+            @{ Run=$env:CURRENT_RUN_ID; Output='CURRENT_SOURCE' }
           )) {
-            if ($candidate.Run -notmatch '^[0-9]+$' -or $candidate.Commit -notmatch '^[0-9a-fA-F]{40}$') { throw 'Invalid installer run or SHA' }
-            $result = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$($candidate.Run)" | ConvertFrom-Json
-            if ($LASTEXITCODE -ne 0 -or $result.conclusion -ne "success") { throw "Installer source run not successful: $($candidate.Run)" }
-            if ($result.head_sha.ToLowerInvariant() -ne $candidate.Commit.ToLowerInvariant()) { throw "Installer source SHA mismatch: $($candidate.Run)" }
+            if ($item.Run -notmatch '^[0-9]+$') { throw 'Invalid installer run ID' }
+            $runInfo = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$($item.Run)" | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0 -or $runInfo.conclusion -ne "success") { throw "Installer run not successful: $($item.Run)" }
+            if ($runInfo.head_sha -notmatch '^[0-9a-fA-F]{40}$') { throw 'Missing installer run source SHA' }
+            "$($item.Output)=$($runInfo.head_sha)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            Write-Host "Installer run $($item.Run) source: $($runInfo.head_sha)"
           }
       - uses: actions/download-artifact@v4
         with:
@@ -109,8 +101,6 @@ jobs:
           CURRENT_FILENAME: ${{ inputs.current_filename }}
           PRIOR_SHA256: ${{ inputs.prior_sha256 }}
           CURRENT_SHA256: ${{ inputs.current_sha256 }}
-          PRIOR_SOURCE: ${{ inputs.prior_source_commit }}
-          CURRENT_SOURCE: ${{ inputs.current_source_commit }}
         run: |
           $ErrorActionPreference = 'Stop'
           foreach ($name in @($env:PRIOR_FILENAME, $env:CURRENT_FILENAME)) {
