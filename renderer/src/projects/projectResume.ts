@@ -18,7 +18,9 @@ export function rememberProjectUi(store: Pick<Storage, "setItem">, value: Projec
 export function selectProjectDocument(project: Math3DProject, raw: string | null) {
   const resumed = projectResumeDocument(project, raw);
   const entries = project.workspace.entries.filter(entry => !project.metadata.documents?.[entry.expected.id]?.archived);
-  const selected = resumed ?? (project.metadata.tags?.includes("starter")
+  const primaryField = entries.find(entry => entry.module === "vector3d" &&
+    entry.expected.id === project.workspace.activeDocumentIds[0]);
+  const selected = resumed ?? primaryField ?? (project.metadata.tags?.includes("starter")
     ? (["surface", "geometry", "mesh", "volume", "curve", "graph2d"] as const).map(module => entries.find(entry => entry.module === module)).find(Boolean) : null)
     ?? entries.find(entry => project.workspace.activeDocumentIds.includes(entry.expected.id)) ?? entries[0];
   if (!selected) throw new Error("Saved Project has no available document to open.");

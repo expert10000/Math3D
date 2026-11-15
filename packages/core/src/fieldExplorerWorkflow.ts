@@ -63,9 +63,11 @@ export function resolveFieldExplorerBaseline(project: Math3DProject | null | und
 
 /** Checkpoint edits through the existing Project workspace before saving a dependent result. */
 export function checkpointProjectFieldExplorerDocument(project: Math3DProject,
-  document: VectorField3DDocument): Math3DProject {
+  document: VectorField3DDocument, activate = false): Math3DProject {
   const checked = parseVectorField3DDocument(serializeVectorField3DDocument(document));
   return replaceMath3DProjectWorkspace(project, createMixedWorkspaceDocument({ ...project.workspace,
+    ...(activate ? { activeDocumentIds: [checked.identity.id, ...project.workspace.activeDocumentIds.filter(id =>
+      id !== checked.identity.id && project.workspace.entries.find(entry => entry.expected.id === id)?.module !== "vector3d")] } : {}),
     entries: [...project.workspace.entries.filter(entry => entry.expected.id !== checked.identity.id),
       { module: "vector3d", checkpoint: checked, expected: checked.identity, replay: null }],
   }));
