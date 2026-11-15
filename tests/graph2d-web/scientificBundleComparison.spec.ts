@@ -45,11 +45,12 @@ async function exported(page: Page) {
   return readFile((await (await pending).path())!, "utf8");
 }
 
-for (const format of ["folder", "zip"] as const) test(`two scientific ${format} imports share one portable Project and survive cold reopen`, async ({ baseURL }) => {
+for (const { format, offset } of [{ format: "folder", offset: .5 }, { format: "zip", offset: .5 },
+  { format: "zip", offset: 0 }] as const) test(`two scientific ${format} imports, difference ${offset}, share one portable Project and survive cold reopen`, async ({ baseURL }) => {
   test.setTimeout(300_000);
   const root = await mkdtemp(join(tmpdir(), "m3d-two-bundles-"));
   const aFiles = browserScientificBundle({ title: "Run A" });
-  const bFiles = browserScientificBundle({ title: "Run B", offset: 0.5 });
+  const bFiles = browserScientificBundle({ title: "Run B", offset });
   let context: BrowserContext | null = null, serial = 0;
   const closeContext = async () => { if (context) await context.close(); };
   const start = async (profile: string) => {
@@ -154,6 +155,42 @@ for (const format of ["folder", "zip"] as const) test(`two scientific ${format} 
     await pair.getByRole("region", { name: "Pinned baseline B" }).getByRole("img", { name: /^magnitude map/ })
       .locator('rect[style*="crosshair"]').nth(200).click();
     await expect(pair.getByRole("region", { name: "Line profile through probe" })).toHaveCount(2);
+    await pair.getByLabel("Show A−B difference", { exact: true }).check();
+    const delta = pair.getByTestId("field-difference-view");
+    await expect(delta).toBeVisible();
+    const expectDifference = async (root: Page | ReturnType<Page["getByRole"]>) => {
+      const cells = root.locator('[data-difference-cell]');
+      await expect(cells.first()).toBeVisible();
+      const values = await cells.evaluateAll(elements => elements.map(element => Number(element.getAttribute("data-value"))));
+      expect(values.length).toBeGreaterThan(0);
+      for (const value of values) expect(value).toBeCloseTo(offset, 10);
+    };
+    await expectDifference(delta);
+    // Probe selection is shared in either direction, including keyboard access on Δ.
+    const probe = pair.getByRole("table", { name: "A/B difference probe" });
+    const originalProbe = await probe.locator("caption").textContent();
+    await expect(pair.getByLabel("Difference channel", { exact: true })).toBeEnabled();
+    await delta.locator('[data-difference-cell="10-10"]').click();
+    await expect.poll(() => probe.locator("caption").textContent()).not.toBe(originalProbe);
+    await expect(probe.locator('[data-probe-quantity="p"][data-probe-source="delta"]')).toHaveText(offset.toPrecision(6));
+    await expect(probe.locator('[data-probe-quantity="norm"][data-probe-source="delta"]')).toHaveText(offset.toPrecision(6));
+    await expect(pair.getByRole("region", { name: "Line profile through probe" })).toHaveCount(2);
+    const clickedProbe = await probe.locator("caption").textContent();
+    await expect(pair.getByLabel("Difference channel", { exact: true })).toBeEnabled();
+    await delta.getByRole("img").focus(); await delta.getByRole("img").press("ArrowRight");
+    await expect.poll(() => probe.locator("caption").textContent()).not.toBe(clickedProbe);
+    await expect(delta.getByTestId("field-difference-probe")).toBeVisible();
+    const beforeProbe = await probe.locator("caption").textContent();
+    await expect(pair.getByLabel("Difference channel", { exact: true })).toBeEnabled();
+    await pair.getByRole("region", { name: "Live field A" }).locator('[data-probe-cell="5-5"]').click();
+    await expect.poll(() => probe.locator("caption").textContent()).not.toBe(beforeProbe);
+    await pair.getByLabel("Difference channel", { exact: true }).selectOption("p");
+    await expect(delta).toContainText("signed p component"); await expectDifference(delta);
+    await expect(delta.getByLabel(/^Difference color legend/)).toHaveAttribute("aria-label",
+      `Difference color legend, ${(-offset).toPrecision(4)} to ${offset.toPrecision(4)} m/s`);
+    await pair.getByLabel("Difference channel", { exact: true }).selectOption("q");
+    await expect(delta.locator('[data-difference-cell]').first()).toHaveAttribute("data-value", "0");
+    await pair.getByLabel("Difference channel", { exact: true }).selectOption("p");
     await comparison.getByLabel("Points per axis").selectOption("5");
     await comparison.getByRole("button", { name: "Compare fields", exact: true }).click();
     await expect(comparison).toContainText("Coverage 125/125");
@@ -163,15 +200,17 @@ for (const format of ["folder", "zip"] as const) test(`two scientific ${format} 
     await expect(panel.getByTestId("project-message")).toContainText("Saved");
     const raw = await exported(page), packageBefore = parseProjectPackage(raw);
     expect(packageBefore.project.identity.id).toBe(ownerId);
-    expect(packageBefore.resources.sidecars().filter(item => item.kind.startsWith("scientific-"))).toHaveLength(6);
+    expect(packageBefore.resources.sidecars().filter(item => item.kind.startsWith("scientific-"))).toHaveLength(offset ? 6 : 5);
     expect(packageBefore.project.workspace.scientificSelections!.length).toBeGreaterThan(0);
     const result = packageBefore.project.workspace.results.find(item => item.provenance.operation.type === VECTOR_FIELD3D_COMPARISON_RESULT_TYPE);
     expect(result).toBeDefined();
-    expect((result!.summary.vectorDifference as { rms: number }).rms).toBeCloseTo(0.5, 10);
+    expect((result!.summary.vectorDifference as { rms: number }).rms).toBeCloseTo(offset, 10);
     const firstSource = packageBefore.project.workspace.entries.find(entry => entry.expected.id === a.expected.id)!.checkpoint;
     const secondSource = packageBefore.project.workspace.entries.find(entry => entry.expected.id === b.expected.id)!.checkpoint;
     if (firstSource.format !== "math3d.vector-field3d-document" || secondSource.format !== "math3d.vector-field3d-document" ||
         firstSource.source.field.kind !== "scientific-bundle" || secondSource.source.field.kind !== "scientific-bundle") throw new Error("Wrong sources");
+    expect(secondSource.identity).toEqual(b.expected);
+    expect(secondSource.workspace?.explorer?.differenceView).toEqual({ visible: true, channel: "p" });
     expect(firstSource.source.field.references[0].sceneFingerprint).not.toBe(secondSource.source.field.references[0].sceneFingerprint);
     // A valid preview cancelled after comparison also keeps saved results and selections intact.
     panel = await upload(page, bFiles, "current");
@@ -195,6 +234,12 @@ for (const format of ["folder", "zip"] as const) test(`two scientific ${format} 
     await expect(comparison.getByLabel("Second saved field")).toHaveValue(a.expected.id);
     await expect(field.getByRole("region", { name: "Linked A/B field views" })).toContainText("Both scientific sources verified");
     await expect(field.getByRole("region", { name: "Line profile through probe" })).toHaveCount(2);
+    const reopenedPair = field.getByRole("region", { name: "Linked A/B field views" });
+    await expect(reopenedPair.getByLabel("Show A−B difference", { exact: true })).toBeChecked();
+    await expect(reopenedPair.getByLabel("Difference channel", { exact: true })).toHaveValue("p");
+    await expectDifference(reopenedPair.getByTestId("field-difference-view"));
+    await expect(reopenedPair.getByRole("table", { name: "A/B difference probe" })
+      .locator('[data-probe-quantity="p"][data-probe-source="delta"]')).toHaveText(offset.toPrecision(6));
     await comparison.locator("details").filter({ hasText: "Saved comparisons (1)" }).locator("summary").click();
     await expect(comparison).toContainText("current");
     const returned = parseProjectPackage(await exported(page));
@@ -202,6 +247,53 @@ for (const format of ["folder", "zip"] as const) test(`two scientific ${format} 
     expect(returned.project.workspace.results).toEqual(packageBefore.project.workspace.results);
     expect(returned.project.workspace.scientificSelections).toEqual(packageBefore.project.workspace.scientificSelections);
     expect(returned.resources.sidecars()).toEqual(packageBefore.resources.sidecars());
-    await page.screenshot({ path: test.info().outputPath(`two-scientific-${format}-browser.png`), fullPage: true });
+    await explorer(page);
+    await expect(reopenedPair).toBeVisible();
+    await expect(reopenedPair).toContainText("Both scientific sources verified");
+    await expectDifference(reopenedPair.getByTestId("field-difference-view"));
+    await page.screenshot({ path: test.info().outputPath(`two-scientific-${format}-difference-${offset}-browser.png`), fullPage: true });
+    if (format === "zip" && offset === .5) for (const mode of ["corrupt", "missing"]) {
+      const activeBefore = await active(page);
+      const removed = await page.evaluate(async ({ id, mode }) => new Promise<{
+        index: number; resource: { kind: string; id: string; bytes: number[] } }>((resolve, reject) => {
+        const request = indexedDB.open("math3d.project-resources.v1", 1);
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => {
+          const db = request.result, tx = db.transaction("projects", "readwrite"), store = tx.objectStore("projects"), get = store.get(id);
+          let saved: { index: number; resource: { kind: string; id: string; bytes: number[] } };
+          get.onsuccess = () => {
+            const record = get.result, index = record.resources.findIndex((item: { kind: string }) => item.kind === "scientific-component");
+            const resource = record.resources[index];
+            saved = { index, resource: { ...resource, bytes: Array.from(resource.bytes) } };
+            if (mode === "missing") record.resources.splice(index, 1); else resource.bytes[0] ^= 1;
+            store.put(record);
+          };
+          tx.oncomplete = () => { db.close(); resolve(saved); };
+          tx.onabort = () => { db.close(); reject(tx.error); };
+        };
+      }), { id: ownerId, mode });
+      await reopenedPair.getByRole("button", { name: "Reverify A/B sources" }).click();
+      await expect(reopenedPair).toContainText("Scientific views withheld");
+      await expect(reopenedPair.getByTestId("field-difference-view")).toHaveCount(0);
+      await expect(reopenedPair.getByRole("table", { name: "A/B difference probe" })).toHaveCount(0);
+      await expect(reopenedPair.getByRole("img")).toHaveCount(0);
+      expect(await active(page)).toBe(activeBefore);
+      await page.evaluate(async ({ id, removed, mode }) => new Promise<void>((resolve, reject) => {
+        const request = indexedDB.open("math3d.project-resources.v1", 1);
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => {
+          const db = request.result, tx = db.transaction("projects", "readwrite"), store = tx.objectStore("projects"), get = store.get(id);
+          get.onsuccess = () => {
+            const record = get.result, resource = { ...removed.resource, bytes: new Uint8Array(removed.resource.bytes) };
+            if (mode === "missing") record.resources.splice(removed.index, 0, resource); else record.resources[removed.index] = resource;
+            store.put(record);
+          };
+          tx.oncomplete = () => { db.close(); resolve(); }; tx.onabort = () => { db.close(); reject(tx.error); };
+        };
+      }), { id: ownerId, removed, mode });
+      await reopenedPair.getByRole("button", { name: "Reverify A/B sources" }).click();
+      await expect(reopenedPair).toContainText("Both scientific sources verified");
+      await expectDifference(reopenedPair.getByTestId("field-difference-view"));
+    }
   } finally { await closeContext(); await rm(root, { recursive: true, force: true }); }
 });

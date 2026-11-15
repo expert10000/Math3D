@@ -152,7 +152,7 @@ import { mergeSceneOperations, nextUndoableSceneOperation, type SceneOperation }
 import { buildMeshComponentSelectionGraph, growSceneComponents, shrinkSceneComponents, restoreNamedSceneSelection, saveNamedSceneSelection, type NamedSceneSelection } from "./selection/robustSceneSelection";
 import { buildMeshEdgeTopology } from "./mesh/edgeSelection";
 import { meshConnectivityKey, replayLinkedMeshModifiers, reorderLinkedMeshModifier, type LinkedMeshModifier, type LinkedMeshModifierResult } from "./mesh/linkedModifierStack";
-import { extractMeshFaceRegion, meshEdgeLoopVertices, meshFaceVertices, meshVertex, type MeshDerivedGeometryKind } from "./mesh/meshDerivedGeometry";
+import { extractMeshFaceRegion, meshEdgeLoopVertices, meshFaceVertices, meshVertex, normalizeMeshFaceRegionLink, refreshMeshFaceRegionLink, type MeshDerivedGeometryKind, type MeshFaceRegionLink } from "./mesh/meshDerivedGeometry";
 import { SharedInspectorShell, type SharedInspectorCategory } from "./components/SharedInspectorShell";
 import { GeometrySemanticNavigatorPanel } from "./components/GeometrySemanticNavigatorPanel";
 import { GeometryConstructCatalogPanel } from "./components/GeometryConstructCatalogPanel";
@@ -2181,6 +2181,7 @@ type WorkbookGeometryDatasetMeshObject = {
   promotion?: GeometryToMeshPromotionMetadata | null;
   restoredGeometryPreset?: GeometryRestoredObjectPresetMetadata | null;
   sourceSelectionOverlay?: MeshSourceSelectionOverlay | null;
+  derivedRegion?: MeshFaceRegionLink | null;
 };
 type GeometryObjectVariant = {
   id: string;
@@ -3031,6 +3032,7 @@ const serializeGeometryDatasetMeshObject = (obj: GeometryDatasetMeshObject): Wor
   promotion: cloneGeometryPromotionMetadata(obj.promotion),
   restoredGeometryPreset: obj.restoredGeometryPreset ? { ...obj.restoredGeometryPreset } : null,
   sourceSelectionOverlay: cloneMeshSourceSelectionOverlay(obj.sourceSelectionOverlay),
+  derivedRegion: normalizeMeshFaceRegionLink(obj.derivedRegion),
 });
 
 const deserializeGeometryDatasetMeshObject = (
@@ -3061,6 +3063,7 @@ const deserializeGeometryDatasetMeshObject = (
   promotion: cloneGeometryPromotionMetadata(obj.promotion),
   restoredGeometryPreset: obj.restoredGeometryPreset ? { ...obj.restoredGeometryPreset } : null,
   sourceSelectionOverlay: cloneMeshSourceSelectionOverlay(obj.sourceSelectionOverlay),
+  derivedRegion: normalizeMeshFaceRegionLink(obj.derivedRegion),
 });
 
 const cloneVariantSnapshot = (
@@ -5382,6 +5385,7 @@ type GeometryDatasetMeshObject = {
   promotion?: GeometryToMeshPromotionMetadata | null;
   restoredGeometryPreset?: GeometryRestoredObjectPresetMetadata | null;
   sourceSelectionOverlay?: MeshSourceSelectionOverlay | null;
+  derivedRegion?: MeshFaceRegionLink | null;
 };
 type SageVectorArtifact = { record: SymbolicResultRecord; provenance: SageViewerProvenance;
   lines: OverlayPolylineGroup["lines"]; stage: "preview" | "committed" };
@@ -34400,10 +34404,9 @@ const App: React.FC = () => {
   const meshPromotionSnapshotCounterRef = useRef<Map<string, number>>(new Map());
   const [meshPromotionTrace, setMeshPromotionTrace] = useState<MeshPromotionTraceState | null>(null);
   const [meshDerivedSourceLink, setMeshDerivedSourceLink] = useState<{ objectId: string; sourceRef: SurfaceMeshSource } | null>(null);
-  const [meshDerivedRegionLinks, setMeshDerivedRegionLinks] = useState<readonly {
-    resultId: string; sourceObjectId: string; faceIndices: readonly number[];
-    sourceRevision: number; status: "linked" | "stale" | "detached";
-  }[]>([]);
+  const meshDerivedRegionLinks = useMemo(() => geometryDatasetMeshObjects.flatMap((object) =>
+    object.derivedRegion ? [{ resultId: object.id, ...object.derivedRegion }] : []
+  ), [geometryDatasetMeshObjects]);
   const [meshDerivedGeometryKind, setMeshDerivedGeometryKind] = useState<MeshDerivedGeometryKind>("bounding-box");
   const [meshEditToolsOpen, setMeshEditToolsOpen] = useState(false);
   const [meshComponentBrowserKind, setMeshComponentBrowserKind] = useState<"face" | "edge" | "vertex">("face");
@@ -34744,23 +34747,22 @@ const App: React.FC = () => {
     lastMeshDerivedSourceSyncRef.current = surfaceMeshData;
     setGeometryDatasetMeshObjects((current) => current.map((item) => item.id === meshDerivedSourceLink.objectId
       ? { ...item, mesh: toDetachedMeshData(surfaceMeshData, item.name) } : item));
+    setGeometryObjectRevisionById((current) => ({ ...current,
+      [meshDerivedSourceLink.objectId]: (current[meshDerivedSourceLink.objectId] ?? 0) + 1 }));
   }, [meshDerivedSourceLink, surfaceMeshData]);
   useEffect(() => {
-    const pending = meshDerivedRegionLinks.filter((link) => link.status !== "detached" &&
-      (geometryObjectRevisionById[link.sourceObjectId] ?? 0) !== link.sourceRevision);
-    if (!pending.length) return;
-    const updates = pending.map((link) => {
-      const source = geometryDatasetMeshObjects.find((item) => item.id === link.sourceObjectId);
-      const mesh = source ? extractMeshFaceRegion(source.mesh, link.faceIndices) : null;
-      return { link, mesh, revision: geometryObjectRevisionById[link.sourceObjectId] ?? 0 };
+    const updates = meshDerivedRegionLinks.flatMap((entry) => {
+      const source = geometryDatasetMeshObjects.find((object) => object.id === entry.sourceObjectId);
+      const refreshed = refreshMeshFaceRegionLink(entry, source?.mesh ?? null,
+        geometryObjectRevisionById[entry.sourceObjectId] ?? 0);
+      return refreshed ? [{ resultId: entry.resultId, ...refreshed }] : [];
     });
-    setGeometryDatasetMeshObjects((current) => current.map((item) => {
-      const update = updates.find((candidate) => candidate.link.resultId === item.id && candidate.mesh);
-      return update?.mesh ? { ...item, mesh: toDetachedMeshData(update.mesh, item.name) } : item;
-    }));
-    setMeshDerivedRegionLinks((current) => current.map((link) => {
-      const update = updates.find((candidate) => candidate.link.resultId === link.resultId);
-      return update ? { ...link, sourceRevision: update.revision, status: update.mesh ? "linked" : "stale" } : link;
+    if (!updates.length) return;
+    const byResultId = new Map(updates.map((update) => [update.resultId, update]));
+    setGeometryDatasetMeshObjects((current) => current.map((object) => {
+      const update = byResultId.get(object.id);
+      return update ? { ...object, mesh: update.mesh ? toDetachedMeshData(update.mesh, object.name) : object.mesh,
+        derivedRegion: update.link } : object;
     }));
   }, [geometryDatasetMeshObjects, geometryObjectRevisionById, meshDerivedRegionLinks]);
   const currentSdfSignEvidence = qualifySdfSignEvidence(
@@ -61802,10 +61804,10 @@ case "mobius":
       const name = `${mesh.label} face region`;
       const object: GeometryDatasetMeshObject = { id: resultId, name, mesh: toDetachedMeshData(region, name),
         transform: { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
-        visible: true, material: { color: 0x8aa4ff, opacity: 1 } };
+        visible: true, material: { color: 0x8aa4ff, opacity: 1 },
+        derivedRegion: { sourceObjectId, faceIndices: faces,
+          sourceRevision: geometryObjectRevisionById[sourceObjectId] ?? 0, status: "linked" } };
       setGeometryDatasetMeshObjects((current) => [object, ...current]);
-      setMeshDerivedRegionLinks((current) => [...current, { resultId, sourceObjectId, faceIndices: faces,
-        sourceRevision: geometryObjectRevisionById[sourceObjectId] ?? 0, status: "linked" }]);
       setGeometrySelectedObjectId(resultId);
       setGeometryCreateActionStatus(`Created linked Geometry surface from ${faces.length} Mesh face${faces.length === 1 ? "" : "s"}.`);
     } else {
@@ -61815,6 +61817,17 @@ case "mobius":
     }
   }, [appendDerivedConstruction, filteredMeshUnifiedSelection, geometryDatasetMeshObjects, geometryObjectRevisionById,
     meshDerivedSourceLink, meshMultiSelectionSet.items, surfaceMeshData]);
+
+  const handleOpenMeshDerivedRegionObject = useCallback((objectId: string) => {
+    const identityId = geometrySceneIdentityIndex.get(sceneEntityId("geometry", objectId))?.id ?? objectId;
+    setGeometrySelectedObjectId(objectId);
+    setGeometryProbeSelectionMode("object");
+    setGeometryProceduralPick(null);
+    setGeometryMultiSelectionSet(createUnifiedSelectionSet([]));
+    setSceneSelection({ objectId: identityId, representationId: identityId, kind: "object",
+      componentIds: [], worldPoint: null, normal: null, sourceWorkspace: "geometry" });
+    setMode("geometry");
+  }, [geometrySceneIdentityIndex]);
 
   const handleOpenMeshRoundTripGeometryObject = useCallback(() => {
     if (!meshGeometryRoundTripSource) {
@@ -80339,6 +80352,9 @@ case "mobius":
       setDisplayMode("workspace"); setShowRightPanel(true); setRightPanelTab("inspector");
       setSurfacePreviewFocusMode(false); setCleanScreenshotActive(false); setSurfaceDrawerPanel("left");
       setWorkspaceDockLayouts(layouts => ({ ...layouts, mesh: { ...(layouts.mesh ?? recommendedWorkspaceDockLayout("mesh")), leftCollapsed: false, rightCollapsed: false, viewerMaximized: false } }));
+      // This explicit Project target already supplies the mesh. Consume the
+      // workspace transition before the implicit Geometry-selection handoff.
+      lastGeometryMeshWorkspaceRef.current = "mesh";
       setActiveGraph2DTargetId(null); setMode("surfaces"); setDatasetKind("mesh"); setSurfaceViewerKind("mesh");
       setSurfacesPanelState("work"); setSurfacesLeftTab("object"); return true;
     }
@@ -85399,9 +85415,9 @@ case "mobius":
                           onClick={() => handleCreateGeometryFromMesh(meshDerivedGeometryKind)}>Create in Geometry</button>
                         {meshDerivedRegionLinks.map((link) => <div key={link.resultId} style={{ display: "flex", gap: 4, alignItems: "center" }}>
                           <span>Face region · {link.status}</span>
-                          <button type="button" onClick={() => { setGeometrySelectedObjectId(link.sourceObjectId); setMode("geometry"); }}>Source</button>
-                          <button type="button" onClick={() => { setGeometrySelectedObjectId(link.resultId); setMode("geometry"); }}>Result</button>
-                          <button type="button" disabled={link.status === "detached"} onClick={() => setMeshDerivedRegionLinks((current) => current.map((item) => item.resultId === link.resultId ? { ...item, status: "detached" } : item))}>Detach</button>
+                          <button type="button" onClick={() => handleOpenMeshDerivedRegionObject(link.sourceObjectId)}>Source</button>
+                          <button type="button" onClick={() => handleOpenMeshDerivedRegionObject(link.resultId)}>Result</button>
+                          <button type="button" disabled={link.status === "detached"} onClick={() => setGeometryDatasetMeshObjects((current) => current.map((item) => item.id === link.resultId && item.derivedRegion ? { ...item, derivedRegion: { ...item.derivedRegion, status: "detached" } } : item))}>Detach</button>
                         </div>)}
                       </div>
                       <details
@@ -87135,9 +87151,9 @@ case "mobius":
                             onClick={() => handleCreateGeometryFromMesh(meshDerivedGeometryKind)}>Create in Geometry</button>
                           {meshDerivedRegionLinks.map((link) => <div key={link.resultId} style={{ display: "flex", gap: 4, alignItems: "center" }}>
                             <span>Face region · {link.status}</span>
-                            <button type="button" onClick={() => { setGeometrySelectedObjectId(link.sourceObjectId); setMode("geometry"); }}>Source</button>
-                            <button type="button" onClick={() => { setGeometrySelectedObjectId(link.resultId); setMode("geometry"); }}>Result</button>
-                            <button type="button" disabled={link.status === "detached"} onClick={() => setMeshDerivedRegionLinks((current) => current.map((item) => item.resultId === link.resultId ? { ...item, status: "detached" } : item))}>Detach</button>
+                            <button type="button" onClick={() => handleOpenMeshDerivedRegionObject(link.sourceObjectId)}>Source</button>
+                            <button type="button" onClick={() => handleOpenMeshDerivedRegionObject(link.resultId)}>Result</button>
+                            <button type="button" disabled={link.status === "detached"} onClick={() => setGeometryDatasetMeshObjects((current) => current.map((item) => item.id === link.resultId && item.derivedRegion ? { ...item, derivedRegion: { ...item.derivedRegion, status: "detached" } } : item))}>Detach</button>
                           </div>)}
                         </div>
                       </div>
