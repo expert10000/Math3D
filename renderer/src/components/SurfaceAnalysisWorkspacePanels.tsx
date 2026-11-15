@@ -138,8 +138,12 @@ export function SurfaceAnalysisComputationPanel({
     <section data-testid="surface-analysis-computation-panel" style={{ display: "grid", gap: 9 }}>
       <div>
         <div style={{ fontSize: 12, fontWeight: 800, color: "#0f172a" }}>Compute</div>
-        <div style={{ marginTop: 2, fontSize: 10.5, color: "#64748b" }}>
-          Target: {definition.identity.label} · revision {definition.identity.surfaceRevision}
+        <div role="group" aria-label="Surface source and derived representation" data-testid="surface-representation-header"
+          style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", marginTop: 5, padding: "6px 8px", border: "1px solid var(--workspace-control-border)", borderRadius: 7, background: "var(--workspace-section-bg)", fontSize: 10.5, overflowWrap: "anywhere" }}>
+          <span data-testid="surface-representation-source"><strong>Source</strong> {definition.identity.label} · {definition.representation} · revision {definition.identity.surfaceRevision}</span>
+          <span data-testid="surface-representation-derived"><strong>Derived</strong> {derivedMeshLifecycle?.selected
+            ? `${derivedMeshLifecycle.selected.label} · ${derivedMeshLifecycle.selected.state} · mesh revision ${derivedMeshLifecycle.selected.meshRevision} · source revision ${derivedMeshLifecycle.selected.sourceRevision}`
+            : derivedMesh.available ? "Live tessellation available · no registered mesh revision" : "No derived mesh registered"}</span>
         </div>
       </div>
       <section data-testid="surface-analysis-presets" style={{ border: "1px solid #c7d7ee", borderRadius: 8, background: "var(--workspace-section-bg)", padding: 8, display: "grid", gap: 6 }}>
