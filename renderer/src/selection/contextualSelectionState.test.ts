@@ -59,7 +59,7 @@ describe("contextualSelectionState", () => {
         objectReady: true,
       })
     ).toMatchObject({
-      selectionLabel: "Selected mesh object: Box",
+      selectionLabel: "Selected object: Box",
       activeCardType: "Object",
       cardId: "Box",
       emptyState: null,

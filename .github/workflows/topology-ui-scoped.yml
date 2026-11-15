@@ -1,10 +1,10 @@
 name: Topology UI scoped native regression
 on:
   push:
-    branches: [main, codex/topology-ui-navigation]
+    branches: [main, codex/topology-ui-navigation, codex/topology-count-layers]
     paths: ['renderer/src/screens/TopologyScreen.tsx','tests/e2e/topology-navigation.spec.ts','.github/workflows/topology-ui-scoped.yml']
   pull_request:
-    branches: [main]
+    branches: [main, codex/topology-ui-navigation]
     paths: ['renderer/src/screens/TopologyScreen.tsx','tests/e2e/topology-navigation.spec.ts','.github/workflows/topology-ui-scoped.yml']
 permissions:
   contents: read
@@ -41,7 +41,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: topology-ui-navigation-evidence
+          name: topology-ui-count-layers-evidence
           path: |
             ui-evidence/**
             dist/build-identity.json

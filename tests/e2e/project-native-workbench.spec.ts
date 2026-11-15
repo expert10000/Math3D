@@ -25,7 +25,7 @@ test("Catenoid's saved Mesh opens in the normal Mesh workspace", async () => {
     await expect(page.getByTestId("surface-left-panel")).toBeVisible();
     await expect(page.getByTestId("surface-right-panel")).toBeVisible();
     await expect(page.getByTestId("surface-viewport-panel-hide")).toHaveCount(0);
-    await expect(page.getByText("Whole mesh selected", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("Whole object selected", { exact: true })).toHaveCount(0);
     await page.screenshot({ path: test.info().outputPath("catenoid-mesh-native.png") });
     await page.getByTestId("mesh-viewer-controls-show").click();
     const controls = page.getByTestId("mesh-viewer-controls-strip");

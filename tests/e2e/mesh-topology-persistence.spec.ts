@@ -282,7 +282,15 @@ async function runTopologyDemo(
     await page.getByTestId("mesh-context-open-history").click();
   } else {
     await page.getByTestId("mesh-workspace-left-tab-topology").click();
+    if (operationButtonName.includes("Edge")) {
+      await page.getByTestId("mesh-topology-compact-pick-edge").click();
+      await selectDeterministicMeshEdge(page);
+    } else {
+      await page.getByTestId("mesh-topology-compact-pick-face").click();
+      await selectDeterministicMeshFace(page);
+    }
     const operation = await firstVisible(page.getByRole("button", { name: operationButtonName, exact: true }));
+    await expect(operation).toBeEnabled();
     await operation.click();
   }
   await expect(page.getByText(expectedHistoryName).first()).toBeVisible({ timeout: 15_000 });
@@ -290,6 +298,34 @@ async function runTopologyDemo(
 }
 
 test.describe("Mesh topology persistence and handoff", () => {
+  test("applies a restored Mesh state to its original Geometry object", async () => {
+    test.setTimeout(120_000);
+    const ctx = await launchApp();
+    try {
+      const { page } = ctx;
+      await openMeshGallery(page);
+      await page.getByTestId("mesh-gallery-roundtrip-full-demo-topology_roundtrip_box_subdivide").click();
+      await expect(page.getByTestId("geometry-roundtrip-demo-banner")).toBeVisible();
+      await page.getByTestId("geometry-roundtrip-demo-restore-before").click();
+      await expect(page.getByTestId("mesh-roundtrip-update-original")).toBeEnabled();
+      await page.getByTestId("mesh-roundtrip-update-original").click();
+      await expect(page.getByText(/Geometry \/ Workspace/i).first()).toBeVisible();
+    } finally { await closeApp(ctx); }
+  });
+  test("applies a topology demo source after opening it in Geometry", async () => {
+    test.setTimeout(120_000);
+    const ctx = await launchApp();
+    try {
+      const { page } = ctx;
+      await runTopologyDemo(page, "topology_demo_bevel_edge", "Bevel Edge", /Bevel edge/i);
+      await firstVisible(page.getByRole("button", { name: "Open in Geometry", exact: true })).then((button) => button.click());
+      await expect(page.getByTestId("geometry-right-restore-mesh-before")).toBeEnabled();
+      await page.getByTestId("geometry-right-restore-mesh-before").click();
+      await expect(page.getByTestId("mesh-roundtrip-update-original")).toBeEnabled();
+      await page.getByTestId("mesh-roundtrip-update-original").click();
+      await expect(page.getByText(/Geometry \/ Workspace/i).first()).toBeVisible({ timeout: 15_000 });
+    } finally { await closeApp(ctx); }
+  });
   test("keeps Mesh Object mode clear and promotes through Apply preview", async () => {
     test.setTimeout(120_000);
     let ctx: { app: ElectronApplication; page: Page; profileDir: string } | null = null;
@@ -310,12 +346,12 @@ test.describe("Mesh topology persistence and handoff", () => {
             button.click()
           );
         },
-        chipLabel: "Mesh Object",
-        selectionLabel: /Selected mesh object:/,
+        chipLabel: "Object",
+        selectionLabel: /Selected object:/,
         preview: "Preview: open selected mesh in Geometry",
         viewportPreview: "Viewport preview: open selected mesh in Geometry",
         wholeObjectBadgeTestId: "mesh-object-selection-glow",
-        wholeObjectBadgeLabel: "Whole mesh selected",
+        wholeObjectBadgeLabel: "Whole object selected",
         actionExpectations: [
           { testId: "mesh-context-promote-mesh-object", label: "Open in Geometry", enabled: true },
           { testId: "mesh-context-save-edited", label: "Save edited" },
@@ -365,12 +401,12 @@ test.describe("Mesh topology persistence and handoff", () => {
             button.click()
           );
         },
-        chipLabel: "Mesh Object",
-        selectionLabel: /Selected mesh object:/,
+        chipLabel: "Object",
+        selectionLabel: /Selected object:/,
         preview: "Preview: open selected mesh in Geometry",
         viewportPreview: "Viewport preview: open selected mesh in Geometry",
         wholeObjectBadgeTestId: "mesh-object-selection-glow",
-        wholeObjectBadgeLabel: "Whole mesh selected",
+        wholeObjectBadgeLabel: "Whole object selected",
         actionExpectations: [
           { testId: "mesh-context-promote-mesh-object", label: "Open in Geometry", enabled: true },
           { testId: "mesh-context-save-edited", label: "Save edited" },
@@ -389,12 +425,12 @@ test.describe("Mesh topology persistence and handoff", () => {
         selectObject: async () => {
           await commitGeometryEntityPick(page, "object");
         },
-        chipLabel: "Geometry Object",
-        selectionLabel: /Selected geometry object:/i,
-        preview: "Preview: open selected Geometry object details",
-        viewportPreview: "Viewport preview: open selected Geometry object details",
+        chipLabel: "Object",
+        selectionLabel: /Selected object:/i,
+        preview: "Preview: open selected object details",
+        viewportPreview: "Viewport preview: open selected object details",
         wholeObjectBadgeTestId: "geometry-object-selection-glow",
-        wholeObjectBadgeLabel: "Whole Geometry object selected",
+        wholeObjectBadgeLabel: "Whole object selected",
         actionExpectations: [
           { testId: "geometry-context-open-object", label: "Open Object Details", enabled: true },
           { testId: "geometry-context-transform", label: "Transform" },
@@ -547,7 +583,7 @@ test.describe("Mesh topology persistence and handoff", () => {
       await expect(page.getByText(/0 steps?/i).first()).toBeVisible();
       await page.getByTestId("geometry-open-mesh-source").click();
       await expect(page.getByText(/Mesh \/ Workspace/i).first()).toBeVisible();
-      await expect(page.getByTestId("shared-inspector-summary")).toContainText(/Demo: bevel edge mesh object \(Mesh source\)/i, {
+      await expect(page.getByTestId("shared-inspector-summary")).toContainText(/Demo: bevel edge mesh object/i, {
         timeout: 15_000,
       });
     } finally {
@@ -734,7 +770,7 @@ test.describe("Mesh topology persistence and handoff", () => {
       await expect(page.getByTestId("geometry-restore-mesh-before")).toBeEnabled();
       await page.getByTestId("geometry-restore-mesh-before").click();
       await expect(page.getByText(/Mesh \/ Workspace/i).first()).toBeVisible();
-      await expect(page.getByText(/Mesh source before/i).first()).toBeVisible({
+      await expect(page.getByTestId("mesh-roundtrip-source-preview-banner")).toContainText(/Viewing source BEFORE Geometry update/i, {
         timeout: 15_000,
       });
       await expect(page.getByTestId("mesh-geometry-roundtrip-card")).toBeVisible({ timeout: 15_000 });
@@ -747,7 +783,7 @@ test.describe("Mesh topology persistence and handoff", () => {
       );
       await expect(page.getByTestId("mesh-roundtrip-source-preview-banner")).toContainText(/Latest topology step:/);
       await expect(page.getByTestId("mesh-roundtrip-update-original")).toContainText(
-        /Apply this state to Geometry Object/
+        /Apply this state to Object/
       );
       await expect(page.getByTestId("mesh-roundtrip-update-original")).toBeEnabled();
       await page.getByTestId("mesh-roundtrip-update-original").click();

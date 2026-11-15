@@ -2303,52 +2303,61 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
 
     return (
       <div style={{ display: "grid", gap: 8 }}>
-        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-          <span style={{ fontSize: 11, fontWeight: 700 }}>Geometry tools</span>
-          {([
-            ["select", "Select/Drag"],
-            ["addVertex", "Add Vertex"],
-            ["addEdge", "Add Edge"],
-          ] as const).map(([id, label]) => (
-            <button
-              key={`diagram-tool-${id}`}
-              type="button"
-              onClick={() => {
-                setToolMode(id);
-                setPendingEdgeStartId(null);
-              }}
-              style={{
-                borderRadius: 999,
-                border: "1px solid " + (toolMode === id ? "#0a66c2" : "#d1d5db"),
-                background: toolMode === id ? "#e6f0ff" : "#fff",
-                fontSize: 11,
-                fontWeight: toolMode === id ? 700 : 600,
-                padding: "4px 10px",
-              }}
-            >
-              {label}
+        <div data-testid="topology-diagram-toolbar" role="toolbar" aria-label="Diagram editing" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, padding: "6px 8px", border: "1px solid #dbe4f0", borderRadius: 9, background: "#f8fafc" }}>
+          <div role="group" aria-label="Drawing tool" style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: "#475569" }}>Tool</span>
+            {([
+              ["select", "Select/Drag"],
+              ["addVertex", "Add Vertex"],
+              ["addEdge", "Add Edge"],
+            ] as const).map(([id, label]) => (
+              <button
+                key={`diagram-tool-${id}`}
+                type="button"
+                aria-pressed={toolMode === id}
+                onClick={() => {
+                  setToolMode(id);
+                  setPendingEdgeStartId(null);
+                }}
+                style={{
+                  borderRadius: 7,
+                  border: "1px solid " + (toolMode === id ? "#0a66c2" : "#d1d5db"),
+                  background: toolMode === id ? "#e6f0ff" : "#fff",
+                  fontSize: 11,
+                  fontWeight: toolMode === id ? 700 : 600,
+                  padding: "4px 8px",
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div role="group" aria-label="Diagram edit actions" style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: "#475569" }}>Edit</span>
+            <button type="button" onClick={handleRemoveSelectedVertex} disabled={!selectedVertexId} title={selectedVertexId ? `Remove selected vertex ${selectedVertexId}` : "Select a vertex first"}>
+              Remove Vertex
             </button>
-          ))}
-          <label style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 4 }}>
+            <button type="button" onClick={handleRemoveSelectedEdge} disabled={!selectedEdgeId} title={selectedEdgeId ? `Remove selected edge ${selectedEdgeId}` : "Select an edge first"}>
+              Remove Edge
+            </button>
+          </div>
+          <div role="group" aria-label="Diagram history" style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: "#475569" }}>History</span>
+            <button type="button" data-testid="topology-source-undo" onClick={handleUndo} disabled={commandHistoryState.undoCount === 0} title={commandHistoryState.undoCount ? "Undo diagram edit (Ctrl+Z)" : "No diagram edit to undo"}>
+              Undo
+            </button>
+            <button type="button" data-testid="topology-source-redo" onClick={handleRedo} disabled={commandHistoryState.redoCount === 0} title={commandHistoryState.redoCount ? "Redo diagram edit (Ctrl+Y)" : "No diagram edit to redo"}>
+              Redo
+            </button>
+          </div>
+          <label style={{ fontSize: 10, display: "flex", alignItems: "center", gap: 4 }}>
             <input
               type="checkbox"
               checked={appendCreatedEdgesToBoundary}
               onChange={(event) => setAppendCreatedEdgesToBoundary(event.target.checked)}
             />
-            append new edges to face boundary
+            Append new edges to face boundary
           </label>
-          <button type="button" onClick={handleRemoveSelectedVertex} disabled={!selectedVertexId}>
-            Remove Vertex
-          </button>
-          <button type="button" onClick={handleRemoveSelectedEdge} disabled={!selectedEdgeId}>
-            Remove Edge
-          </button>
-          <button type="button" data-testid="topology-source-undo" onClick={handleUndo} disabled={commandHistoryState.undoCount === 0}>
-            Undo
-          </button>
-          <button type="button" data-testid="topology-source-redo" onClick={handleRedo} disabled={commandHistoryState.redoCount === 0}>
-            Redo
-          </button>
         </div>
 
         <svg
@@ -3055,26 +3064,40 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
 
     return (
       <div data-testid="topology-algebra-view" style={{ display: "grid", gap: 10 }}>
-        <section data-testid="topology-algebra-provenance" style={{ border: "1px solid #bfdbfe", borderRadius: 10, background: "#eff6ff", padding: "9px 10px", display: "grid", gap: 5, fontSize: 11 }}>
+        <section data-testid="topology-algebra-provenance" style={{ border: "1px solid #bfdbfe", borderRadius: 10, background: "#eff6ff", padding: "9px 10px", display: "grid", gap: 6, fontSize: 11 }}>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <strong>Exact cellular Algebra</strong>
-            <span style={{ fontWeight: 700, color: algebraAuthority.status === "exact" ? "#166534" : "#b91c1c" }}>
+            <span data-testid="topology-algebra-eligibility" style={{ fontWeight: 700, color: algebraAuthority.status === "exact" ? "#166534" : "#b91c1c" }}>
               {algebraAuthority.status === "exact" ? "ELIGIBLE" : algebraAuthority.status.toUpperCase()}
             </span>
           </div>
-          <div>Canonical basis: {result.topologyObject.canonical.vertices.length} zero-cells · {result.topologyObject.canonical.edges.length} one-cells · {result.topologyObject.canonical.faces.length} two-cells.</div>
-          {sourceProvenance ? (
-            <>
-              <div><strong>Document:</strong> {sourceProvenance.documentId}</div>
-              <div><strong>Source generation:</strong> revision {sourceProvenance.revision} · generation {sourceProvenance.generation}</div>
-              <div style={{ overflowWrap: "anywhere" }}><strong>Source structural hash:</strong> {sourceProvenance.structuralHash}</div>
-              <div style={{ overflowWrap: "anywhere" }}><strong>Canonical complex hash:</strong> {canonicalHash}</div>
-              <div style={{ overflowWrap: "anywhere" }}><strong>Matrix artifact:</strong> {algebraAuthority.status === "exact" ? algebraAuthority.boundary.handle.artifactId : "withheld"}</div>
-            </>
-          ) : (
-            <div style={{ color: "#b91c1c" }}>Canonical cellular algebra is not eligible; exact matrices and homology are withheld.</div>
+          <div data-testid="topology-algebra-summary" style={{ display: "grid", gap: 4 }}>
+            <div><strong>Canonical cell basis:</strong> {result.topologyObject.canonical.vertices.length} zero-cells · {result.topologyObject.canonical.edges.length} one-cells · {result.topologyObject.canonical.faces.length} two-cells.</div>
+            <div><strong>Exact boundaries:</strong> {algebraAuthority.status === "exact" ? "available for this canonical complex" : "withheld for this source"}</div>
+            <div><strong>Chain condition:</strong> {result.cellularBoundaryOperators.value?.chainCondition.holds ? "PASS" : result.cellularBoundaryOperators.status}</div>
+            <div style={{ color: "#475569" }}>Cellular results use exact incidences of the canonical finite complex, not triangles from the displayed R³ realization. A local eligibility status is not a published Sage result.</div>
+          </div>
+          {algebraAuthority.status !== "exact" && (
+            <div data-testid="topology-algebra-ineligibility" role="status" style={{ color: "#b91c1c" }}>
+              Exact cellular algebra is withheld (status: {algebraAuthority.status}). The required canonical boundary data are unavailable; inspect Structure diagnostics and the construction source before retrying. No integral homology conclusion is implied.
+            </div>
           )}
-          <div style={{ color: "#475569" }}>Results derive from the canonical finite complex and exact cell incidences, never from the displayed R³ realization.</div>
+          <details data-testid="topology-algebra-provenance-details" style={{ borderTop: "1px solid #bfdbfe", paddingTop: 5 }}>
+            <summary style={{ cursor: "pointer", fontWeight: 700 }}>Source, hashes and matrix artifact</summary>
+            <div style={{ display: "grid", gap: 4, marginTop: 7 }}>
+              {sourceProvenance ? (
+                <>
+                  <div><strong>Document:</strong> {sourceProvenance.documentId}</div>
+                  <div><strong>Source generation:</strong> revision {sourceProvenance.revision} · generation {sourceProvenance.generation}</div>
+                  <div style={{ overflowWrap: "anywhere" }}><strong>Source structural hash:</strong> {sourceProvenance.structuralHash}</div>
+                  <div style={{ overflowWrap: "anywhere" }}><strong>Canonical complex hash:</strong> {canonicalHash}</div>
+                  <div style={{ overflowWrap: "anywhere" }}><strong>Matrix artifact:</strong> {algebraAuthority.status === "exact" ? algebraAuthority.boundary.handle.artifactId : "withheld"}</div>
+                </>
+              ) : (
+                <div>Source provenance and exact matrix artifacts unavailable for this eligibility state.</div>
+              )}
+            </div>
+          </details>
         </section>
 
         <section
@@ -6433,12 +6456,12 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
                   style={{ border: `1px solid ${adapterMeshFreshness.state === "current" ? "#86efac" : "#fbbf24"}`, borderRadius: 7, background: adapterMeshFreshness.state === "current" ? "#f0fdf4" : "#fffbeb", padding: 6, display: "grid", gap: 3 }}
                 >
                   <div style={{ fontWeight: 800 }}>
-                    Snapshot {adapterMeshFreshness.state.toUpperCase()} · result {adapterMeshFreshness.resultState}
+                    Imported Mesh snapshot (read-only) · {adapterMeshFreshness.state.toUpperCase()} · result {adapterMeshFreshness.resultState}
                   </div>
                   <div>Source: {adapterResult.meshHandoff.source.meshId} · revision {adapterResult.meshHandoff.source.meshRevision}</div>
                   <div style={{ overflowWrap: "anywhere" }}>Snapshot hash: {adapterResult.meshHandoff.snapshotHash}</div>
                   <div>
-                    Stable IDs: {adapterResult.meshHandoff.snapshot.vertexIds.length} vertices · {adapterResult.meshHandoff.snapshot.edges.length} edges · {adapterResult.meshHandoff.snapshot.faces.length} triangles
+                    Snapshot mesh elements (not diagram canonical cells): {adapterResult.meshHandoff.snapshot.vertexIds.length} vertices · {adapterResult.meshHandoff.snapshot.edges.length} edges · {adapterResult.meshHandoff.snapshot.faces.length} triangles
                   </div>
                   <div>{adapterMeshFreshness.reason}</div>
                 </div>
@@ -6539,7 +6562,7 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
                   word: {selectedPresetBoundaryWord}
                 </div>
                 <div style={{ fontSize: 10, color: "#334155" }}>
-                  Canonical quotient: V={buildResult.quotient.vertices.length}, E={buildResult.quotient.edges.length}, F={buildResult.quotient.faces.length}, χ={buildResult.quotient.invariants?.eulerCharacteristic ?? "?"}
+                  <strong>Construction quotient cells (before canonical reduction):</strong> V={buildResult.quotient.vertices.length}, E={buildResult.quotient.edges.length}, F={buildResult.quotient.faces.length}, χ={buildResult.quotient.invariants?.eulerCharacteristic ?? "?"}
                 </div>
                 <div style={{ fontSize: 10, color: "#334155" }}>
                   Recognized teaching hints: orientable=
@@ -7033,17 +7056,18 @@ export const TopologyScreen: React.FC<TopologyScreenProps> = ({
         <section>
           <h2 style={styles.h2}>A. Structure</h2>
           <div style={{ fontSize: 11, display: "grid", gap: 4 }}>
+            <div style={{ fontSize: 10, color: "#475569" }} data-testid="topology-count-layers-note">Counts below describe different representations; do not compare display triangles or snapshot mesh elements with canonical cells.</div>
             <div data-testid="topology-count-source">
-              <strong>Source diagram cells:</strong> V {topologyCountLayers.source.vertices}, E {topologyCountLayers.source.edges}, F {topologyCountLayers.source.faces}
+              <strong>Source diagram cells (before quotient):</strong> V {topologyCountLayers.source.vertices}, E {topologyCountLayers.source.edges}, F {topologyCountLayers.source.faces}
             </div>
             <div data-testid="topology-count-refinement">
-              <strong>Build refinement cells:</strong> V {topologyCountLayers.refinement.vertices}, E {topologyCountLayers.refinement.edges}, F {topologyCountLayers.refinement.faces}
+              <strong>Construction refinement cells (intermediate):</strong> V {topologyCountLayers.refinement.vertices}, E {topologyCountLayers.refinement.edges}, F {topologyCountLayers.refinement.faces}
             </div>
             <div data-testid="topology-count-canonical">
-              <strong>Canonical quotient cells:</strong> V {topologyCountLayers.canonical.vertices}, E {topologyCountLayers.canonical.edges}, F {topologyCountLayers.canonical.faces}; χ = {topologyCountLayers.canonical.eulerCharacteristic}
+              <strong>Canonical quotient cells (authoritative topology):</strong> V {topologyCountLayers.canonical.vertices}, E {topologyCountLayers.canonical.edges}, F {topologyCountLayers.canonical.faces}; χ = {topologyCountLayers.canonical.eulerCharacteristic}
             </div>
             <div data-testid="topology-count-display">
-              <strong>Display geometry only:</strong> {topologyCountLayers.display.meshVertices} mesh vertices, {topologyCountLayers.display.triangles} triangles, {topologyCountLayers.display.curveSamples} curve samples
+              <strong>Display geometry (visualization, not canonical cells):</strong> {topologyCountLayers.display.meshVertices} mesh vertices, {topologyCountLayers.display.triangles} triangles, {topologyCountLayers.display.curveSamples} curve samples
             </div>
             <div
               data-testid="topology-source-provenance"

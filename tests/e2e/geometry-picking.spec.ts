@@ -300,6 +300,319 @@ test("Geometry pick readout commits object, face, edge, and vertex modes", async
   }
 });
 
+test("selected Geometry object follows direct Mesh navigation and returns to its source", async () => {
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-shared-scene-selection-"));
+  let app: ElectronApplication | null = null;
+  try {
+    const launched = await launchApp(profileDir);
+    app = launched.app;
+    const page = launched.page;
+    await resetStorage(page);
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await openProceduralGeometry(page, "box");
+    await page.getByTestId("geometry-workflow-step-transform").click();
+    await commitDeterministicGeometryPick(page, "object");
+    const sourceId = await page.getByTestId("geometry-pick-object-id").innerText();
+    await page.getByTestId("geometry-context-toolbar").getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(page.getByTestId("geometry-context-preview")).toHaveCount(0);
+    await expect(page.getByTestId("shared-scene-selection")).toContainText(`geometry:${sourceId}`);
+    await clickFirstVisibleButton(page, "Mesh");
+    await expect(page.getByText(/Mesh \/ Workspace/i).first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId("mesh-context-selection-label")).toContainText(/Selected object:/, { timeout: 20_000 });
+    await clickFirstVisibleButton(page, "Geometry");
+    await expect(page.getByTestId("shared-scene-selection")).toContainText(`geometry:${sourceId}`, { timeout: 20_000 });
+    await expect(page.getByTestId("scene-representations")).toContainText("Editable Mesh");
+    await page.getByTestId("scene-representations").getByLabel(/Editable Mesh/).check();
+    await expect(page.getByTestId("shared-scene-selection")).toContainText(`geometry:${sourceId}`);
+    await page.getByTestId("scene-representations").getByRole("button", { name: "Edit Mesh", exact: true }).click();
+    await expect(page.getByTestId("mesh-context-selection-label")).toContainText(/Selected object:/);
+    await expect(page.getByTestId("scene-history").first()).toBeVisible();
+    const browser = page.getByTestId("mesh-component-browser");
+    await browser.getByRole("button", { name: "Show component selection list" }).click();
+    await browser.getByRole("textbox", { name: "Component ID filter" }).fill("0");
+    await browser.getByRole("button", { name: "face 0", exact: true }).click();
+    await expect(page.getByTestId("mesh-context-selection-label")).toContainText(/face/i);
+    await browser.getByRole("combobox", { name: "Region visibility" }).selectOption("through");
+    await browser.getByRole("button", { name: "Box select" }).click();
+    const regionOverlay = page.getByTestId("mesh-region-selection-overlay");
+    const dragVisibleRegion = async (lasso: boolean) => {
+      await expect(regionOverlay).toBeVisible();
+      const bounds = await regionOverlay.boundingBox(), viewport = page.viewportSize();
+      expect(bounds).not.toBeNull(); expect(viewport).not.toBeNull();
+      const left = Math.max(0, bounds!.x) + 8, top = Math.max(0, bounds!.y) + 8;
+      const right = Math.min(viewport!.width, bounds!.x + bounds!.width) - 8;
+      const bottom = Math.min(viewport!.height, bounds!.y + bounds!.height) - 8;
+      expect(right).toBeGreaterThan(left); expect(bottom).toBeGreaterThan(top);
+      await page.mouse.move(left, top); await page.mouse.down();
+      if (lasso) await page.mouse.move(right, top, { steps: 5 });
+      await page.mouse.move(right, bottom, { steps: 5 });
+      if (lasso) await page.mouse.move(left, bottom, { steps: 5 });
+      await page.mouse.up();
+    };
+    await dragVisibleRegion(false);
+    await expect(regionOverlay).toHaveCount(0);
+    await expect(page.getByText(/Selected \d+ face components by box/).first()).toBeVisible();
+    expect(Number((await page.getByText(/Selected \d+ face components by box/).first().innerText()).match(/Selected (\d+)/)?.[1])).toBeGreaterThan(0);
+    await browser.getByRole("button", { name: "Lasso select" }).click();
+    await dragVisibleRegion(true);
+    await expect(page.getByText(/Selected \d+ face components by lasso/).first()).toBeVisible();
+    expect(Number((await page.getByText(/Selected \d+ face components by lasso/).first().innerText()).match(/Selected (\d+)/)?.[1])).toBeGreaterThan(0);
+    await browser.getByRole("combobox", { name: "Region visibility" }).selectOption("xray");
+    await expect(browser.getByRole("combobox", { name: "Region visibility" })).toHaveValue("xray");
+    await page.setViewportSize({ width: 960, height: 600 });
+    const compactFacePick = page.getByTestId("mesh-context-toolbar").getByRole("button", { name: "Face", exact: true });
+    await expect(compactFacePick).toBeVisible();
+    await compactFacePick.focus();
+    await page.keyboard.press("Enter");
+    await expect(compactFacePick).toHaveAttribute("aria-pressed", "true");
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await browser.getByRole("button", { name: "face 0", exact: true }).click();
+    await page.getByRole("button", { name: "Subdivide Face", exact: true }).first().click();
+    const modifiers = page.getByTestId("linked-mesh-modifiers").first();
+    await expect(modifiers).toContainText("Face Subdivide");
+    await modifiers.getByRole("checkbox").first().uncheck();
+    await expect(modifiers.getByRole("checkbox").first()).not.toBeChecked();
+    await modifiers.getByRole("checkbox").first().check();
+    await expect(modifiers.getByRole("checkbox").first()).toBeChecked();
+    await browser.getByRole("button", { name: "face 0", exact: true }).click();
+    const derived = page.getByTestId("mesh-derived-geometry");
+    await derived.getByRole("combobox", { name: "Mesh-derived Geometry kind" }).selectOption("face-plane");
+    await derived.getByRole("button", { name: "Create in Geometry" }).click();
+    await expect(page.getByText(/Derived object created: Plane Through Face Centroid/).first()).toBeVisible();
+  } finally {
+    if (app) await app.close().catch(() => undefined);
+    await removeProfileDir(profileDir);
+  }
+});
+
+test("shared scene history undoes and redoes Geometry and Mesh edits on one object", async () => {
+  test.setTimeout(120_000);
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-shared-history-"));
+  let app: ElectronApplication | null = null;
+  try {
+    const launched = await launchApp(profileDir);
+    app = launched.app;
+    const page = launched.page;
+    await resetStorage(page);
+    await openProceduralGeometry(page, "box");
+    await page.getByTestId("geometry-workflow-step-transform").click();
+    await commitDeterministicGeometryPick(page, "object");
+    await clickFirstVisibleButton(page, "Mesh");
+    await expect(page.getByTestId("mesh-context-selection-label")).toContainText(/Selected object:/);
+    await clickFirstVisibleButton(page, "Geometry");
+    await page.getByTestId("scene-representations").getByLabel(/Editable Mesh/).check();
+    await page.getByTestId("scene-representations").getByRole("button", { name: "Edit Mesh", exact: true }).click();
+    const browser = page.getByTestId("mesh-component-browser");
+    await browser.getByRole("button", { name: "Show component selection list" }).click();
+    await browser.getByRole("button", { name: "face 0", exact: true }).click();
+    await page.getByRole("button", { name: "Subdivide Face", exact: true }).first().click();
+    const history = page.getByTestId("scene-history").first();
+    await expect(history.getByTestId("scene-history-operation").first()).toContainText("Mesh");
+    await expect(history.getByTestId("scene-history-operation").first()).toContainText(/subdivide/i);
+    await history.getByRole("button", { name: "Undo", exact: true }).click();
+    await expect(history.getByRole("button", { name: "Redo", exact: true })).toBeEnabled();
+    await clickFirstVisibleButton(page, "Geometry");
+    await expect(page.getByTestId("geometry-context-selection-label")).toContainText(/Box/);
+    const geometryHistory = page.getByTestId("scene-history").first();
+    await expect(geometryHistory.getByTestId("scene-history-operation").first()).toContainText("Geometry");
+    await geometryHistory.getByRole("button", { name: "Undo", exact: true }).click();
+    await geometryHistory.getByRole("button", { name: "Redo", exact: true }).click();
+    await expect(geometryHistory.getByRole("button", { name: "Redo", exact: true })).toBeEnabled();
+    await geometryHistory.getByRole("button", { name: "Redo", exact: true }).click();
+    await expect(geometryHistory.getByTestId("scene-history-operation").first()).toContainText("Mesh");
+  } finally {
+    if (app) await app.close().catch(() => undefined);
+    await removeProfileDir(profileDir);
+  }
+});
+
+test("linked modifier replays after a Geometry edit and can recover from changed topology", async () => {
+  test.setTimeout(120_000);
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-linked-modifier-"));
+  let app: ElectronApplication | null = null;
+  try {
+    const launched = await launchApp(profileDir);
+    app = launched.app;
+    const page = launched.page;
+    await resetStorage(page);
+    await openProceduralGeometry(page, "box");
+    await page.getByTestId("geometry-workflow-step-transform").click();
+    await commitDeterministicGeometryPick(page, "object");
+    await clickFirstVisibleButton(page, "Mesh");
+    await clickFirstVisibleButton(page, "Geometry");
+    await page.getByTestId("scene-representations").getByLabel(/Editable Mesh/).check();
+    await page.getByTestId("scene-representations").getByRole("button", { name: "Edit Mesh", exact: true }).click();
+    const browser = page.getByTestId("mesh-component-browser");
+    await browser.getByRole("button", { name: "Show component selection list" }).click();
+    await browser.getByRole("button", { name: "face 0", exact: true }).click();
+    await page.getByRole("button", { name: "Subdivide Face", exact: true }).first().click();
+    await expect(page.getByTestId("linked-mesh-modifiers").first()).toContainText("Face Subdivide");
+    await clickFirstVisibleButton(page, "Geometry");
+    await page.getByTestId("geometry-professional-panel-object").click();
+    await page.getByTestId("geometry-object-param-width").fill("3");
+    await clickFirstVisibleButton(page, "Mesh");
+    await page.getByTestId("mesh-panel-tools").click();
+    await page.getByTestId("mesh-workspace-left-tab-topology").click();
+    const modifiers = page.getByTestId("linked-mesh-modifiers").first();
+    await expect(modifiers).toContainText("applied", { timeout: 20_000 });
+    await clickFirstVisibleButton(page, "Geometry");
+    await page.getByTestId("geometry-professional-panel-object").click();
+    await page.getByTestId("geometry-object-param-widthSegments").fill("2");
+    await clickFirstVisibleButton(page, "Mesh");
+    await page.getByTestId("mesh-panel-tools").click();
+    await page.getByTestId("mesh-workspace-left-tab-topology").click();
+    await expect(modifiers).toContainText("failed", { timeout: 20_000 });
+    await modifiers.getByRole("checkbox").first().uncheck();
+    await expect(modifiers).toContainText("disabled");
+    await modifiers.getByRole("button", { name: "Detach", exact: true }).click();
+    await expect(page.getByTestId("linked-mesh-modifiers")).toHaveCount(0);
+    await expect(page.getByTestId("scene-representations")).toContainText(/detached/i);
+  } finally {
+    if (app) await app.close().catch(() => undefined);
+    await removeProfileDir(profileDir);
+  }
+});
+
+test("a Mesh face region opens its source and result Geometry with a retained link", async () => {
+  test.setTimeout(120_000);
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-derived-region-"));
+  let app: ElectronApplication | null = null;
+  try {
+    const launched = await launchApp(profileDir);
+    app = launched.app;
+    const page = launched.page;
+    await resetStorage(page);
+    await openProceduralGeometry(page, "box");
+    await page.getByTestId("geometry-workflow-step-transform").click();
+    await commitDeterministicGeometryPick(page, "object");
+    await clickFirstVisibleButton(page, "Mesh");
+    await clickFirstVisibleButton(page, "Geometry");
+    await page.getByTestId("scene-representations").getByLabel(/Editable Mesh/).check();
+    await page.getByTestId("scene-representations").getByRole("button", { name: "Edit Mesh", exact: true }).click();
+    const browser = page.getByTestId("mesh-component-browser");
+    await browser.getByRole("button", { name: "Show component selection list" }).click();
+    await browser.getByRole("button", { name: "face 0", exact: true }).click();
+    const derived = page.getByTestId("mesh-derived-geometry");
+    await derived.getByRole("combobox", { name: "Mesh-derived Geometry kind" }).selectOption("face-region-surface");
+    await derived.getByRole("button", { name: "Create in Geometry" }).click();
+    await expect(page.getByText(/Geometry \/ Workspace/i).first()).toBeVisible();
+    await clickFirstVisibleButton(page, "Mesh");
+    await page.getByTestId("mesh-panel-tools").click();
+    await page.getByTestId("mesh-workspace-left-tab-topology").click();
+    await expect(derived).toContainText("Face region · linked");
+    await derived.getByRole("button", { name: "Source", exact: true }).click();
+    await expect(page.getByText(/Geometry \/ Workspace/i).first()).toBeVisible();
+    await expect(page.getByTestId("geometry-context-selection-label")).toContainText(/Mesh Snapshot/i);
+    await app.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.webContents.send("app:menu-command", { command: "edit:delete-object" });
+    });
+    await clickFirstVisibleButton(page, "Mesh");
+    await page.getByTestId("mesh-panel-tools").click();
+    await page.getByTestId("mesh-workspace-left-tab-topology").click();
+    await expect(derived).toContainText("Face region · missing");
+    await derived.getByRole("button", { name: "Result", exact: true }).click();
+    await expect(page.getByText(/Geometry \/ Workspace/i).first()).toBeVisible();
+    await expect(page.getByTestId("geometry-context-selection-label")).toContainText(/face region/i);
+  } finally {
+    if (app) await app.close().catch(() => undefined);
+    await removeProfileDir(profileDir);
+  }
+});
+
+test("Geometry analysis shortcuts focus their controls and Pick modes stay in sync", async () => {
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-geometry-controls-"));
+  let app: ElectronApplication | null = null;
+  try {
+    const launched = await launchApp(profileDir);
+    app = launched.app;
+    const page = launched.page;
+    await resetStorage(page);
+    await openProceduralGeometry(page, "box");
+
+    await page.getByTestId("geometry-workflow-step-analyze").click();
+    await page.getByTestId("geometry-workflow-command-analyze-gaussian").click();
+    await expect(page.getByTestId("geometry-workflow-command-analyze-gaussian")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("geometry-sampled-field-controls")).toBeInViewport();
+    await expect(page.getByTestId("geometry-sampled-field-quantity")).toHaveValue("K");
+
+    await page.getByTestId("geometry-workflow-command-analyze-curvature").click();
+    await expect(page.getByTestId("geometry-workflow-command-analyze-curvature")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("geometry-exact-surface-analysis-controls")).toBeInViewport();
+
+    await page.getByTestId("geometry-workflow-command-analyze-measurements").click();
+    await expect(page.getByTestId("geometry-workflow-command-analyze-measurements")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("geometry-measure-group")).toBeInViewport();
+
+    await page.getByTestId("geometry-right-panel-tab-actions").click();
+    await page.getByTestId("geometry-context-pick-face").click();
+    await expect(page.getByTestId("geometry-right-panel-tab-selection")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("geometry-pick-mode-face")).toHaveAttribute("aria-pressed", "true");
+    await page.getByTestId("geometry-pick-mode-vertex").click();
+    await expect(page.getByTestId("geometry-context-pick-vertex")).toHaveAttribute("aria-pressed", "true");
+  } finally {
+    if (app) await app.close().catch(() => undefined);
+    await removeProfileDir(profileDir);
+  }
+});
+
+test("Geometry box topology distinguishes raw indices from requested position interpretation", async () => {
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-geometry-topology-"));
+  let app: ElectronApplication | null = null;
+  try {
+    const launched = await launchApp(profileDir);
+    app = launched.app;
+    const page = launched.page;
+    await resetStorage(page);
+    await openProceduralGeometry(page, "box");
+    await page.getByTestId("geometry-workflow-step-analyze").click();
+    await page.getByTestId("geometry-workflow-command-analyze-topology").click();
+
+    const left = page.getByTestId("geometry-left-panel");
+    const definition = page.getByTestId("geometry-topology-box-definition");
+    await expect(definition).toContainText("V=8 · E=18 · F=12 · χ=2");
+    await expect(definition).toContainText("triangulated parametric box boundary");
+    const initialRevision = Number((await definition.innerText()).match(/\br(\d+)/)?.[1]);
+    expect(Number.isFinite(initialRevision)).toBe(true);
+    await expect(left).toContainText("Raw indexed display-mesh topology");
+    await expect(left).toContainText("V = 24 , E = 30 , F = 12 , chi = V - E + F = 6");
+    await expect(left).toContainText("Indexed components: 6 · boundary edges: 24");
+    await expect(page.getByTestId("geometry-topology-exact-position-result")).toHaveCount(0);
+
+    await page.getByTestId("geometry-topology-identify-exact-positions").click();
+    const interpreted = page.getByTestId("geometry-topology-exact-position-result");
+    await expect(interpreted).toContainText("V=8 · E=18 · F=12 · χ=2");
+    await expect(interpreted).toContainText("Components: 1 · boundary edges: 0");
+    await expect(left).toContainText("tolerance 0 scene units");
+
+    await page.getByTestId("geometry-professional-panel-object").click();
+    await page.getByTestId("geometry-object-param-width").fill("2.5");
+    await expect(page.getByTestId("geometry-object-param-width")).toHaveValue("2.5");
+    await page.getByTestId("geometry-professional-panel-analysis").click();
+    await page.getByTestId("geometry-workflow-command-analyze-topology").click();
+    await expect(page.getByTestId("geometry-topology-exact-position-result")).toHaveCount(0);
+    await expect(page.getByTestId("geometry-topology-exact-position-stale")).toBeVisible();
+    await expect(page.getByTestId("geometry-topology-box-definition")).toContainText("V=8 · E=18 · F=12 · χ=2");
+    await expect.poll(async () => Number((await definition.innerText()).match(/\br(\d+)/)?.[1])).toBeGreaterThan(initialRevision);
+    await page.getByTestId("geometry-topology-identify-exact-positions").click();
+    await expect(page.getByTestId("geometry-topology-exact-position-stale")).toHaveCount(0);
+    await expect(page.getByTestId("geometry-topology-exact-position-result")).toContainText("χ=2");
+
+    await page.getByTestId("geometry-professional-action-gallery").click();
+    await page.getByTestId("geometry-gallery-quick-add-box").click();
+    await page.getByTestId("geometry-workflow-step-analyze").click();
+    await page.getByTestId("geometry-workflow-command-analyze-topology").click();
+    await left.getByRole("button", { name: "Scene total" }).click();
+    const sceneObjectCount = Number((await page.getByTestId("geometry-scene-stats").innerText()).match(/(\d+) objects?/)?.[1]);
+    expect(sceneObjectCount).toBeGreaterThan(1);
+    await expect(left).toContainText(`V = ${24 * sceneObjectCount} , E = ${30 * sceneObjectCount} , F = ${12 * sceneObjectCount} , chi = V - E + F = ${6 * sceneObjectCount}`);
+    await expect(left).toContainText("counts are summed per mesh, with no cross-object identification");
+    await expect(page.getByTestId("geometry-topology-box-definition")).toHaveCount(0);
+  } finally {
+    if (app) await app.close().catch(() => undefined);
+    await removeProfileDir(profileDir);
+  }
+});
+
 test("Geometry canvas picker commits a visible object pick", async () => {
   const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-canvas-pick-"));
   let app: ElectronApplication | null = null;
@@ -323,12 +636,12 @@ test("Geometry canvas picker commits a visible object pick", async () => {
       selectObject: async () => {
         await commitDeterministicGeometryPick(page, "object", { useContextOrInspectorMode: true });
       },
-      chipLabel: "Geometry Object",
-      selectionLabel: /Selected geometry object:/i,
-      preview: "Preview: open selected Geometry object details",
-      viewportPreview: "Viewport preview: open selected Geometry object details",
+      chipLabel: "Object",
+      selectionLabel: /Selected object:/i,
+      preview: "Preview: open selected object details",
+      viewportPreview: "Viewport preview: open selected object details",
       wholeObjectBadgeTestId: "geometry-object-selection-glow",
-      wholeObjectBadgeLabel: "Whole Geometry object selected",
+      wholeObjectBadgeLabel: "Whole object selected",
       actionExpectations: [
         { testId: "geometry-context-open-object", label: "Open Object Details", enabled: true },
         { testId: "geometry-context-transform", label: "Transform" },

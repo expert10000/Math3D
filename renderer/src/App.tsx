@@ -147,6 +147,12 @@ import { readNotebookProjectContext, type NotebookProjectContext } from "./workb
 import { resolveGeometryProjectNotePins, type ProjectNoteViewerMode } from "./projects/projectNotePins";
 import { GeometryTessellationSettingsPanel } from "./components/GeometryTessellationSettingsPanel";
 import { UnifiedSelectionInspector } from "./components/UnifiedSelectionInspector";
+import { SceneHistoryPanel } from "./components/SceneHistoryPanel";
+import { mergeSceneOperations, nextUndoableSceneOperation, type SceneOperation } from "./scene/sceneOperations";
+import { buildMeshComponentSelectionGraph, growSceneComponents, shrinkSceneComponents, restoreNamedSceneSelection, saveNamedSceneSelection, type NamedSceneSelection } from "./selection/robustSceneSelection";
+import { buildMeshEdgeTopology } from "./mesh/edgeSelection";
+import { meshConnectivityKey, replayLinkedMeshModifiers, reorderLinkedMeshModifier, type LinkedMeshModifier, type LinkedMeshModifierResult } from "./mesh/linkedModifierStack";
+import { extractMeshFaceRegion, meshEdgeLoopVertices, meshFaceVertices, meshVertex, normalizeMeshFaceRegionLink, refreshMeshFaceRegionLink, type MeshDerivedGeometryKind, type MeshFaceRegionLink } from "./mesh/meshDerivedGeometry";
 import { SharedInspectorShell, type SharedInspectorCategory } from "./components/SharedInspectorShell";
 import { GeometrySemanticNavigatorPanel } from "./components/GeometrySemanticNavigatorPanel";
 import { GeometryConstructCatalogPanel } from "./components/GeometryConstructCatalogPanel";
@@ -289,6 +295,8 @@ import {
   type UnifiedSelectionSetEditMode,
 } from "./selection/unifiedSelection";
 import { sharedPickEntityId } from "./selection/pickContract";
+import { sceneSelectionFromUnified, type SceneSelection } from "./selection/sceneSelection";
+import { availableSceneRepresentationActions, buildSceneEntities, type SceneRepresentationAction } from "./scene/sceneRepresentations";
 import {
   addSelectionHistoryEntry,
   bookmarkSelectionEntry,
@@ -1043,6 +1051,11 @@ import {
   type MeshTopologyInspectorDetails,
   type MeshTopologyListRow,
 } from "./mesh/topologyInspector";
+import {
+  interpretTopologyByExactPosition,
+  type ExactPositionTopologyInterpretation,
+} from "./geometry/exactPositionTopology";
+import { boxDefinitionBoundaryTopology } from "./geometry/boxDefinitionTopology";
 import {
   createMeshAnalysisMeshIdentity,
   createMeshAnalysisResultStore,
@@ -2168,6 +2181,7 @@ type WorkbookGeometryDatasetMeshObject = {
   promotion?: GeometryToMeshPromotionMetadata | null;
   restoredGeometryPreset?: GeometryRestoredObjectPresetMetadata | null;
   sourceSelectionOverlay?: MeshSourceSelectionOverlay | null;
+  derivedRegion?: MeshFaceRegionLink | null;
 };
 type GeometryObjectVariant = {
   id: string;
@@ -3018,6 +3032,7 @@ const serializeGeometryDatasetMeshObject = (obj: GeometryDatasetMeshObject): Wor
   promotion: cloneGeometryPromotionMetadata(obj.promotion),
   restoredGeometryPreset: obj.restoredGeometryPreset ? { ...obj.restoredGeometryPreset } : null,
   sourceSelectionOverlay: cloneMeshSourceSelectionOverlay(obj.sourceSelectionOverlay),
+  derivedRegion: normalizeMeshFaceRegionLink(obj.derivedRegion),
 });
 
 const deserializeGeometryDatasetMeshObject = (
@@ -3048,6 +3063,7 @@ const deserializeGeometryDatasetMeshObject = (
   promotion: cloneGeometryPromotionMetadata(obj.promotion),
   restoredGeometryPreset: obj.restoredGeometryPreset ? { ...obj.restoredGeometryPreset } : null,
   sourceSelectionOverlay: cloneMeshSourceSelectionOverlay(obj.sourceSelectionOverlay),
+  derivedRegion: normalizeMeshFaceRegionLink(obj.derivedRegion),
 });
 
 const cloneVariantSnapshot = (
@@ -4094,6 +4110,7 @@ type GeometryDerivedConstructionType =
   | "edge-aligned-axis"
   | "edge-parallel-line-through-vertex"
   | "edge-equal-length-copied-segment"
+  | "mesh-edge-loop-polyline"
   | "plane-normal-line-through-vertex"
   | "face-centroid"
   | "face-normal-line"
@@ -4215,6 +4232,7 @@ type GeometryDerivedConstructionObject = {
   sourceFaceIndex?: number | null;
   sourceVertexIndex?: number | null;
   sourceEdgeVertexPair?: [number, number] | null;
+  sourceLoopVertexIndices?: number[] | null;
   sourcePoint?: { x: number; y: number; z: number } | null;
   sourceNormal?: { x: number; y: number; z: number } | null;
   params?: {
@@ -4470,6 +4488,7 @@ const GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS: Record<GeometryDerivedConstruct
   "edge-aligned-axis": "Edge-Aligned Axis",
   "edge-parallel-line-through-vertex": "Line Parallel To Edge",
   "edge-equal-length-copied-segment": "Equal-Length Copied Segment",
+  "mesh-edge-loop-polyline": "Mesh Edge Loop Polyline",
   "plane-normal-line-through-vertex": "Line Normal To Plane",
   "face-centroid": "Face Centroid",
   "face-normal-line": "Face Normal Line",
@@ -5366,6 +5385,7 @@ type GeometryDatasetMeshObject = {
   promotion?: GeometryToMeshPromotionMetadata | null;
   restoredGeometryPreset?: GeometryRestoredObjectPresetMetadata | null;
   sourceSelectionOverlay?: MeshSourceSelectionOverlay | null;
+  derivedRegion?: MeshFaceRegionLink | null;
 };
 type SageVectorArtifact = { record: SymbolicResultRecord; provenance: SageViewerProvenance;
   lines: OverlayPolylineGroup["lines"]; stage: "preview" | "committed" };
@@ -5476,6 +5496,7 @@ type UnifiedObjectNode = {
   sceneRole?: UnifiedSceneRole;
   objectRefId?: string;
   sceneIdentity?: SceneEntityIdentity;
+  representationBadges?: string[];
   visible?: boolean | null;
   canToggleVisibility?: boolean;
   canDelete?: boolean;
@@ -7305,6 +7326,7 @@ type StoredSurfaceMeshTopologySession = {
   activeMesh: TopologySerializedSurfaceMeshData;
   history: StoredSurfaceMeshTopologyHistoryEntry[];
   selectedHistoryId: string | null;
+  modifierSettings?: Array<{ id: string; enabled: boolean; sourceConnectivity?: string }>;
   fields: {
     faceIndex: number;
     edgeA: number;
@@ -12506,6 +12528,23 @@ const App: React.FC = () => {
       const saved = window.localStorage.getItem(UI_GEOMETRY_PROCEDURAL_PANEL_KEY) ?? undefined;
       return isGeometryProceduralPanelTabValue(saved) ? saved : "create";
     });
+  const [geometryAnalysisFocusTarget, setGeometryAnalysisFocusTarget] = useState<
+    "measurements" | "gaussian" | "curvature" | null
+  >(null);
+  const [geometryAnalysisActiveCommand, setGeometryAnalysisActiveCommand] = useState<
+    "compare" | "measurements" | "gaussian" | "curvature"
+  >("compare");
+  useEffect(() => {
+    if (geometryMode !== "procedural" || geometryProceduralPanelTab !== "analysis" || !geometryAnalysisFocusTarget) return;
+    const targetTestId = {
+      measurements: "geometry-measure-group",
+      gaussian: "geometry-sampled-field-controls",
+      curvature: "geometry-exact-surface-analysis-controls",
+    }[geometryAnalysisFocusTarget];
+    const target = document.querySelector<HTMLElement>(`[data-testid="${targetTestId}"]`);
+    if (target) target.scrollIntoView({ block: "start" });
+    setGeometryAnalysisFocusTarget(null);
+  }, [geometryAnalysisFocusTarget, geometryMode, geometryProceduralPanelTab]);
   useEffect(() => {
     window.localStorage.setItem(UI_WORKSPACE_MODE_KEY, mode);
   }, [mode]);
@@ -12525,6 +12564,12 @@ const App: React.FC = () => {
     window.localStorage.setItem(UI_GEOMETRY_PROCEDURAL_PANEL_KEY, geometryProceduralPanelTab);
   }, [geometryProceduralPanelTab]);
   const [geometryEulerScope, setGeometryEulerScope] = useState<GeometryEulerScope>("selected");
+  const [geometryExactPositionTopology, setGeometryExactPositionTopology] = useState<{
+    objectId: string;
+    sourceRevision: number;
+    sourceMesh: SurfaceMeshData;
+    result: ExactPositionTopologyInterpretation;
+  } | null>(null);
   const [geometryEulerPolygonTemplateId, setGeometryEulerPolygonTemplateId] =
     useState<GeometryEulerPolygonTemplateId>("torus_abab_inv");
   const [geometryEulerPolygonEdges, setGeometryEulerPolygonEdges] = useState<PolygonWordEdge[]>(() =>
@@ -12777,6 +12822,19 @@ const App: React.FC = () => {
     const saved = readGeometryEditSessionSnapshot()?.probeSelectionMode;
     return isGeometryProbeSelectionModeLocal(saved) ? saved : readStoredGeometryContextualPickMode() ?? "object";
   });
+  const [sceneSelection, setSceneSelection] = useState<SceneSelection | null>(null);
+  const [namedSceneSelections, setNamedSceneSelections] = useState<readonly NamedSceneSelection[]>(() => {
+    try {
+      const parsed: unknown = JSON.parse(window.localStorage.getItem("math3d:scene-selection-sets:v1") ?? "[]");
+      return Array.isArray(parsed) ? parsed.filter((entry) => entry && typeof entry.id === "string" && typeof entry.name === "string" && entry.selection?.objectId) : [];
+    } catch { return []; }
+  });
+  useEffect(() => {
+    try { window.localStorage.setItem("math3d:scene-selection-sets:v1", JSON.stringify(namedSceneSelections)); } catch { /* Profile storage is optional. */ }
+  }, [namedSceneSelections]);
+  const [activeRepresentationByEntity, setActiveRepresentationByEntity] = useState<Record<string, string>>({});
+  const [cancelledGeometryPreviewKey, setCancelledGeometryPreviewKey] = useState<string | null>(null);
+  const [cancelledMeshPreviewKey, setCancelledMeshPreviewKey] = useState<string | null>(null);
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -13205,6 +13263,7 @@ const App: React.FC = () => {
     const saved = readGeometryEditSessionSnapshot()?.selectedObjectId;
     return typeof saved === "string" && saved.length > 0 ? saved : null;
   });
+  const [geometrySelectionExplicitlyCleared, setGeometrySelectionExplicitlyCleared] = useState(false);
   const [geometryCompareObjectAId, setGeometryCompareObjectAId] = useState<string | null>(null);
   const [geometryCompareObjectBId, setGeometryCompareObjectBId] = useState<string | null>(null);
   const [geometryLineQuickMenu, setGeometryLineQuickMenu] = useState<{
@@ -13324,6 +13383,7 @@ const App: React.FC = () => {
     }
     if (geometryCreatePlacementModeActive && geometryPendingPlacementObjectId) return;
     if (info.meshKey) {
+      setGeometrySelectionExplicitlyCleared(false);
       setGeometrySelectedObjectId(info.meshKey);
       if (geometryProceduralPanelTab === "construct" && geometryProbeSelectionMode === "object") {
         const slot = geometryMathPickTargetSlot;
@@ -13367,6 +13427,10 @@ const App: React.FC = () => {
     }
     setGeometryProceduralPick(null);
     setGeometryProceduralHoverPick(null);
+    setGeometrySelectedObjectId(null);
+    setGeometrySelectionExplicitlyCleared(true);
+    setGeometryMultiSelectionSet(createUnifiedSelectionSet([]));
+    setSceneSelection(null);
     if (geometryCreatePlacementModeActive && geometryPendingPlacementObjectId) {
       setGeometryCreatePlacementStatus("Click a mesh, helper plane, or visible ground-plane area to place the pending object.");
       return;
@@ -14572,39 +14636,43 @@ const App: React.FC = () => {
     const allObjects: Array<GeometryObject | GeometryDatasetMeshObject> = [...geometryObjects, ...geometryDatasetMeshObjects];
     const changedObjectIds: string[] = [];
     const suppressHistoryCapture = Date.now() < geometryHistoryCaptureSuppressUntilRef.current;
+    for (const obj of allObjects) {
+      const fingerprint =
+        "mesh" in obj
+          ? JSON.stringify({
+              id: obj.id,
+              name: obj.name,
+              transform: obj.transform,
+              material: obj.material,
+              visible: obj.visible,
+              meshLabel: obj.mesh.label,
+              meshVertCount: Math.floor(obj.mesh.positions.length / 3),
+              meshTriCount: obj.mesh.indices?.length ? Math.floor(obj.mesh.indices.length / 3) : Math.floor(obj.mesh.positions.length / 9),
+              meshPosSample: Array.from(obj.mesh.positions.slice(0, 24)),
+              meshPosTailSample: Array.from(
+                obj.mesh.positions.slice(Math.max(0, obj.mesh.positions.length - 24), obj.mesh.positions.length)
+              ),
+            })
+          : JSON.stringify({
+              id: obj.id,
+              name: obj.name,
+              type: obj.type,
+              params: obj.params,
+              transform: obj.transform,
+              material: obj.material,
+              visible: obj.visible,
+            });
+      nextFingerprint.set(obj.id, fingerprint);
+      const previous = geometryHistoryFingerprintRef.current.get(obj.id);
+      if (previous === fingerprint) continue;
+      changedObjectIds.push(obj.id);
+    }
+    const changedObjectIdSet = new Set(changedObjectIds);
     setGeometryObjectHistoryById((prev) => {
       let changed = false;
       const next = { ...prev };
       for (const obj of allObjects) {
-        const fingerprint =
-          "mesh" in obj
-            ? JSON.stringify({
-                id: obj.id,
-                name: obj.name,
-                transform: obj.transform,
-                material: obj.material,
-                visible: obj.visible,
-                meshLabel: obj.mesh.label,
-                meshVertCount: Math.floor(obj.mesh.positions.length / 3),
-                meshTriCount: obj.mesh.indices?.length ? Math.floor(obj.mesh.indices.length / 3) : Math.floor(obj.mesh.positions.length / 9),
-                meshPosSample: Array.from(obj.mesh.positions.slice(0, 24)),
-                meshPosTailSample: Array.from(
-                  obj.mesh.positions.slice(Math.max(0, obj.mesh.positions.length - 24), obj.mesh.positions.length)
-                ),
-              })
-            : JSON.stringify({
-                id: obj.id,
-                name: obj.name,
-                type: obj.type,
-                params: obj.params,
-                transform: obj.transform,
-                material: obj.material,
-                visible: obj.visible,
-              });
-        nextFingerprint.set(obj.id, fingerprint);
-        const previous = geometryHistoryFingerprintRef.current.get(obj.id);
-        if (previous === fingerprint) continue;
-        changedObjectIds.push(obj.id);
+        if (!changedObjectIdSet.has(obj.id)) continue;
         if (suppressHistoryCapture) continue;
         const history = next[obj.id] ?? [];
         const previousSnapshot = history.length ? history[0].snapshot : null;
@@ -14687,8 +14755,7 @@ const App: React.FC = () => {
     () =>
       Object.values(geometryObjectHistoryById)
         .flat()
-        .sort((a, b) => b.at - a.at)
-        .slice(0, 12),
+        .sort((a, b) => b.at - a.at),
     [geometryObjectHistoryById]
   );
   const geometryRecentActionHistory = useMemo<GeometryRecentActionHistoryEntry[]>(() => {
@@ -14728,7 +14795,7 @@ const App: React.FC = () => {
         step: entry,
       };
     });
-    return [...objectEntries, ...constructionEntries].sort((a, b) => b.at - a.at).slice(0, 12);
+    return [...objectEntries, ...constructionEntries].sort((a, b) => b.at - a.at);
   }, [geometryConstructionHistory, geometryRecentSceneHistory]);
   const geometryLatestRecentAction = geometryRecentActionHistory[0] ?? null;
   const geometryHistoryStepById = useMemo(() => {
@@ -15564,13 +15631,15 @@ const App: React.FC = () => {
       return;
     }
     if (!geometrySelectedObjectId) {
+      if (geometrySelectionExplicitlyCleared) return;
       setGeometrySelectedObjectId(ids[0]);
       return;
     }
+    if (geometrySelectionExplicitlyCleared) setGeometrySelectionExplicitlyCleared(false);
     if (!ids.includes(geometrySelectedObjectId)) {
       setGeometrySelectedObjectId(ids[0]);
     }
-  }, [geometryObjects, geometryDatasetMeshObjects, geometrySelectedObjectId]);
+  }, [geometryObjects, geometryDatasetMeshObjects, geometrySelectedObjectId, geometrySelectionExplicitlyCleared]);
   useEffect(() => {
     const activeIds = new Set([...geometryObjects.map((o) => o.id), ...geometryDatasetMeshObjects.map((o) => o.id)]);
     setGeometryLockedObjectIds((prev) => {
@@ -23986,6 +24055,30 @@ const App: React.FC = () => {
     () => (geometrySelectedSceneMesh ? computeTriangleMeshCellCounts(geometrySelectedSceneMesh) : null),
     [geometrySelectedSceneMesh]
   );
+  const geometryEulerSelectedRawTopology = useMemo(
+    () => (geometrySelectedSceneMesh && (geometryProceduralPanelTab === "analysis" || geometryProceduralPanelTab === "euler")
+      ? computeMeshTopologyInspector(geometrySelectedSceneMesh)
+      : null),
+    [geometryProceduralPanelTab, geometrySelectedSceneMesh]
+  );
+  const geometrySelectedBoxDefinitionTopology = useMemo(
+    () => (geometrySelectedSceneObject && "type" in geometrySelectedSceneObject
+      ? boxDefinitionBoundaryTopology(geometrySelectedSceneObject)
+      : null),
+    [geometrySelectedSceneObject]
+  );
+  const geometryExactPositionTopologyCurrent =
+    geometryExactPositionTopology &&
+    geometrySelectedSceneObject?.id === geometryExactPositionTopology.objectId &&
+    geometrySelectedSceneMesh === geometryExactPositionTopology.sourceMesh &&
+    (geometryObjectRevisionById[geometryExactPositionTopology.objectId] ?? 0) ===
+      geometryExactPositionTopology.sourceRevision
+      ? geometryExactPositionTopology.result
+      : null;
+  const geometryExactPositionTopologyStale =
+    geometryExactPositionTopology != null &&
+    geometrySelectedSceneObject?.id === geometryExactPositionTopology.objectId &&
+    geometryExactPositionTopologyCurrent == null;
   const geometryEulerSceneMeshCounts = useMemo(() => {
     if (!proceduralMeshSet.meshes.length) return null;
     let c0 = 0;
@@ -25265,11 +25358,12 @@ const App: React.FC = () => {
   );
   const geometryVisibleContextualViewportPreview = useMemo(
     () =>
+      cancelledGeometryPreviewKey ? null :
       applyContextualViewportPreviewAccessibility(
         geometryAppliedContextualViewportPreview?.preview ?? geometryContextualViewportPreview,
         commandPreviewHighVisibility
       ),
-    [commandPreviewHighVisibility, geometryAppliedContextualViewportPreview, geometryContextualViewportPreview]
+    [cancelledGeometryPreviewKey, commandPreviewHighVisibility, geometryAppliedContextualViewportPreview, geometryContextualViewportPreview]
   );
   const geometryArmedLineOperationPreviewGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
     if (geometryMode !== "procedural" || geometryArmedLineOperation !== "extend") return null;
@@ -26986,6 +27080,18 @@ const App: React.FC = () => {
         addEvalPoint(endpoint, object.type === "vertex-normal-endpoint" ? GEOMETRY_VISUAL_LANGUAGE.analysis : 0x7c3aed, 0.088);
         addEvalGroup([[vertex, endpoint]], object.type === "vertex-normal-endpoint" ? 0x16a34a : 0x7c3aed, 0.94, 1.9);
         finish("valid", endpoint, direction);
+        continue;
+      }
+
+      if (object.type === "mesh-edge-loop-polyline") {
+        const points = (object.sourceLoopVertexIndices ?? []).map((index) => getVertex(index));
+        if (points.length < 2 || points.some((point) => !point)) {
+          finish("stale", null, null, "broken-source", "A source edge-loop vertex is missing. Relink or detach this polyline.");
+          continue;
+        }
+        const line = points as GeometryProbePoint[];
+        addEvalGroup([line], 0x0ea5e9, 0.94, 1.9);
+        finish("valid", line[0], null);
         continue;
       }
 
@@ -34297,6 +34403,28 @@ const App: React.FC = () => {
   }, []);
   const meshPromotionSnapshotCounterRef = useRef<Map<string, number>>(new Map());
   const [meshPromotionTrace, setMeshPromotionTrace] = useState<MeshPromotionTraceState | null>(null);
+  const [meshDerivedSourceLink, setMeshDerivedSourceLink] = useState<{ objectId: string; sourceRef: SurfaceMeshSource } | null>(null);
+  const meshDerivedRegionLinks = useMemo(() => geometryDatasetMeshObjects.flatMap((object) =>
+    object.derivedRegion ? [{ resultId: object.id, ...object.derivedRegion }] : []
+  ), [geometryDatasetMeshObjects]);
+  const [meshDerivedGeometryKind, setMeshDerivedGeometryKind] = useState<MeshDerivedGeometryKind>("bounding-box");
+  const [meshEditToolsOpen, setMeshEditToolsOpen] = useState(false);
+  const [meshComponentBrowserKind, setMeshComponentBrowserKind] = useState<"face" | "edge" | "vertex">("face");
+  const [meshComponentBrowserQuery, setMeshComponentBrowserQuery] = useState("");
+  const [meshComponentBrowserOpen, setMeshComponentBrowserOpen] = useState(false);
+  const [meshRegionShape, setMeshRegionShape] = useState<"box" | "lasso" | null>(null);
+  const [meshRegionVisibility, setMeshRegionVisibility] = useState<"frontmost" | "through" | "xray">("frontmost");
+  const [linkedMeshModifiers, setLinkedMeshModifiers] = useState<readonly LinkedMeshModifier[]>(() => {
+    const history = initialSurfaceMeshTopologySession?.history ?? [];
+    const settings = initialSurfaceMeshTopologySession?.modifierSettings ?? [];
+    const entries = new Map(history.map((step) => [step.id, step]));
+    const ordered = settings.filter((item) => entries.has(item.id)).map((item) => ({ id: item.id, definition: entries.get(item.id)!.definition,
+      sourceConnectivity: item.sourceConnectivity ?? meshConnectivityKey(entries.get(item.id)!.beforeSnapshot), enabled: item.enabled }));
+    const known = new Set(ordered.map((item) => item.id));
+    return [...ordered, ...history.slice().reverse().filter((item) => !known.has(item.id)).map((item) => ({ id: item.id, definition: item.definition,
+      sourceConnectivity: meshConnectivityKey(item.beforeSnapshot), enabled: true }))];
+  });
+  const [linkedModifierResults, setLinkedModifierResults] = useState<readonly LinkedMeshModifierResult[]>([]);
   const [meshPromotionStatus, setMeshPromotionStatus] = useState<string | null>(null);
   const [volumeDatasetOverride, setVolumeDatasetOverride] = useState<VolumeDataset | null>(null);
   const [volumeDistanceBusy, setVolumeDistanceBusy] = useState(false);
@@ -34594,8 +34722,49 @@ const App: React.FC = () => {
   }, [volumeScalarRange]);
   const activeDataset = datasetKind === "volume" ? volumeDataset : null;
   const surfaceMeshData = meshDataset?.mesh ?? null;
+  const meshComponentBrowserIds = useMemo(() => {
+    if (!meshComponentBrowserOpen || !surfaceMeshData) return [] as string[];
+    const query = meshComponentBrowserQuery.trim();
+    if (meshComponentBrowserKind === "edge") {
+      const topology = buildMeshEdgeTopology(surfaceMeshData);
+      return query ? [...topology.edges.keys()].filter((id) => id.includes(query)).slice(0, 100)
+        : [...topology.edges.keys()].slice(0, 100);
+    }
+    const count = meshComponentBrowserKind === "face" ? surfaceMeshTriangleCount(surfaceMeshData)
+      : Math.floor(surfaceMeshData.positions.length / 3);
+    if (/^\d+$/.test(query)) {
+      const index = Number(query);
+      return index >= 0 && index < count ? [String(index)] : [];
+    }
+    return Array.from({ length: Math.min(count, 100) }, (_, index) => String(index));
+  }, [meshComponentBrowserKind, meshComponentBrowserOpen, meshComponentBrowserQuery, surfaceMeshData]);
   const surfaceMeshDataRef = useRef(surfaceMeshData);
   surfaceMeshDataRef.current = surfaceMeshData;
+  const lastMeshDerivedSourceSyncRef = useRef<SurfaceMeshData | null>(null);
+  useEffect(() => {
+    if (!meshDerivedSourceLink || !surfaceMeshData || surfaceMeshData.source !== meshDerivedSourceLink.sourceRef) return;
+    if (lastMeshDerivedSourceSyncRef.current === surfaceMeshData) return;
+    lastMeshDerivedSourceSyncRef.current = surfaceMeshData;
+    setGeometryDatasetMeshObjects((current) => current.map((item) => item.id === meshDerivedSourceLink.objectId
+      ? { ...item, mesh: toDetachedMeshData(surfaceMeshData, item.name) } : item));
+    setGeometryObjectRevisionById((current) => ({ ...current,
+      [meshDerivedSourceLink.objectId]: (current[meshDerivedSourceLink.objectId] ?? 0) + 1 }));
+  }, [meshDerivedSourceLink, surfaceMeshData]);
+  useEffect(() => {
+    const updates = meshDerivedRegionLinks.flatMap((entry) => {
+      const source = geometryDatasetMeshObjects.find((object) => object.id === entry.sourceObjectId);
+      const refreshed = refreshMeshFaceRegionLink(entry, source?.mesh ?? null,
+        geometryObjectRevisionById[entry.sourceObjectId] ?? 0);
+      return refreshed ? [{ resultId: entry.resultId, ...refreshed }] : [];
+    });
+    if (!updates.length) return;
+    const byResultId = new Map(updates.map((update) => [update.resultId, update]));
+    setGeometryDatasetMeshObjects((current) => current.map((object) => {
+      const update = byResultId.get(object.id);
+      return update ? { ...object, mesh: update.mesh ? toDetachedMeshData(update.mesh, object.name) : object.mesh,
+        derivedRegion: update.link } : object;
+    }));
+  }, [geometryDatasetMeshObjects, geometryObjectRevisionById, meshDerivedRegionLinks]);
   const currentSdfSignEvidence = qualifySdfSignEvidence(
     volumeDataset.sdf?.sign ?? volumeSdfDiagnostics,
     volumeDataset.sdf?.sourceMeshFingerprint ?? volumeSdfDiagnosticsFingerprint,
@@ -34817,9 +34986,46 @@ const App: React.FC = () => {
       uvs: resolved.mesh.uvs ? Float32Array.from(resolved.mesh.uvs) : null,
       source,
     };
+    const carryDerivedSourceLink = () => {
+      const derivedLink = meshDerivedSourceLink;
+      if (derivedLink && derivedLink.sourceRef === surfaceMeshData?.source) {
+        setMeshDerivedSourceLink({ objectId: derivedLink.objectId, sourceRef: source });
+      }
+    };
+    if (linkedMeshModifiers.length && !trace.frozen) {
+      const replay = replayLinkedMeshModifiers(refreshedBase, linkedMeshModifiers);
+      setLinkedModifierResults(replay.results);
+      if (!replay.ok) {
+        const failure = replay.results.find((item) => item.status === "failed");
+        setMeshPromotionStatus(`Modifier replay blocked at ${failure?.id ?? "unknown"}: ${failure?.reason ?? "invalid target"}. Disable, repair, bake, or detach the modifier stack.`);
+        return;
+      }
+      const refreshed = cloneSurfaceMeshData(replay.mesh, trace.snapshotLabel);
+      carryDerivedSourceLink();
+      setMeshDataset(applySurfaceMeshOps(refreshed));
+      setSurfaceMeshTopologyHistory((history) => history.map((step) => {
+        const result = replay.results.find((item) => item.id === step.id);
+        if (!result) return step;
+        const count = (mesh: SurfaceMeshData) => ({ vertexCount: Math.floor(mesh.positions.length / 3), faceCount: surfaceMeshTriangleCount(mesh) });
+        return { ...step, beforeSnapshot: result.before, snapshot: result.after,
+          beforeCounts: count(result.before), afterCounts: count(result.after) };
+      }));
+      const relation = getGlobalGeometryMeshRelationStore().relations[trace.relationId];
+      if (relation) registerGlobalGeometryMeshRelation(regenerateGeometryMeshRelation(relation, {
+        nextMeshId: relation.meshId,
+        nextSourceRevision: geometryObjectRevisionById[sourceObject.id] ?? relation.sourceRevision,
+      }));
+      setMeshPromotionTrace((current) => current ? { ...current, promotedAt: Date.now(), initialMeshSignature: geometryMeshTopologySignature(refreshedBase) } : current);
+      setDatasetKind("mesh");
+      setSurfaceViewerKind("mesh");
+      setMode("surfaces");
+      setMeshPromotionStatus(`Replayed ${replay.results.filter((item) => item.status === "applied").length} linked Mesh modifiers on the current Geometry source.`);
+      return;
+    }
     const shouldForkSnapshot = trace.frozen || meshPromotionHasIndependentEdits;
     if (shouldForkSnapshot) {
       const nextSnapshotLabel = beginMeshPromotionTrace(sourceObject.id, sourceObject.name, refreshedBase.label, refreshedBase, geometryObjectRevisionById[sourceObject.id] ?? 0);
+      carryDerivedSourceLink();
       setMeshDataset(applySurfaceMeshOps(cloneSurfaceMeshData(refreshedBase, nextSnapshotLabel)));
       setDatasetKind("mesh");
       setSurfaceViewerKind("mesh");
@@ -34831,6 +35037,7 @@ const App: React.FC = () => {
       return;
     }
     const refreshed = cloneSurfaceMeshData(refreshedBase, trace.snapshotLabel);
+    carryDerivedSourceLink();
     setMeshDataset(applySurfaceMeshOps(refreshed));
     setDatasetKind("mesh");
     setSurfaceViewerKind("mesh");
@@ -34849,11 +35056,26 @@ const App: React.FC = () => {
     setMeshPromotionStatus("Promotion refreshed from current Geometry source.");
   }, [
     beginMeshPromotionTrace,
+    linkedMeshModifiers,
+    meshDerivedSourceLink,
     meshPromotionHasIndependentEdits,
     meshPromotionTrace,
     resolveGeometrySceneMeshById,
     setMeshDataset,
   ]);
+  const lastLinkedModifierReplayRef = useRef<{ relationId: string; revision: number } | null>(null);
+  useEffect(() => {
+    const trace = meshPromotionTrace;
+    if (!trace || trace.frozen || !linkedMeshModifiers.length) return;
+    const relation = getGlobalGeometryMeshRelationStore().relations[trace.relationId];
+    const sourceRevision = geometryObjectRevisionById[trace.sourceGeometryObjectId] ?? 0;
+    if (lastLinkedModifierReplayRef.current?.relationId !== trace.relationId) {
+      lastLinkedModifierReplayRef.current = { relationId: trace.relationId, revision: relation?.sourceRevision ?? sourceRevision };
+    }
+    if (sourceRevision <= lastLinkedModifierReplayRef.current.revision) return;
+    lastLinkedModifierReplayRef.current = { relationId: trace.relationId, revision: sourceRevision };
+    handleRefreshMeshPromotionFromSource();
+  }, [geometryObjectRevisionById, handleRefreshMeshPromotionFromSource, linkedMeshModifiers.length, meshPromotionTrace]);
   const handleToggleMeshPromotionFreeze = useCallback(() => {
     if (!meshPromotionTrace) {
       setMeshPromotionStatus("No active promotion trace to freeze.");
@@ -36158,6 +36380,18 @@ const App: React.FC = () => {
   const [surfaceMeshTopologyHistory, setSurfaceMeshTopologyHistory] = useState<SurfaceMeshTopologyHistoryEntry[]>(
     initialSurfaceMeshTopologySession?.history ?? []
   );
+  useEffect(() => {
+    setLinkedMeshModifiers((current) => {
+      const definitions = new Map(surfaceMeshTopologyHistory.map((step) => [step.id, step.definition]));
+      const retained = current.filter((item) => definitions.has(item.id))
+        .map((item) => ({ ...item, definition: definitions.get(item.id)! }));
+      const known = new Set(retained.map((item) => item.id));
+      const added = surfaceMeshTopologyHistory.slice().reverse().filter((step) => !known.has(step.id))
+        .map((step) => ({ id: step.id, definition: step.definition, sourceConnectivity: meshConnectivityKey(step.beforeSnapshot), enabled: true }));
+      if (!added.length && retained.length === current.length && retained.every((item, index) => item.definition === current[index].definition)) return current;
+      return [...retained, ...added];
+    });
+  }, [surfaceMeshTopologyHistory]);
   const [meshOperationNodeParameterDrafts, setMeshOperationNodeParameterDrafts] =
     useState<OperationNodeParameterDrafts>({});
   const [meshGeometryRoundTripSource, setMeshGeometryRoundTripSource] = useState<MeshGeometryRoundTripSource | null>(null);
@@ -36186,6 +36420,7 @@ const App: React.FC = () => {
         .slice(0, SURFACE_MESH_TOPOLOGY_PERSIST_HISTORY_LIMIT)
         .map(serializeSurfaceMeshTopologyHistoryEntry),
       selectedHistoryId: selectedSurfaceMeshTopologyHistoryId,
+      modifierSettings: linkedMeshModifiers.map((item) => ({ id: item.id, enabled: item.enabled, sourceConnectivity: item.sourceConnectivity })),
       fields: {
         faceIndex: surfaceMeshTopologyFaceIndex,
         edgeA: surfaceMeshTopologyEdgeA,
@@ -36212,6 +36447,7 @@ const App: React.FC = () => {
     }
   }, [
     selectedSurfaceMeshTopologyHistoryId,
+    linkedMeshModifiers,
     surfaceMeshData,
     surfaceMeshTopologyBevelAmount,
     surfaceMeshTopologyCollapseMode,
@@ -37517,6 +37753,7 @@ const App: React.FC = () => {
         : "Mesh sent to Geometry."
     );
     accentGeometryMeshInfo(id);
+    return id;
   }
 
   useEffect(() => {
@@ -41904,6 +42141,9 @@ const App: React.FC = () => {
         handleStopGeometryCameraTour();
         handleStopSurfacesCameraTour();
         setGeometryProceduralPick(null);
+        setGeometrySelectedObjectId(null);
+        setGeometrySelectionExplicitlyCleared(true);
+        setSceneSelection(null);
         setGeometryProceduralHoverPick(null);
         setGeometryMultiSelectionSet(createUnifiedSelectionSet([]));
         setGeometryHistoryPreviewStepId(null);
@@ -42699,6 +42939,9 @@ const App: React.FC = () => {
     setSurfaceMeshHoverPick(null);
     setSurfaceMeshTopologySelectionCleared(true);
     setMeshMultiSelectionSet(createUnifiedSelectionSet([]));
+    setSceneSelection(null);
+    setGeometrySelectedObjectId(null);
+    setGeometrySelectionExplicitlyCleared(true);
     setSurfaceMeshTopologyFeedback(null);
     setSurfaceMeshTopologyHistoryPreviewId(null);
     setSurfaceMeshTopologyHistoryPreviewMode("after");
@@ -57209,6 +57452,9 @@ case "mobius":
       const meshReady = applySurfaceMeshOps(base);
       setMeshDataset(meshReady);
       clearSurfaceMeshTopologySessionState();
+      handleClearSurfaceMeshTopologyContextSelection();
+      setSurfaceMeshTopologyPickMode("object");
+      setSurfaceMeshTopologySelectionCleared(false);
       setSurfaceMeshImportError(null);
       setDatasetKind("mesh");
       setSurfaceViewerKind("mesh");
@@ -57218,7 +57464,7 @@ case "mobius":
       const msg = err instanceof Error ? err.message : "Failed to build mesh preset.";
       setSurfaceMeshImportError(msg);
     }
-  }, [clearSurfaceMeshTopologySessionState, focusSurfaceMeshViewport]);
+  }, [clearSurfaceMeshTopologySessionState, focusSurfaceMeshViewport, handleClearSurfaceMeshTopologyContextSelection]);
 
   const handleApplySurfaceMeshTopologyDemoPreset = useCallback(
     (presetId: string) => {
@@ -60355,6 +60601,26 @@ case "mobius":
       ]),
     [meshEditingSelectionResult, meshHoverSelectionResult, meshMultiSelectionResults, meshPreviewSelectionResult, meshSelectionResult]
   );
+  const sceneSelectionWorkspaceRef = useRef<"geometry" | "mesh" | null>(null);
+  useEffect(() => {
+    const workspace = mode === "geometry" && geometryMode === "procedural"
+      ? "geometry"
+      : mode === "surfaces" && surfaceViewerKind === "mesh"
+        ? "mesh"
+        : null;
+    if (!workspace) return;
+    // A workbench switch must not replace the committed scene selection with
+    // the destination workbench's previous local pick.
+    if (sceneSelectionWorkspaceRef.current !== workspace && sceneSelectionWorkspaceRef.current !== null) {
+      sceneSelectionWorkspaceRef.current = workspace;
+      return;
+    }
+    sceneSelectionWorkspaceRef.current = workspace;
+    const next = sceneSelectionFromUnified(
+      workspace === "geometry" ? geometryActiveUnifiedSelection : filteredMeshUnifiedSelection
+    );
+    setSceneSelection((current) => JSON.stringify(current) === JSON.stringify(next) ? current : next);
+  }, [filteredMeshUnifiedSelection, geometryActiveUnifiedSelection, geometryMode, mode, surfaceViewerKind]);
   const meshSelectionHighlightOverlays = useMemo(
     () => buildSelectionManagerHighlightOverlays(meshSelectionManager, () => surfaceMeshTopologyViewerMesh),
     [meshSelectionManager, surfaceMeshTopologyViewerMesh]
@@ -60759,11 +61025,12 @@ case "mobius":
   );
   const meshVisibleContextualViewportPreview = useMemo(
     () =>
+      cancelledMeshPreviewKey ? null :
       applyContextualViewportPreviewAccessibility(
         meshAppliedContextualViewportPreview?.preview ?? meshContextualViewportPreview,
         commandPreviewHighVisibility
       ),
-    [commandPreviewHighVisibility, meshAppliedContextualViewportPreview, meshContextualViewportPreview]
+    [cancelledMeshPreviewKey, commandPreviewHighVisibility, meshAppliedContextualViewportPreview, meshContextualViewportPreview]
   );
 
   const surfaceMeshTopologyBreadcrumb = useMemo(() => {
@@ -60803,6 +61070,144 @@ case "mobius":
     setSurfaceMeshTopologyStatus(`Undo Last: reverted ${latest.actionLabel} on ${latest.targetLabel}.`);
     handleChangeViewerKind("mesh");
   }, [appendMeshPromotionOperation, handleChangeViewerKind, setMeshDataset, surfaceMeshTopologyHistory]);
+  const handleApplyLinkedModifierStack = useCallback((next: readonly LinkedMeshModifier[]) => {
+    const base = surfaceMeshTopologyHistory.at(-1)?.beforeSnapshot;
+    if (!base) return;
+    const replay = replayLinkedMeshModifiers(base, next);
+    setLinkedMeshModifiers(next);
+    setLinkedModifierResults(replay.results);
+    if (!replay.ok) {
+      const failure = replay.results.find((item) => item.status === "failed");
+      setSurfaceMeshTopologyStatus(`Modifier ${failure?.id ?? "unknown"} failed: ${failure?.reason ?? "invalid target"}. The current mesh was retained.`);
+      return;
+    }
+    setMeshDataset(cloneSurfaceMeshData(replay.mesh, surfaceMeshData?.label ?? replay.mesh.label), "mesh-modifiers:replay");
+    const resultById = new Map(replay.results.map((item) => [item.id, item]));
+    setSurfaceMeshTopologyHistory((history) => history.filter((entry) => next.some((item) => item.id === entry.id)).map((entry) => {
+      const result = resultById.get(entry.id);
+      if (!result) return entry;
+      const count = (mesh: SurfaceMeshData) => ({ vertexCount: Math.floor(mesh.positions.length / 3), faceCount: surfaceMeshTriangleCount(mesh) });
+      return { ...entry, beforeSnapshot: result.before, snapshot: result.after, beforeCounts: count(result.before), afterCounts: count(result.after) };
+    }));
+    setSurfaceMeshTopologyStatus(`Replayed ${replay.results.filter((item) => item.status === "applied").length} Mesh modifiers.`);
+  }, [setMeshDataset, surfaceMeshData?.label, surfaceMeshTopologyHistory]);
+  type SceneRedoEntry =
+    | { id: string; kind: "mesh"; step: SurfaceMeshTopologyHistoryEntry }
+    | { id: string; kind: "geometry-object"; step: GeometryObjectHistoryStep }
+    | { id: string; kind: "geometry-construction"; step: GeometryConstructionHistoryEntry };
+  const [sceneUndoneOperationIds, setSceneUndoneOperationIds] = useState<string[]>([]);
+  const [sceneRedoStack, setSceneRedoStack] = useState<SceneRedoEntry[]>([]);
+  const sceneOperations = useMemo(() => mergeSceneOperations(
+    geometryRecentActionHistory.map((entry) => ({
+      id: entry.id,
+      at: entry.at,
+      objectId: entry.kind === "object" ? entry.step.sceneEntityId
+        : `geometry:${entry.step.afterDerivedConstructions?.find((item) => item.id === entry.step.resultId)?.sourceObjectId ?? entry.step.resultId ?? entry.step.id}`,
+      objectLabel: entry.kind === "object" ? entry.step.objectName : entry.step.result,
+      componentLabel: entry.kind === "object" ? entry.step.operationTarget : null,
+      action: entry.actionLabel,
+      parameters: entry.parametersLabel ?? null,
+      sourceRepresentation: entry.kind === "object" ? "Parametric Geometry" : "Geometry construction",
+      outputRepresentation: "Evaluated Geometry",
+      revisionBefore: null,
+      revisionAfter: entry.kind === "object" ? geometryObjectRevisionById[entry.step.objectId] ?? null : null,
+      beforeAvailable: true,
+      afterAvailable: true,
+    })),
+    surfaceMeshTopologyHistory.map((entry) => ({
+      id: entry.id,
+      at: entry.at,
+      objectId: entry.beforeSnapshot.source.kind === "geometryObject" && entry.beforeSnapshot.source.objectId
+        ? `geometry:${entry.beforeSnapshot.source.objectId}` : `mesh:${entry.sourceLabel}`,
+      objectLabel: entry.sourceLabel,
+      componentLabel: entry.targetLabel,
+      action: entry.actionLabel,
+      parameters: entry.paramsLabel,
+      sourceRepresentation: "Editable Mesh",
+      outputRepresentation: "Editable Mesh",
+      revisionBefore: null,
+      revisionAfter: null,
+      beforeAvailable: true,
+      afterAvailable: true,
+    })),
+  ), [geometryObjectRevisionById, geometryRecentActionHistory, surfaceMeshTopologyHistory]);
+  const knownSceneOperationIdsRef = useRef(new Set(sceneOperations.map((operation) => operation.id)));
+  useEffect(() => {
+    const known = knownSceneOperationIdsRef.current;
+    const added = sceneOperations.some((operation) => !known.has(operation.id));
+    for (const operation of sceneOperations) known.add(operation.id);
+    if (added) setSceneRedoStack([]);
+  }, [sceneOperations]);
+  const sceneUndoCandidate = nextUndoableSceneOperation(sceneOperations, new Set(sceneUndoneOperationIds));
+  const handleUndoSceneOperation = useCallback(() => {
+    const operation = sceneUndoCandidate;
+    if (!operation) return;
+    if (operation.workspace === "Mesh") {
+      const step = surfaceMeshTopologyHistory.find((entry) => `mesh:${entry.id}` === operation.id);
+      if (!step || surfaceMeshTopologyHistory[0]?.id !== step.id) {
+        setSurfaceMeshTopologyStatus("Undo the newer Mesh edits before this step.");
+        return;
+      }
+      setSceneRedoStack((stack) => [...stack, { id: operation.id, kind: "mesh", step }]);
+      setSceneUndoneOperationIds((ids) => [...ids, operation.id]);
+      undoLatestSurfaceMeshTopologyEdit();
+      return;
+    }
+    const recent = geometryRecentActionHistory.find((entry) => `geometry:${entry.id}` === operation.id);
+    if (!recent) return;
+    if (recent.kind === "construction") {
+      const step = recent.step;
+      if (step.beforeDerivedConstructions) setGeometryDerivedConstructions(step.beforeDerivedConstructions);
+      else if (step.resultId) setGeometryDerivedConstructions((current) => current.filter((item) => item.id !== step.resultId));
+      setGeometryConstructionHistory((current) => current.filter((item) => item.id !== step.id));
+      setSceneRedoStack((stack) => [...stack, { id: operation.id, kind: "geometry-construction", step }]);
+    } else {
+      const step = recent.step;
+      if (geometryLockedObjectIds.has(step.objectId)) return;
+      const history = geometryObjectHistoryById[step.objectId] ?? [];
+      const previous = history[history.findIndex((item) => item.id === step.id) + 1];
+      suppressGeometryHistoryCapture();
+      if (previous) {
+        const snapshot = cloneGeometrySceneObjectSnapshot(previous.snapshot);
+        if ("mesh" in snapshot) {
+          setGeometryDatasetMeshObjects((current) => current.map((item) => item.id === step.objectId ? snapshot : item));
+          setGeometryObjects((current) => current.filter((item) => item.id !== step.objectId));
+        } else {
+          setGeometryObjects((current) => current.map((item) => item.id === step.objectId ? snapshot : item));
+          setGeometryDatasetMeshObjects((current) => current.filter((item) => item.id !== step.objectId));
+        }
+      } else {
+        setGeometryObjects((current) => current.filter((item) => item.id !== step.objectId));
+        setGeometryDatasetMeshObjects((current) => current.filter((item) => item.id !== step.objectId));
+      }
+      setSceneRedoStack((stack) => [...stack, { id: operation.id, kind: "geometry-object", step }]);
+    }
+    setSceneUndoneOperationIds((ids) => [...ids, operation.id]);
+  }, [geometryLockedObjectIds, geometryObjectHistoryById, geometryRecentActionHistory, sceneUndoCandidate, suppressGeometryHistoryCapture, surfaceMeshTopologyHistory, undoLatestSurfaceMeshTopologyEdit]);
+  const handleRedoSceneOperation = useCallback(() => {
+    const redo = sceneRedoStack.at(-1);
+    if (!redo) return;
+    if (redo.kind === "mesh") {
+      setMeshDataset(cloneSurfaceMeshData(redo.step.snapshot, redo.step.snapshot.label), "mesh-topology:scene-redo");
+      setSurfaceMeshTopologyHistory((history) => [redo.step, ...history]);
+      handleChangeViewerKind("mesh");
+    } else if (redo.kind === "geometry-construction") {
+      if (redo.step.afterDerivedConstructions) setGeometryDerivedConstructions(redo.step.afterDerivedConstructions);
+      setGeometryConstructionHistory((history) => [redo.step, ...history]);
+    } else {
+      const snapshot = cloneGeometrySceneObjectSnapshot(redo.step.snapshot);
+      suppressGeometryHistoryCapture();
+      if ("mesh" in snapshot) {
+        setGeometryDatasetMeshObjects((current) => [snapshot, ...current.filter((item) => item.id !== snapshot.id)]);
+        setGeometryObjects((current) => current.filter((item) => item.id !== snapshot.id));
+      } else {
+        setGeometryObjects((current) => [snapshot, ...current.filter((item) => item.id !== snapshot.id)]);
+        setGeometryDatasetMeshObjects((current) => current.filter((item) => item.id !== snapshot.id));
+      }
+    }
+    setSceneRedoStack((stack) => stack.slice(0, -1));
+    setSceneUndoneOperationIds((ids) => ids.filter((id) => id !== redo.id));
+  }, [handleChangeViewerKind, sceneRedoStack, setMeshDataset, suppressGeometryHistoryCapture]);
   const handleOpenMeshContextHistory = useCallback(() => {
     const latest = surfaceMeshTopologyHistory[0] ?? null;
     if (latest) {
@@ -61291,6 +61696,139 @@ case "mobius":
         } attached`
       : "No topology history attached";
 
+  const buildMeshBrowserSelection = useCallback((kind: "face" | "edge" | "vertex", id: string) => {
+    if (!surfaceMeshData) return null;
+    const edge = kind === "edge" ? id.split("-").map(Number) : [];
+    return unifiedSelectionFromMeshTopology({ mode: kind, objectId: `mesh:${surfaceMeshLabel}`,
+      objectLabel: surfaceMeshLabel, meshKey: `mesh:${surfaceMeshLabel}`, mesh: surfaceMeshData,
+      sourceSceneEntityId: surfaceMeshData.source.kind === "geometryObject" && surfaceMeshData.source.objectId
+        ? `geometry:${surfaceMeshData.source.objectId}` : null,
+      faceIndex: kind === "face" ? Number(id) : undefined,
+      edgeVertices: kind === "edge" && edge.length === 2 ? [edge[0], edge[1]] : undefined,
+      vertexIndex: kind === "vertex" ? Number(id) : undefined, valid: true });
+  }, [surfaceMeshData, surfaceMeshLabel]);
+  const handleSelectMeshBrowserComponent = useCallback((id: string, additive: boolean) => {
+    const kind = meshComponentBrowserKind;
+    const selection = buildMeshBrowserSelection(kind, id);
+    if (!selection || !evaluateUnifiedSelectionFilter(selection, unifiedSelectionFilter).accepted) {
+      setSurfaceMeshTopologyStatus("Component is unavailable or excluded by the current selection filter."); return;
+    }
+    setSurfaceMeshTopologyPickMode(kind);
+    setSurfaceMeshTopologySelectionCleared(false);
+    if (selection.faceId != null) setSurfaceMeshTopologyFaceIndex(selection.faceId);
+    if (selection.edgeVertices) { setSurfaceMeshTopologyEdgeA(selection.edgeVertices[0]); setSurfaceMeshTopologyEdgeB(selection.edgeVertices[1]); }
+    if (selection.vertexId != null) setSurfaceMeshTopologyVertexIndex(selection.vertexId);
+    setMeshMultiSelectionSet((current) => createUnifiedSelectionSet(additive ? [...current.items, selection] : [selection]));
+    setSceneSelection(sceneSelectionFromUnified(selection));
+  }, [buildMeshBrowserSelection, meshComponentBrowserKind, unifiedSelectionFilter]);
+  const handleExpandMeshBrowserSelection = useCallback((direction: "grow" | "shrink") => {
+    if (!surfaceMeshData) return;
+    const kind = meshComponentBrowserKind;
+    const ids = meshMultiSelectionSet.items.filter((item) => item.selectionType === kind)
+      .map((item) => sceneSelectionFromUnified(item)?.componentIds[0]).filter((id): id is string => !!id);
+    const graph = buildMeshComponentSelectionGraph(surfaceMeshData, kind);
+    const expanded = direction === "grow" ? growSceneComponents(ids, graph) : shrinkSceneComponents(ids, graph);
+    const selections = expanded.map((id) => buildMeshBrowserSelection(kind, id.slice(kind.length + 1)))
+      .filter((item): item is UnifiedSelection => !!item);
+    setMeshMultiSelectionSet(createUnifiedSelectionSet(selections));
+    setSurfaceMeshTopologyStatus(`${direction === "grow" ? "Grew" : "Shrank"} selection to ${selections.length} ${kind} components.`);
+  }, [buildMeshBrowserSelection, meshComponentBrowserKind, meshMultiSelectionSet.items, surfaceMeshData]);
+  const handleSelectMeshScreenRegion = useCallback((ids: readonly string[]) => {
+    const accepted = ids.map((id) => ({ id, selection: buildMeshBrowserSelection(meshComponentBrowserKind, id) }))
+      .filter((item): item is { id: string; selection: UnifiedSelection } =>
+        !!item.selection && evaluateUnifiedSelectionFilter(item.selection, unifiedSelectionFilter).accepted);
+    const selections = accepted.map((item) => item.selection);
+    if (selections.length) {
+      handleSelectMeshBrowserComponent(accepted[0].id, false);
+      setMeshMultiSelectionSet(createUnifiedSelectionSet(selections));
+      setSceneSelection(sceneSelectionFromUnified(selections[0]));
+    }
+    setSurfaceMeshTopologyStatus(`Selected ${selections.length} ${meshComponentBrowserKind} components by ${meshRegionShape ?? "region"}.`);
+    setMeshRegionShape(null);
+  }, [buildMeshBrowserSelection, handleSelectMeshBrowserComponent, meshComponentBrowserKind, meshRegionShape, unifiedSelectionFilter]);
+
+  const handleCreateGeometryFromMesh = useCallback((kind: MeshDerivedGeometryKind) => {
+    const mesh = surfaceMeshData;
+    if (!mesh?.positions.length) { setSurfaceMeshTopologyStatus("Load a Mesh before deriving Geometry."); return; }
+    const selected = filteredMeshUnifiedSelection;
+    const vertexIndex = selected?.selectionType === "vertex" ? selected.vertexId : null;
+    const edge = selected?.selectionType === "edge" ? selected.edgeVertices : null;
+    const faceIndex = selected?.selectionType === "face" ? selected.faceId : null;
+    const edges = meshMultiSelectionSet.items.filter((item) => item.selectionType === "edge" && item.edgeVertices)
+      .map((item) => item.edgeVertices!);
+    if (edge && !edges.some((item) => item[0] === edge[0] && item[1] === edge[1])) edges.push(edge);
+    const loop = kind === "edge-loop-polyline" ? meshEdgeLoopVertices(edges) : null;
+    const faces = [...new Set([
+      ...meshMultiSelectionSet.items.filter((item) => item.selectionType === "face" && item.faceId != null).map((item) => item.faceId!),
+      ...(faceIndex == null ? [] : [faceIndex]),
+    ])];
+    if (kind === "vertex-point" && (vertexIndex == null || !meshVertex(mesh, vertexIndex))) {
+      setSurfaceMeshTopologyStatus("Select a valid Mesh vertex first."); return;
+    }
+    if (kind === "edge-line" && (!edge || !meshVertex(mesh, edge[0]) || !meshVertex(mesh, edge[1]))) {
+      setSurfaceMeshTopologyStatus("Select a valid Mesh edge first."); return;
+    }
+    if (kind === "edge-loop-polyline" && (!loop || loop.length < 3)) {
+      setSurfaceMeshTopologyStatus("Select connected Mesh edges for a polyline."); return;
+    }
+    if ((kind === "face-plane" || kind === "face-region-surface") && (faceIndex == null || !meshFaceVertices(mesh, faceIndex))) {
+      setSurfaceMeshTopologyStatus("Select a valid Mesh face first."); return;
+    }
+    const region = kind === "face-region-surface" ? extractMeshFaceRegion(mesh, faces) : null;
+    if (kind === "face-region-surface" && !region) { setSurfaceMeshTopologyStatus("The selected face region is unavailable."); return; }
+    const existingSource = meshDerivedSourceLink?.sourceRef === mesh.source &&
+      geometryDatasetMeshObjects.some((item) => item.id === meshDerivedSourceLink.objectId)
+      ? meshDerivedSourceLink.objectId : null;
+    const sourceObjectId = existingSource ?? handleDatasetToGeometryScene();
+    if (!sourceObjectId) return;
+    if (!existingSource) setMeshDerivedSourceLink({ objectId: sourceObjectId, sourceRef: mesh.source });
+    const common = { sourceObjectId, sourceTopologySignature: geometryMeshTopologySignature(mesh) };
+    if (kind === "vertex-point" && vertexIndex != null) {
+      const point = meshVertex(mesh, vertexIndex)!;
+      appendDerivedConstruction({ ...common, type: "vertex-point-marker", sourceKind: "vertex", sourceVertexIndex: vertexIndex,
+        sourcePoint: point, sourceVertexSignature: { point } });
+    } else if (kind === "edge-line" && edge) {
+      const a = meshVertex(mesh, edge[0])!, b = meshVertex(mesh, edge[1])!;
+      appendDerivedConstruction({ ...common, type: "edge-line-through-two-vertices", sourceKind: "edge",
+        sourceEdgeVertexPair: [edge[0], edge[1]], sourceEdgeSignature: geometryEdgeSignatureFromPoints(a, b) });
+    } else if (kind === "edge-loop-polyline" && loop) {
+      appendDerivedConstruction({ ...common, type: "mesh-edge-loop-polyline", sourceKind: "edge",
+        sourceEdgeVertexPair: [loop[0], loop[1]], sourceLoopVertexIndices: [...loop] });
+    } else if (kind === "face-plane" && faceIndex != null) {
+      const triangle = meshFaceVertices(mesh, faceIndex)!;
+      const a = meshVertex(mesh, triangle[0])!, b = meshVertex(mesh, triangle[1])!, c = meshVertex(mesh, triangle[2])!;
+      appendDerivedConstruction({ ...common, type: "face-plane-through-centroid", sourceKind: "face",
+        sourceFaceIndex: faceIndex, sourceFaceSignature: geometryFaceSignatureFromTriangle(a, b, c) });
+    } else if (kind === "face-region-surface" && region) {
+      const resultId = makeId();
+      const name = `${mesh.label} face region`;
+      const object: GeometryDatasetMeshObject = { id: resultId, name, mesh: toDetachedMeshData(region, name),
+        transform: { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
+        visible: true, material: { color: 0x8aa4ff, opacity: 1 },
+        derivedRegion: { sourceObjectId, faceIndices: faces,
+          sourceRevision: geometryObjectRevisionById[sourceObjectId] ?? 0, status: "linked" } };
+      setGeometryDatasetMeshObjects((current) => [object, ...current]);
+      setGeometrySelectedObjectId(resultId);
+      setGeometryCreateActionStatus(`Created linked Geometry surface from ${faces.length} Mesh face${faces.length === 1 ? "" : "s"}.`);
+    } else {
+      const type = kind === "bounding-box" ? "object-bounding-box"
+        : kind === "principal-axes" ? "object-principal-axes-preview" : "object-symmetry-plane-preview";
+      appendDerivedConstruction({ ...common, type, sourceKind: "object" });
+    }
+  }, [appendDerivedConstruction, filteredMeshUnifiedSelection, geometryDatasetMeshObjects, geometryObjectRevisionById,
+    meshDerivedSourceLink, meshMultiSelectionSet.items, surfaceMeshData]);
+
+  const handleOpenMeshDerivedRegionObject = useCallback((objectId: string) => {
+    const identityId = geometrySceneIdentityIndex.get(sceneEntityId("geometry", objectId))?.id ?? objectId;
+    setGeometrySelectedObjectId(objectId);
+    setGeometryProbeSelectionMode("object");
+    setGeometryProceduralPick(null);
+    setGeometryMultiSelectionSet(createUnifiedSelectionSet([]));
+    setSceneSelection({ objectId: identityId, representationId: identityId, kind: "object",
+      componentIds: [], worldPoint: null, normal: null, sourceWorkspace: "geometry" });
+    setMode("geometry");
+  }, [geometrySceneIdentityIndex]);
+
   const handleOpenMeshRoundTripGeometryObject = useCallback(() => {
     if (!meshGeometryRoundTripSource) {
       setSurfaceMeshTopologyStatus("No Geometry source is attached to this Mesh session.");
@@ -61391,9 +61929,12 @@ case "mobius":
       ...topologyHistoryLabels,
       `Pipeline: ${updateLabel} - ${countsLabel}`,
     ].slice(-20);
+    const linkedSourceGeometryId = target.promotion?.sourceGeometryId === target.id
+      ? null
+      : target.promotion?.sourceGeometryId ?? null;
     const promoted = promoteGeometryToMesh({
       mesh: surfaceMeshData,
-      sourceGeometryId: target.promotion?.sourceGeometryId ?? target.id,
+      sourceGeometryId: linkedSourceGeometryId,
       sourceRevision: target.promotion?.sourceRevision ?? geometryObjectRevisionById[target.id] ?? 0,
       sourceGeometryKind: target.promotion?.sourceGeometryKind ?? "dataset-object",
       tessellationPreset: target.promotion?.tessellationPreset ?? geometryTessellationPreset,
@@ -61465,6 +62006,7 @@ case "mobius":
       });
     }
     setGeometrySelectedObjectId(target.id);
+    setSceneSelection(null);
     setGeometryProceduralPanelTab("object");
     setGeometryMode("procedural");
     setMode("geometry");
@@ -71574,18 +72116,10 @@ case "mobius":
           void handleScreenshot("window");
           return;
         case "edit:undo":
-          if (mode === "geometry") {
-            handleUndoLatestGeometryHistoryStep();
-            return;
-          }
-          if (surfaceViewerKind === "mesh" && surfaceMeshTopologyHistory.length > 0) {
-            undoLatestSurfaceMeshTopologyEdit();
-            return;
-          }
-          notify("No contextual action to undo.");
+          handleUndoSceneOperation();
           return;
         case "edit:redo":
-          notify("Redo is not available for contextual actions yet.");
+          handleRedoSceneOperation();
           return;
         case "edit:copy-equation-config": {
           const payload = {
@@ -71816,7 +72350,8 @@ case "mobius":
       handleSaveWorkbook,
       handleSaveWorkbookAs,
       handleScreenshot,
-      handleUndoLatestGeometryHistoryStep,
+      handleUndoSceneOperation,
+      handleRedoSceneOperation,
       implicitExpr,
       implicitResolution,
       mode,
@@ -71844,7 +72379,6 @@ case "mobius":
       setVolumeViewMode,
       surfaceMeshTopologyHistory.length,
       surfaceViewerKind,
-      undoLatestSurfaceMeshTopologyEdit,
       volumeDims,
       volumePresetId,
       workbooks,
@@ -72512,6 +73046,207 @@ case "mobius":
     setMeshPromotionStatus(`Opened first-class ${relation.role} relation with ${relation.sourceKind} source r${relation.sourceRevision}.`);
   }, [geometryDatasetMeshObjects, resolveGeometrySceneMeshById, setMeshDataset]);
 
+  const sceneEntities = useMemo(() => buildSceneEntities({
+    geometry: [
+      ...geometryObjects.map((object) => ({ id: object.id, name: object.name, revision: geometryObjectRevisionById[object.id] ?? 0, parametric: true })),
+      ...geometryDatasetMeshObjects.map((object) => ({ id: object.id, name: object.name, revision: geometryObjectRevisionById[object.id] ?? 0, parametric: false })),
+    ],
+    meshes: surfaceMeshData ? [{
+      id: surfaceMeshLabel,
+      name: surfaceMeshLabel,
+      sourceGeometryId: surfaceMeshData.source.kind === "geometryObject"
+        ? surfaceMeshData.source.objectId ?? null
+        : meshGeometryRoundTripSource?.objectId ?? null,
+      sourceRevision: meshPromotionTrace && surfaceMeshData.source.kind === "geometryObject"
+        && meshPromotionTrace.sourceGeometryObjectId === surfaceMeshData.source.objectId
+        ? getGlobalGeometryMeshRelationStore().relations[meshPromotionTrace.relationId]?.sourceRevision ?? null
+        : null,
+      modified: surfaceMeshTopologyHistory.length > 0,
+      detached: surfaceMeshData.source.kind === "detachedMesh",
+      invalid: Boolean(surfaceMeshData.validation && !surfaceMeshData.validation.ok),
+    }] : [],
+    relations: Object.values(getGlobalGeometryMeshRelationStore().relations),
+  }), [geometryObjects, geometryDatasetMeshObjects, geometryObjectRevisionById, surfaceMeshData, surfaceMeshLabel, meshGeometryRoundTripSource?.objectId, meshPromotionTrace, surfaceMeshTopologyHistory.length]);
+  const sceneEntityById = useMemo(() => new Map(sceneEntities.map((entity) => [entity.id, entity])), [sceneEntities]);
+  const handleSaveNamedSceneSelection = useCallback((name: string) => {
+    if (!sceneSelection) return;
+    const revision = sceneSelection.objectId.startsWith("geometry:")
+      ? geometryObjectRevisionById[sceneSelection.objectId.slice("geometry:".length)] ?? null : null;
+    const localSet = mode === "geometry" ? geometryMultiSelectionSet : meshMultiSelectionSet;
+    const componentIds = localSet.items.flatMap((item) => sceneSelectionFromUnified(item)?.componentIds ?? []);
+    const selection = componentIds.length ? { ...sceneSelection, componentIds: [...new Set(componentIds)] } : sceneSelection;
+    setNamedSceneSelections((sets) => saveNamedSceneSelection(sets, name, selection, revision, makeId()));
+  }, [geometryMultiSelectionSet, geometryObjectRevisionById, meshMultiSelectionSet, mode, sceneSelection]);
+  const handleRestoreNamedSceneSelection = useCallback((id: string) => {
+    const set = namedSceneSelections.find((entry) => entry.id === id);
+    if (!set) return;
+    const representation = activeRepresentationByEntity[set.selection.objectId] ?? set.selection.representationId;
+    const transfer = restoreNamedSceneSelection(set, representation ?? "", []);
+    setSceneSelection(transfer.selection);
+    if (mode === "surfaces" && surfaceViewerKind === "mesh" && transfer.selection.kind !== "object") {
+      const selections = transfer.selection.componentIds.map((componentId) => {
+        const [kind, id] = componentId.split(":", 2);
+        return kind === "face" || kind === "edge" || kind === "vertex" ? buildMeshBrowserSelection(kind, id) : null;
+      }).filter((item): item is UnifiedSelection => !!item);
+      if (selections.length) {
+        setMeshMultiSelectionSet(createUnifiedSelectionSet(selections));
+        const active = selections.at(-1)!;
+        setSurfaceMeshTopologyPickMode(active.selectionType as SurfaceMeshTopologyPickMode);
+        setSurfaceMeshTopologySelectionCleared(false);
+        if (active.faceId != null) setSurfaceMeshTopologyFaceIndex(active.faceId);
+        if (active.edgeVertices) { setSurfaceMeshTopologyEdgeA(active.edgeVertices[0]); setSurfaceMeshTopologyEdgeB(active.edgeVertices[1]); }
+        if (active.vertexId != null) setSurfaceMeshTopologyVertexIndex(active.vertexId);
+      }
+    }
+    if (transfer.notice) setGeometryCreateActionStatus(transfer.notice);
+  }, [activeRepresentationByEntity, buildMeshBrowserSelection, mode, namedSceneSelections, setGeometryCreateActionStatus, surfaceViewerKind]);
+  const handleDeleteNamedSceneSelection = useCallback((id: string) => {
+    setNamedSceneSelections((sets) => sets.filter((entry) => entry.id !== id));
+  }, []);
+  const lastGeometryMeshWorkspaceRef = useRef<"geometry" | "mesh" | null>(null);
+  useEffect(() => {
+    const workspace = mode === "geometry" && geometryMode === "procedural"
+      ? "geometry"
+      : mode === "surfaces" && surfaceViewerKind === "mesh"
+        ? "mesh"
+        : null;
+    if (!workspace) return;
+    const previous = lastGeometryMeshWorkspaceRef.current;
+    lastGeometryMeshWorkspaceRef.current = workspace;
+    if (!previous || previous === workspace || !sceneSelection?.objectId.startsWith("geometry:")) return;
+    const sourceId = sceneSelection.objectId.slice("geometry:".length);
+    if (workspace === "mesh") {
+      if (meshGeometryRoundTripSource?.objectId === sourceId) return;
+      if (surfaceMeshData?.source.kind === "geometryObject" && surfaceMeshData.source.objectId === sourceId) return;
+      if (!bakeGeometryObjectToDatasetById(sourceId)) {
+        setSurfaceMeshTopologyStatus("The selected Geometry object cannot be opened as a Mesh representation.");
+      }
+      return;
+    }
+    if (meshPromotionTrace?.sourceGeometryObjectId === sourceId && geometryMeshSemanticSelectionLink?.geometry) {
+      handleOpenMeshPromotionSourceGeometryObject();
+    } else if (resolveGeometrySceneObjectById(sourceId)) {
+      setGeometrySelectedObjectId(sourceId);
+    }
+  }, [bakeGeometryObjectToDatasetById, geometryMeshSemanticSelectionLink, geometryMode, handleOpenMeshPromotionSourceGeometryObject, meshGeometryRoundTripSource?.objectId, meshPromotionTrace?.sourceGeometryObjectId, mode, resolveGeometrySceneObjectById, sceneSelection?.objectId, surfaceMeshData, surfaceViewerKind]);
+  useEffect(() => {
+    if (!sceneSelection) return;
+    const entity = sceneEntityById.get(sceneSelection.objectId);
+    const representation = mode === "geometry"
+      ? entity?.representations.find((entry) => entry.kind !== "editable-mesh")
+      : mode === "surfaces" && surfaceViewerKind === "mesh"
+        ? entity?.representations.find((entry) => entry.id === `mesh:${surfaceMeshLabel}`)
+        : null;
+    if (!entity || !representation) return;
+    setActiveRepresentationByEntity((current) => current[entity.id] === representation.id
+      ? current
+      : { ...current, [entity.id]: representation.id });
+  }, [mode, sceneEntityById, sceneSelection, surfaceMeshLabel, surfaceViewerKind]);
+  const handleSceneRepresentationAction = useCallback((action: SceneRepresentationAction) => {
+    const logicalId = sceneSelection?.objectId ?? (geometrySelectedObjectId ? `geometry:${geometrySelectedObjectId}` : null);
+    const sourceId = logicalId?.startsWith("geometry:")
+      ? logicalId.slice("geometry:".length)
+      : surfaceMeshData?.source.kind === "geometryObject"
+        ? surfaceMeshData.source.objectId ?? null
+        : meshGeometryRoundTripSource?.objectId ?? null;
+    const source = sourceId ? resolveGeometrySceneObjectById(sourceId) : null;
+    if (action === "Detach Mesh") {
+      if (!surfaceMeshData) {
+        setSurfaceMeshTopologyStatus("No active mesh is available to detach.");
+        return;
+      }
+      const detached = toDetachedMeshData(surfaceMeshData, surfaceMeshData.label);
+      setMeshDataset(detached, "mesh:detach");
+      setMeshGeometryRoundTripSource(null);
+      setGeometryMeshSemanticSelectionLink(null);
+      setSceneSelection((current) => current ? { ...current, objectId: `mesh:${detached.label}`, representationId: `mesh:${detached.label}` } : null);
+      setSurfaceMeshTopologyStatus(`Detached mesh: ${detached.label}. Geometry source remains available in its history.`);
+      return;
+    }
+    if (!source) {
+      setGeometryCreateActionStatus("The Geometry source is unavailable for this action.");
+      return;
+    }
+    if (action === "Edit Definition" || action === "Edit Geometry" || action === "Return to Source") {
+      if (meshPromotionTrace?.sourceGeometryObjectId === source.id && geometryMeshSemanticSelectionLink?.geometry) {
+        handleOpenMeshPromotionSourceGeometryObject();
+        setGeometryRightPanelTab("selection");
+        return;
+      }
+      setGeometrySelectedObjectId(source.id);
+      setGeometryMode("procedural");
+      setGeometryProceduralPanelTab("object");
+      setGeometryRightPanelTab("selection");
+      setMode("geometry");
+      setGeometryCreateActionStatus(`${action}: ${source.name}.`);
+      return;
+    }
+    if (action === "Edit Mesh" && surfaceMeshData?.source.kind === "geometryObject" && surfaceMeshData.source.objectId === source.id) {
+      setDatasetKind("mesh");
+      setSurfaceViewerKind("mesh");
+      skipSurfacesAutoBrowseOnModeChangeRef.current = true;
+      setSurfacesPanelState("work");
+      setSurfacesLeftTab("scene");
+      setMeshWorkspaceLeftTab("topology");
+      setSurfacesWorkGalleryOpen(false);
+      setMeshEditToolsOpen(true);
+      setMode("surfaces");
+      return;
+    }
+    if (action === "Generate Mesh" && surfaceMeshTopologyHistory.length && surfaceMeshData?.source.kind === "geometryObject" && surfaceMeshData.source.objectId === source.id) {
+      setSurfaceMeshTopologyStatus("The active mesh has topology edits. Detach it before generating a replacement.");
+      return;
+    }
+    if (action === "Update Mesh") {
+      if (surfaceMeshTopologyHistory.length && surfaceMeshData?.source.kind === "geometryObject" && surfaceMeshData.source.objectId === source.id) {
+        if (linkedMeshModifiers.length && meshPromotionTrace?.sourceGeometryObjectId === source.id) {
+          handleRefreshMeshPromotionFromSource();
+        } else {
+          setSurfaceMeshTopologyStatus("This linked mesh has topology edits without replayable modifiers. Detach it before replacing it from Geometry.");
+        }
+        return;
+      }
+      const relation = Object.values(getGlobalGeometryMeshRelationStore().relations)
+        .find((entry) => entry.sourceGeometryId === source.id && entry.status === "stale");
+      if (relation) handleRegenerateGeometryMeshRelation(relation);
+    }
+    if (!bakeGeometryObjectToDatasetById(source.id)) {
+      setGeometryCreateActionStatus(`${action} could not open a mesh for ${source.name}.`);
+    }
+  }, [bakeGeometryObjectToDatasetById, geometryMeshSemanticSelectionLink, geometrySelectedObjectId, handleOpenMeshPromotionSourceGeometryObject, handleRefreshMeshPromotionFromSource, handleRegenerateGeometryMeshRelation, linkedMeshModifiers.length, meshGeometryRoundTripSource?.objectId, meshPromotionTrace?.sourceGeometryObjectId, resolveGeometrySceneObjectById, sceneSelection?.objectId, setMeshDataset, surfaceMeshData, surfaceMeshTopologyHistory.length]);
+  const handleOpenSceneOperation = useCallback((operation: SceneOperation, side: "source" | "result") => {
+    const geometryId = operation.objectId.startsWith("geometry:") ? operation.objectId.slice("geometry:".length) : null;
+    if (side === "result" && operation.id.startsWith("geometry:construction:")) {
+      const constructionId = operation.id.slice("geometry:construction:".length);
+      const construction = geometryConstructionHistory.find((entry) => entry.id === constructionId);
+      if (construction?.resultId) setGeometrySelectedDerivedConstructionId(construction.resultId);
+    }
+    if (geometryId && (side === "source" || operation.workspace === "Geometry")) {
+      setGeometrySelectedObjectId(geometryId);
+      setSceneSelection((current) => current?.objectId === operation.objectId ? current : {
+        objectId: operation.objectId, representationId: null, kind: "object", componentIds: [],
+        worldPoint: null, normal: null, sourceWorkspace: "geometry",
+      });
+      setGeometryMode("procedural");
+      setGeometryProceduralPanelTab("history");
+      setMode("geometry");
+      return;
+    }
+    skipSurfacesAutoBrowseOnModeChangeRef.current = true;
+    setDatasetKind("mesh");
+    setSurfaceViewerKind("mesh");
+    setSurfacesPanelState("work");
+    setSurfacesLeftTab("scene");
+    setMeshWorkspaceLeftTab("topology");
+    setSurfacesWorkGalleryOpen(false);
+    setMeshEditToolsOpen(true);
+    setMode("surfaces");
+    setSurfaceMeshTopologyStatus(`${side === "source" ? "Source" : "Result"}: ${operation.action} on ${operation.objectLabel}.`);
+    setSceneSelection((current) => current?.objectId === operation.objectId ? current : {
+      objectId: operation.objectId, representationId: `mesh:${surfaceMeshLabel}`, kind: "object", componentIds: [],
+      worldPoint: null, normal: null, sourceWorkspace: "mesh",
+    });
+  }, [geometryConstructionHistory, surfaceMeshLabel]);
   const unifiedObjectModel = useMemo(() => {
     const raw: Array<Omit<UnifiedObjectNode, "derivedProductIds">> = [];
     const addRaw = (node: Omit<UnifiedObjectNode, "derivedProductIds">) => {
@@ -72533,6 +73268,7 @@ case "mobius":
         sceneRole: "primaryObject",
         objectRefId: obj.id,
         sceneIdentity,
+        representationBadges: sceneEntityById.get(`geometry:${obj.id}`)?.representations.map((representation) => representation.kind === "editable-mesh" ? "Mesh" : "Geometry"),
         sourceVersion: sceneIdentity?.revision,
         provenanceSource: sceneIdentity?.sourceKind,
         visible: obj.visible,
@@ -72567,6 +73303,7 @@ case "mobius":
         sceneRole: meshSceneRole,
         objectRefId: obj.id,
         sceneIdentity,
+        representationBadges: sceneEntityById.get(`geometry:${obj.id}`)?.representations.map((representation) => representation.kind === "editable-mesh" ? "Mesh" : "Geometry"),
         sourceVersion: sceneIdentity?.revision,
         provenanceSource: sceneIdentity?.sourceKind,
         linkedObjectIds: sceneIdentity?.dependencyIds.flatMap((dependencyId) => {
@@ -73095,6 +73832,7 @@ case "mobius":
     geometryObjects,
     geometryDatasetMeshObjects,
     geometrySceneIdentityIndex,
+    sceneEntityById,
     datasetKind,
     surfaceViewerKind,
     activeEqSurfaceId,
@@ -75393,6 +76131,14 @@ case "mobius":
     () => geometryProfessionalActiveIds(geometryMode, geometryProceduralPanelTab),
     [geometryMode, geometryProceduralPanelTab]
   );
+  const handleGeometryPickModeChange = useCallback((pickMode: GeometryProbeSelectionMode) => {
+    setGeometryProbeSelectionMode(pickMode);
+    setGeometryProceduralHoverPick(null);
+    setGeometryRightPanelTab("selection");
+    if (pickMode === "face") setGeometryActiveOperationInputSlotId("source-face");
+    if (pickMode === "edge") setGeometryActiveOperationInputSlotId("active-edge");
+    if (pickMode === "vertex") setGeometryActiveOperationInputSlotId("active-vertex");
+  }, []);
   const openGeometryProfessionalDestination = useCallback(
     (destination: GeometryProfessionalDestination) => {
       if (destination.kind === "mode") {
@@ -75406,7 +76152,10 @@ case "mobius":
       }
       setGeometryMode("procedural");
       setGeometryProceduralPanelTab(destination.panel);
-      if (destination.panel === "analysis") prepareGeometryCompareFromSelected();
+      if (destination.panel === "analysis") {
+        setGeometryAnalysisActiveCommand("compare");
+        prepareGeometryCompareFromSelected();
+      }
     },
     [geometryScratchSceneSeed, openGeometryWorkbookMode, prepareGeometryCompareFromSelected]
   );
@@ -75473,6 +76222,7 @@ case "mobius":
       if (stepId === "analyze") {
         setGeometryMode("procedural");
         setGeometryProceduralPanelTab("analysis");
+        setGeometryAnalysisActiveCommand("compare");
         prepareGeometryCompareFromSelected();
         return;
       }
@@ -75500,7 +76250,17 @@ case "mobius":
     const openProceduralPanel = (panel: GeometryProceduralPanelTab, options?: { compare?: boolean }) => () => {
       setGeometryMode("procedural");
       setGeometryProceduralPanelTab(panel);
-      if (options?.compare) prepareGeometryCompareFromSelected();
+      if (options?.compare) {
+        setGeometryAnalysisActiveCommand("compare");
+        prepareGeometryCompareFromSelected();
+      }
+    };
+    const openAnalysisSection = (target: "measurements" | "gaussian" | "curvature") => () => {
+      setGeometryMode("procedural");
+      setGeometryProceduralPanelTab("analysis");
+      setGeometryAnalysisActiveCommand(target);
+      setGeometryAnalysisFocusTarget(target);
+      if (target === "gaussian") setGeometrySampledFieldQuantity("K");
     };
     const openPlacementTarget = (target: GeometryCreatePlacementTarget) => () => {
       setGeometryMode("procedural");
@@ -75613,15 +76373,15 @@ case "mobius":
           key: "compare",
           label: "Compare",
           panel: "analysis",
-          active: geometryProceduralPanelTab === "analysis",
+          active: geometryProceduralPanelTab === "analysis" && geometryAnalysisActiveCommand === "compare",
           onClick: openProceduralPanel("analysis", { compare: true }),
         },
-        { key: "measurements", label: "Measurements", panel: "theory", onClick: openProceduralPanel("theory") },
+        { key: "measurements", label: "Measurements", panel: "analysis", active: geometryProceduralPanelTab === "analysis" && geometryAnalysisActiveCommand === "measurements", onClick: openAnalysisSection("measurements") },
         { key: "demonstrations", label: "Demonstrations", panel: "demonstrations", onClick: openProceduralPanel("demonstrations") },
-        { key: "gaussian", label: "Gaussian", panel: "analysis", onClick: openProceduralPanel("analysis", { compare: true }) },
-        { key: "curvature", label: "Curvature", panel: "analysis", onClick: openProceduralPanel("analysis", { compare: true }) },
+        { key: "gaussian", label: "Gaussian K", panel: "analysis", active: geometryProceduralPanelTab === "analysis" && geometryAnalysisActiveCommand === "gaussian", onClick: openAnalysisSection("gaussian") },
+        { key: "curvature", label: "Surface curvature", panel: "analysis", active: geometryProceduralPanelTab === "analysis" && geometryAnalysisActiveCommand === "curvature", onClick: openAnalysisSection("curvature") },
         { key: "topology", label: "Topology", panel: "euler", onClick: openProceduralPanel("euler") },
-        { key: "reports", label: "Reports", panel: "history", onClick: openProceduralPanel("history") },
+        { key: "reports", label: "History", panel: "history", onClick: openProceduralPanel("history") },
         { key: "view", label: "View", panel: "view", onClick: openProceduralPanel("view") },
       ];
     }
@@ -75649,6 +76409,7 @@ case "mobius":
   }, [
     handleToggleGeometryGizmoMode,
     geometryAddEnterPlacementMode,
+    geometryAnalysisActiveCommand,
     geometryCreatePlacementTarget,
     geometryGizmoEnabled,
     geometryGizmoMode,
@@ -77599,6 +78360,28 @@ case "mobius":
     unifiedObjectModel.nodeById.get(unifiedSelectedNode.parentId)?.name
       ? `Source object: ${unifiedObjectModel.nodeById.get(unifiedSelectedNode.parentId)?.name}`
       : null;
+  const geometryOperationParameters: Record<string, string | number | boolean> = geometryProbeSelectionMode === "face"
+    ? { distance: geometryFaceExtrudeDistance }
+    : geometryProbeSelectionMode === "edge"
+      ? { ratio: geometryEdgeSplitRatio }
+      : geometryProbeSelectionMode === "vertex"
+        ? { amount: geometryVertexMoveAmount }
+        : {};
+  const meshOperationParameters: Record<string, string | number | boolean> = surfaceMeshTopologyPickMode === "face"
+    ? { operation: surfaceMeshTopologyPreviewOperation, face: selectedSurfaceMeshTopologyFaceId }
+    : surfaceMeshTopologyPickMode === "edge"
+      ? { operation: surfaceMeshTopologyPreviewOperation, edge: selectedSurfaceMeshTopologyEdgeId }
+      : surfaceMeshTopologyPickMode === "vertex"
+        ? { operation: surfaceMeshTopologyPreviewOperation, vertex: selectedSurfaceMeshTopologyVertexId }
+        : {};
+  const geometryOperationPreviewKey = `${geometryCurrentSelectionKey ?? "none"}:${geometryContextToolbarPreviewLabel ?? ""}:${JSON.stringify(geometryOperationParameters)}`;
+  const meshOperationPreviewKey = `${filteredMeshUnifiedSelection ? getUnifiedSelectionKey(filteredMeshUnifiedSelection) ?? "none" : "none"}:${meshContextToolbarPreviewLabel ?? ""}:${JSON.stringify(meshOperationParameters)}`;
+  useEffect(() => {
+    if (cancelledGeometryPreviewKey && cancelledGeometryPreviewKey !== geometryOperationPreviewKey) setCancelledGeometryPreviewKey(null);
+  }, [cancelledGeometryPreviewKey, geometryOperationPreviewKey]);
+  useEffect(() => {
+    if (cancelledMeshPreviewKey && cancelledMeshPreviewKey !== meshOperationPreviewKey) setCancelledMeshPreviewKey(null);
+  }, [cancelledMeshPreviewKey, meshOperationPreviewKey]);
   const surfacesLayoutUsesLeftBrowseWork =
     surfacesLayoutVariant === "layout1" || surfacesLayoutVariant === "layout3" || surfacesLayoutVariant === "layout4";
   const surfacesBrowseUsesCardPresets = surfacesLayoutVariant === "layout3" || surfacesLayoutVariant === "layout4";
@@ -79568,6 +80351,9 @@ case "mobius":
       setDisplayMode("workspace"); setShowRightPanel(true); setRightPanelTab("inspector");
       setSurfacePreviewFocusMode(false); setCleanScreenshotActive(false); setSurfaceDrawerPanel("left");
       setWorkspaceDockLayouts(layouts => ({ ...layouts, mesh: { ...(layouts.mesh ?? recommendedWorkspaceDockLayout("mesh")), leftCollapsed: false, rightCollapsed: false, viewerMaximized: false } }));
+      // This explicit Project target already supplies the mesh. Consume the
+      // workspace transition before the implicit Geometry-selection handoff.
+      lastGeometryMeshWorkspaceRef.current = "mesh";
       setActiveGraph2DTargetId(null); setMode("surfaces"); setDatasetKind("mesh"); setSurfaceViewerKind("mesh");
       setSurfacesPanelState("work"); setSurfacesLeftTab("object"); return true;
     }
@@ -82039,6 +82825,7 @@ case "mobius":
                               type="button"
                               data-testid={`geometry-professional-action-${entry.id}`}
                               onClick={() => handleGeometryProfessionalAction(entry.id, entry.destination)}
+                              title={entry.id === "new" ? "Start a new Geometry scene and clear the current scene." : undefined}
                               aria-pressed={active}
                               aria-expanded={entry.id === "gallery" || entry.id === "new" || entry.id === "more" ? expanded : undefined}
                               style={surfacesModeButtonStyle(active, "actions")}
@@ -84490,6 +85277,15 @@ case "mobius":
                         <span data-testid="mesh-topology-selected-edge">{selectedSurfaceMeshTopologyEdgeLabel}</span>
                         <span data-testid="mesh-topology-selected-vertex">{selectedSurfaceMeshTopologyVertexLabel}</span>
                       </div>
+                      <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }} aria-label="Mesh component pick mode">
+                        {SURFACE_MESH_TOPOLOGY_PICK_MODES.map((pickMode) => <button key={`compact-mesh-pick-${pickMode}`}
+                          type="button" data-testid={`mesh-topology-compact-pick-${pickMode}`}
+                          aria-pressed={surfaceMeshTopologyPickMode === pickMode}
+                          disabled={!surfaceMeshStats || !unifiedSelectionKindFilters[pickMode]}
+                          onClick={() => handleChangeSurfaceMeshTopologyPickMode(pickMode)}>
+                          {pickMode[0].toUpperCase() + pickMode.slice(1)}
+                        </button>)}
+                      </div>
                       {meshMultiSelectionIdsLabel && (
                         <div
                           data-testid="mesh-topology-multi-selection-ids"
@@ -84559,6 +85355,68 @@ case "mobius":
                         >
                           {meshUnifiedSelectionFilterStatus ?? unifiedSelectionFilterLabel}
                         </div>
+                      </div>
+                      <UnifiedSelectionInspector selection={meshUnifiedInspectorSelection} selectionSet={meshMultiSelectionSet}
+                        sceneSelection={sceneSelection} sceneEntity={sceneEntityById.get(sceneSelection?.objectId ?? "") ?? null}
+                        activeRepresentationId={activeRepresentationByEntity[sceneSelection?.objectId ?? ""]}
+                        onSelectRepresentation={(id) => { if (sceneSelection) setActiveRepresentationByEntity((current) => ({ ...current, [sceneSelection.objectId]: id })); }}
+                        onRepresentationAction={handleSceneRepresentationAction}
+                        representationActions={availableSceneRepresentationActions(sceneEntityById.get(sceneSelection?.objectId ?? "") ?? null, surfaceMeshData ? `mesh:${surfaceMeshLabel}` : null)}
+                        namedSelections={namedSceneSelections} onSaveNamedSelection={handleSaveNamedSceneSelection}
+                        onRestoreNamedSelection={handleRestoreNamedSceneSelection} onDeleteNamedSelection={handleDeleteNamedSceneSelection}
+                        title="Unified selection" materialInfo={meshUnifiedInspectorMaterialInfo} creaseInfo={meshUnifiedInspectorCreaseInfo} />
+                      <SceneHistoryPanel operations={sceneOperations} canUndo={Boolean(sceneUndoCandidate)}
+                        canRedo={sceneRedoStack.length > 0} onUndo={handleUndoSceneOperation} onRedo={handleRedoSceneOperation}
+                        onOpenSource={(operation) => handleOpenSceneOperation(operation, "source")}
+                        onOpenResult={(operation) => handleOpenSceneOperation(operation, "result")} />
+                      <div data-testid="mesh-component-browser" style={{ display: "grid", gap: 5, padding: 7, border: "1px solid #dbeafe", borderRadius: 7 }}>
+                        <button type="button" onClick={() => setMeshComponentBrowserOpen((open) => !open)}>
+                          {meshComponentBrowserOpen ? "Hide" : "Show"} component selection list
+                        </button>
+                        {meshComponentBrowserOpen && <>
+                          <span>Pick hidden or dense components by ID. Ctrl/Shift adds to selection.</span>
+                          <select aria-label="Component kind" value={meshComponentBrowserKind}
+                            onChange={(event) => setMeshComponentBrowserKind(event.target.value as "face" | "edge" | "vertex")}>
+                            <option value="face">Faces</option><option value="edge">Edges</option><option value="vertex">Vertices</option>
+                          </select>
+                          <input aria-label="Component ID filter" value={meshComponentBrowserQuery} placeholder="Index or edge A-B"
+                            onChange={(event) => setMeshComponentBrowserQuery(event.target.value)} />
+                          <div style={{ display: "flex", gap: 4 }}>
+                            <button type="button" onClick={() => handleExpandMeshBrowserSelection("grow")}>Grow</button>
+                            <button type="button" onClick={() => handleExpandMeshBrowserSelection("shrink")}>Shrink</button>
+                          </div>
+                          <div style={{ display: "flex", gap: 4 }}>
+                            <select aria-label="Region visibility" value={meshRegionVisibility}
+                              onChange={(event) => setMeshRegionVisibility(event.target.value as "frontmost" | "through" | "xray")}>
+                              <option value="frontmost">Frontmost</option><option value="through">Through object</option><option value="xray">X-ray</option>
+                            </select>
+                            <button type="button" aria-pressed={meshRegionShape === "box"} onClick={() => setMeshRegionShape(meshRegionShape === "box" ? null : "box")}>Box select</button>
+                            <button type="button" aria-pressed={meshRegionShape === "lasso"} onClick={() => setMeshRegionShape(meshRegionShape === "lasso" ? null : "lasso")}>Lasso select</button>
+                          </div>
+                          {meshRegionShape && <span>Drag on the Mesh viewport to {meshRegionShape} select {meshComponentBrowserKind}s.</span>}
+                          <div style={{ maxHeight: 120, overflow: "auto", display: "flex", gap: 3, flexWrap: "wrap" }}>
+                            {meshComponentBrowserIds.map((id) => <button key={`${meshComponentBrowserKind}:${id}`} type="button"
+                              onClick={(event) => handleSelectMeshBrowserComponent(id, event.ctrlKey || event.metaKey || event.shiftKey)}>{meshComponentBrowserKind} {id}</button>)}
+                          </div>
+                        </>}
+                      </div>
+                      <div data-testid="mesh-derived-geometry" style={{ display: "grid", gap: 5, padding: 7, border: "1px solid #dbeafe", borderRadius: 7 }}>
+                        <strong>Derive Geometry from Mesh</strong>
+                        <select aria-label="Mesh-derived Geometry kind" value={meshDerivedGeometryKind}
+                          onChange={(event) => setMeshDerivedGeometryKind(event.target.value as MeshDerivedGeometryKind)}>
+                          <option value="vertex-point">Point from vertex</option><option value="edge-line">Line from edge</option>
+                          <option value="edge-loop-polyline">Polyline from edge loop</option><option value="face-plane">Plane from planar face</option>
+                          <option value="face-region-surface">Surface from face region</option><option value="bounding-box">Bounding box</option>
+                          <option value="principal-axes">Principal axes</option><option value="symmetry-plane">Symmetry plane</option>
+                        </select>
+                        <button type="button" disabled={!surfaceMeshData?.positions.length}
+                          onClick={() => handleCreateGeometryFromMesh(meshDerivedGeometryKind)}>Create in Geometry</button>
+                        {meshDerivedRegionLinks.map((link) => <div key={link.resultId} style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                          <span>Face region · {link.status}</span>
+                          <button type="button" onClick={() => handleOpenMeshDerivedRegionObject(link.sourceObjectId)}>Source</button>
+                          <button type="button" onClick={() => handleOpenMeshDerivedRegionObject(link.resultId)}>Result</button>
+                          <button type="button" disabled={link.status === "detached"} onClick={() => setGeometryDatasetMeshObjects((current) => current.map((item) => item.id === link.resultId && item.derivedRegion ? { ...item, derivedRegion: { ...item.derivedRegion, status: "detached" } } : item))}>Detach</button>
+                        </div>)}
                       </div>
                       <details
                         data-testid="mesh-topology-advanced-ids"
@@ -84833,6 +85691,33 @@ case "mobius":
                         </div>
                         {surfaceMeshTopologyStatus && (
                           <div style={{ color: "#05603a", fontWeight: 800 }}>{surfaceMeshTopologyStatus}</div>
+                        )}
+                        {meshPromotionTrace && linkedMeshModifiers.length > 0 && (
+                          <div data-testid="linked-mesh-modifiers" style={{ display: "grid", gap: 5, border: "1px solid #bfdbfe", borderRadius: 6, padding: 6 }}>
+                            <strong>Linked Mesh modifiers</strong>
+                            {linkedMeshModifiers.map((modifier, index) => {
+                              const result = linkedModifierResults.find((item) => item.id === modifier.id);
+                              return <div key={modifier.id} style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
+                                <label><input type="checkbox" checked={modifier.enabled} onChange={() => handleApplyLinkedModifierStack(linkedMeshModifiers.map((item) => item.id === modifier.id ? { ...item, enabled: !item.enabled } : item))} />{modifier.definition.operation} · {modifier.definition.target.label}</label>
+                                <span>{result?.status ?? "ready"}{result?.reason ? `: ${result.reason}` : ""}</span>
+                                <button type="button" disabled={index === 0} onClick={() => handleApplyLinkedModifierStack(reorderLinkedMeshModifier(linkedMeshModifiers, modifier.id, -1))}>↑</button>
+                                <button type="button" disabled={index === linkedMeshModifiers.length - 1} onClick={() => handleApplyLinkedModifierStack(reorderLinkedMeshModifier(linkedMeshModifiers, modifier.id, 1))}>↓</button>
+                                <button type="button" onClick={() => previewSurfaceMeshTopologyHistoryEntry(modifier.id)}>Preview</button>
+                                <button type="button" onClick={() => restoreSurfaceMeshTopologyOperationNodeParameters(modifier.id, true)}>Edit parameters</button>
+                                <button type="button" onClick={() => handleApplyLinkedModifierStack(linkedMeshModifiers.filter((item) => item.id !== modifier.id))}>Remove</button>
+                              </div>;
+                            })}
+                            <div style={{ display: "flex", gap: 4 }}>
+                              <button type="button" onClick={handleRefreshMeshPromotionFromSource}>Update from Geometry</button>
+                              <button type="button" onClick={() => {
+                                if (!surfaceMeshData) return;
+                                setMeshDataset(toDetachedMeshData(surfaceMeshData), "mesh-modifiers:bake");
+                                setLinkedMeshModifiers([]); setLinkedModifierResults([]); setSurfaceMeshTopologyHistory([]);
+                                setMeshPromotionTrace(null); setSurfaceMeshTopologyStatus("Baked modifier result into a detached Mesh.");
+                              }}>Bake</button>
+                              <button type="button" onClick={() => handleSceneRepresentationAction("Detach Mesh")}>Detach</button>
+                            </div>
+                          </div>
                         )}
                         <div
                           style={{
@@ -86001,6 +86886,8 @@ case "mobius":
                       </div>
                     </div>
                     <details
+                      open={meshEditToolsOpen}
+                      onToggle={(event) => setMeshEditToolsOpen(event.currentTarget.open)}
                       style={{
                         border: "1px solid #dbe2ea",
                         borderRadius: 10,
@@ -86106,7 +86993,7 @@ case "mobius":
                               }
                               style={{ fontSize: 10, padding: "2px 7px" }}
                             >
-                              Apply this state to Geometry Object
+                              Apply this state to Object
                             </button>
                           </div>
                         </div>
@@ -86196,10 +87083,77 @@ case "mobius":
                         <UnifiedSelectionInspector
                           selection={meshUnifiedInspectorSelection}
                           selectionSet={meshMultiSelectionSet}
+                          sceneSelection={sceneSelection}
+                          sceneEntity={sceneEntityById.get(sceneSelection?.objectId ?? "") ?? null}
+                          activeRepresentationId={activeRepresentationByEntity[sceneSelection?.objectId ?? ""]}
+                          onSelectRepresentation={(id) => {
+                            if (sceneSelection) setActiveRepresentationByEntity((current) => ({ ...current, [sceneSelection.objectId]: id }));
+                          }}
+                          onRepresentationAction={handleSceneRepresentationAction}
+                          representationActions={availableSceneRepresentationActions(sceneEntityById.get(sceneSelection?.objectId ?? "") ?? null, surfaceMeshData ? `mesh:${surfaceMeshLabel}` : null)}
+                          namedSelections={namedSceneSelections} onSaveNamedSelection={handleSaveNamedSceneSelection}
+                          onRestoreNamedSelection={handleRestoreNamedSceneSelection} onDeleteNamedSelection={handleDeleteNamedSceneSelection}
                           title="Unified selection"
                           materialInfo={meshUnifiedInspectorMaterialInfo}
                           creaseInfo={meshUnifiedInspectorCreaseInfo}
                         />
+                        <SceneHistoryPanel operations={sceneOperations} canUndo={Boolean(sceneUndoCandidate)}
+                          canRedo={sceneRedoStack.length > 0} onUndo={handleUndoSceneOperation} onRedo={handleRedoSceneOperation}
+                          onOpenSource={(operation) => handleOpenSceneOperation(operation, "source")}
+                          onOpenResult={(operation) => handleOpenSceneOperation(operation, "result")} />
+                        <div data-testid="mesh-component-browser" style={{ display: "grid", gap: 5, padding: 7, border: "1px solid #dbeafe", borderRadius: 7 }}>
+                          <button type="button" onClick={() => setMeshComponentBrowserOpen((open) => !open)}>
+                            {meshComponentBrowserOpen ? "Hide" : "Show"} component selection list
+                          </button>
+                          {meshComponentBrowserOpen && <>
+                            <span>Pick hidden or dense components by ID. Ctrl/Shift adds to selection.</span>
+                            <select aria-label="Component kind" value={meshComponentBrowserKind}
+                              onChange={(event) => setMeshComponentBrowserKind(event.target.value as "face" | "edge" | "vertex")}>
+                              <option value="face">Faces</option><option value="edge">Edges</option><option value="vertex">Vertices</option>
+                            </select>
+                            <input aria-label="Component ID filter" value={meshComponentBrowserQuery} placeholder="Index or edge A-B"
+                              onChange={(event) => setMeshComponentBrowserQuery(event.target.value)} />
+                            <div style={{ display: "flex", gap: 4 }}>
+                              <button type="button" onClick={() => handleExpandMeshBrowserSelection("grow")}>Grow</button>
+                              <button type="button" onClick={() => handleExpandMeshBrowserSelection("shrink")}>Shrink</button>
+                            </div>
+                            <div style={{ display: "flex", gap: 4 }}>
+                              <select aria-label="Region visibility" value={meshRegionVisibility}
+                                onChange={(event) => setMeshRegionVisibility(event.target.value as "frontmost" | "through" | "xray")}>
+                                <option value="frontmost">Frontmost</option><option value="through">Through object</option><option value="xray">X-ray</option>
+                              </select>
+                              <button type="button" aria-pressed={meshRegionShape === "box"} onClick={() => setMeshRegionShape(meshRegionShape === "box" ? null : "box")}>Box select</button>
+                              <button type="button" aria-pressed={meshRegionShape === "lasso"} onClick={() => setMeshRegionShape(meshRegionShape === "lasso" ? null : "lasso")}>Lasso select</button>
+                            </div>
+                            {meshRegionShape && <span>Drag on the Mesh viewport to {meshRegionShape} select {meshComponentBrowserKind}s.</span>}
+                            <div style={{ maxHeight: 120, overflow: "auto", display: "flex", gap: 3, flexWrap: "wrap" }}>
+                              {meshComponentBrowserIds.map((id) => <button key={`${meshComponentBrowserKind}:${id}`} type="button"
+                                onClick={(event) => handleSelectMeshBrowserComponent(id, event.ctrlKey || event.metaKey || event.shiftKey)}>{meshComponentBrowserKind} {id}</button>)}
+                            </div>
+                          </>}
+                        </div>
+                        <div data-testid="mesh-derived-geometry" style={{ display: "grid", gap: 5, padding: 7, border: "1px solid #dbeafe", borderRadius: 7 }}>
+                          <strong>Derive Geometry from Mesh</strong>
+                          <select aria-label="Mesh-derived Geometry kind" value={meshDerivedGeometryKind}
+                            onChange={(event) => setMeshDerivedGeometryKind(event.target.value as MeshDerivedGeometryKind)}>
+                            <option value="vertex-point">Point from vertex</option>
+                            <option value="edge-line">Line from edge</option>
+                            <option value="edge-loop-polyline">Polyline from edge loop</option>
+                            <option value="face-plane">Plane from planar face</option>
+                            <option value="face-region-surface">Surface from face region</option>
+                            <option value="bounding-box">Bounding box</option>
+                            <option value="principal-axes">Principal axes</option>
+                            <option value="symmetry-plane">Symmetry plane</option>
+                          </select>
+                          <button type="button" disabled={!surfaceMeshData?.positions.length}
+                            onClick={() => handleCreateGeometryFromMesh(meshDerivedGeometryKind)}>Create in Geometry</button>
+                          {meshDerivedRegionLinks.map((link) => <div key={link.resultId} style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                            <span>Face region · {link.status}</span>
+                            <button type="button" onClick={() => handleOpenMeshDerivedRegionObject(link.sourceObjectId)}>Source</button>
+                            <button type="button" onClick={() => handleOpenMeshDerivedRegionObject(link.resultId)}>Result</button>
+                            <button type="button" disabled={link.status === "detached"} onClick={() => setGeometryDatasetMeshObjects((current) => current.map((item) => item.id === link.resultId && item.derivedRegion ? { ...item, derivedRegion: { ...item.derivedRegion, status: "detached" } } : item))}>Detach</button>
+                          </div>)}
+                        </div>
                       </div>
                       <div
                         style={{
@@ -86823,6 +87777,33 @@ case "mobius":
                             <span style={{ fontSize: 10, color: "#475467" }}>{surfaceMeshTopologyHistory.length} steps</span>
                           </span>
                         </div>
+                        {meshPromotionTrace && linkedMeshModifiers.length > 0 && (
+                          <div data-testid="linked-mesh-modifiers" style={{ display: "grid", gap: 5, border: "1px solid #bfdbfe", borderRadius: 6, padding: 6 }}>
+                            <strong>Linked Mesh modifiers</strong>
+                            {linkedMeshModifiers.map((modifier, index) => {
+                              const result = linkedModifierResults.find((item) => item.id === modifier.id);
+                              return <div key={modifier.id} style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
+                                <label><input type="checkbox" checked={modifier.enabled} onChange={() => handleApplyLinkedModifierStack(linkedMeshModifiers.map((item) => item.id === modifier.id ? { ...item, enabled: !item.enabled } : item))} />{modifier.definition.operation} · {modifier.definition.target.label}</label>
+                                <span>{result?.status ?? "ready"}{result?.reason ? `: ${result.reason}` : ""}</span>
+                                <button type="button" disabled={index === 0} onClick={() => handleApplyLinkedModifierStack(reorderLinkedMeshModifier(linkedMeshModifiers, modifier.id, -1))}>↑</button>
+                                <button type="button" disabled={index === linkedMeshModifiers.length - 1} onClick={() => handleApplyLinkedModifierStack(reorderLinkedMeshModifier(linkedMeshModifiers, modifier.id, 1))}>↓</button>
+                                <button type="button" onClick={() => previewSurfaceMeshTopologyHistoryEntry(modifier.id)}>Preview</button>
+                                <button type="button" onClick={() => restoreSurfaceMeshTopologyOperationNodeParameters(modifier.id, true)}>Edit parameters</button>
+                                <button type="button" onClick={() => handleApplyLinkedModifierStack(linkedMeshModifiers.filter((item) => item.id !== modifier.id))}>Remove</button>
+                              </div>;
+                            })}
+                            <div style={{ display: "flex", gap: 4 }}>
+                              <button type="button" onClick={handleRefreshMeshPromotionFromSource}>Update from Geometry</button>
+                              <button type="button" onClick={() => {
+                                if (!surfaceMeshData) return;
+                                setMeshDataset(toDetachedMeshData(surfaceMeshData), "mesh-modifiers:bake");
+                                setLinkedMeshModifiers([]); setLinkedModifierResults([]); setSurfaceMeshTopologyHistory([]);
+                                setMeshPromotionTrace(null); setSurfaceMeshTopologyStatus("Baked modifier result into a detached Mesh.");
+                              }}>Bake</button>
+                              <button type="button" onClick={() => handleSceneRepresentationAction("Detach Mesh")}>Detach</button>
+                            </div>
+                          </div>
+                        )}
                         <div
                           style={{
                             border: "1px solid #dbeafe",
@@ -88407,9 +89388,15 @@ case "mobius":
                                 meshContextToolbarSelectionSummary)
                           }
                           selectionTestId="mesh-context-selection-label"
-                          previewLabel={meshContextToolbarPreviewLabel}
+                          previewLabel={cancelledMeshPreviewKey === meshOperationPreviewKey ? null : meshContextToolbarPreviewLabel}
                           previewTestId="mesh-context-preview"
                           applyPreviewTestId="mesh-context-apply-preview"
+                          operationParameters={meshOperationParameters}
+                          operationWorkspace="mesh"
+                          operationSnapshot={surfaceMeshData ? { label: surfaceMeshData.label, vertices: surfaceMeshData.positions.length / 3, faces: (surfaceMeshData.indices?.length ?? surfaceMeshData.positions.length / 3) / 3 } : null}
+                          operationValidationErrors={meshContextCanRunPrimaryAction ? [] : ["Select a valid Mesh target before applying."]}
+                          onCancelPreview={() => setCancelledMeshPreviewKey(meshOperationPreviewKey)}
+                          onApplyAndContinue={() => { handleRunMeshContextPrimaryAction(); setCancelledMeshPreviewKey(null); }}
                           confirmationLabel={meshContextToolbarConfirmationLabel}
                           confirmationTestId="mesh-context-confirmation"
                           lastCommandLabel={meshContextToolbarLastCommandLabel}
@@ -88688,7 +89675,7 @@ case "mobius":
                           }
                           style={{ fontSize: 10, padding: "2px 7px" }}
                         >
-                          Apply this state to Geometry Object
+                          Apply this state to Object
                         </button>
                       </div>
                     )}
@@ -89063,6 +90050,10 @@ case "mobius":
                         ) : (
                         <SurfaceViewer
                               surfaceId={primarySurfaceId}
+                              meshRegionSelection={surfaceViewerKind === "mesh" && meshRegionShape && surfaceMeshData
+                                ? { mesh: surfaceMeshData, kind: meshComponentBrowserKind, shape: meshRegionShape,
+                                  visibility: meshRegionVisibility, onSelect: handleSelectMeshScreenRegion }
+                                : null}
                               renderQuality={surfaceRenderQuality}
                               meshInteractionQualityMode={meshInteractionQualityMode}
                               meshInteractionRestoreDelayMs={meshInteractionRestoreDelayMs}
@@ -89187,7 +90178,7 @@ case "mobius":
                                 handleClearSurfaceMeshTopologyContextSelection();
                                 handleSelectMeshWorkspaceEntry(meshKey, Boolean(modifiers?.ctrlKey || modifiers?.metaKey));
                                 const picked = meshWorkspaceEntries.find((entry) => entry.id === meshKey);
-                                setSurfaceMeshTopologyStatus(`Selected mesh object: ${picked?.name ?? surfaceMeshLabel}.`);
+                                setSurfaceMeshTopologyStatus(`Selected object: ${picked?.name ?? surfaceMeshLabel}.`);
                               }
                             : undefined
                         }
@@ -96852,7 +97843,7 @@ case "mobius":
                             <button
                               key={`geometry-construct-probe-mode-${modeId}`}
                               type="button"
-                              onClick={() => setGeometryProbeSelectionMode(modeId)}
+                              onClick={() => handleGeometryPickModeChange(modeId)}
                               style={pill(geometryProbeSelectionMode === modeId)}
                               aria-pressed={geometryProbeSelectionMode === modeId}
                             >
@@ -99659,6 +100650,7 @@ case "mobius":
                                   <label key={param.id} style={{ fontSize: 11, fontWeight: 600 }}>
                                     {param.label}
                                     <input
+                                      data-testid={`geometry-object-param-${param.id}`}
                                       type="number"
                                       min={param.min}
                                       max={param.max}
@@ -102154,7 +103146,7 @@ case "mobius":
                                 <button
                                   key={`geometry-probe-mode-${modeId}`}
                                   type="button"
-                                  onClick={() => setGeometryProbeSelectionMode(modeId)}
+                                  onClick={() => handleGeometryPickModeChange(modeId)}
                                   style={pill(geometryProbeSelectionMode === modeId)}
                                   aria-pressed={geometryProbeSelectionMode === modeId}
                                 >
@@ -102845,9 +103837,10 @@ case "mobius":
                                         <div><strong>Vertices:</strong> {geometrySelectedQuickAnalysisResult.topologySummary.vertexCount.toLocaleString()}</div>
                                         <div><strong>Edges:</strong> {geometrySelectedQuickAnalysisResult.topologySummary.edgeCount.toLocaleString()}</div>
                                         <div><strong>Faces:</strong> {geometrySelectedQuickAnalysisResult.topologySummary.faceCount.toLocaleString()}</div>
-                                        <div><strong>Euler characteristic:</strong> {geometrySelectedQuickAnalysisResult.topologySummary.eulerCharacteristic}</div>
-                                        <div><strong>Boundaries:</strong> {geometrySelectedQuickAnalysisResult.topologySummary.boundaryCount.toLocaleString()}</div>
-                                        <div><strong>Manifold:</strong> {geometrySelectedQuickAnalysisResult.topologySummary.manifold ? "yes" : "no"}</div>
+                                        <div><strong>Raw indexed Euler characteristic:</strong> {geometrySelectedQuickAnalysisResult.topologySummary.eulerCharacteristic}</div>
+                                        <div><strong>Boundary components:</strong> {geometrySelectedQuickAnalysisResult.topologySummary.boundaryCount.toLocaleString()}</div>
+                                        <div><strong>Non-manifold edges:</strong> {geometrySelectedQuickAnalysisResult.topologySummary.nonManifoldEdgeCount.toLocaleString()}</div>
+                                        <div>Render-index connectivity; this result alone does not certify a closed solid.</div>
                                       </div>
                                     )}
                                   {geometrySelectedQuickAnalysisResult.kind === "basic-metrics" &&
@@ -103186,7 +104179,14 @@ case "mobius":
                             </div>
                           )}
                         </div>
-                        <div style={{ fontSize: 12, fontWeight: 700 }}>Euler characteristic from mesh/cell counts</div>
+                        {geometryEulerScope === "selected" && geometrySelectedBoxDefinitionTopology && geometrySelectedSceneObject && (
+                          <div data-testid="geometry-topology-box-definition" style={{ border: "1px solid #93c5fd", borderRadius: 8, padding: "8px 10px", background: "#eff6ff", display: "grid", gap: 4, fontSize: 10 }}>
+                            <strong>Box definition boundary · source {geometrySelectedSceneObject.id} r{geometryObjectRevisionById[geometrySelectedSceneObject.id] ?? 0}</strong>
+                            <span>V={geometrySelectedBoxDefinitionTopology.vertexCount} · E={geometrySelectedBoxDefinitionTopology.edgeCount} · F={geometrySelectedBoxDefinitionTopology.faceCount} · χ={geometrySelectedBoxDefinitionTopology.eulerCharacteristic}</span>
+                            <span>Method: triangulated parametric box boundary ({geometrySelectedBoxDefinitionTopology.widthSegments} × {geometrySelectedBoxDefinitionTopology.heightSegments} × {geometrySelectedBoxDefinitionTopology.depthSegments} face grid). One connected closed abstract boundary; this does not certify the display mesh or a solid-volume result.</span>
+                          </div>
+                        )}
+                        <div style={{ fontSize: 12, fontWeight: 700 }}>Raw indexed display-mesh topology</div>
                         <div
                           style={{
                             border: "1px solid #dbe2ea",
@@ -103218,6 +104218,11 @@ case "mobius":
                           {geometryEulerActiveMeshCounts ? (
                             <>
                               <div style={{ fontSize: 11, color: "#334155" }}>{geometryEulerActiveMeshLabel}</div>
+                              <div style={{ fontSize: 10, color: "#475467" }}>
+                                {geometryEulerScope === "selected" && geometrySelectedSceneObject
+                                  ? `Source ${geometrySelectedSceneObject.id} · revision r${geometryObjectRevisionById[geometrySelectedSceneObject.id] ?? 0} · render-buffer indices`
+                                  : "Current visible scene render meshes; counts are summed per mesh, with no cross-object identification."}
+                              </div>
                               <div style={{ fontFamily: "monospace", fontSize: 11, color: "#0f172a" }}>
                                 c0 = {geometryEulerActiveMeshCounts.c0.toLocaleString()} , c1 ={" "}
                                 {geometryEulerActiveMeshCounts.c1.toLocaleString()} , c2 ={" "}
@@ -103230,14 +104235,61 @@ case "mobius":
                                 {geometryEulerActiveMeshCounts.chi.toLocaleString()}
                               </div>
                               <div style={{ fontSize: 10, color: "#475467" }}>
-                                chi(X) = sum_i (-1)^i c_i (finite-cell view)
+                                χ is for the indexed triangles shown here. Duplicated vertices at seams may split a visually closed surface into separate indexed patches.
                               </div>
                               <div style={{ fontSize: 10, color: "#475467" }}>
                                 Valid triangles: {geometryEulerActiveMeshCounts.validFaces.toLocaleString()}
                                 {geometryEulerActiveMeshCounts.skippedFaces > 0
                                   ? `, skipped/degenerate: ${geometryEulerActiveMeshCounts.skippedFaces.toLocaleString()}`
                                   : ""}
+                                {" · Triangle validity does not establish a closed solid."}
                               </div>
+                              {geometryEulerScope === "selected" && geometryEulerSelectedRawTopology && (
+                                <div style={{ fontSize: 10, color: "#475467" }}>
+                                  Indexed components: {geometryEulerSelectedRawTopology.connectedComponentCount.toLocaleString()} · boundary edges: {geometryEulerSelectedRawTopology.boundaryEdgeCount.toLocaleString()} · non-manifold edges: {geometryEulerSelectedRawTopology.nonManifoldEdgeCount.toLocaleString()}
+                                </div>
+                              )}
+                              {geometryEulerScope === "selected" && geometrySelectedSceneMesh && geometrySelectedSceneObject && (
+                                <div style={{ display: "grid", gap: 5, borderTop: "1px solid #e2e8f0", paddingTop: 7 }}>
+                                  <button
+                                    type="button"
+                                    data-testid="geometry-topology-identify-exact-positions"
+                                    onClick={() => {
+                                      const result = interpretTopologyByExactPosition(geometrySelectedSceneMesh);
+                                      if (!result) {
+                                        setGeometryExactPositionTopology(null);
+                                        setGeometryCreateActionStatus("Exact-position topology interpretation unavailable for this mesh.");
+                                        return;
+                                      }
+                                      setGeometryExactPositionTopology({
+                                        objectId: geometrySelectedSceneObject.id,
+                                        sourceRevision: geometryObjectRevisionById[geometrySelectedSceneObject.id] ?? 0,
+                                        sourceMesh: geometrySelectedSceneMesh,
+                                        result,
+                                      });
+                                    }}
+                                    style={{ justifySelf: "start", fontSize: 10 }}
+                                  >
+                                    Interpret coincident vertices
+                                  </button>
+                                  <div style={{ fontSize: 10, color: "#475467" }}>
+                                    Read-only candidate: identify exactly equal positions within this mesh (tolerance 0 scene units). This can join unrelated coincident sheets; it does not edit or prove source connectivity.
+                                  </div>
+                                  {geometryExactPositionTopologyCurrent?.topology && (
+                                    <div data-testid="geometry-topology-exact-position-result" style={{ display: "grid", gap: 3, fontSize: 10, color: "#1e3a8a" }}>
+                                      <strong>Exact-position interpretation · source r{geometryObjectRevisionById[geometrySelectedSceneObject.id] ?? 0}</strong>
+                                      <span>V={geometryExactPositionTopologyCurrent.topology.vertexCount} · E={geometryExactPositionTopologyCurrent.topology.edgeCount} · F={geometryExactPositionTopologyCurrent.topology.faceCount} · χ={geometryExactPositionTopologyCurrent.topology.eulerCharacteristic}</span>
+                                      <span>Components: {geometryExactPositionTopologyCurrent.topology.connectedComponentCount} · boundary edges: {geometryExactPositionTopologyCurrent.topology.boundaryEdgeCount} · non-manifold edges: {geometryExactPositionTopologyCurrent.topology.nonManifoldEdgeCount} · identified vertices: {geometryExactPositionTopologyCurrent.mergedVertexCount}</span>
+                                      {geometryExactPositionTopologyCurrent.collapsedTriangleCount > 0 && <span>Triangles collapsed by identification: {geometryExactPositionTopologyCurrent.collapsedTriangleCount}</span>}
+                                    </div>
+                                  )}
+                                  {geometryExactPositionTopologyStale && (
+                                    <div data-testid="geometry-topology-exact-position-stale" style={{ color: "#9a3412", fontSize: 10 }}>
+                                      Previous exact-position interpretation is stale for this source revision. Run it again to inspect the current display mesh.
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </>
                           ) : (
                             <div style={{ fontSize: 11, color: "#475467" }}>
@@ -104375,31 +105427,32 @@ case "mobius":
                           >
                             <div style={{ fontSize: 12, fontWeight: 700 }}>Euler characteristic for polyhedra</div>
                             <div style={{ color: "#475467" }}>
-                              Use Pick mode to inspect vertices/edges/faces and verify V - E + F = 2 on closed convex polyhedra.
+                              Use Pick mode to inspect components. A closed convex boundary has χ = 2, but raw render indices may contain separate seam patches.
                             </div>
                             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                              <button type="button" onClick={() => setGeometryProbeSelectionMode("vertex")} style={pill(geometryProbeSelectionMode === "vertex")}>
+                              <button type="button" onClick={() => handleGeometryPickModeChange("vertex")} style={pill(geometryProbeSelectionMode === "vertex")}>
                                 Highlight vertices
                               </button>
-                              <button type="button" onClick={() => setGeometryProbeSelectionMode("edge")} style={pill(geometryProbeSelectionMode === "edge")}>
+                              <button type="button" onClick={() => handleGeometryPickModeChange("edge")} style={pill(geometryProbeSelectionMode === "edge")}>
                                 Highlight edges
                               </button>
-                              <button type="button" onClick={() => setGeometryProbeSelectionMode("face")} style={pill(geometryProbeSelectionMode === "face")}>
+                              <button type="button" onClick={() => handleGeometryPickModeChange("face")} style={pill(geometryProbeSelectionMode === "face")}>
                                 Highlight faces
                               </button>
-                              <button type="button" onClick={() => setGeometryProceduralPanelTab("analysis")} style={{ fontSize: 11 }}>
+                              <button type="button" onClick={() => setGeometryProceduralPanelTab("euler")} style={{ fontSize: 11 }}>
                                 Open full Euler tools
                               </button>
                             </div>
                             {geometryEulerActiveMeshCounts ? (
                               <div style={{ display: "grid", gap: 4, border: "1px solid #e2e8f0", borderRadius: 6, padding: "6px 8px", background: "#fff" }}>
-                                <div>{geometryEulerActiveMeshLabel}</div>
+                                <div>Raw indexed display mesh · {geometryEulerActiveMeshLabel}</div>
                                 <div style={{ fontFamily: "monospace" }}>
                                   V={geometryEulerActiveMeshCounts.c0.toLocaleString()} · E={geometryEulerActiveMeshCounts.c1.toLocaleString()} · F={geometryEulerActiveMeshCounts.c2.toLocaleString()}
                                 </div>
                                 <div style={{ fontFamily: "monospace" }}>
                                   V - E + F = {geometryEulerActiveMeshCounts.chi.toLocaleString()}
                                 </div>
+                                <div>Use full Euler tools for a separate, explicit coincident-vertex interpretation.</div>
                               </div>
                             ) : (
                               <div style={{ color: "#475467" }}>No mesh counts available yet. Select/show a polyhedron mesh first.</div>
@@ -105850,14 +106903,7 @@ case "mobius":
                     ] satisfies readonly ContextualActionStripOption<GeometryProbeSelectionMode>[]
                   }
                   activePick={geometryProbeSelectionMode}
-                  onPickChange={(pickMode) => {
-                    setGeometryProbeSelectionMode(pickMode);
-                    setGeometryProceduralHoverPick(null);
-                    setGeometryRightPanelTab("selection");
-                    if (pickMode === "face") setGeometryActiveOperationInputSlotId("source-face");
-                    if (pickMode === "edge") setGeometryActiveOperationInputSlotId("active-edge");
-                    if (pickMode === "vertex") setGeometryActiveOperationInputSlotId("active-vertex");
-                  }}
+                  onPickChange={handleGeometryPickModeChange}
                   selectionLabel={
                     geometryProbeSelectionMode === "object"
                       ? geometryContextToolbarSelectionLabel
@@ -105866,9 +106912,15 @@ case "mobius":
                         geometryContextToolbarSelectionLabel
                   }
                   selectionTestId="geometry-context-selection-label"
-                  previewLabel={geometryContextToolbarPreviewLabel}
+                  previewLabel={cancelledGeometryPreviewKey === geometryOperationPreviewKey ? null : geometryContextToolbarPreviewLabel}
                   previewTestId="geometry-context-preview"
                   applyPreviewTestId="geometry-context-apply-preview"
+                  operationParameters={geometryOperationParameters}
+                  operationWorkspace="geometry"
+                  operationSnapshot={geometrySelectedSceneObject ? { id: geometrySelectedSceneObject.id, revision: geometryObjectRevisionById[geometrySelectedSceneObject.id] ?? 0 } : null}
+                  operationValidationErrors={geometryContextCanRunPrimaryAction ? [] : ["Select a valid Geometry target before applying."]}
+                  onCancelPreview={() => setCancelledGeometryPreviewKey(geometryOperationPreviewKey)}
+                  onApplyAndContinue={() => { handleRunGeometryContextPrimaryAction(); setCancelledGeometryPreviewKey(null); }}
                   confirmationLabel={geometryContextToolbarConfirmationLabel}
                   confirmationTestId="geometry-context-confirmation"
                   lastCommandLabel={geometryActiveSelectionCardLastCommandLabel}
@@ -107487,10 +108539,7 @@ case "mobius":
                                     key={`geometry-right-probe-mode-${modeId}`}
                                     type="button"
                                     data-testid={`geometry-pick-mode-${modeId}`}
-                                    onClick={() => {
-                                      setGeometryProbeSelectionMode(modeId);
-                                      setGeometryProceduralHoverPick(null);
-                                    }}
+                                    onClick={() => handleGeometryPickModeChange(modeId)}
                                     style={pill(geometryProbeSelectionMode === modeId)}
                                     aria-pressed={geometryProbeSelectionMode === modeId}
                                   >
@@ -107884,10 +108933,24 @@ case "mobius":
                             <UnifiedSelectionInspector
                               selection={geometryUnifiedInspectorSelection}
                               selectionSet={geometryMultiSelectionSet}
+                              sceneSelection={sceneSelection}
+                              sceneEntity={sceneEntityById.get(sceneSelection?.objectId ?? "") ?? null}
+                              activeRepresentationId={activeRepresentationByEntity[sceneSelection?.objectId ?? ""]}
+                              onSelectRepresentation={(id) => {
+                                if (sceneSelection) setActiveRepresentationByEntity((current) => ({ ...current, [sceneSelection.objectId]: id }));
+                              }}
+                              onRepresentationAction={handleSceneRepresentationAction}
+                              representationActions={availableSceneRepresentationActions(sceneEntityById.get(sceneSelection?.objectId ?? "") ?? null, surfaceMeshData ? `mesh:${surfaceMeshLabel}` : null)}
+                              namedSelections={namedSceneSelections} onSaveNamedSelection={handleSaveNamedSceneSelection}
+                              onRestoreNamedSelection={handleRestoreNamedSceneSelection} onDeleteNamedSelection={handleDeleteNamedSceneSelection}
                               title="Unified selection"
                               materialInfo={geometryUnifiedInspectorMaterialInfo}
                               creaseInfo={geometryUnifiedInspectorCreaseInfo}
                             />
+                            <SceneHistoryPanel operations={sceneOperations} canUndo={Boolean(sceneUndoCandidate)}
+                              canRedo={sceneRedoStack.length > 0} onUndo={handleUndoSceneOperation} onRedo={handleRedoSceneOperation}
+                              onOpenSource={(operation) => handleOpenSceneOperation(operation, "source")}
+                              onOpenResult={(operation) => handleOpenSceneOperation(operation, "result")} />
                             <GeometryPickReadout
                               hoverPick={geometryHoverPick}
                               selectedPick={geometrySelectedPick}
@@ -117073,6 +118136,9 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
                 }}
               >
                 {compactNodeName(node.name)}
+                {node.representationBadges && node.representationBadges.length > 1
+                  ? ` · ${node.representationBadges.join(" + ")}`
+                  : ""}
               </span>
               <span
                 style={{

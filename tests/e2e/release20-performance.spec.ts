@@ -114,7 +114,7 @@ test("M3D20-10 source checkout performance profiles", async ({}, testInfo) => {
         } else {
           await expect(page.getByTestId("mesh-workspace-open-mesh-file")
             .getByRole("button", { name: "Load STL/OBJ/PLY/GLTF" })).toBeEnabled({ timeout: 120_000 });
-          await expect(page.getByText("Selected mesh object: 12_dragon_medium.obj")).toBeVisible();
+          await expect(page.getByText("Selected object: 12_dragon_medium.obj")).toBeVisible();
         }
         durations.mesh.push(performance.now() - started);
         await memory.checkpoint("mesh");
