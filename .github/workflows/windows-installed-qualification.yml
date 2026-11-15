@@ -1,0 +1,72 @@
+name: Windows installed qualification (manual exact merge)
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Exact final merge commit of PR61 (not draft head or moving main)
+        required: true
+      build_run_id:
+        description: Successful exact-source installer build run
+        required: true
+      candidate_artifact:
+        description: Artifact containing candidate.json and its exact package tree
+        required: true
+      old_build_run_id:
+        description: Successful build run for the same-product previous installer
+        required: true
+      old_artifact:
+        description: Artifact containing old.json and its package tree
+        required: true
+      old_source_commit:
+        description: Exact source of old installer
+        required: true
+permissions:
+  contents: read
+  actions: read
+jobs:
+  qualify:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TARGET: ${{ inputs.source_commit }}
+      OLD_SOURCE: ${{ inputs.old_source_commit }}
+      BUILD_RUN: ${{ inputs.build_run_id }}
+      OLD_BUILD_RUN: ${{ inputs.old_build_run_id }}
+      CANDIDATE_ARTIFACT: ${{ inputs.candidate_artifact }}
+      OLD_ARTIFACT: ${{ inputs.old_artifact }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+          cache: npm
+      - name: Refuse draft/head evidence and verify build sources
+        shell: pwsh
+        run: |
+          if ($env:TARGET -notmatch '^[a-f0-9]{40}$' -or $env:OLD_SOURCE -notmatch '^[a-f0-9]{40}$') { throw 'Full source commits required.' }
+          if ($env:BUILD_RUN -notmatch '^\d+$' -or $env:OLD_BUILD_RUN -notmatch '^\d+$') { throw 'Numeric build run IDs required.' }
+          $pr=gh api repos/expert10000/Math3D/pulls/61 | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or -not $pr.merged -or $pr.merge_commit_sha -ne $env:TARGET) { throw 'PR61 must be merged and exactly match the target; no draft installer qualification.' }
+          foreach ($pair in @(@($env:BUILD_RUN,$env:TARGET),@($env:OLD_BUILD_RUN,$env:OLD_SOURCE))) {
+            $run=gh run view $pair[0] --repo expert10000/Math3D --json headSha,conclusion | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0 -or $run.conclusion -ne 'success' -or $run.headSha -ne $pair[1]) { throw 'Installer build source or result mismatch.' }
+          }
+          gh run download $env:BUILD_RUN --repo expert10000/Math3D --name $env:CANDIDATE_ARTIFACT --dir candidate
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate artifact missing.' }
+          gh run download $env:OLD_BUILD_RUN --repo expert10000/Math3D --name $env:OLD_ARTIFACT --dir old
+          if ($LASTEXITCODE -ne 0) { throw 'Old artifact missing.' }
+      - name: Install harness dependencies only
+        run: npm ci --ignore-scripts
+      - name: Qualify installed packages without rebuilding application source
+        shell: pwsh
+        run: |
+          ./scripts/windows-qualification/run.ps1 -CandidateManifest candidate/candidate.json -OldManifest old/old.json -SourceCommit $env:TARGET -OldSourceCommit $env:OLD_SOURCE -HarnessCommit $env:GITHUB_SHA -MergedPr61Commit $env:TARGET -RunRoot (Join-Path $env:RUNNER_TEMP 'windows-installed-qualification')
+      - name: Retain receipts including failed and incomplete phases
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-installed-qualification-evidence
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/windows-installed-qualification/*.json
