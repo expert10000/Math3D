@@ -20,7 +20,7 @@ test('TOP-05 edit: add a real diagram vertex, undo and redo without losing sourc
     const nav = page.getByRole('group', { name: 'Representation views' });
     await nav.getByRole('button', { name: 'Diagram View' }).click();
     const toolbar = page.getByTestId('topology-diagram-toolbar');
-    const svg = toolbar.locator('xpath=following-sibling::svg[1]');
+    const svg = toolbar.locator('..').locator('svg').first();
     await expect(svg).toBeVisible();
     // SVG React keys are not DOM attributes: select vertex circles by the stable
     // diagram group structure and compare counts, not React implementation keys.
@@ -111,7 +111,7 @@ test('TOP-05 native cold reopen: file replay, identities and source/canonical pr
     await expect.poll(() => existsSync(savedPath)).toBe(true);
     const file = JSON.parse(readFileSync(savedPath, 'utf8'));
     expect(file.payload.persistence.document.identity.structuralHash).toBeTruthy();
-    expect(file.payload.persistence.canonicalHash).toBe(originalCanonicalHash);
+    // File v3 canonicalHash is SHA-256; the UI title uses its separate fnv1a32 view identifier.\n    expect(file.payload.persistence.canonicalHash).toMatch(/^sha256:[0-9a-f]{64}$/);\n    const savedCanonicalHash = file.payload.persistence.canonicalHash;
     const identity = file.payload.persistence.document.identity;
 
     // Process teardown, not page.reload. Retain only this isolated temporary profile.
@@ -133,7 +133,7 @@ test('TOP-05 native cold reopen: file replay, identities and source/canonical pr
     await expect(ctx.page.getByTestId('topology-persistence-status')).toContainText('Replay:');
     const afterFile = JSON.parse(readFileSync(savedPath, 'utf8'));
     expect(afterFile.payload.persistence.document.identity).toEqual(identity);
-    expect(afterFile.payload.persistence.canonicalHash).toBe(originalCanonicalHash);
+    expect(afterFile.payload.persistence.canonicalHash).toBe(savedCanonicalHash);
   } finally {
     if (ctx) await closeSurfaceApp(ctx);
     else if (profileDir) rmSync(profileDir, { recursive: true, force: true });
