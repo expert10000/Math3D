@@ -1,7 +1,7 @@
 name: TOP-05 Topology functional qualification
 on:
   push:
-    branches: [main, codex/topology-functional-acceptance]
+    branches: [main, codex/topology-functional-acceptance, codex/top05-windows-worker-runtime]
     paths:
       - 'tests/e2e/topology-functional-acceptance.spec.ts'
       - 'renderer/src/topology/topologyPersistence.test.ts'
@@ -9,7 +9,7 @@ on:
       - 'renderer/src/topology/algebraPublication.test.ts'
       - '.github/workflows/topology-functional-acceptance.yml'
   pull_request:
-    branches: [main]
+    branches: [main, codex/topology-functional-acceptance]
     paths:
       - 'tests/e2e/topology-functional-acceptance.spec.ts'
       - 'renderer/src/topology/topologyPersistence.test.ts'
@@ -21,19 +21,43 @@ permissions:
 jobs:
   topology-functional:
     runs-on: windows-2022
-    timeout-minutes: 35
+    timeout-minutes: 45
     env:
       NODE_OPTIONS: --max-old-space-size=6144
       electron_config_cache: '${{ github.workspace }}\.cache\electron'
       MATH3D_ELECTRON_DOWNLOAD_TIMEOUT_MS: '600000'
       MATH3D_ELECTRON_EXTRACT_TIMEOUT_MS: '180000'
       MATH3D_ELECTRON_DOWNLOAD_RETRIES: '2'
+      MATH3D_WORKER_MODE: python
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: '24.15.0'
           cache: npm
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: python/worker/runtime.py
+      - name: Provision and qualify the actual Python/VTK worker runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path ui-evidence | Out-Null
+          $python = (Get-Command python -ErrorAction Stop).Source
+          "MATH3D_PYTHON=$python" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          & $python -m pip install --disable-pip-version-check 'numpy>=1.26,<3' 'scipy>=1.11,<2' 'sympy>=1.12,<2' 'vtk>=9.2,<10'
+          if ($LASTEXITCODE -ne 0) { throw 'Python scientific dependency installation failed' }
+          & $python -m pip freeze | Out-File -FilePath ui-evidence/python-packages.txt -Encoding utf8
+          $healthLines = & $python python/worker/main.py --health
+          if ($LASTEXITCODE -ne 0) { throw 'Python worker health invocation failed' }
+          $healthLines | Out-File -FilePath ui-evidence/python-worker-health.json -Encoding utf8
+          $health = $healthLines | Select-Object -Last 1 | ConvertFrom-Json
+          if (-not $health.ok) { throw "Python worker health denied: $($healthLines -join ' ')" }
+          $ping = & $python python/worker/main.py --ping | Select-Object -Last 1 | ConvertFrom-Json
+          if (-not $ping.ok -or $ping.protocol -ne '2026-03-15') { throw 'Python worker protocol ping failed' }
+          Write-Host "[TOP05] Python worker required scientific dependencies and protocol healthy"
       - uses: actions/cache@v6
         with:
           path: ${{ env.electron_config_cache }}
