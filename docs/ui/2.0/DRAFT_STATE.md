@@ -26,7 +26,7 @@ Reviewed source: `2cf4b6a4b096ff08f3e7c8e928c542d25acca065`. Planning files reac
 | TOP-04 | implemented (draft PR80); Windows CI pending | UI cleanup thread / codex/topology-algebra-summary | PR79 head 03d3b6c0 (stacked until PR79 merges) | TopologyScreen.tsx renderAlgebraView provenance card only; focused e2e/workflow; no App.tsx or science adapters | Preserve exact eligibility, matrix/artifact and source hashes; Windows native check |
 | Geometry #61 | external draft | codex/geometry-topology-2-0 / PR61 | See current PR head | Geometry topology/control work; coordinate any App.tsx overlap | Owned by its existing thread; not modified here |
 | SURF-03 | implemented; verification pending | UI follow-up / codex/ui-followup-four | 19484d0d | Surface domain/sampling labels in `surfacePanels.tsx` and compute readiness near Run in `SurfaceAnalysisWorkspacePanels.tsx`; focused UI check | Verify source-build behavior and numerical identity |
-| CA-04 | claimed | UI follow-up / codex/ui-followup-four | 115aaa90 | `App.tsx` Function Explorer residue/contour action preflight near publication buttons only; focused UI check | Show orientation, branch policy, method, backend and estimate before execution |
+| CA-04 | implemented; verification pending | UI follow-up / codex/ui-followup-four | 115aaa90 | `App.tsx` Function Explorer residue/contour action preflight near publication buttons only; focused UI check | Verify selected contour and branch policy update before execution |
 
 ## Workbench backlog
 
