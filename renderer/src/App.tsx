@@ -289,6 +289,7 @@ import {
   type UnifiedSelectionSetEditMode,
 } from "./selection/unifiedSelection";
 import { sharedPickEntityId } from "./selection/pickContract";
+import { sceneSelectionFromUnified, type SceneSelection } from "./selection/sceneSelection";
 import {
   addSelectionHistoryEntry,
   bookmarkSelectionEntry,
@@ -12805,6 +12806,7 @@ const App: React.FC = () => {
     const saved = readGeometryEditSessionSnapshot()?.probeSelectionMode;
     return isGeometryProbeSelectionModeLocal(saved) ? saved : readStoredGeometryContextualPickMode() ?? "object";
   });
+  const [sceneSelection, setSceneSelection] = useState<SceneSelection | null>(null);
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -60411,6 +60413,26 @@ case "mobius":
       ]),
     [meshEditingSelectionResult, meshHoverSelectionResult, meshMultiSelectionResults, meshPreviewSelectionResult, meshSelectionResult]
   );
+  const sceneSelectionWorkspaceRef = useRef<"geometry" | "mesh" | null>(null);
+  useEffect(() => {
+    const workspace = mode === "geometry" && geometryMode === "procedural"
+      ? "geometry"
+      : mode === "surfaces" && surfaceViewerKind === "mesh"
+        ? "mesh"
+        : null;
+    if (!workspace) return;
+    // A workbench switch must not replace the committed scene selection with
+    // the destination workbench's previous local pick.
+    if (sceneSelectionWorkspaceRef.current !== workspace && sceneSelectionWorkspaceRef.current !== null) {
+      sceneSelectionWorkspaceRef.current = workspace;
+      return;
+    }
+    sceneSelectionWorkspaceRef.current = workspace;
+    const next = sceneSelectionFromUnified(
+      workspace === "geometry" ? geometryActiveUnifiedSelection : filteredMeshUnifiedSelection
+    );
+    setSceneSelection((current) => JSON.stringify(current) === JSON.stringify(next) ? current : next);
+  }, [filteredMeshUnifiedSelection, geometryActiveUnifiedSelection, geometryMode, mode, surfaceViewerKind]);
   const meshSelectionHighlightOverlays = useMemo(
     () => buildSelectionManagerHighlightOverlays(meshSelectionManager, () => surfaceMeshTopologyViewerMesh),
     [meshSelectionManager, surfaceMeshTopologyViewerMesh]
@@ -86179,7 +86201,7 @@ case "mobius":
                               }
                               style={{ fontSize: 10, padding: "2px 7px" }}
                             >
-                              Apply this state to Geometry Object
+                              Apply this state to Object
                             </button>
                           </div>
                         </div>
@@ -86269,6 +86291,7 @@ case "mobius":
                         <UnifiedSelectionInspector
                           selection={meshUnifiedInspectorSelection}
                           selectionSet={meshMultiSelectionSet}
+                          sceneSelection={sceneSelection}
                           title="Unified selection"
                           materialInfo={meshUnifiedInspectorMaterialInfo}
                           creaseInfo={meshUnifiedInspectorCreaseInfo}
@@ -88761,7 +88784,7 @@ case "mobius":
                           }
                           style={{ fontSize: 10, padding: "2px 7px" }}
                         >
-                          Apply this state to Geometry Object
+                          Apply this state to Object
                         </button>
                       </div>
                     )}
@@ -108009,6 +108032,7 @@ case "mobius":
                             <UnifiedSelectionInspector
                               selection={geometryUnifiedInspectorSelection}
                               selectionSet={geometryMultiSelectionSet}
+                              sceneSelection={sceneSelection}
                               title="Unified selection"
                               materialInfo={geometryUnifiedInspectorMaterialInfo}
                               creaseInfo={geometryUnifiedInspectorCreaseInfo}

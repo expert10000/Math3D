@@ -1,9 +1,11 @@
 import type React from "react";
 import type { SelectionResult, UnifiedSelectionSet } from "../selection/unifiedSelection";
+import type { SceneSelection } from "../selection/sceneSelection";
 
 type UnifiedSelectionInspectorProps = {
   selection: SelectionResult | null;
   selectionSet?: UnifiedSelectionSet | null;
+  sceneSelection?: SceneSelection | null;
   title?: string;
   materialInfo?: string | null;
   creaseInfo?: string | null;
@@ -63,6 +65,7 @@ const multiSummaryStyle: React.CSSProperties = {
 export const UnifiedSelectionInspector = ({
   selection,
   selectionSet = null,
+  sceneSelection = null,
   title = "Selection inspector",
   materialInfo = null,
   creaseInfo = null,
@@ -113,6 +116,12 @@ export const UnifiedSelectionInspector = ({
         <strong>{title}</strong>
         <span style={{ color: "#075985", fontWeight: 700 }}>{stateLabel}</span>
       </div>
+      {sceneSelection && (
+        <div data-testid="shared-scene-selection" style={{ color: "#334155" }}>
+          Scene: {sceneSelection.objectId} · {sceneSelection.kind}
+          {sceneSelection.componentIds.length ? ` ${sceneSelection.componentIds.join(", ")}` : ""}
+        </div>
+      )}
       {multiSelection ? (
         <div style={{ display: "grid", gap: 6 }} data-testid="unified-selection-multi-summary">
           <div style={multiSummaryStyle}>
