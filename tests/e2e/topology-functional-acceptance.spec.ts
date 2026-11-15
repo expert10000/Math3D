@@ -111,7 +111,9 @@ test('TOP-05 native cold reopen: file replay, identities and source/canonical pr
     await expect.poll(() => existsSync(savedPath)).toBe(true);
     const file = JSON.parse(readFileSync(savedPath, 'utf8'));
     expect(file.payload.persistence.document.identity.structuralHash).toBeTruthy();
-    // File v3 canonicalHash is SHA-256; the UI title uses its separate fnv1a32 view identifier.\n    expect(file.payload.persistence.canonicalHash).toMatch(/^sha256:[0-9a-f]{64}$/);\n    const savedCanonicalHash = file.payload.persistence.canonicalHash;
+    // File v3 canonicalHash is SHA-256; the UI title uses its separate fnv1a32 view identifier.
+    expect(file.payload.persistence.canonicalHash).toMatch(/^sha256:[0-9a-f]{64}$/);
+    const savedCanonicalHash = file.payload.persistence.canonicalHash;
     const identity = file.payload.persistence.document.identity;
 
     // Process teardown, not page.reload. Retain only this isolated temporary profile.
