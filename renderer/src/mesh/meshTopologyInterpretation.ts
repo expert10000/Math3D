@@ -29,6 +29,8 @@ export const computeMeshTopologyInterpretations = (
   const cells = new Map<string, number[]>();
   const exact = new Map<string, number>();
 
+  // First-seen representatives make the interpretation stable for the same source order.
+  // A later vertex joins a representative only when their positions are within tolerance.
   for (let index = 0; index < vertexCount; index += 1) {
     const x = sourcePositions[index * 3]!;
     const y = sourcePositions[index * 3 + 1]!;
@@ -72,7 +74,9 @@ export const computeMeshTopologyInterpretations = (
   representatives.forEach((sourceIndex, targetIndex) => {
     positions.set(sourcePositions.subarray(sourceIndex * 3, sourceIndex * 3 + 3), targetIndex * 3);
   });
-  const sourceIndices = mesh.indices ?? Uint32Array.from({ length: vertexCount }, (_, index) => index);
+  const sourceIndices = mesh.indices && mesh.indices.length >= 3
+    ? mesh.indices
+    : Uint32Array.from({ length: vertexCount }, (_, index) => index);
   const indices = Uint32Array.from(sourceIndices, (sourceIndex) => sourceIndex < vertexCount ? mapped[sourceIndex]! : 0xffffffff);
   const spatialWeld = computeMeshTopologyInspector({ label: mesh.label, source: mesh.source, positions, indices }, options);
   if (!spatialWeld) throw new TypeError("Spatial-weld interpretation could not be computed.");
