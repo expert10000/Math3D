@@ -16,6 +16,22 @@ export const meshResourceFixture = () => {
   const resources = captureProjectResources(project, (item) => { for (const adapter of adapters) { const bytes = adapter.resources.bytes(item.reference as never); if (bytes) return bytes; } return null; });
   return { project, docs, result, raw: exportProjectPackage(project, resources) };
 };
+export const disconnectedPatchResourceFixture = () => {
+  const quad = [0,0,0, 1,0,0, 1,1,0, 0,1,0];
+  const adapter = MeshDocumentAdapter.fromMesh({
+    label: "Coincident disconnected patches",
+    source: { kind: "geometryObject" as const, objectId: "disconnected-patches", transform: { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } } },
+    positions: Float32Array.from([...quad, ...quad]),
+    indices: Uint32Array.from([0,1,2, 0,2,3, 4,5,6, 4,6,7]),
+  });
+  const document = adapter.document(), replay = adapter.replayBundle();
+  const project = createMath3DProject(createMixedWorkspaceDocument({
+    entries: [{ module: "mesh", checkpoint: replay.checkpoint.document, expected: document.identity, replay: { format: "math3d.mesh-replay.v1", payload: replay as never } }],
+    activeDocumentIds: [document.identity.id], constructions: [], results: [], relations: [], artifacts: [], committedSelection: null,
+  }), { title: "Disconnected Mesh patches", stableKey: "geometry-mesh-disconnected-patches" });
+  const resources = captureProjectResources(project, (item) => adapter.resources.bytes(item.reference as never));
+  return { project, document, raw: exportProjectPackage(project, resources) };
+};
 export const inspectMeshPackage = (raw: string) => {
   const { project, resources } = parseProjectPackage(raw), store = resources.meshStore(project);
   return project.workspace.entries.map((entry) => {
@@ -23,7 +39,7 @@ export const inspectMeshPackage = (raw: string) => {
     const document = state?.document ?? entry.checkpoint;
     if (document.format !== "math3d.mesh-document") throw new Error("Expected Mesh fixture.");
     const buffers = store.resolve(document.source.resource)!;
-    return { document, selection: state?.committedSelection.entityIds ?? [], positions: [...buffers.positions], normals: [...buffers.normals ?? []], uvs: [...buffers.uvs ?? []], resourceCount: projectResourceInventory(project).length };
+    return { document, selection: state?.committedSelection.entityIds ?? [], positions: [...buffers.positions], indices: [...buffers.indices], normals: [...buffers.normals ?? []], uvs: [...buffers.uvs ?? []], resourceCount: projectResourceInventory(project).length };
   });
 };
 

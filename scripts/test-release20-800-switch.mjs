@@ -23,6 +23,9 @@ gpuRecovered.cycles.slice(4).forEach((cycle, index) => {
   cycle.samples[0].gpuPrivateMiB = [360, 385, 415, 325][index];
 });
 assert.equal(reviewMixedRouteMemory(gpuRecovered, budgets).status, 'passed');
+const gpuPeak = fixture();
+gpuPeak.cycles[3].samples[0].gpuPrivateMiB = budgets.source.longMemory.peakGpuPrivateMiB + 1;
+assert.equal(reviewMixedRouteMemory(gpuPeak, budgets).status, 'failed');
 const wrongRoute = fixture();
 wrongRoute.method.routeSequence = ['graphs', 'mesh'];
 assert.equal(reviewMixedRouteMemory(wrongRoute, budgets).status, 'failed');

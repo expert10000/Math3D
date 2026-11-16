@@ -1,0 +1,173 @@
+{
+  "schema": "math3d.release20.mixed-route-memory-review.v2",
+  "status": "passed",
+  "build": {
+    "version": "2.0.0",
+    "commit": "7a816a7ac9da53240d332c1e62f677e501aab695",
+    "dirty": false,
+    "builtAt": "2026-11-16T11:13:15.631Z",
+    "rendererHash": "e359cca3585257ba1d8fe7330e2b98b3fae1d8610b0bd5f7c7c22de73c1e79de"
+  },
+  "routeSequence": [
+    "graphs",
+    "surfaces",
+    "mesh",
+    "volume",
+    "projects"
+  ],
+  "postGc": [
+    {
+      "rssMiB": 1117.8,
+      "rendererPrivateMiB": 240.9,
+      "gpuPrivateMiB": 447,
+      "v8UsedMiB": 35,
+      "domNodes": 668
+    },
+    {
+      "rssMiB": 1128.4,
+      "rendererPrivateMiB": 240.7,
+      "gpuPrivateMiB": 455.1,
+      "v8UsedMiB": 34.4,
+      "domNodes": 668
+    },
+    {
+      "rssMiB": 1163.5,
+      "rendererPrivateMiB": 238.7,
+      "gpuPrivateMiB": 489.7,
+      "v8UsedMiB": 30.7,
+      "domNodes": 668
+    },
+    {
+      "rssMiB": 1186.7,
+      "rendererPrivateMiB": 241.5,
+      "gpuPrivateMiB": 509,
+      "v8UsedMiB": 30.9,
+      "domNodes": 668
+    },
+    {
+      "rssMiB": 1181.1,
+      "rendererPrivateMiB": 244.2,
+      "gpuPrivateMiB": 499.8,
+      "v8UsedMiB": 30.9,
+      "domNodes": 668
+    },
+    {
+      "rssMiB": 1148.5,
+      "rendererPrivateMiB": 251.4,
+      "gpuPrivateMiB": 458.2,
+      "v8UsedMiB": 31.2,
+      "domNodes": 668
+    },
+    {
+      "rssMiB": 1179.9,
+      "rendererPrivateMiB": 249.5,
+      "gpuPrivateMiB": 493.3,
+      "v8UsedMiB": 31.3,
+      "domNodes": 668
+    },
+    {
+      "rssMiB": 1203,
+      "rendererPrivateMiB": 254,
+      "gpuPrivateMiB": 510,
+      "v8UsedMiB": 31.3,
+      "domNodes": 668
+    }
+  ],
+  "checks": [
+    {
+      "name": "clean identified source build",
+      "pass": true,
+      "observed": {
+        "version": "2.0.0",
+        "commit": "7a816a7ac9da53240d332c1e62f677e501aab695",
+        "dirty": false,
+        "builtAt": "2026-11-16T11:13:15.631Z",
+        "rendererHash": "e359cca3585257ba1d8fe7330e2b98b3fae1d8610b0bd5f7c7c22de73c1e79de"
+      }
+    },
+    {
+      "name": "production renderer",
+      "pass": true,
+      "observed": false
+    },
+    {
+      "name": "800 mixed-route switches",
+      "pass": true,
+      "observed": {
+        "status": "smoke",
+        "cycles": 8
+      }
+    },
+    {
+      "name": "no page errors or context losses",
+      "pass": true,
+      "observed": []
+    },
+    {
+      "name": "rssMiB peak",
+      "pass": true,
+      "observed": {
+        "observed": 1295.3,
+        "ceiling": 2048
+      }
+    },
+    {
+      "name": "rendererPrivateMiB peak",
+      "pass": true,
+      "observed": {
+        "observed": 372.6,
+        "ceiling": 1024
+      }
+    },
+    {
+      "name": "gpuPrivateMiB peak",
+      "pass": true,
+      "observed": {
+        "observed": 520.7,
+        "ceiling": 544
+      }
+    },
+    {
+      "name": "v8UsedMiB post-GC plateau",
+      "pass": true,
+      "observed": {
+        "observed": 0.4,
+        "ceiling": 16,
+        "lastFour": [
+          30.9,
+          31.2,
+          31.3,
+          31.3
+        ]
+      }
+    },
+    {
+      "name": "rendererPrivateMiB post-GC plateau",
+      "pass": true,
+      "observed": {
+        "observed": 9.8,
+        "ceiling": 32,
+        "lastFour": [
+          244.2,
+          251.4,
+          249.5,
+          254
+        ]
+      }
+    },
+    {
+      "name": "gpuPrivateMiB post-GC late growth",
+      "pass": true,
+      "observed": {
+        "observed": 22.6,
+        "ceiling": 32,
+        "lastFour": [
+          499.8,
+          458.2,
+          493.3,
+          510
+        ]
+      }
+    }
+  ]
+}
