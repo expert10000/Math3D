@@ -32,12 +32,12 @@
     "navigationPeakRssMiB": 1450,
     "longMemory": {
       "reference": "Windows i9-12900K source build, continuous 100-action cycles for at least two hours",
-      "derivation": "The short-run 1500 MiB ceiling plus 548 MiB headroom, with at most 64 MiB late-window growth; GPU and renderer-private ceilings are separate native-memory safeguards. This is a predeclared acceptance target, not a measurement or installed budget.",
+      "derivation": "The short-run 1500 MiB ceiling plus 548 MiB headroom, with at most 64 MiB late-window growth; renderer-private and GPU-process ceilings are separate native-memory safeguards. The source GPU-process peak was revised from 512 to 544 MiB after three clean 800-switch runs of the same renderer bundle peaked at 445.5, 520.7, and 524.5 MiB while late GPU growth stayed within 32 MiB. The 544 MiB ceiling leaves 19.5 MiB above the highest measured peak. This source budget does not qualify an installed candidate or replace the two-hour soak.",
       "peakRssMiB": 2048,
       "lateGrowthMiB": 64,
       "peakRendererPrivateMiB": 1024,
       "rendererPrivateLateGrowthMiB": 32,
-      "peakGpuPrivateMiB": 512,
+      "peakGpuPrivateMiB": 544,
       "gpuPrivateLateGrowthMiB": 32,
       "v8PostGcLateSpanMiB": 16
     }
