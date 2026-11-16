@@ -8,6 +8,7 @@ on:
       - 'docs/ui/2.0/**'
       - 'tests/e2e/complex-exact-mvp.spec.ts'
       - 'tests/e2e/complex-continuation.spec.ts'
+      - 'tests/e2e/complex-numerical-results.spec.ts'
   workflow_dispatch:
 
 permissions:
@@ -38,14 +39,14 @@ jobs:
       - run: npm run typecheck:noemit && npm run build:core
       - name: Indexed Mesh benchmark expectations
         run: npm --prefix renderer test -- src/mesh/meshBenchmarkRegression.test.ts
-      - name: Five bounded native workbench entry and diagnostic checks
+      - name: Six bounded native workbench entry, publication and diagnostic checks
         shell: bash
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: workbench-evidence/native.json
         run: |
           mkdir -p workbench-evidence
           git rev-parse HEAD > workbench-evidence/source.txt
-          npx playwright test tests/e2e/complex-exact-mvp.spec.ts tests/e2e/complex-continuation.spec.ts tests/e2e/graph2d-authoring-presets.spec.ts tests/e2e/project-surface-module.spec.ts tests/e2e/mesh-analyze-v1-acceptance.spec.ts --grep 'publishes square-root monodromy|analyzes 1/z over|every Graph Add editor|saved Surface opens|problem-mesh workflow' --workers=1 --retries=0 --reporter=list,json
+          npx playwright test tests/e2e/complex-exact-mvp.spec.ts tests/e2e/complex-continuation.spec.ts tests/e2e/complex-numerical-results.spec.ts tests/e2e/graph2d-authoring-presets.spec.ts tests/e2e/project-surface-module.spec.ts tests/e2e/mesh-analyze-v1-acceptance.spec.ts --grep 'publishes square-root monodromy|analyzes 1/z over|publishes qualified numerical evidence|every Graph Add editor|saved Surface opens|problem-mesh workflow' --workers=1 --retries=0 --reporter=list,json
       - uses: actions/upload-artifact@v7
         if: always()
         with:
