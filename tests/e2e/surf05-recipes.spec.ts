@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { closeSurfaceApp, launchSurfaceApp, openParametricSurface, resetSurfaceAppState, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
+import { closeSurfaceApp, launchSurfaceApp, openParametricSurface, resetSurfaceAppState, resizeSurfaceAppWindow, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
 
 const recipes = [
   { family: "implicit", title: "Sphere", source: /implicit/i },
@@ -15,12 +15,15 @@ for (const recipe of recipes) {
       ctx = await launchSurfaceApp();
       const page = ctx.page;
       await resetSurfaceAppState(page);
+      await resizeSurfaceAppWindow(ctx, 1100, 750);
       await page.getByRole("button", { name: "Surfaces", exact: true }).first().click();
       if (recipe.family === "weierstrass" && !(await page.getByTestId("surface-family-weierstrass").first().isVisible())) {
         await page.getByTestId("surface-family-more").first().click();
       }
       await page.getByTestId(`surface-family-${recipe.family}`).first().click();
-      await expect(page.getByTestId("surface-primary-viewer").locator("canvas").first()).toBeVisible();
+      const canvas = page.getByTestId("surface-primary-viewer").locator("canvas").first();
+      await canvas.scrollIntoViewIfNeeded();
+      await expect(canvas).toBeVisible();
       await page.getByTestId("surfaces-left-tab-analysis").click();
       await expect(page.getByTestId("surface-analysis-contract-identity")).toContainText(recipe.source);
       await expect(page.getByTestId("surface-analysis-contract")).toContainText(recipe.title);
