@@ -132,7 +132,7 @@ import { ScientificBundleImport, type ScientificImportDestination } from "./Scie
 import { verifyProjectQuantumSceneDocuments } from "../projects/quantumSceneAdmission";
 import { quantumSceneDocumentFromVerifiedOpen } from "../projects/quantumSceneAdmission";
 import { promoteQuantumNative, type QuantumNativeTarget } from "../projects/quantumNativePromotion";
-import { admitVerifiedQwzStudy } from "../projects/quantumStudyAdmission";
+import { admitVerifiedQuantumStudy, prepareSshProjectStudyEvidence, type VerifiedStudy } from "../projects/quantumStudyAdmission";
 import type { NoteValuePatch } from "./ProjectNoteLiveValues";
 import { PROJECT_RESUME_KEY, PROJECT_UI_KEY, projectUiPreferences, rememberProjectUi, selectProjectDocument, rememberProjectDocument } from "../projects/projectResume";
 
@@ -266,6 +266,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [studyProjection, setStudyProjection] = useState("");
   const [studyLaunch, setStudyLaunch] = useState<{ mode: "new" | "attach"; title: string; model: "qwz" | "hofstadter"; roles: string[]; runId: string;
     resultSha256: string; references: ProjectQuantumSceneReference[] } | null>(null);
+  const [sshStudyRequest, setSshStudyRequest] = useState<VerifiedStudy | null>(null);
   const [scientificSceneMessage, setScientificSceneMessage] = useState("");
   const [analysisError, setAnalysisError] = useState<{ id: string; message: string } | null>(null);
   const [project, setProject] = useState<Math3DProject | null>(null);
@@ -294,6 +295,17 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     }).catch(error => { if (mounted) { setQuantumSceneMessage(`Study handoff refused: ${String(error)}`); onOpenChange(true); } });
     return () => { mounted = false; };
   }, []);
+  useEffect(() => {
+    const receive = (event: Event) => {
+      const request = (event as CustomEvent<VerifiedStudy>).detail;
+      if (request?.model !== "ssh" || request.roles?.join(",") !== "chain,bands" || request.references?.length !== 2) return;
+      setSshStudyRequest(request);
+      setQuantumSceneMessage("Choose a Project target; both SSH sources will be checked again before staging.");
+      onOpenChange(true);
+    };
+    window.addEventListener("math3d:ssh-study-request", receive);
+    return () => window.removeEventListener("math3d:ssh-study-request", receive);
+  }, [onOpenChange]);
   useEffect(() => {
     if (!project || resourceSessionId.current === project.identity.id) return;
     let cancelled = false;
@@ -1492,8 +1504,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     } catch (error) { setQuantumSceneMessage(`Portable import refused: ${String((error as Error).message)}`); }
     finally { setBusy(false); }
   };
-  const stageVerifiedStudy = async (mode: "new" | "attach") => {
-    const handoff = studyLaunch;
+  const stageVerifiedStudy = async (mode: "new" | "attach", request?: VerifiedStudy) => {
+    const handoff = request ?? studyLaunch;
     if (!handoff || busy || !onVerifyQuantumSceneDocument) return;
     setBusy(true); setQuantumSceneMessage(`Independently re-verifying both declared ${handoff.model} scenes…`);
     try {
@@ -1503,13 +1515,15 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       if (!base) throw new Error("Open the intended editable Math3D Project before attaching this study.");
       const expectedProjectId = base.identity.id;
       const expectedProjectBytes = mode === "attach" ? serializeMath3DProject(base) : null;
-      const next = await admitVerifiedQwzStudy(base, handoff, onVerifyQuantumSceneDocument);
+      const admitted = await admitVerifiedQuantumStudy(base, handoff, onVerifyQuantumSceneDocument);
+      const next = handoff.model === "ssh" ? prepareSshProjectStudyEvidence(admitted, handoff) : admitted;
       if (mode === "attach" && (projectStateRef.current?.identity.id !== expectedProjectId ||
           serializeMath3DProject(projectStateRef.current) !== expectedProjectBytes))
         throw new Error("The intended Project changed during verification.");
       display(next, false);
       setStudyLaunch(null);
-      setQuantumSceneMessage(`Both exact ${handoff.model === "qwz" ? "QWZ" : "Hofstadter"} views staged in ${next.metadata.title}. Save Project to retain them.`);
+      setSshStudyRequest(null);
+      setQuantumSceneMessage(`Both exact ${handoff.model === "qwz" ? "QWZ" : handoff.model === "ssh" ? "SSH" : "Hofstadter"} views staged in ${next.metadata.title}. Save Project to retain them.`);
     } catch (error) { setQuantumSceneMessage(`Study attachment refused: ${String((error as Error).message)}`); }
     finally { setBusy(false); }
   };
@@ -2572,8 +2586,28 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                 <button type="button" data-testid="project-attach-study-current" disabled={busy || !project || preview || !!managed} onClick={() => void stageVerifiedStudy("attach")}>Attach to current Project</button>{" "}
                 <small>Lab requested {studyLaunch.mode === "new" ? "a new Project" : "the current Project"}; choose the intended target here.</small>
               </div>}
+              {sshStudyRequest && <div data-testid="project-ssh-study-request" className="project-workspace-workbook">
+                <strong>SSH chain and bands Study</strong>
+                <p>Run <code>{sshStudyRequest.runId}</code>. Math3D will recheck both scene bundles and the exact result hash before creating the saved Study.</p>
+                <button type="button" data-testid="project-open-ssh-study-new" disabled={busy}
+                  onClick={() => void stageVerifiedStudy("new", sshStudyRequest)}>Create in new Project</button>{" "}
+                <button type="button" data-testid="project-attach-ssh-study-current" disabled={busy || !project || preview || !!managed}
+                  onClick={() => void stageVerifiedStudy("attach", sshStudyRequest)}>Attach to current Project</button>
+              </div>}
               {project?.workspace.quantumStudies?.map(study => <article key={study.id} data-testid="project-quantum-study" className="project-workspace-workbook">
                 <strong>{study.title}</strong><small> · {study.layout} · linked selection: {study.link.selection}</small>
+                {study.templateId === "ssh" && <details data-testid="project-ssh-source-evidence">
+                  <summary>Exact source evidence</summary>
+                  <p>Saved run <code>{study.source.runId}</code> · result SHA-256 <code>{study.source.resultSha256}</code>.</p>
+                  {study.panels.map(panel => {
+                    const source = project.workspace.entries.find(entry => entry.module === "quantum" &&
+                      entry.checkpoint.format === "math3d.quantum-scene-document" &&
+                      entry.checkpoint.source.sceneFingerprint === panel.sceneFingerprint)?.checkpoint as QuantumSceneDocument | undefined;
+                    return <p key={panel.role}>{panel.role}: scene SHA-256 <code>{panel.sceneFingerprint}</code>
+                      {source && <> · {source.source.coordinates.axes.join(", ")} · datasets {source.source.datasets.map(item => `${item.id} ${item.sha256}`).join("; ")}</>}.</p>;
+                  })}
+                  <small>These saved identifiers are source claims, not a fresh verification. Opening or saving this Project independently re-verifies the original scene files; Math3D does not infer edge or bulk classification.</small>
+                </details>}
                 <button type="button" onClick={() => setProject(current => { if (!current) return current;
                   const quantumStudies = current.workspace.quantumStudies?.map(item => item.id !== study.id ? item :
                     { ...item, layout: item.layout === "columns" ? "rows" as const : "columns" as const });

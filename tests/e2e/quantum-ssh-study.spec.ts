@@ -62,3 +62,61 @@ test("SSH study refuses modified chain source instead of pairing it with pinned 
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("SSH pair saves as a source-linked Project Study, reopens, and refuses a changed bundle", async () => {
+  test.setTimeout(240_000);
+  const root = await mkdtemp(join(tmpdir(), "m3d-ssh-project-"));
+  const fixture = resolve(__dirname, "..", "fixtures", "quantum-scene", "run-145ac3f06cb940c28d457937345b0243.qscene");
+  const source = join(root, "chain.qscene"), profile = join(root, "profile");
+  await cp(fixture, source, { recursive: true });
+  let app = await launchRepoElectron({ args: [".", "--quantum-scene", source], cwd: resolve(__dirname, "..", ".."),
+    env: { ...process.env, MATH3D_E2E_PROFILE_ROOT: profile } });
+  try {
+    const page = await app.firstWindow();
+    const viewer = page.getByTestId("ssh-study-profile");
+    await expect(viewer).toBeVisible({ timeout: 60_000 });
+    await viewer.getByTestId("ssh-link-views").click();
+    await expect(viewer.getByTestId("ssh-study-source")).toContainText("run-145ac3f06cb940c28d457937345b0243");
+    await viewer.getByTestId("ssh-save-project-study").click();
+    const projects = page.getByTestId("project-explorer-panel");
+    await expect(projects.getByTestId("project-ssh-study-request")).toBeVisible();
+    await projects.getByTestId("project-open-ssh-study-new").click();
+    await expect(projects.getByTestId("project-quantum-scene-message")).toContainText("Both exact SSH views staged", { timeout: 60_000 });
+    await projects.getByTestId("project-save").click();
+    await expect(projects.getByTestId("project-message")).toContainText("Saved", { timeout: 60_000 });
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    expect(saved.workspace.quantumStudies[0]).toMatchObject({ templateId: "ssh",
+      source: { runId: "run-145ac3f06cb940c28d457937345b0243" } });
+    expect(saved.workspace.quantumStudies[0].panels.map((item: { role: string }) => item.role)).toEqual(["chain", "bands"]);
+    expect(saved.workspace.studies[0].members).toHaveLength(2);
+    expect(saved.notes.filter((item: { title: string }) => item.title.startsWith("SSH "))).toHaveLength(2);
+    const id = saved.identity.id as string;
+    await app.close();
+    app = await launchRepoElectron({ args: ["."], cwd: resolve(__dirname, "..", ".."),
+      env: { ...process.env, MATH3D_E2E_PROFILE_ROOT: profile } });
+    const reopened = await app.firstWindow();
+    await reopened.getByTestId("projects-toggle").click();
+    const reopenedProjects = reopened.getByTestId("project-explorer-panel");
+    await reopenedProjects.getByTestId(`project-open-saved-${id}`).click();
+    await expect(reopenedProjects.getByTestId("project-message")).toContainText("Opened supported project", { timeout: 60_000 });
+    await expect(reopenedProjects.getByTestId("project-ssh-source-evidence")).toContainText("Exact source evidence");
+    const reopenedSource = await reopened.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!)
+      .workspace.quantumStudies[0].source);
+    expect(reopenedSource).toEqual(saved.workspace.quantumStudies[0].source);
+    await app.close();
+    const binary = join(source, "density.f64"), bytes = await readFile(binary);
+    bytes[0] ^= 1; await writeFile(binary, bytes);
+    app = await launchRepoElectron({ args: ["."], cwd: resolve(__dirname, "..", ".."),
+      env: { ...process.env, MATH3D_E2E_PROFILE_ROOT: profile } });
+    const changed = await app.firstWindow();
+    await changed.getByTestId("projects-toggle").click();
+    const changedProjects = changed.getByTestId("project-explorer-panel");
+    await changedProjects.getByTestId(`project-open-saved-${id}`).click();
+    await expect(changedProjects.getByTestId("project-message"))
+      .toContainText(/Project import failed:.*(integrity|hash|changed|verify)/i, { timeout: 60_000 });
+  } finally {
+    await app.close();
+    if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-ssh-project-")) throw new Error("Unsafe SSH Project cleanup path");
+    await rm(root, { recursive: true, force: true });
+  }
+});

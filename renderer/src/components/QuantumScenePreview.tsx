@@ -16,6 +16,7 @@ import { projectTimeCursor, scientificCursorBus } from "./scientificCursor";
 import { nearestRecordedFrame } from "./quantumDynamicsSelection";
 import { createQuantumDerivationRecord, type QuantumDerivationRecord, type QuantumFieldDocument } from "@math3d/core";
 import { quantumSceneDocumentFromVerifiedOpen } from "../projects/quantumSceneAdmission";
+import type { VerifiedStudy } from "../projects/quantumStudyAdmission";
 import { quantumTopologyOverlayGroups, topologyOverlayObjectVisible } from "./quantumTopologyOverlay";
 import { quantumSceneValidation } from "./quantumSceneValidation";
 import { QuantumInspectorSummary } from "./QuantumInspectorSummary";
@@ -65,8 +66,9 @@ type PickedTopologySample = Awaited<ReturnType<NonNullable<Window["quantumScenes
 type PickedVectorSample = Awaited<ReturnType<NonNullable<Window["quantumScenes"]>["vectorSample"]>>;
 const CURVATURE_COLORS = [0x174f9c, 0x397ec6, 0x8cbadd, 0xb7bdc6, 0xefbe8b, 0xe7824d, 0xb94038];
 
-export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedField, onPromoteField, onRecordDerivation, onFieldViewChange }: {
+export function QuantumScenePreview({ opened, onClose, onOpenRelated, onSaveSshStudy, promotedField, onPromoteField, onRecordDerivation, onFieldViewChange }: {
   opened: OpenedScene; onClose: () => void; onOpenRelated?: (scene: OpenedScene) => void;
+  onSaveSshStudy?: (study: VerifiedStudy) => void;
   promotedField?: QuantumFieldDocument | null; onPromoteField?: () => Promise<QuantumFieldDocument>;
   onRecordDerivation?: (record: QuantumDerivationRecord) => void;
   onFieldViewChange?: (view: QuantumFieldDocument["view"]) => void;
@@ -1095,6 +1097,18 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
                     onClick={() => void switchSshView("bands")}>Band path</button>
                 </div>
                 <p data-testid="ssh-study-source" style={{ overflowWrap: "anywhere" }}>Same supplied run <code>{sshSummary!.runId}</code> · result SHA-256 <code>{sshSummary!.resultSha256}</code>. Both bundles passed independent byte and schema checks; producer claims are not authenticated.</p>
+                <button type="button" data-testid="ssh-save-project-study" disabled={sshBusy || !onSaveSshStudy}
+                  onClick={() => {
+                    const summary = reviewedSshPair(sshPair.chain, sshPair.bands);
+                    const references = ([sshPair.chain, sshPair.bands] as const).map(view => ({
+                      format: quantumSceneDocumentFromVerifiedOpen(view).source.sceneSchema,
+                      title: view.document.title, directory: view.reference.directory,
+                      sceneFingerprint: view.reference.sceneFingerprint,
+                    }));
+                    onSaveSshStudy?.({ model: "ssh", title: `SSH chain and bands · ${summary.runId}`,
+                      runId: summary.runId, resultSha256: summary.resultSha256,
+                      roles: ["chain", "bands"], references });
+                  }}>Create saved SSH Project Study</button>
                 <div>Producer-labeled chain: {sshSummary!.chainLabels.join("; ")}.</div>
                 <div>Producer-labeled {sshSummary!.densityLabel} · dataset <code>{sshSummary!.densityDataset}</code> · unit {sshSummary!.densityUnit}.</div>
                 <div>Supplied bands: {sshSummary!.bandLabels.join(", ")}; worker bulk gap {sshSummary!.bulkGap} {sshSummary!.energyUnit}.</div>

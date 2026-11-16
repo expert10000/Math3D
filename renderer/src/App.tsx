@@ -113298,6 +113298,10 @@ case "mobius":
         )}
       </div></SavedSurfaceModuleFrame></SavedMeshModuleFrame>)}
       {quantumScenePreview && <QuantumScenePreview opened={quantumScenePreview} onClose={() => setQuantumScenePreview(null)}
+        onSaveSshStudy={study => {
+          setQuantumScenePreview(null); setProjectsOpen(true);
+          window.dispatchEvent(new CustomEvent("math3d:ssh-study-request", { detail: study }));
+        }}
         promotedField={quantumFieldOpenDocument}
         onPromoteField={async () => { if (!await window.quantumScenes?.verifyActive(quantumScenePreview.reference.sceneFingerprint))
             throw new TypeError("Quantum field source changed or is missing.");

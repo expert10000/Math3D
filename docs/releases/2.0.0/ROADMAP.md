@@ -11,6 +11,8 @@
 
 **Active closure checklist:** [Ranked release closure TODO](RELEASE_CLOSURE_TODO.md). The [2.0 scope decision](RELEASE_SCOPE.md) adds a fourth bounded Field Explorer → Graph → Field journey to the three original roadmap flagships; Volume → Mesh remains a fifth candidate outside the current GA claim.
 
+**Feature track alongside release qualification (2026-11-16):** The next quantum addition is a saved SSH Project Study. After independently verified chain and band scenes from one run are linked in the preview, the user can stage both in a new or current Project, save source-pinned Study panes and evidence Notes, and reopen them after restart. A changed or missing bundle must refuse activation. This is a source-checkout feature slice, not an installed 2.0 journey claim. Next, promote supplied QWZ Berry-curvature grid data into the native Field Explorer with its declared axes and units; then create a guided hydrogen Study using the existing complex-field bridge, keeping amplitude and density distinct. The [four bounded GA journeys](RELEASE_SCOPE.md) retain their defined scope, and memory qualification continues independently.
+
 **Geometry–Mesh source qualification (2026-11-16):** The connected Project import, export, clean-profile transfer, and cold-reopen test for separately indexed coincident open patches now passes. Its Mesh status retains two components and eight boundary edges and withholds solid volume; exact positions and indices survive the package transfer. The [Geometry–Mesh qualification record](../../geometry/2.0/TOPOLOGY_RECONCILIATION.md) tracks the remaining exact signed installed-candidate run. This focused source case does not add a fifth advertised GA journey.
 
 ---
