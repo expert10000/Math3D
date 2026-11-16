@@ -39,6 +39,7 @@ export const inspectMeshPackage = (raw: string) => {
     const document = state?.document ?? entry.checkpoint;
     if (document.format !== "math3d.mesh-document") throw new Error("Expected Mesh fixture.");
     const buffers = store.resolve(document.source.resource)!;
+    if (!buffers.indices) throw new Error("Expected indexed Mesh fixture.");
     return { document, selection: state?.committedSelection.entityIds ?? [], positions: [...buffers.positions], indices: [...buffers.indices], normals: [...buffers.normals ?? []], uvs: [...buffers.uvs ?? []], resourceCount: projectResourceInventory(project).length };
   });
 };
