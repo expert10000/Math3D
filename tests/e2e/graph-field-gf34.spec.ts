@@ -53,6 +53,9 @@ test("GF-34 compares different verified grids and guards the Graph profile", asy
     await explorer.getByRole("button", { name: "Analyze", exact: true }).click();
     const panel = explorer.getByTestId("gf18-field-comparison");
     await panel.getByLabel("Second saved field").selectOption(second.identity.id);
+    await panel.getByRole("button", { name: "Compare fields" }).click();
+    await expect(panel.getByRole("alert")).toContainText("identical Cartesian bounds");
+    await expect(panel.getByRole("button", { name: "Save comparison in Project" })).toHaveCount(0);
     await panel.getByTestId("gf34-alignment").selectOption("cartesian-aligned-overlap");
     await expect(panel.getByTestId("gf34-overlap-bounds"))
       .toContainText("physical-overlap-grid resampling");
