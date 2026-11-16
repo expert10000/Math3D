@@ -2,14 +2,14 @@ import { expect, test } from "@playwright/test";
 import { closeSurfaceApp, launchSurfaceApp, openParametricSurface, resetSurfaceAppState, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
 
 const recipes = [
-  { family: "implicit", source: /implicit/i },
-  { family: "parametric", source: /parametric/i },
-  { family: "spline", source: /parametric|spline/i },
-  { family: "weierstrass", source: /weierstrass/i },
+  { family: "implicit", title: "Sphere", source: /implicit/i },
+  { family: "parametric", title: "Torus", source: /parametric/i },
+  { family: "spline", title: "Bezier surface", source: /parametric|spline/i },
+  { family: "weierstrass", title: "Enneper", source: /weierstrass/i },
 ] as const;
 
 for (const recipe of recipes) {
-  test(`SURF-05 ${recipe.family} recipe opens a current analysis source`, async () => {
+  test(`SURF-05 ${recipe.family} recipe computes current curvature`, async () => {
     let ctx: LaunchedSurfaceApp | null = null;
     try {
       ctx = await launchSurfaceApp();
@@ -23,8 +23,17 @@ for (const recipe of recipes) {
       await expect(page.getByTestId("surface-primary-viewer").locator("canvas").first()).toBeVisible();
       await page.getByTestId("surfaces-left-tab-analysis").click();
       await expect(page.getByTestId("surface-analysis-contract-identity")).toContainText(recipe.source);
+      await expect(page.getByTestId("surface-analysis-contract")).toContainText(recipe.title);
       await expect(page.getByTestId("surface-analysis-contract-state")).toHaveText("ready");
-      await expect(page.getByTestId("surface-result-qualification")).toBeVisible();
+      await page.getByTestId("surface-computation-curvature-field").click();
+      const readiness = page.getByTestId("surface-compute-readiness");
+      await expect(readiness).toContainText("Domain:");
+      await expect(readiness).toContainText("sampling:");
+      await expect(readiness).toContainText("units:");
+      await expect(readiness).toContainText("Backend:");
+      await page.getByTestId("surface-curvature-compute-button").click();
+      await expect(page.getByTestId("surface-result-qualification")).toHaveAttribute("data-status", "current");
+      await expect(page.getByTestId("surface-curvature-statistics")).toContainText("RMS");
       await expect(page.getByTestId("error-banner")).toHaveCount(0);
       await page.screenshot({ path: test.info().outputPath(`${recipe.family}-analysis.png`) });
     } finally {

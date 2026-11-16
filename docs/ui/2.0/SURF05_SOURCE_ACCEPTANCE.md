@@ -6,7 +6,7 @@ Status: draft source-built Windows qualification. Initial local source was PR #9
 
 | Journey part | Native assertion | Status and boundary |
 | --- | --- | --- |
-| Implicit, parametric, spline, Weierstrass | `surf05-recipes.spec.ts` switches each family, observes a canvas and the current canonical Analysis source. | Local PASS. This checks current source routing, not every preset formula or numerical accuracy. |
+| Implicit Sphere, parametric Torus, spline Bezier and Weierstrass Enneper | `surf05-recipes.spec.ts` switches to each default recipe, checks the named canonical source and canvas, inspects domain/sampling/units/backend readiness, runs curvature and checks current statistics. | Local PASS. The result is sampled/approximated; this does not certify every preset or numerical accuracy independently. |
 | Parametric analysis and saved result | `surface-functional.spec.ts` Test 3 runs curvature, checks method/readiness/result, saves, compares and recomputes. | Local PASS. Existing computation provenance remains a dependency-freshness claim, not independent mathematical certification. |
 | Source change after analysis | `surf05-recipes.spec.ts` saves Torus curvature, switches to a spline source, checks the prior saved reference is retained and no old curvature statistics publish into the new source. | Local PASS. The new source reports `unavailable` until analyzed. |
 | Derived bake and mapped return | `surface-functional.spec.ts` Tests 7 and 8 check live, regenerated, baked and detached Mesh states, geometry bytes, Mesh Analysis and return to the Torus mapped selection. | Local PASS. This is the native source-built representation journey. |
@@ -19,6 +19,6 @@ Local command: `npx playwright test tests/e2e/surf05-recipes.spec.ts tests/e2e/s
 ## Remaining boundaries
 
 - Installed Windows executable, installer/upgrade and release E8 are not covered here.
-- The four recipe checks establish source routing and canvas readiness. Detailed parameter/domain edits are exercised on saved Weierstrass, while implicit custom-expression and parametric/spline parameter validity retain their existing owner suites. No universal numeric backend certification is claimed.
+- The four recipe checks establish current default-source computation with visible method inputs. Detailed parameter/domain edits are exercised on saved Weierstrass, while implicit custom-expression and parametric/spline parameter validity retain their existing owner suites. No universal numeric backend certification is claimed.
 - Missing-resource safe withholding, late Job completion after a source generation changes, offline runtime recovery and cross-frame/unit rejection need separate negative-path receipts before SURF-05 can be promoted to a complete release acceptance claim.
 - PR #92 combined source integration and this stacked test branch require exact-head CI review before merging. Do not transplant a local PASS to a later PR #92 head without rerunning.
