@@ -1,0 +1,56 @@
+name: TOP-05 Installed harness static qualification
+on:
+  push:
+    branches: [codex/top05-installed-qualification]
+    paths:
+      - 'tests/e2e/topology-installed-runtime-recovery.spec.ts'
+      - 'scripts/top05-windows-installed-e8.ps1'
+      - '.github/workflows/topology-installed-e8.yml'
+      - '.github/workflows/top05-installed-harness-static.yml'
+  pull_request:
+    branches: [main, codex/topology-functional-acceptance]
+    paths:
+      - 'tests/e2e/topology-installed-runtime-recovery.spec.ts'
+      - 'scripts/top05-windows-installed-e8.ps1'
+      - '.github/workflows/topology-installed-e8.yml'
+      - '.github/workflows/top05-installed-harness-static.yml'
+permissions:
+  contents: read
+jobs:
+  static-windows-harness:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+          cache: npm
+      - run: npm ci --foreground-scripts && npm --prefix renderer ci --foreground-scripts
+      - run: npm run typecheck:noemit
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Parse both E8 YAML workflows
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check 'PyYAML==6.0.2'
+          if ($LASTEXITCODE -ne 0) { throw 'YAML parser install failed' }
+          python -c "import yaml; from pathlib import Path; paths=[Path('.github/workflows/topology-installed-e8.yml'), Path('.github/workflows/top05-installed-harness-static.yml')]; docs=[yaml.safe_load(p.read_text(encoding='utf-8')) for p in paths]; assert all('jobs' in d and isinstance(d['jobs'],dict) for d in docs); assert 'workflow_dispatch' in docs[0].get('on',docs[0].get(True,{})); print('Installed E8 workflow YAML: PASS')"
+          if ($LASTEXITCODE -ne 0) { throw 'E8 workflow YAML invalid' }
+      - name: Parse installed acceptance PowerShell without executing installers
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tokens = $null
+          $errors = $null
+          $file = (Resolve-Path 'scripts/top05-windows-installed-e8.ps1').Path
+          [void][System.Management.Automation.Language.Parser]::ParseFile($file, [ref]$tokens, [ref]$errors)
+          if ($errors.Count -ne 0) { throw "PowerShell parse errors: $($errors | Out-String)" }
+          Write-Host 'PowerShell parser: PASS (no install/upgrade executed)'
+      - name: Discover installed native regression (no installed binary)
+        shell: pwsh
+        run: |
+          npx playwright test tests/e2e/topology-installed-runtime-recovery.spec.ts --list
+          if ($LASTEXITCODE -ne 0) { throw 'Installed test discovery failed' }
+          Write-Host 'Installed E8 runtime regression discovered; execution intentionally withheld without verified signed NSIS artifacts'

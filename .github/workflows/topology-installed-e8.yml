@@ -1,0 +1,132 @@
+name: TOP-05 Installed Windows E8 (manual artifact qualification)
+on:
+  workflow_dispatch:
+    inputs:
+      prior_run_id:
+        description: "Actions run ID holding the previous genuine Windows NSIS installer"
+        required: true
+        type: string
+      prior_artifact:
+        description: "Artifact name holding previous installer"
+        required: true
+        type: string
+      prior_filename:
+        description: "Exact previous installer .exe filename inside the artifact"
+        required: true
+        type: string
+      prior_sha256:
+        description: "Independently verified SHA256 of previous installer (64 hex)"
+        required: true
+        type: string
+      current_run_id:
+        description: "Actions run ID holding the target Windows NSIS installer"
+        required: true
+        type: string
+      current_artifact:
+        description: "Artifact name holding target installer"
+        required: true
+        type: string
+      current_filename:
+        description: "Exact target installer .exe filename inside the artifact"
+        required: true
+        type: string
+      current_sha256:
+        description: "Independently verified SHA256 of target installer (64 hex)"
+        required: true
+        type: string
+      profile_run_id:
+        description: "Actions run ID holding isolated existing Project/profile fixture"
+        required: true
+        type: string
+      profile_artifact:
+        description: "Artifact name holding existing profile fixture"
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  installed-e8:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+          cache: npm
+      - name: Resolve installer source commits from successful runs
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRIOR_RUN_ID: ${{ inputs.prior_run_id }}
+          CURRENT_RUN_ID: ${{ inputs.current_run_id }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($item in @(
+            @{ Run=$env:PRIOR_RUN_ID; Output='PRIOR_SOURCE' },
+            @{ Run=$env:CURRENT_RUN_ID; Output='CURRENT_SOURCE' }
+          )) {
+            if ($item.Run -notmatch '^[0-9]+$') { throw 'Invalid installer run ID' }
+            $runInfo = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$($item.Run)" | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0 -or $runInfo.conclusion -ne "success") { throw "Installer run not successful: $($item.Run)" }
+            if ($runInfo.head_sha -notmatch '^[0-9a-fA-F]{40}$') { throw 'Missing installer run source SHA' }
+            "$($item.Output)=$($runInfo.head_sha)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            Write-Host "Installer run $($item.Run) source: $($runInfo.head_sha)"
+          }
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.prior_artifact }}
+          run-id: ${{ inputs.prior_run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/top05-input/prior
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.current_artifact }}
+          run-id: ${{ inputs.current_run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/top05-input/current
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.profile_artifact }}
+          run-id: ${{ inputs.profile_run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/top05-input/profile
+      - run: npm ci --foreground-scripts && npm --prefix renderer ci --foreground-scripts
+      - run: npm run typecheck:noemit && npm run build:core
+      - name: Verify installer identities and execute isolated genuine NSIS install/upgrade/recovery
+        shell: pwsh
+        env:
+          PRIOR_FILENAME: ${{ inputs.prior_filename }}
+          CURRENT_FILENAME: ${{ inputs.current_filename }}
+          PRIOR_SHA256: ${{ inputs.prior_sha256 }}
+          CURRENT_SHA256: ${{ inputs.current_sha256 }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($name in @($env:PRIOR_FILENAME, $env:CURRENT_FILENAME)) {
+            if ($name -notmatch '^[^\\/]+\.exe$' -or $name.Contains('..')) { throw 'Installer filenames must be exact .exe basenames' }
+          }
+          & ./scripts/top05-windows-installed-e8.ps1 `
+            -PriorInstallerPath (Join-Path $env:RUNNER_TEMP "top05-input/prior/$env:PRIOR_FILENAME") `
+            -PriorInstallerSha256 $env:PRIOR_SHA256 `
+            -CurrentInstallerPath (Join-Path $env:RUNNER_TEMP "top05-input/current/$env:CURRENT_FILENAME") `
+            -CurrentInstallerSha256 $env:CURRENT_SHA256 `
+            -PriorSourceCommit $env:PRIOR_SOURCE `
+            -CurrentSourceCommit $env:CURRENT_SOURCE `
+            -ExistingProfileFixture (Join-Path $env:RUNNER_TEMP 'top05-input/profile') `
+            -EvidenceDir (Join-Path $env:RUNNER_TEMP 'top05-installed-evidence')
+      - name: Copy evidence into workspace
+        if: always()
+        shell: pwsh
+        run: |
+          $src = Join-Path $env:RUNNER_TEMP 'top05-installed-evidence'
+          New-Item -ItemType Directory -Force -Path ui-evidence | Out-Null
+          if (Test-Path $src) { Copy-Item (Join-Path $src '*') ui-evidence -Recurse -Force }
+          git rev-parse HEAD | Set-Content ui-evidence/source.txt
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: top05-installed-e8-evidence
+          path: |
+            ui-evidence/**
+            test-results/playwright/**
