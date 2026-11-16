@@ -13,6 +13,16 @@ export type BoxDefinitionBoundaryTopology = {
   readonly boundaryEdgeCount: 0;
 };
 
+export const boxDefinitionMeasurements = (object: Pick<GeometryObject, "type" | "params">):
+  { surfaceArea: number; volume: number; spaceDiagonal: number } | null => {
+  if (object.type !== "box") return null;
+  const [width, height, depth] = [object.params.width, object.params.height, object.params.depth]
+    .map((value) => Number(value ?? 1));
+  if (![width, height, depth].every((value) => Number.isFinite(value) && value > 0)) return null;
+  return { surfaceArea: 2 * (width * height + width * depth + height * depth),
+    volume: width * height * depth, spaceDiagonal: Math.hypot(width, height, depth) };
+};
+
 /** Combinatorics of a positive-size box definition after triangulating each face grid. */
 export const boxDefinitionBoundaryTopology = (
   object: Pick<GeometryObject, "type" | "params">

@@ -38,6 +38,8 @@ export function refreshMeshFaceRegionLink(
 ): { link: MeshFaceRegionLink; mesh: SurfaceMeshData | null } | null {
   if (link.status === "detached") return null;
   if (!source) return link.status === "missing" ? null : { link: { ...link, status: "missing" }, mesh: null };
+  if (sourceRevision < link.sourceRevision) return link.status === "stale" ? null :
+    { link: { ...link, status: "stale" }, mesh: null };
   if (sourceRevision === link.sourceRevision && link.status !== "missing") return null;
   const mesh = extractMeshFaceRegion(source, link.faceIndices);
   return {

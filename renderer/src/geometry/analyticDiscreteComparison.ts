@@ -1,5 +1,6 @@
 import { analyzeExactSurface, type ExactSurfaceSample, type ExactSurfaceVec3, type GeometryAnalyticSurfaceDefinition } from "./exactSurfaceAnalysis";
 import type { SurfaceMeshData } from "../mesh/surfaceMesh";
+import { computeMeshTopologyInspector } from "../mesh/topologyInspector";
 
 export type GeometryDiscreteTargetKind = "display-tessellation" | "derived-analysis-mesh" | "saved-mesh-result";
 export type GeometryMappingConfidence = "exact" | "heuristic" | "partial" | "unavailable";
@@ -94,12 +95,18 @@ export const compareAnalyticGeometryToDiscrete = (args: { definition: GeometryAn
     const curvatureSigned: number[] = [], curvatureAbsolute: number[] = [], curvatureReference: number[] = [];
     mapped.forEach((entry) => { const discrete = target.fields?.gaussianCurvature?.[entry.vertexIndex]; if (entry.sample.K == null || discrete == null || !Number.isFinite(discrete)) return; curvatureSigned.push(discrete - entry.sample.K); curvatureAbsolute.push(Math.abs(discrete - entry.sample.K)); curvatureReference.push(entry.sample.K); });
     const metrics = meshAreaVolume(target.mesh);
+    const volumeTopology = computeMeshTopologyInspector(target.mesh);
+    const volumeEligible = Boolean(volumeTopology?.watertight && volumeTopology.orientationConsistent === true &&
+      volumeTopology.nonManifoldEdgeCount === 0);
     const quantities: GeometryQuantityComparison[] = [
       { quantity: "position", available: Boolean(positionStats), analyticValue: "analytic surface samples", discreteValue: `${mapped.length} correspondences`, unit: args.definition.units.position, statistics: positionStats, explanation: mapped.length ? "Signed error is measured along the analytic oriented normal; absolute error is Euclidean." : "No vertex correspondence is available." },
       { quantity: "normal", available: normalAbsolute.length > 0, analyticValue: "analytic normals", discreteValue: target.mesh.normals ? "mesh vertex normals" : null, unit: "rad", statistics: normalAbsolute.length ? stats(normalSigned, normalAbsolute, normalAbsolute.map(() => 1)) : null, explanation: target.mesh.normals ? "Normal angular error uses matched vertices." : "Target has no vertex-normal field." },
       { quantity: "curvature", available: curvatureAbsolute.length > 0, analyticValue: "analytic Gaussian K", discreteValue: target.fields?.gaussianCurvature ? "saved mesh Gaussian K" : null, unit: `${args.definition.units.position}⁻²`, statistics: curvatureAbsolute.length ? stats(curvatureSigned, curvatureAbsolute, curvatureReference) : null, explanation: target.fields?.gaussianCurvature ? "Compared at mapped vertices." : "No compatible saved mesh curvature field or semantic correspondence." },
       scalarComparison("area", analyticArea(args.definition.id) ?? null, target.fields?.area ?? metrics.area, `${args.definition.units.position}²`, "Analytic exact area is unavailable for this surface definition."),
-      scalarComparison("volume", analyticVolume(args.definition.id), target.fields?.volume ?? metrics.volume, `${args.definition.units.position}³`, "Volume comparison requires a closed analytic surface and a watertight discrete target."),
+      scalarComparison("volume", analyticVolume(args.definition.id), volumeEligible ? target.fields?.volume ?? metrics.volume : null,
+        `${args.definition.units.position}³`, volumeEligible
+          ? "Volume comparison requires a supported closed analytic surface."
+          : "Discrete volume withheld: the mesh must be watertight, manifold, and consistently oriented."),
       scalarComparison("boundary", analyticBoundary(args.definition), target.fields?.boundaryCount ?? meshBoundaryCount(target.mesh), "count", "Boundary comparison uses semantic loops versus mesh boundary edges."),
       scalarComparison("geodesic", args.analyticGeodesicLength ?? null, target.fields?.geodesicLength ?? null, args.definition.units.position, "Geodesic comparison requires compatible analytic endpoints and a saved mesh path."),
       scalarComparison("feature", args.analyticFeatureCount ?? null, target.fields?.featureCount ?? null, "count", "Feature comparison requires matched feature definitions and saved Mesh results."),

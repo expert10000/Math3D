@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createGeometryDocument, geometryDocumentFromSceneDocument, createMath3DProject, createMixedWorkspaceDocument, SAGE_LOCUS_GEOMETRY_EXTENSION } from "@math3d/core";
-import { geometryEditorSeed, geometrySourceFromEditor, geometryDisplayFromEditor, projectConstructionsEditable, retainConstructionSource, LIVE_GEOMETRY_CONSTRUCTIONS } from "./nativeGeometryRestore";
+import { geometryEditorSeed, geometrySourceFromEditor, geometryDisplayFromEditor, projectConstructionsEditable, retainConstructionSource, LIVE_GEOMETRY_CONSTRUCTIONS, GEOMETRY_DATASET_MESH_OBJECTS } from "./nativeGeometryRestore";
 import { inspectProjectCompatibility } from "./projectTransfer";
 import { GeometryDocumentAdapter } from "../geometry/geometryDocumentAdapter";
 const fixture = (id = "project-geometry") => geometryDocumentFromSceneDocument({ id, title: "Saved construction", createdAt: 0, updatedAt: 0, objects: [{ id: "box", type: "box", name: "Research box", params: { width: 2, height: 3, depth: 4 }, visible: true, material: { color: 0x3366ff, opacity: 1 }, transform: { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } } }], extensions: { [LIVE_GEOMETRY_CONSTRUCTIONS]: [{ id: "center", type: "object-centroid", sourceKind: "object", sourceObjectId: "box", dependent: true }], "research.extra": { retained: 7 } } });
@@ -26,6 +26,51 @@ describe("native Geometry project restore", () => {
     expect(adapter.document().identity.id).toBe(doc.identity.id); expect(adapter.document().source.extensions["research.extra"]).toEqual({ retained: 7 });
     expect(adapter.document().source.extensions[LIVE_GEOMETRY_CONSTRUCTIONS]).toEqual(doc.source.extensions[LIVE_GEOMETRY_CONSTRUCTIONS]);
     expect(GeometryDocumentAdapter.restore(adapter.exportReplay()).document()).toEqual(adapter.document());
+  });
+  it("restores linked Mesh representations and updates their bytes on Project save", () => {
+    const mesh = { label: "Face", positions: [0, 0, 0, 1, 0, 0, 0, 1, 0], indices: [0, 1, 2], source: { kind: "detachedMesh" } };
+    const source = { id: "source", name: "Source", mesh, material: { color: 0x8aa4ff, opacity: 1 } };
+    const result = { id: "result", name: "Face region", mesh, material: { color: 0x8aa4ff, opacity: 1 },
+      derivedRegion: { sourceObjectId: "source", faceIndices: [0], sourceRevision: 2, status: "linked" } };
+    const base = fixture();
+    const saved = createGeometryDocument({ source: { ...base.source,
+      extensions: { ...base.source.extensions, [GEOMETRY_DATASET_MESH_OBJECTS]: [source, result] } } });
+    expect(geometryEditorSeed(saved).datasetMeshObjects).toEqual([source, result]);
+    expect(geometryEditorSeed(saved).datasetRevisions.source).toBe(2);
+    const normalized = createGeometryDocument({ source: { ...saved.source, extensions: { ...saved.source.extensions,
+      [GEOMETRY_DATASET_MESH_OBJECTS]: [source, result].map((item) => ({ ...item,
+        material: { color: 0x8aa4ff, opacity: 1, roughness: 0.3, metalness: 0.1 },
+        promotion: null, restoredGeometryPreset: null, sourceSelectionOverlay: null,
+        derivedRegion: "derivedRegion" in item ? item.derivedRegion : null })) } } });
+    expect(geometrySourceFromEditor(saved, normalized).extensions[GEOMETRY_DATASET_MESH_OBJECTS])
+      .toEqual([source, result]);
+    const changed = { ...source, mesh: { ...mesh, positions: [0, 0, 0, 2, 0, 0, 0, 1, 0] } };
+    const live = createGeometryDocument({ source: { ...saved.source,
+      extensions: { ...saved.source.extensions, [GEOMETRY_DATASET_MESH_OBJECTS]: [changed, result] } } });
+    const adapter = new GeometryDocumentAdapter(saved);
+    adapter.commitSource(geometrySourceFromEditor(saved, live));
+    expect(GeometryDocumentAdapter.restore(adapter.exportReplay()).document().source.extensions[GEOMETRY_DATASET_MESH_OBJECTS])
+      .toEqual([changed, result]);
+  });
+  it("refuses malformed Mesh extension data without changing saved Project evidence", () => {
+    const base = fixture();
+    const malformed = createGeometryDocument({ source: { ...base.source,
+      extensions: { ...base.source.extensions, [GEOMETRY_DATASET_MESH_OBJECTS]: [
+        { id: "broken", mesh: { positions: [0, 0, 0], indices: [0, 1, 2] } },
+      ] } } });
+    expect(() => geometryEditorSeed(malformed)).toThrow("Unsupported Geometry mesh representation state");
+    expect(inspectProjectCompatibility(createMath3DProject(workspace(malformed), { stableKey: "bad-geometry-mesh" })).canOpenWorkspace).toBe(false);
+    expect(malformed.source.extensions[GEOMETRY_DATASET_MESH_OBJECTS]).toHaveLength(1);
+  });
+  it("keeps explicit mesh generations and refuses invalid saved frames or lineage", () => {
+    const base = fixture(), mesh = { positions: [0, 0, 0, 1, 0, 0, 0, 1, 0], indices: [0, 1, 2] };
+    const source = { id: "source", mesh, sourceRevision: 4 };
+    const result = { id: "result", mesh, derivedRegion: { sourceObjectId: "source", faceIndices: [0], sourceRevision: 3, status: "linked" } };
+    const withObjects = (objects: unknown[]) => createGeometryDocument({ source: { ...base.source,
+      extensions: { ...base.source.extensions, [GEOMETRY_DATASET_MESH_OBJECTS]: objects } } });
+    expect(geometryEditorSeed(withObjects([source, result])).datasetRevisions.source).toBe(4);
+    expect(() => geometryEditorSeed(withObjects([{ ...source, transform: { position: { x: 0, y: 0, z: 0 } } }]))).toThrow("Unsupported Geometry mesh representation state");
+    expect(() => geometryEditorSeed(withObjects([{ ...result, derivedRegion: { ...result.derivedRegion, faceIndices: [-1] } }]))).toThrow("Unsupported Geometry mesh representation state");
   });
   it("does not advertise unrelated Geometry payloads or lossy construction normalization", () => {
     const doc = fixture();

@@ -32,10 +32,18 @@ The word **connected** must name its evidence. The screenshot's box is made with
 4. Unit tests cover the 24-index box and coincident disconnected triangles. The raw input remains unchanged after interpretation.
 5. The Box definition boundary card provides a separate, source-revision-qualified χ=2 claim. Changing the source advances its revision, hides the previous exact-position candidate, and asks for recomputation. The desktop test covers this sequence and checks that scene totals remain per-mesh sums.
 
+## Source-build follow-up, 2026-11-16
+
+- A single desktop run creates a Box, checks definition area/volume/diagonal, edits its Mesh, returns to Geometry, inspects the shared history, undoes/redoes, saves a focused Geometry–Mesh Project, restarts, and reopens its exact Geometry dimensions. The focused Project action retains the two workbench checkpoints and their relevant results/resources without pulling unrelated default documents into this journey.
+- Box measurements now state their definition method and source revision. The Geometry object card withholds solid volume for other display meshes; a desktop torus case checks the unavailable claim. Analytic-to-discrete comparison withholds discrete volume unless the indexed Mesh is watertight, manifold, and consistently oriented. Unit cases cover an open plane, inconsistent winding, a non-manifold fan, and a closed tetrahedron.
+- Unit topology checks keep coincident disconnected patches separate. The existing desktop Box topology test still distinguishes raw indexed, exact-position, and definition counts. The desktop face-region run checks source/result navigation and missing-source status; Project restore keeps its native mesh representation and rejects invalid saved transforms/lineage.
+- The desktop selection run pages past the first 100 components at 600 px height, filters a face by ID, cancels a preview without adding history, and commits a Mesh operation with the keyboard. Project compatibility tests cover legacy selection migration, missing Mesh buffers, stale source generations, and mismatched physical frames.
+
+These are source-build checks. They do not establish a signed installed-candidate pass or expand the 2.0 GA claim.
+
 ## Remaining acceptance work
 
-- Extend definition-based boundary reports only to primitives whose topology is justified by their definitions. The current Box result does not imply the same method works for arbitrary surfaces or edited meshes.
-- Extend desktop acceptance beyond the Box fixture to disconnected patches and changed or missing sources across save/reopen. The unit gate covers disconnected triangle patches; the current desktop case covers source edits and scene totals.
-- Qualify volume and solid measurements independently from this topology view. A mesh with boundary or inconsistent orientation must not be presented as a reliable closed-solid volume.
-- Run the continuous Geometry→Mesh journey proposed in the review document and record each step's actual pass/fail status. Do not mark the new journey GA-complete from isolated topology tests.
+- Extend definition-based boundary reports only to primitives whose topology is justified by their definitions. The Box result does not imply the same method works for arbitrary surfaces or edited meshes.
+- Add a connected desktop import/reopen case for disconnected patches; the current disconnected-patch qualification is a unit gate.
+- Repeat the Geometry–Mesh journey and compatibility failures on the exact signed installed candidate when that release gate is available.
 - Reconcile any newly required release claims with the existing 2.0 acceptance matrix and supported project format before calling them blockers.

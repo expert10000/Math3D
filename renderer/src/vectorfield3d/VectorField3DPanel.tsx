@@ -3137,6 +3137,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
         data-testid="vector-field3d-viewer-error">{error}</div>}
       {fieldExplorerWorkflow(document).comparisonVisible ? <FieldExplorerBaselineViews
         document={document} baseline={baseline} project={project} onProbeSelect={point => void selectProbe(point)}
+        onDifferenceChange={busy || lineBusy ? undefined : differenceView =>
+          setDocument(current => reviseFieldExplorerWorkflow(current, { differenceView }))}
         onSendLineToGraphs={sendAnalyticLine} onSendDerivedLineToGraphs={sendDerivedLine}
         onClose={() => setDocument(current => reviseFieldExplorerWorkflow(current,
           { comparisonVisible: false }))} /> : multiView ? <div className={`vector-field3d-linked-grid vector-field3d-linked-grid-${workspace.layout}`}>
