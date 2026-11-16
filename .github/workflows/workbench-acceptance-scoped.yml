@@ -1,0 +1,56 @@
+name: Workbench acceptance scoped native evidence
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/workbench-acceptance-scoped.yml'
+      - 'docs/ui/2.0/**'
+      - 'tests/e2e/complex-exact-mvp.spec.ts'
+      - 'tests/e2e/complex-continuation.spec.ts'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  workbench-entry-scope:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    env:
+      NODE_OPTIONS: --max-old-space-size=8192
+      electron_config_cache: '${{ github.workspace }}\.cache\electron'
+      MATH3D_ELECTRON_DOWNLOAD_TIMEOUT_MS: '600000'
+      MATH3D_ELECTRON_EXTRACT_TIMEOUT_MS: '180000'
+      MATH3D_ELECTRON_DOWNLOAD_RETRIES: '2'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+          cache: npm
+      - uses: actions/cache@v6
+        with:
+          path: ${{ env.electron_config_cache }}
+          key: ${{ runner.os }}-electron-cache-${{ hashFiles('package-lock.json') }}
+      - run: npm ci --foreground-scripts && npm --prefix renderer ci --foreground-scripts
+      - uses: ./.github/actions/source-python-worker
+      - run: npm run typecheck:noemit && npm run build:core
+      - name: Indexed Mesh benchmark expectations
+        run: npm --prefix renderer test -- src/mesh/meshBenchmarkRegression.test.ts
+      - name: Five bounded native workbench entry and diagnostic checks
+        shell: bash
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: workbench-evidence/native.json
+        run: |
+          mkdir -p workbench-evidence
+          git rev-parse HEAD > workbench-evidence/source.txt
+          npx playwright test tests/e2e/complex-exact-mvp.spec.ts tests/e2e/complex-continuation.spec.ts tests/e2e/graph2d-authoring-presets.spec.ts tests/e2e/project-surface-module.spec.ts tests/e2e/mesh-analyze-v1-acceptance.spec.ts --grep 'publishes square-root monodromy|analyzes 1/z over|every Graph Add editor|saved Surface opens|problem-mesh workflow' --workers=1 --retries=0 --reporter=list,json
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: workbench-entry-scope-evidence
+          path: |
+            workbench-evidence/**
+            dist/build-identity.json
+            test-results/playwright/**
