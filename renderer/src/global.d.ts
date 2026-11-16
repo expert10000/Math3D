@@ -764,6 +764,8 @@ declare global {
       reopenRecent: () => Promise<import("./components/QuantumScenePreview").QuantumSceneOpenResponse>;
       consumeLaunch: () => Promise<import("./components/QuantumScenePreview").QuantumSceneOpenResponse>;
       openReference: (reference: unknown) => Promise<import("./components/QuantumScenePreview").QuantumSceneOpenResponse>;
+      promoteQwzCurvature: (reference: unknown) => Promise<{ directory: string; fingerprint: string;
+        manifestJson: string; sourceFingerprint: string }>;
       loadStreamLevel: (fingerprint: string, level: number) => Promise<import("./components/QuantumScenePreview").QuantumSceneOpenResponse>;
       cancelStreamLevel: (fingerprint: string) => Promise<boolean>;
       verifyActive: (fingerprint: string) => Promise<boolean>;

@@ -133,6 +133,7 @@ import { verifyProjectQuantumSceneDocuments } from "../projects/quantumSceneAdmi
 import { quantumSceneDocumentFromVerifiedOpen } from "../projects/quantumSceneAdmission";
 import { promoteQuantumNative, type QuantumNativeTarget } from "../projects/quantumNativePromotion";
 import { admitVerifiedQuantumStudy, prepareSshProjectStudyEvidence, type VerifiedStudy } from "../projects/quantumStudyAdmission";
+import { admitVerifiedHydrogenStudy, type HydrogenStudyRequest } from "../projects/hydrogenStudyAdmission";
 import type { NoteValuePatch } from "./ProjectNoteLiveValues";
 import { PROJECT_RESUME_KEY, PROJECT_UI_KEY, projectUiPreferences, rememberProjectUi, selectProjectDocument, rememberProjectDocument } from "../projects/projectResume";
 
@@ -267,6 +268,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [studyLaunch, setStudyLaunch] = useState<{ mode: "new" | "attach"; title: string; model: "qwz" | "hofstadter"; roles: string[]; runId: string;
     resultSha256: string; references: ProjectQuantumSceneReference[] } | null>(null);
   const [sshStudyRequest, setSshStudyRequest] = useState<VerifiedStudy | null>(null);
+  const [hydrogenStudyRequest, setHydrogenStudyRequest] = useState<HydrogenStudyRequest | null>(null);
   const [scientificSceneMessage, setScientificSceneMessage] = useState("");
   const [analysisError, setAnalysisError] = useState<{ id: string; message: string } | null>(null);
   const [project, setProject] = useState<Math3DProject | null>(null);
@@ -305,6 +307,18 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     };
     window.addEventListener("math3d:ssh-study-request", receive);
     return () => window.removeEventListener("math3d:ssh-study-request", receive);
+  }, [onOpenChange]);
+  useEffect(() => {
+    const receive = (event: Event) => {
+      const request = (event as CustomEvent<HydrogenStudyRequest>).detail;
+      if ((request?.reference?.format !== "quantum-scene/v1" &&
+          request?.reference?.format !== "quantum-scene/v2") || !request.runId || !request.resultSha256) return;
+      setHydrogenStudyRequest(request);
+      setQuantumSceneMessage("Choose a Project target; the hydrogen complex-field source will be checked again before staging.");
+      onOpenChange(true);
+    };
+    window.addEventListener("math3d:hydrogen-study-request", receive);
+    return () => window.removeEventListener("math3d:hydrogen-study-request", receive);
   }, [onOpenChange]);
   useEffect(() => {
     if (!project || resourceSessionId.current === project.identity.id) return;
@@ -1003,7 +1017,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       if (!managed) { setNotesProject(next); setNoteDrafts([]); }
       setMessage(`Saved “${next.metadata.title}” with ${next.workspace.entries.length} documents.`);
       setQuantumSceneMessage(next.workspace.quantumStudies?.some(study => study.templateId === "ssh")
-        ? "SSH chain and bands Study saved. Both exact source bundles were re-verified." : "");
+        ? "SSH chain and bands Study saved. Both exact source bundles were re-verified."
+        : next.workspace.quantumStudies?.some(study => study.templateId === "hydrogen")
+          ? "Hydrogen Study saved. The exact complex-field source was re-verified." : "");
     } catch (error) { setMessage(`Project save failed: ${(error as Error).message}`); }
     finally { setBusy(false); }
   };
@@ -1532,6 +1548,32 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       }
       setQuantumSceneMessage(`Both exact ${handoff.model === "qwz" ? "QWZ" : handoff.model === "ssh" ? "SSH" : "Hofstadter"} views staged in ${next.metadata.title}. Save Project to retain them.`);
     } catch (error) { setQuantumSceneMessage(`Study attachment refused: ${String((error as Error).message)}`); }
+    finally { setBusy(false); }
+  };
+  const stageHydrogenStudy = async (mode: "new" | "attach", request: HydrogenStudyRequest) => {
+    if (busy || !window.quantumScenes?.openReference) return;
+    setBusy(true); setQuantumSceneMessage("Re-verifying the exact hydrogen complex-field source…");
+    try {
+      const studyTitle = `Hydrogen density and phase · ${request.runId}`;
+      const base = mode === "new"
+        ? createMath3DProject(capture(), { stableKey: crypto.randomUUID(),
+          title: studyTitle })
+        : !preview && !managed ? projectStateRef.current : null;
+      if (!base) throw new Error("Open the intended editable Math3D Project before attaching this study.");
+      const expectedProjectBytes = mode === "attach" ? serializeMath3DProject(base) : null;
+      const next = await admitVerifiedHydrogenStudy(base, request,
+        reference => window.quantumScenes!.openReference({ directory: reference.directory,
+          sceneFingerprint: reference.sceneFingerprint }));
+      if (mode === "attach" && (!projectStateRef.current ||
+          serializeMath3DProject(projectStateRef.current) !== expectedProjectBytes))
+        throw new Error("The intended Project changed during verification.");
+      display(next, false);
+      setHydrogenStudyRequest(null);
+      const study = next.workspace.studies?.find(item => item.title === studyTitle);
+      setQuick(false); setViewerCompanion(false); setDetailView(true); setDetailPage("overview");
+      if (study) setStudyFocus(previous => ({ id: study.id, token: (previous?.token ?? 0) + 1 }));
+      setQuantumSceneMessage(`Verified hydrogen scene and complex field staged in ${next.metadata.title}. Save Project to retain the guided Study.`);
+    } catch (error) { setQuantumSceneMessage(`Hydrogen Study attachment refused: ${String((error as Error).message)}`); }
     finally { setBusy(false); }
   };
   const importSamsungExamples = async () => {
@@ -2214,6 +2256,15 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           onClick={() => void stageVerifiedStudy("new", sshStudyRequest)}>Create in new Project</button>{" "}
         <button type="button" data-testid="project-attach-ssh-study-current" disabled={busy || !project || preview || !!managed}
           onClick={() => void stageVerifiedStudy("attach", sshStudyRequest)}>Attach to current Project</button>
+      </div>}
+      {hydrogenStudyRequest && <div data-testid="project-hydrogen-study-request" role="region" aria-label="Create hydrogen Project Study"
+        style={{ marginTop: 12, padding: 12, border: "2px solid #4f9e8e", borderRadius: 10, background: "#eaf8f3", color: "#153d35" }}>
+        <strong>Create hydrogen density and phase Study</strong>
+        <p style={{ margin: "6px 0" }}>Choose a Project target for run <code>{hydrogenStudyRequest.runId}</code>. The complex source will be checked again before staging. Then save the Project.</p>
+        <button type="button" data-testid="project-open-hydrogen-study-new" disabled={busy}
+          onClick={() => void stageHydrogenStudy("new", hydrogenStudyRequest)}>Create in new Project</button>{" "}
+        <button type="button" data-testid="project-attach-hydrogen-study-current" disabled={busy || !project || preview || !!managed}
+          onClick={() => void stageHydrogenStudy("attach", hydrogenStudyRequest)}>Attach to current Project</button>
       </div>}
       {hasOpenProject && !quick && <nav className="project-research-navigation" aria-label="Research navigation" data-testid="project-research-navigation">
         {(["gallery", "studies", "results", "workbooks", "notes"] as const).map(section =>

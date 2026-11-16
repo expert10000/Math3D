@@ -17,6 +17,7 @@ import { nearestRecordedFrame } from "./quantumDynamicsSelection";
 import { createQuantumDerivationRecord, type QuantumDerivationRecord, type QuantumFieldDocument } from "@math3d/core";
 import { quantumSceneDocumentFromVerifiedOpen } from "../projects/quantumSceneAdmission";
 import type { VerifiedStudy } from "../projects/quantumStudyAdmission";
+import type { HydrogenStudyRequest } from "../projects/hydrogenStudyAdmission";
 import { quantumTopologyOverlayGroups, topologyOverlayObjectVisible } from "./quantumTopologyOverlay";
 import { quantumSceneValidation } from "./quantumSceneValidation";
 import { QuantumInspectorSummary } from "./QuantumInspectorSummary";
@@ -66,9 +67,11 @@ type PickedTopologySample = Awaited<ReturnType<NonNullable<Window["quantumScenes
 type PickedVectorSample = Awaited<ReturnType<NonNullable<Window["quantumScenes"]>["vectorSample"]>>;
 const CURVATURE_COLORS = [0x174f9c, 0x397ec6, 0x8cbadd, 0xb7bdc6, 0xefbe8b, 0xe7824d, 0xb94038];
 
-export function QuantumScenePreview({ opened, onClose, onOpenRelated, onSaveSshStudy, promotedField, onPromoteField, onRecordDerivation, onFieldViewChange }: {
+export function QuantumScenePreview({ opened, onClose, onOpenRelated, onSaveSshStudy, onSaveHydrogenStudy, onPromoteQwzCurvature, promotedField, onPromoteField, onRecordDerivation, onFieldViewChange }: {
   opened: OpenedScene; onClose: () => void; onOpenRelated?: (scene: OpenedScene) => void;
   onSaveSshStudy?: (study: VerifiedStudy) => void;
+  onSaveHydrogenStudy?: (request: HydrogenStudyRequest) => void;
+  onPromoteQwzCurvature?: () => Promise<void>;
   promotedField?: QuantumFieldDocument | null; onPromoteField?: () => Promise<QuantumFieldDocument>;
   onRecordDerivation?: (record: QuantumDerivationRecord) => void;
   onFieldViewChange?: (view: QuantumFieldDocument["view"]) => void;
@@ -812,6 +815,15 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, onSaveSshS
                 } catch (error) { setFieldPromotionStatus(`Field promotion refused: ${String((error as Error).message)}`); }
                 finally { setPromotingField(false); } })(); }}>
                 {activeFieldDocument ? "Refresh Field Explorer document" : "Promote to Field Explorer"}</button>}
+              {scene.provenance.model === "hydrogenic" && scene.fields?.length === 1 &&
+                scene.fields[0].kind === "complex-field" && scene.objects.length === 0 &&
+                <button type="button" data-testid="hydrogen-save-project-study" disabled={!onSaveHydrogenStudy}
+                  onClick={() => {
+                    const source = quantumSceneDocumentFromVerifiedOpen(opened).source;
+                    onSaveHydrogenStudy?.({ reference: { format: source.sceneSchema, title: document.title,
+                      directory: opened.reference.directory, sceneFingerprint: source.sceneFingerprint },
+                      runId: source.provenance.runId, resultSha256: source.provenance.resultSha256 });
+                  }}>Create guided hydrogen Project Study</button>}
             </div>}
             <div style={{ minHeight: 0, flex: 1, position: "relative" }}>
             <QuantumViewHost request={view} capabilities={viewCapabilities} context={{
@@ -1081,6 +1093,13 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, onSaveSshS
                 {qwzSummary!.curvature.map(item => <div key={item.dataset}>Supplied {item.label} · dataset <code>{item.dataset}</code> · {item.convention}</div>)}
                 {qwzSummary!.invariants.map(item => <div key={item.id}>Producer-supplied {item.label}: {item.value ?? "unavailable"} · producer status: {item.status} · method: {item.method}</div>)}
               </>}
+              {qwzRole === "curvature" && <button type="button" data-testid="qwz-promote-native-field"
+                disabled={promotingField || !onPromoteQwzCurvature} onClick={() => { void (async () => {
+                  setPromotingField(true); setFieldPromotionStatus("");
+                  try { await onPromoteQwzCurvature?.(); }
+                  catch (error) { setFieldPromotionStatus(`Native Field Explorer promotion refused: ${String((error as Error).message)}`); }
+                  finally { setPromotingField(false); }
+                })(); }}>Open supplied curvature in Field Explorer</button>}
               <p>Band inversion, edge/bulk classification, and nodes: not supplied in these bundles. Math3D does not calculate or infer them.</p>
               {qwzError && <p role="alert">QWZ view link refused: {qwzError}</p>}
               {cursorStatus && <p data-testid="quantum-cursor-status" role="status">{cursorStatus}</p>}
