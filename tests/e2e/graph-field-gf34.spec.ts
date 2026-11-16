@@ -105,6 +105,7 @@ test("GF-34 compares different verified grids and guards the Graph profile", asy
       .toHaveText("Source unverified");
     await expect(page.getByTestId("app-shell"))
       .not.toHaveAttribute("data-project-document-id", graphEntry.expected.id);
+    await page.screenshot({ path: test.info().outputPath("gf34-unverified-saved-preview.png"), fullPage: true });
   } finally {
     await closeSurfaceApp(app);
     if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-gf34-cross-grid-"))

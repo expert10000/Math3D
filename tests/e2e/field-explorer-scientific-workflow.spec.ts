@@ -159,6 +159,10 @@ test("scientific Field Explorer transfers a Project package to a fresh profile a
     projects = ctx.page.getByTestId("project-explorer-panel");
     await expect(projects.getByTestId("project-message")).toContainText("Project scientific field unavailable");
     expect(await ctx.page.getByRole("region", { name: "Linked A/B field views" }).count()).toBe(0);
+    // Source rejection leaves an inspectable saved preview; return to the library
+    // before retrying its Open action after the external bytes are repaired.
+    const browse = projects.getByRole("button", { name: "Browse projects" });
+    if (await browse.isVisible()) await browse.click();
     await rm(componentPath);
     await projects.getByTestId(`project-open-saved-${saved.identity.id}`).click();
     await expect(projects.getByTestId("project-message")).toContainText(/ENOENT|missing|not found/i);

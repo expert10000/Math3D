@@ -1589,7 +1589,6 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           // while source-linked values and document actions remain unavailable.
           display(prepared.project, true, false, prepared.resolved);
           setUnverifiedPreviewReason(error.message);
-          setDetailView(true);
           setMessage(`${error.message} Saved metadata preview opened; no scientific values were activated. Repair or relink the source before opening this Project.`);
           return false;
         }
