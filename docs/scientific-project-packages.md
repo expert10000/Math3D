@@ -24,6 +24,14 @@ Both package parsers enforce manifest hashes, component hashes, byte lengths, gr
 
 The renderer reads Project-owned bytes from the existing transactional IndexedDB archive. Successful Project activation is committed only after verification. Browser restart reopens and verifies this archive; invalid source data blocks activation and retains the current workspace. Reimporting the correct package restores the source bytes without changing scientific identities.
 
+## Verified A−B difference view
+
+Open **Show linked A/B views**, then enable **Show A−B difference**. Choose vector-difference magnitude **‖A−B‖** or a signed **p/q/r** component. All three panels use the same physical slice and matching native sample lattice. A/B share a color range; magnitude difference starts at zero, while signed difference uses a zero-centered blue/white/red range. The vector-difference magnitude is computed from component differences, not by subtracting the two magnitudes.
+
+Click a cell in any panel to move the shared probe. Arrow keys on the focused Difference map also move it. The readout lists both vectors, signed A−B components and ‖A−B‖ with units. A probe outside the sampled plane or lattice has no invented interpolated readout. Existing source verification and frame/unit/domain/grid checks apply; missing, corrupt, stale or incomplete source values withhold the comparison view and probe. Difference rendering initially requires matching native grids. The separate physical-overlap metrics keep their existing explicit resampling path.
+
+The optional `workspace.explorer.differenceView` records visibility and channel through the existing Project document. It never advances either source identity or stores a fabricated source for the Difference map. The map is reconstructed from freshly checked source bytes. Save the field and Project, then export with resources to preserve settings, probes, selections and saved comparisons across transfer and cold reopen. Legacy documents omit the new optional settings and retain their original canonical bytes.
+
 ## Acceptance
 
 `Scientific Project Web Packages` runs resource/package regressions, full type checking, the production web build, and a real Chromium journey in both configured locales. The journey starts without `window.scientificScenes`, explores linked A/B views, exports to a fresh profile, restarts the browser process, verifies exact identities/resources/results, rejects damaged imports and persisted resources, and recovers from the original package. Native acceptance also retains reference-only v1 missing/corrupt-file recovery.

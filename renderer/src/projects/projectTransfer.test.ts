@@ -84,6 +84,9 @@ describe("PRJ06 project transfer and compatibility", () => {
     const merged = mergeProjectLiveWorkspace(project.workspace, live);
     expect(merged.scientificSelections).toEqual(project.workspace.scientificSelections);
     expect(merged.entries).toEqual(project.workspace.entries);
+    const reopened = previewProjectImport(serializeMath3DProject(replaceMath3DProjectWorkspace(project, merged)));
+    expect(reopened.project.workspace.scientificSelections).toEqual(project.workspace.scientificSelections);
+    expect(reopened.requiredCapabilities).toContain("project.scientific-selections.v1");
   });
   it("exports and previews exact IDs, source hashes, results and lineage without mutation", () => {
     const { project } = fixture(), bytes = serializeMath3DProject(project), exported = exportProjectFile(project), preview = previewProjectImport(exported);

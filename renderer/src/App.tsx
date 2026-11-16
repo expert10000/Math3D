@@ -1055,7 +1055,7 @@ import {
   interpretTopologyByExactPosition,
   type ExactPositionTopologyInterpretation,
 } from "./geometry/exactPositionTopology";
-import { boxDefinitionBoundaryTopology } from "./geometry/boxDefinitionTopology";
+import { boxDefinitionBoundaryTopology, boxDefinitionMeasurements } from "./geometry/boxDefinitionTopology";
 import {
   createMeshAnalysisMeshIdentity,
   createMeshAnalysisResultStore,
@@ -14731,7 +14731,7 @@ const App: React.FC = () => {
       }
       return changed ? next : prev;
     });
-    if (changedObjectIds.length) {
+    if (changedObjectIds.length && !suppressHistoryCapture) {
       setGeometryObjectRevisionById((prev) => {
         const next = { ...prev };
         for (const id of changedObjectIds) {
@@ -17772,6 +17772,8 @@ const App: React.FC = () => {
     const resolved = resolveGeometrySceneMeshById(geometrySelectedSceneObject.id);
     return resolved ? computeTriangleMeshGeometricMetrics(resolved.mesh) : null;
   }, [geometrySelectedSceneObject, resolveGeometrySceneMeshById]);
+  const geometrySelectedBoxMeasurements = useMemo(() => geometrySelectedObject
+    ? boxDefinitionMeasurements(geometrySelectedObject) : null, [geometrySelectedObject]);
   const geometryCompareEntryA = useMemo(() => {
     if (!geometryCompareObjectAId) return null;
     const object =
@@ -34411,6 +34413,7 @@ const App: React.FC = () => {
   const [meshEditToolsOpen, setMeshEditToolsOpen] = useState(false);
   const [meshComponentBrowserKind, setMeshComponentBrowserKind] = useState<"face" | "edge" | "vertex">("face");
   const [meshComponentBrowserQuery, setMeshComponentBrowserQuery] = useState("");
+  const [meshComponentBrowserPage, setMeshComponentBrowserPage] = useState(0);
   const [meshComponentBrowserOpen, setMeshComponentBrowserOpen] = useState(false);
   const [meshRegionShape, setMeshRegionShape] = useState<"box" | "lasso" | null>(null);
   const [meshRegionVisibility, setMeshRegionVisibility] = useState<"frontmost" | "through" | "xray">("frontmost");
@@ -34722,22 +34725,30 @@ const App: React.FC = () => {
   }, [volumeScalarRange]);
   const activeDataset = datasetKind === "volume" ? volumeDataset : null;
   const surfaceMeshData = meshDataset?.mesh ?? null;
-  const meshComponentBrowserIds = useMemo(() => {
-    if (!meshComponentBrowserOpen || !surfaceMeshData) return [] as string[];
+  const meshComponentBrowserEdgeIds = useMemo(() => meshComponentBrowserOpen &&
+    meshComponentBrowserKind === "edge" && surfaceMeshData
+    ? [...buildMeshEdgeTopology(surfaceMeshData).edges.keys()] : [],
+    [meshComponentBrowserKind, meshComponentBrowserOpen, surfaceMeshData]);
+  const meshComponentBrowserWindow = useMemo(() => {
+    const pageSize = 100;
+    if (!meshComponentBrowserOpen || !surfaceMeshData) return { ids: [] as string[], total: 0 };
     const query = meshComponentBrowserQuery.trim();
     if (meshComponentBrowserKind === "edge") {
-      const topology = buildMeshEdgeTopology(surfaceMeshData);
-      return query ? [...topology.edges.keys()].filter((id) => id.includes(query)).slice(0, 100)
-        : [...topology.edges.keys()].slice(0, 100);
+      const matching = query ? meshComponentBrowserEdgeIds.filter((id) => id.includes(query)) : meshComponentBrowserEdgeIds;
+      return { ids: matching.slice(meshComponentBrowserPage * pageSize, (meshComponentBrowserPage + 1) * pageSize), total: matching.length };
     }
     const count = meshComponentBrowserKind === "face" ? surfaceMeshTriangleCount(surfaceMeshData)
       : Math.floor(surfaceMeshData.positions.length / 3);
     if (/^\d+$/.test(query)) {
       const index = Number(query);
-      return index >= 0 && index < count ? [String(index)] : [];
+      return { ids: index >= 0 && index < count ? [String(index)] : [], total: index >= 0 && index < count ? 1 : 0 };
     }
-    return Array.from({ length: Math.min(count, 100) }, (_, index) => String(index));
-  }, [meshComponentBrowserKind, meshComponentBrowserOpen, meshComponentBrowserQuery, surfaceMeshData]);
+    const start = meshComponentBrowserPage * pageSize;
+    return { ids: Array.from({ length: Math.max(0, Math.min(pageSize, count - start)) }, (_, index) => String(start + index)), total: count };
+  }, [meshComponentBrowserEdgeIds, meshComponentBrowserKind, meshComponentBrowserOpen, meshComponentBrowserPage,
+    meshComponentBrowserQuery, surfaceMeshData]);
+  const meshComponentBrowserIds = meshComponentBrowserWindow.ids;
+  useEffect(() => { setMeshComponentBrowserPage(0); }, [meshComponentBrowserKind, meshComponentBrowserQuery, surfaceMeshData]);
   const surfaceMeshDataRef = useRef(surfaceMeshData);
   surfaceMeshDataRef.current = surfaceMeshData;
   const lastMeshDerivedSourceSyncRef = useRef<SurfaceMeshData | null>(null);
@@ -78692,14 +78703,16 @@ case "mobius":
         !["name", "constructionSummary", "frozenSnapshot", "frozenAt", "visible", "createdAt"].includes(key))));
     const adapted = geometryDocumentFromSceneDocument({
       id: "active-geometry-workspace", title: "Geometry workspace", createdAt: 0, updatedAt: 0, objects: geometryObjects,
-      extensions: { "math3d.geometry.live-derived.v1": JSON.parse(JSON.stringify(structuralConstructions)) },
+      extensions: { "math3d.geometry.live-derived.v1": JSON.parse(JSON.stringify(structuralConstructions)),
+        ...(geometryDatasetMeshObjects.length ? { [GEOMETRY_DATASET_MESH_OBJECTS_SCENE_EXTENSION_KEY]:
+          geometryDatasetMeshObjects.map(serializeGeometryDatasetMeshObject) } : {}) },
     });
     return createGeometryDocument({ ...adapted,
       metadata: { ...adapted.metadata, constructionCreatedAt: Object.fromEntries(geometryDerivedConstructions.map((entry) => [entry.id, entry.createdAt])) },
       display: { ...adapted.display, constructions: Object.fromEntries(geometryDerivedConstructions.map((entry) => [entry.id,
         { name: entry.name ?? entry.type, visible: entry.visible, createdAt: entry.createdAt }])) },
     });
-  }, [geometryObjects, geometryDerivedConstructions]);
+  }, [geometryObjects, geometryDatasetMeshObjects, geometryDerivedConstructions]);
   const geometryKernelAdapterRef = useRef<GeometryDocumentAdapter | null>(null);
   const [, setGeometryKernelRevision] = useState(1);
   if (!geometryKernelAdapterRef.current) geometryKernelAdapterRef.current = new GeometryDocumentAdapter(geometryKernelSceneSnapshot);
@@ -80351,6 +80364,9 @@ case "mobius":
       setDisplayMode("workspace"); setShowRightPanel(true); setRightPanelTab("inspector");
       setSurfacePreviewFocusMode(false); setCleanScreenshotActive(false); setSurfaceDrawerPanel("left");
       setWorkspaceDockLayouts(layouts => ({ ...layouts, mesh: { ...(layouts.mesh ?? recommendedWorkspaceDockLayout("mesh")), leftCollapsed: false, rightCollapsed: false, viewerMaximized: false } }));
+      // This explicit Project target already supplies the mesh. Consume the
+      // workspace transition before the implicit Geometry-selection handoff.
+      lastGeometryMeshWorkspaceRef.current = "mesh";
       setActiveGraph2DTargetId(null); setMode("surfaces"); setDatasetKind("mesh"); setSurfaceViewerKind("mesh");
       setSurfacesPanelState("work"); setSurfacesLeftTab("object"); return true;
     }
@@ -80377,15 +80393,20 @@ case "mobius":
     }
     if (geometry) {
       const document = geometry.document(), seed = restoredGeometryEditorSeed(document);
+      suppressGeometryHistoryCapture(2500);
       const roomyProjectGeometry = projectsOpen && restored?.projectTags.includes("ripple-wave-study") && window.innerWidth >= 1500;
       if (roomyProjectGeometry) geometryProjectLayoutBeforeRef.current ??= { controlsOpen: geometryViewerControlsOpen,
         layout: workspaceDockLayouts.geometry ?? recommendedWorkspaceDockLayout("geometry") };
       geometryKernelAdapterRef.current = geometry;
-      setGeometryObjects(seed.objects); setGeometryDatasetMeshObjects([]); setGeometryLockedObjectIds(new Set());
+      setGeometryObjects(seed.objects);
+      setGeometryDatasetMeshObjects(seed.datasetMeshObjects.map((entry) =>
+        deserializeGeometryDatasetMeshObject(entry as WorkbookGeometryDatasetMeshObject)));
+      setGeometryLockedObjectIds(new Set());
       setGeometryDerivedConstructions(normalizeGeometryDerivedConstructionsForRestore(seed.constructions));
-      setGeometrySelectedObjectId(seed.objects[0]?.id ?? null); setGeometrySelectedDerivedConstructionId(seed.constructions[0]?.id ?? null);
+      setGeometrySelectedObjectId(seed.objects[0]?.id ?? seed.datasetMeshObjects[0]?.id ?? null);
+      setGeometrySelectedDerivedConstructionId(seed.constructions[0]?.id ?? null);
       setGeometryMultiSelectionSet(createUnifiedSelectionSet([])); setGeometryObjectHistoryById({}); setGeometryConstructionHistory([]);
-      setGeometryObjectRevisionById({}); setGeometryObjectParamDrafts({}); setGeometryProceduralPick(null); setGeometryProceduralHoverPick(null);
+      setGeometryObjectRevisionById(seed.datasetRevisions); setGeometryObjectParamDrafts({}); setGeometryProceduralPick(null); setGeometryProceduralHoverPick(null);
       setGeometryScratchSceneSeed(normalizeConstructionLabSeed(restored?.workspace.constructions.find((entry) => entry.kind === "scratch")?.source));
       setGeometryWorkbookSceneSeeds(normalizeConstructionLabSeedRecord(restored?.workspace.constructions.find((entry) => entry.kind === "workbook")?.source));
       setActiveGraph2DTargetId(null); setGeometryMode("procedural"); setGeometryProceduralPanelTab("object"); setMode("geometry");
@@ -85394,6 +85415,16 @@ case "mobius":
                             {meshComponentBrowserIds.map((id) => <button key={`${meshComponentBrowserKind}:${id}`} type="button"
                               onClick={(event) => handleSelectMeshBrowserComponent(id, event.ctrlKey || event.metaKey || event.shiftKey)}>{meshComponentBrowserKind} {id}</button>)}
                           </div>
+                          <div data-testid="mesh-component-browser-page" style={{ display: "flex", gap: 5, alignItems: "center" }}>
+                            <button type="button" aria-label="Previous component page" disabled={meshComponentBrowserPage === 0}
+                              onClick={() => setMeshComponentBrowserPage((page) => Math.max(0, page - 1))}>Previous</button>
+                            <span aria-live="polite">{meshComponentBrowserWindow.total
+                              ? `${meshComponentBrowserPage * 100 + 1}–${Math.min((meshComponentBrowserPage + 1) * 100, meshComponentBrowserWindow.total)} of ${meshComponentBrowserWindow.total}`
+                              : "0 of 0"}</span>
+                            <button type="button" aria-label="Next component page"
+                              disabled={(meshComponentBrowserPage + 1) * 100 >= meshComponentBrowserWindow.total}
+                              onClick={() => setMeshComponentBrowserPage((page) => page + 1)}>Next</button>
+                          </div>
                         </>}
                       </div>
                       <div data-testid="mesh-derived-geometry" style={{ display: "grid", gap: 5, padding: 7, border: "1px solid #dbeafe", borderRadius: 7 }}>
@@ -87125,6 +87156,16 @@ case "mobius":
                             <div style={{ maxHeight: 120, overflow: "auto", display: "flex", gap: 3, flexWrap: "wrap" }}>
                               {meshComponentBrowserIds.map((id) => <button key={`${meshComponentBrowserKind}:${id}`} type="button"
                                 onClick={(event) => handleSelectMeshBrowserComponent(id, event.ctrlKey || event.metaKey || event.shiftKey)}>{meshComponentBrowserKind} {id}</button>)}
+                            </div>
+                            <div data-testid="mesh-component-browser-page" style={{ display: "flex", gap: 5, alignItems: "center" }}>
+                              <button type="button" aria-label="Previous component page" disabled={meshComponentBrowserPage === 0}
+                                onClick={() => setMeshComponentBrowserPage((page) => Math.max(0, page - 1))}>Previous</button>
+                              <span aria-live="polite">{meshComponentBrowserWindow.total
+                                ? `${meshComponentBrowserPage * 100 + 1}–${Math.min((meshComponentBrowserPage + 1) * 100, meshComponentBrowserWindow.total)} of ${meshComponentBrowserWindow.total}`
+                                : "0 of 0"}</span>
+                              <button type="button" aria-label="Next component page"
+                                disabled={(meshComponentBrowserPage + 1) * 100 >= meshComponentBrowserWindow.total}
+                                onClick={() => setMeshComponentBrowserPage((page) => page + 1)}>Next</button>
                             </div>
                           </>}
                         </div>
@@ -100683,25 +100724,33 @@ case "mobius":
                             fontSize: 11,
                           }}
                         >
-                          <div style={{ fontWeight: 700 }}>Computed</div>
+                          <div data-testid="geometry-object-measurement-method" style={{ fontWeight: 700 }}>
+                            {geometrySelectedBoxMeasurements
+                              ? `Box definition · r${geometryObjectRevisionById[geometrySelectedObject?.id ?? ""] ?? 0} · scene units`
+                              : "Display mesh estimates · solid volume unqualified"}
+                          </div>
                           <div>
                             Vertices: <strong>{geometrySelectedSceneMeshInfo?.vertCount?.toLocaleString() ?? "n/a"}</strong>
                           </div>
                           <div>
                             Faces: <strong>{geometrySelectedSceneMetrics?.faceCount?.toLocaleString() ?? "n/a"}</strong>
                           </div>
-                          <div>
+                          <div data-testid="geometry-object-volume">
                             Volume:{" "}
                             <strong>
-                              {geometrySelectedSceneMetrics ? formatHistoryNumber(geometrySelectedSceneMetrics.volume) : "n/a"}
+                              {geometrySelectedBoxMeasurements ? `${formatHistoryNumber(geometrySelectedBoxMeasurements.volume)} scene-unit³` : "n/a · requires qualified closed solid"}
                             </strong>
                           </div>
-                          <div>
+                          <div data-testid="geometry-object-surface-area">
                             Surface area:{" "}
                             <strong>
-                              {geometrySelectedSceneMetrics ? formatHistoryNumber(geometrySelectedSceneMetrics.surfaceArea) : "n/a"}
+                              {geometrySelectedBoxMeasurements ? `${formatHistoryNumber(geometrySelectedBoxMeasurements.surfaceArea)} scene-unit²` :
+                                geometrySelectedSceneMetrics ? `${formatHistoryNumber(geometrySelectedSceneMetrics.surfaceArea)} scene-unit² · mesh estimate` : "n/a"}
                             </strong>
                           </div>
+                          {geometrySelectedBoxMeasurements && <div data-testid="geometry-object-space-diagonal">
+                            Space diagonal: <strong>{geometrySelectedBoxMeasurements.spaceDiagonal.toFixed(6)} scene-unit</strong>
+                          </div>}
                         </div>
                         <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
                           <div style={{ fontSize: 11, fontWeight: 700 }}>Update mode</div>

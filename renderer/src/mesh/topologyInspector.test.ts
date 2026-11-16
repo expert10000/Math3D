@@ -140,4 +140,16 @@ describe("computeMeshTopologyInspector", () => {
     expect(details?.orientabilityLabel).toBe("unknown");
     expect(details?.edgeIncidenceRows.find((row) => row.label === "e0-1")?.flags).toContain("non-manifold");
   });
+
+  it("keeps disconnected open patches separate even when their positions coincide", () => {
+    const mesh = makeQuadMesh();
+    const patches = { ...mesh,
+      positions: Float32Array.from([...mesh.positions, ...mesh.positions]),
+      indices: Uint32Array.from([...mesh.indices, ...Array.from(mesh.indices, (index) => index + 4)]),
+    };
+    const details = computeMeshTopologyInspector(patches);
+    expect(details?.connectedComponentCount).toBe(2);
+    expect(details?.boundaryEdgeCount).toBe(8);
+    expect(details?.watertight).toBe(false);
+  });
 });
