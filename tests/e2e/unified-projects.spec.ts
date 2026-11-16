@@ -848,6 +848,10 @@ test("PRJ11 restores Geometry objects and construction lineage, then edits, save
     await showProjectGallery(page);
     await panel.getByTestId("project-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Saved");
     let saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    expect(saved.workspace.entries[0].checkpoint.source).toEqual(document.source);
+    expect(saved.workspace.entries[0].checkpoint.display).toEqual(document.display);
+    expect(saved.workspace.entries[0].checkpoint.metadata).toEqual(document.metadata);
+    expect(saved.workspace.entries[0].checkpoint.identity).toEqual(document.identity);
     expect(saved.workspace.entries[0].expected).toEqual(document.identity);
     await page.getByRole("button", { name: "Close project explorer" }).click();
     await expect(page.getByTestId("project-geometry-param-width")).toHaveValue("2");

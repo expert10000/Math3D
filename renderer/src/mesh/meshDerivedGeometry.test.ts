@@ -32,6 +32,7 @@ describe("mesh derived Geometry inputs", () => {
     const updated = refreshMeshFaceRegionLink(link, changed, 3)!;
     expect(updated.link.status).toBe("linked");
     expect(updated.mesh?.positions[2]).toBe(1);
+    expect(refreshMeshFaceRegionLink(link, changed, 1)).toMatchObject({ link: { status: "stale" }, mesh: null });
     const invalid = refreshMeshFaceRegionLink(updated.link, { ...mesh, indices: new Uint32Array([0, 1, 2]) }, 4)!;
     expect(invalid.link.status).toBe("stale");
     expect(invalid.mesh).toBeNull();

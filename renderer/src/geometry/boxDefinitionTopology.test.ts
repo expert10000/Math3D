@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import type { SurfaceMeshData } from "../mesh/surfaceMesh";
-import { boxDefinitionBoundaryTopology } from "./boxDefinitionTopology";
+import { boxDefinitionBoundaryTopology, boxDefinitionMeasurements } from "./boxDefinitionTopology";
 import { interpretTopologyByExactPosition } from "./exactPositionTopology";
 
 describe("box definition boundary topology", () => {
@@ -43,5 +43,9 @@ describe("box definition boundary topology", () => {
     expect(boxDefinitionBoundaryTopology({ type: "sphere", params: {} })).toBeNull();
     expect(boxDefinitionBoundaryTopology({ type: "box", params: { width: 0 } })).toBeNull();
     expect(boxDefinitionBoundaryTopology({ type: "box", params: { width: Number.NaN } })).toBeNull();
+    expect(boxDefinitionMeasurements({ type: "box", params: { width: 2, height: 3, depth: 4 } })).toEqual({
+      surfaceArea: 52, volume: 24, spaceDiagonal: Math.sqrt(29),
+    });
+    expect(boxDefinitionMeasurements({ type: "box", params: { width: 0 } })).toBeNull();
   });
 });
