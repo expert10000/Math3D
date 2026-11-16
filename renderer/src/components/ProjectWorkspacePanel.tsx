@@ -1002,6 +1002,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       if (!managed) { setHasOpenProject(true); loadedProject.current = next; onCurrentProjectChange?.(next, resources); }
       if (!managed) { setNotesProject(next); setNoteDrafts([]); }
       setMessage(`Saved “${next.metadata.title}” with ${next.workspace.entries.length} documents.`);
+      setQuantumSceneMessage(next.workspace.quantumStudies?.some(study => study.templateId === "ssh")
+        ? "SSH chain and bands Study saved. Both exact source bundles were re-verified." : "");
     } catch (error) { setMessage(`Project save failed: ${(error as Error).message}`); }
     finally { setBusy(false); }
   };
