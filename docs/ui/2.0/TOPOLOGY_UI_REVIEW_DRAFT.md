@@ -53,6 +53,8 @@ SHARED-01 is reserved by the current cleanup thread: remove unrelated retained m
 
 ## Important complete acceptance journey
 
+The shared evidence rules for the other workbenches are in [Workbench acceptance criteria](WORKBENCH_ACCEPTANCE_CRITERIA.md). Topology's own TOP-05 evidence and E8 gate remain in its separate qualification track.
+
 > Choose a fundamental diagram → edit and undo pairings through the existing command adapter → build the quotient → inspect canonical counts separately from display realization → inspect algebra eligibility and a result → compare or import a revisioned Mesh/Geometry snapshot → save/reopen with source, generation, selections and result provenance intact.
 
 Qualify the complete journey; passing isolated toolbar clicks is insufficient. Preserve the distinction between exact mathematics, sampled approximation, display geometry and cached/historical output. Report unsupported operations explicitly rather than changing the scientific claim to fit a badge.

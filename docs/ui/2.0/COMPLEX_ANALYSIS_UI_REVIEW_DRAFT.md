@@ -53,6 +53,8 @@ SHARED-01 is reserved by the current cleanup thread: remove unrelated retained m
 
 ## Important complete acceptance journey
 
+The preset, analytic-result, stale-history and reopen gates for CA-05 are in [Workbench acceptance criteria](WORKBENCH_ACCEPTANCE_CRITERIA.md#ca-05--analytic-source-result-and-stale-history). They are design requirements; no execution PASS is implied.
+
 > Choose a function such as 1/z → inspect domain and image → choose the contour and its orientation → explicitly run the appropriate existing analysis → inspect method, source revision, branch policy, assumptions and warnings → save the result → edit the source and observe stale state → restore/cold-reopen without losing identities, paths, historical references or available bytes.
 
 Qualify the complete journey; passing isolated toolbar clicks is insufficient. Preserve the distinction between exact mathematics, sampled approximation, display geometry and cached/historical output. Report unsupported operations explicitly rather than changing the scientific claim to fit a badge.
