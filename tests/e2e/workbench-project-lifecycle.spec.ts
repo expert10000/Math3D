@@ -1,12 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
 import { writeFileSync } from "node:fs";
-import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState } from "./helpers/surfaceAppHarness";
+import { closeSurfaceApp, launchSurfaceApp, openLastSavedProject, resetSurfaceAppState } from "./helpers/surfaceAppHarness";
 
 type SavedProject = {
   workspace: {
     entries: Array<{ module: string; expected: { id: string; revision: number; structuralHash: string }; checkpoint?: { source?: { resource?: { checksum?: string } }; function?: { sourceText?: string } }; replay?: { payload?: { transactions?: unknown[] } } }>;
     results: Array<{ resultId: string; provenance?: { source?: { documentId?: string }; operation?: { type?: string } } }>;
-    relations: Array<{ operation?: string; sources?: Array<{ documentId?: string }>; target?: { generation?: { documentId?: string } } }>;
+    relations: Array<{ operation?: string; sources?: Array<{ documentId?: string }>; target?: { generation?: { documentId?: string }; resultId?: string } }>;
   };
 };
 
@@ -24,7 +24,7 @@ async function saveProject(page: Page): Promise<SavedProject> {
   return saved;
 }
 
-test("MESH-05 known gap: Smooth New object keeps the Box document ID", async () => {
+test("MESH-05 Smooth New object saves a distinct derived Mesh and leaves the Box source intact", async () => {
   test.setTimeout(120_000);
   const ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
   try {
@@ -49,7 +49,7 @@ test("MESH-05 known gap: Smooth New object keeps the Box document ID", async () 
     await expect(result).toContainText("Output: new-object");
     const after = await saveProject(page);
     const entries = after.workspace.entries.filter((entry) => entry.module === "mesh");
-    expect(entries[0]?.expected.revision).toBeGreaterThan(source!.expected.revision);
+    const sourceAfter = entries.find((entry) => entry.expected.id === source!.expected.id);
     const distinctResult = entries.find((entry) => entry.expected.id !== source!.expected.id);
     const sourceToDerived = after.workspace.relations.find((relation) =>
       relation.sources?.some((item) => item.documentId === source!.expected.id) &&
@@ -63,13 +63,22 @@ test("MESH-05 known gap: Smooth New object keeps the Box document ID", async () 
       }, null, 2));
     await test.info().attach("mesh-new-object-project-evidence", { path: evidencePath, contentType: "application/json" });
 
-    test.fail(true, "MESH-05: New object should create a distinct result document and source-to-derived relation.");
-    expect({ distinctResult: Boolean(distinctResult), sourceToDerived: Boolean(sourceToDerived) })
-      .toEqual({ distinctResult: true, sourceToDerived: true });
+    expect(sourceAfter?.expected).toEqual(source!.expected);
+    expect(distinctResult).toBeDefined();
+    expect(sourceToDerived).toBeDefined();
+    await page.reload();
+    await openLastSavedProject(page);
+    await expect(page.getByTestId("project-import-open")).toBeDisabled();
+    await expect(page.getByText("Required source sidecars are missing or unverified on this computer.", { exact: true })).toBeVisible();
+    const retained = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!) as SavedProject);
+    expect(retained.workspace.entries.find((entry) => entry.expected.id === source!.expected.id)?.expected).toEqual(source!.expected);
+    expect(retained.workspace.entries.find((entry) => entry.expected.id === distinctResult!.expected.id)?.expected).toEqual(distinctResult!.expected);
+    expect(retained.workspace.relations.some((relation) => relation.sources?.some((item) => item.documentId === source!.expected.id)
+      && relation.target?.generation?.documentId === distinctResult!.expected.id)).toBe(true);
   } finally { await closeSurfaceApp(ctx); }
 });
 
-test("CA-05 known gap: published 1/z numerical result is missing from Project save", async () => {
+test("CA-05 published 1/z numerical result is retained in Project save", async () => {
   test.setTimeout(120_000);
   const ctx = await launchSurfaceApp({ MATH3D_E2E: "1" });
   try {
@@ -104,7 +113,15 @@ test("CA-05 known gap: published 1/z numerical result is missing from Project sa
       }, null, 2));
     await test.info().attach("complex-numerical-project-evidence", { path: evidencePath, contentType: "application/json" });
 
-    test.fail(true, "CA-05: a published numerical result should retain a source-qualified Project result reference.");
     expect(numerical).toBeDefined();
+    expect(saved.workspace.relations.some((relation) => relation.sources?.some((item) => item.documentId === source!.expected.id)
+      && relation.target?.resultId === numerical!.resultId)).toBe(true);
+    await page.reload();
+    await openLastSavedProject(page);
+    await expect(page.getByTestId("project-import-open")).toBeDisabled();
+    await expect(page.getByText("Required source sidecars are missing or unverified on this computer.", { exact: true })).toBeVisible();
+    const retained = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!) as SavedProject);
+    expect(retained.workspace.results.find((result) => result.resultId === numerical!.resultId)).toEqual(numerical);
+    expect(retained.workspace.relations.some((relation) => relation.target?.resultId === numerical!.resultId)).toBe(true);
   } finally { await closeSurfaceApp(ctx); }
 });

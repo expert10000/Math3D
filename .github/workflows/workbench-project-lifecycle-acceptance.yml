@@ -1,24 +1,24 @@
-name: Workbench Project lifecycle known-gap evidence
+name: Workbench Project lifecycle acceptance
 
 on:
   push:
-    branches: [codex/m3d20-project-lifecycle-diagnostics]
+    branches: [codex/m3d20-project-lifecycle-fixes]
     paths:
-      - '.github/workflows/workbench-project-lifecycle-gaps.yml'
-      - 'tests/e2e/workbench-project-lifecycle-gaps.spec.ts'
+      - '.github/workflows/workbench-project-lifecycle-acceptance.yml'
+      - 'tests/e2e/workbench-project-lifecycle.spec.ts'
       - 'docs/ui/2.0/evidence/workbench-project-lifecycle/**'
   pull_request:
-    branches: [main, codex/m3d20-workbench-design]
+    branches: [main, codex/ui-aggregate-preview]
     paths:
-      - '.github/workflows/workbench-project-lifecycle-gaps.yml'
-      - 'tests/e2e/workbench-project-lifecycle-gaps.spec.ts'
+      - '.github/workflows/workbench-project-lifecycle-acceptance.yml'
+      - 'tests/e2e/workbench-project-lifecycle.spec.ts'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  reproduce-known-gaps:
+  verify-project-lifecycle:
     runs-on: windows-2022
     timeout-minutes: 35
     env:
@@ -40,19 +40,19 @@ jobs:
       - run: npm ci --foreground-scripts && npm --prefix renderer ci --foreground-scripts
       - uses: ./.github/actions/source-python-worker
       - run: npm run typecheck:noemit && npm run build:core
-      - name: Reproduce two known acceptance gaps as expected failures
+      - name: Verify Mesh and Complex Project lifecycle
         shell: bash
         env:
-          PLAYWRIGHT_JSON_OUTPUT_NAME: workbench-gap-evidence/native.json
+          PLAYWRIGHT_JSON_OUTPUT_NAME: workbench-lifecycle-evidence/native.json
         run: |
-          mkdir -p workbench-gap-evidence
-          git rev-parse HEAD > workbench-gap-evidence/source.txt
-          npx playwright test tests/e2e/workbench-project-lifecycle-gaps.spec.ts --workers=1 --retries=0 --reporter=list,json
+          mkdir -p workbench-lifecycle-evidence
+          git rev-parse HEAD > workbench-lifecycle-evidence/source.txt
+          npx playwright test tests/e2e/workbench-project-lifecycle.spec.ts --workers=1 --retries=0 --reporter=list,json
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: workbench-project-lifecycle-known-gaps
+          name: workbench-project-lifecycle-acceptance
           path: |
-            workbench-gap-evidence/**
+            workbench-lifecycle-evidence/**
             dist/build-identity.json
             test-results/playwright/**
