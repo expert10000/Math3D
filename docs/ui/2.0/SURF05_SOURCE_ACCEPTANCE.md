@@ -1,6 +1,6 @@
 # SURF-05 source-built Surface journey
 
-Status: draft source-built Windows qualification. Initial local source was PR #92 `3533661072e986f691eca894716523dab45db71f`; the 11-case gate was rerun after rebasing on its newer production source `5cd220b5d2812a471c332278131214627cf05867`. The stronger recipe test branch head `7e7f354c794df23009781e0f0b9e2a3c6849f9ca` was exercised locally: 11 passed, 0 skipped, 0 retries, 1.3 minutes. This branch adds native tests and a scoped workflow; it does not edit production code. CI must report its own checkout SHA before its PASS is attributed to that head.
+Status: draft source-built Windows qualification. Initial local source was PR #92 `3533661072e986f691eca894716523dab45db71f`; the gate was rerun after rebasing on its newer production source `5cd220b5d2812a471c332278131214627cf05867`. The current locally exercised SURF-05 test head is `2439bb1c3444d517caf38fc4fa947bf7e45ae2c1`: 11 passed, 0 skipped, 0 retries, 2.2 minutes. This branch adds native tests and a scoped workflow; it does not edit production code. CI must report its own checkout SHA before its PASS is attributed to that head.
 
 ## Native evidence matrix
 
@@ -16,9 +16,13 @@ Status: draft source-built Windows qualification. Initial local source was PR #9
 
 Local command: `npx playwright test tests/e2e/surf05-recipes.spec.ts tests/e2e/saved-surface-workflow.spec.ts tests/e2e/surface-functional.spec.ts --grep 'SURF-05|PRJ31–33|Test (3|7|8|11)' --workers=1 --retries=0 --reporter=list`. Native Electron on Windows; zero retries. `npm run build:main`, `NODE_OPTIONS=--max-old-space-size=8192 npm run build:renderer` and `npm run typecheck:noemit` were also executed on the refreshed source. The scoped workflow repeats the 11 native cases at its checkout and uploads the exact checkout SHA and JSON results.
 
+First exact-head [Windows run 43862647988](https://github.com/expert10000/Math3D/actions/runs/43862647988) at PR head `e7207e0d` and synthetic checkout `26fb4d8fbd6d0f55a69d07442904996264fbf2bf` passed typecheck, builds and worker setup, then reported **10 passed / 1 failed**. The Implicit test located an existing canvas below the visible clipped center panel in the runner's compact window and incorrectly required it to be visible before scrolling. The follow-up test sets the native content area to 1100×750 and scrolls that canvas into view. The 11-case local rerun above passed; a new exact-head CI result is still required. The failing screenshot and JSON remain in artifact `14224838741` for that run.
+
+Supplementary local negative paths on the same production source: `npx playwright test tests/e2e/project-catenoid-waist-failure.spec.ts tests/e2e/project-surface-ridge-publication.spec.ts --reporter=list` passed **3/3** at prior test head `e7207e0d` (the later test change only affects recipe canvas visibility). These cases withhold a stale Catenoid comparison after source revision, refuse cold reopen when saved Mesh bytes are missing, reject missing/corrupt Mesh resources on transfer, retain exact result identity, and allow offline inspection of already verified ridge evidence. They are not part of the 11-case CI workflow.
+
 ## Remaining boundaries
 
 - Installed Windows executable, installer/upgrade and release E8 are not covered here.
 - The four recipe checks establish current default-source computation with visible method inputs. Detailed parameter/domain edits are exercised on saved Weierstrass, while implicit custom-expression and parametric/spline parameter validity retain their existing owner suites. No universal numeric backend certification is claimed.
-- Missing-resource safe withholding, late Job completion after a source generation changes, offline runtime recovery and cross-frame/unit rejection need separate negative-path receipts before SURF-05 can be promoted to a complete release acceptance claim.
+- Late Job completion after a source generation changes, offline runtime recovery, cross-frame/unit rejection and other resource families need separate negative-path receipts before SURF-05 can be promoted to a complete release acceptance claim.
 - PR #92 combined source integration and this stacked test branch require exact-head CI review before merging. Do not transplant a local PASS to a later PR #92 head without rerunning.
