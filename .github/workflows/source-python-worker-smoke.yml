@@ -1,0 +1,31 @@
+name: Source Python worker Windows readiness
+on:
+  push:
+    branches: [codex/mesh-worker-ci-bootstrap, main]
+    paths:
+      - '.github/actions/source-python-worker/action.yml'
+      - '.github/workflows/source-python-worker-smoke.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/actions/source-python-worker/action.yml'
+      - '.github/workflows/source-python-worker-smoke.yml'
+permissions:
+  contents: read
+jobs:
+  source-worker-ready:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/source-python-worker
+      - name: Confirm worker can launch in source-script mode
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = & $env:MATH3D_PYTHON python/worker/main.py --version
+          if ($LASTEXITCODE -ne 0) { throw 'Worker --version failed' }
+          $result = $version | ConvertFrom-Json
+          if (-not $result.ok -or $result.type -ne 'version') { throw "Invalid worker version: $version" }
+          Write-Host "Worker launch mode: $env:MATH3D_WORKER_MODE"
+          Write-Host "Worker protocol: $($result.protocol), version $($result.version)"
