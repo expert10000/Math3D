@@ -5,7 +5,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { disposeOrbitControls } from "../utils/disposeOrbitControls";
 import { ParametricGeometry } from "three/examples/jsm/geometries/ParametricGeometry.js";
 import { startViewerAnimationLoop } from "./viewerAnimationLoop";
-import { acquireViewerRenderer, releaseViewerRenderer } from "./viewerRendererPool";
+import { acquireViewerRenderer, releaseViewerRenderer, setViewerRendererPixelRatio, setViewerRendererSize } from "./viewerRendererPool";
 
 import DomainDirectionPicker from "./DomainDirectionPicker";
 import { integrateGeodesic } from "../math/geodesic";
@@ -2590,8 +2590,8 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     const qualityScale =
       renderQuality === "performance" ? 1 : renderQuality === "sharp" ? 1.75 : 1.15;
     const targetPixelRatio = devicePixelRatio * qualityScale;
-    renderer.setPixelRatio(Math.min(targetPixelRatio, maxPixelRatio));
-    renderer.setSize(width, height, false);
+    setViewerRendererPixelRatio(renderer, Math.min(targetPixelRatio, maxPixelRatio));
+    setViewerRendererSize(renderer, Math.round(width), Math.round(height), false);
     renderer.setClearColor(background.color, background.alpha);
     renderer.localClippingEnabled = true;
     renderer.domElement.style.width = "100%";
@@ -3870,10 +3870,10 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       const h = Math.max(1, Math.round(rawHeight));
       const nextDevicePixelRatio = Math.max(1, window.devicePixelRatio || 1);
       const nextTargetPixelRatio = nextDevicePixelRatio * qualityScale;
-      renderer.setPixelRatio(Math.min(nextTargetPixelRatio, maxPixelRatio));
+      setViewerRendererPixelRatio(renderer, Math.min(nextTargetPixelRatio, maxPixelRatio));
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
-      renderer.setSize(w, h, false);
+      setViewerRendererSize(renderer, w, h, false);
 
       const radius = radiusRef.current;
       if (!Number.isFinite(radius) || radius <= 0) return;

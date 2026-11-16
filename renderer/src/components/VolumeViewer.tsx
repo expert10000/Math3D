@@ -863,7 +863,10 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     // pane retains a modest supersample for its 3D geometry.
     const maxPixelRatio = viewPreset === "free" ? 1.25 : 1;
     setViewerRendererPixelRatio(renderer, Math.min(Math.max(1, window.devicePixelRatio || 1), maxPixelRatio));
-    setViewerRendererSize(renderer, mount.clientWidth || 1, mount.clientHeight || 1);
+    // A pane can mount before its layout has a measurable size. Preserve the
+    // pooled drawing buffer until ResizeObserver reports the real dimensions.
+    if (mount.clientWidth > 0 && mount.clientHeight > 0)
+      setViewerRendererSize(renderer, mount.clientWidth, mount.clientHeight);
     mount.appendChild(renderer.domElement);
 
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -984,8 +987,9 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     setSceneReady(true);
 
     const handleResize = () => {
-      const w = mount.clientWidth || 1;
-      const h = mount.clientHeight || 1;
+      const w = mount.clientWidth;
+      const h = mount.clientHeight;
+      if (w <= 0 || h <= 0) return;
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       setViewerRendererSize(renderer, w, h);
