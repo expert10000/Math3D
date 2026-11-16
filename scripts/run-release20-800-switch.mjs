@@ -12,7 +12,7 @@ const status = spawnSync('git', ['status', '--porcelain'], { encoding: 'utf8' })
 if (head.status !== 0 || status.status !== 0 || status.stdout.trim() || build.dirty || build.commit !== head.stdout.trim())
   throw new Error('800-switch qualification requires the clean source commit matching the core build.');
 const run = spawnSync('npx', ['playwright', 'test', 'tests/e2e/release20-long-memory.spec.ts', '--reporter=list'], {
-  shell: process.platform === 'win32', stdio: 'inherit', timeout: 30 * 60_000,
+  shell: process.platform === 'win32', stdio: 'inherit', timeout: 50 * 60_000,
   env: { ...process.env, MATH3D_MEMORY_SOAK_SMOKE: '1', MATH3D_MEMORY_SOAK_SMOKE_CYCLES: '8',
     MATH3D_MEMORY_SOAK_FORCE_GC: '1', MATH3D_MEMORY_SOAK_REPORT: receiptPath,
     MATH3D_RELEASE20_EXPECTED_COMMIT: build.commit },

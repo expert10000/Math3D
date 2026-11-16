@@ -11,6 +11,7 @@ const minutes = Number(minutesText);
 const smoke = process.env.MATH3D_MEMORY_SOAK_SMOKE === "1";
 const smokeCycles = Number(process.env.MATH3D_MEMORY_SOAK_SMOKE_CYCLES || "1");
 const diagnosticRoute = process.env.MATH3D_MEMORY_SOAK_ROUTE;
+const diagnosticRoutes = process.env.MATH3D_MEMORY_SOAK_ROUTES?.split(",").map(route => route.trim());
 test.skip(minutesText === undefined && !smoke, "Set MATH3D_MEMORY_SOAK_MINUTES=120 or more for an intentional long run.");
 
 test("one Electron process retains responsive navigation and records long-run memory", async ({}, testInfo) => {
@@ -18,8 +19,14 @@ test("one Electron process retains responsive navigation and records long-run me
   if (smoke && (!Number.isInteger(smokeCycles) || smokeCycles < 1 || smokeCycles > 20)) throw new Error("Smoke cycles must be 1–20.");
   if (diagnosticRoute && (!smoke || !["surfaces", "mesh", "volume", "projects"].includes(diagnosticRoute)))
     throw new Error("A diagnostic route requires smoke mode and one supported target.");
-  const routes = diagnosticRoute ? ["graphs", diagnosticRoute] : ["graphs", "surfaces", "mesh", "volume", "projects"];
-  test.setTimeout(smoke ? (smokeCycles * 3 + 5) * 60_000 : (minutes + 45) * 60_000);
+  if (diagnosticRoutes && (!smoke || diagnosticRoute || diagnosticRoutes.length < 2 ||
+      diagnosticRoutes[0] !== "graphs" || new Set(diagnosticRoutes).size !== diagnosticRoutes.length ||
+      diagnosticRoutes.some(route => !["graphs", "surfaces", "mesh", "volume", "projects"].includes(route))))
+    throw new Error("Diagnostic route sets require smoke mode, graphs first, and unique supported routes.");
+  const routes = diagnosticRoutes ?? (diagnosticRoute ? ["graphs", diagnosticRoute] : ["graphs", "surfaces", "mesh", "volume", "projects"]);
+  // A clean 800-switch Windows run can exceed 29 minutes even when all
+  // navigation actions succeed; memory budgets, not this wall clock, qualify it.
+  test.setTimeout(smoke ? (smokeCycles * 5 + 10) * 60_000 : (minutes + 45) * 60_000);
   const reportPath = path.resolve(process.env.MATH3D_MEMORY_SOAK_REPORT || testInfo.outputPath("release20-long-memory.json"));
   const build = JSON.parse(readFileSync("dist/build-identity.json", "utf8"));
   if (!build.commit || !build.rendererHash || !smoke && build.dirty) throw new Error("Memory soak requires a clean, identified source build.");
@@ -41,6 +48,7 @@ test("one Electron process retains responsive navigation and records long-run me
         byRoleMiB: Record<string, number>; electronPrivateMiB: number; rendererPrivateMiB: number;
         gpuPrivateMiB: number; gpuPid: number | null; contextLosses: number;
         jsHeapMiB: number | null; v8UsedMiB: number; v8TotalMiB: number; domNodes: number }> }>, pageErrors: [] as string[],
+    lifecycleEvents: [] as Array<{ event: string; elapsedMs: number; status: string; code?: number | null; signal?: string | null }>,
     peakSampledRssMiB: 0, failure: null as string | null,
   };
   const save = () => { mkdirSync(path.dirname(reportPath), { recursive: true });
@@ -52,6 +60,13 @@ test("one Electron process retains responsive navigation and records long-run me
     await resetSurfaceAppState(ctx.page);
     const page = ctx.page, pid = ctx.app.process().pid;
     if (!pid) throw new Error("Electron PID unavailable.");
+    const recordLifecycle = (event: string, details: { code?: number | null; signal?: string | null } = {}) => {
+      report.lifecycleEvents.push({ event, elapsedMs: Date.now() - started, status: report.status, ...details });
+      save();
+    };
+    page.on("crash", () => recordLifecycle("renderer-crash"));
+    page.on("close", () => recordLifecycle("page-close"));
+    ctx.app.process().on("exit", (code, signal) => recordLifecycle("electron-exit", { code, signal }));
     if (await page.evaluate(() => (window as Window & { appRuntime?: { e2e?: boolean } }).appRuntime?.e2e ?? false))
       throw new Error("Memory soak must run without E2E runtime hooks.");
     const heapSession = await page.context().newCDPSession(page);

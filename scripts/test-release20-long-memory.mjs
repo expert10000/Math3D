@@ -19,6 +19,11 @@ try {
   writeFileSync(input, JSON.stringify(receipt));
   assert.equal(run('source').status, 0);
   assert.equal(JSON.parse(readFileSync(output, 'utf8')).plateauQualified, true);
+  receipt.cycles[1].samples[5].gpuPrivateMiB = 600; writeFileSync(input, JSON.stringify(receipt));
+  assert.equal(run('source').status, 1);
+  assert(JSON.parse(readFileSync(output, 'utf8')).checks.some(check =>
+    check.name === 'source GPU private ceiling' && !check.pass));
+  receipt.cycles[1].samples[5].gpuPrivateMiB = 200;
   receipt.method.runtimeE2e = true; writeFileSync(input, JSON.stringify(receipt));
   assert.equal(run('source').status, 1);
   receipt.method.runtimeE2e = false;

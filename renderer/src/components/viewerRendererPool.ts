@@ -2,12 +2,28 @@ import * as THREE from "three";
 
 // Module navigation used to allocate a new WebGL context for every Mesh and
 // Volume visit. Chromium can retain the native allocations of lost contexts
-// long after their JavaScript owners are collected. Reuse one idle context for
-// route changes. The Volume workspace mounts four viewers at once, so keep
-// their contexts warm across route changes instead of recreating three per visit.
-const MAX_IDLE_RENDERERS = 4;
-const idleRenderers: THREE.WebGLRenderer[] = [];
+// long after their JavaScript owners are collected. Keep the four Volume
+// contexts separate from the Surface/Mesh context so their drawing buffers
+// can remain stable across route changes.
+type ViewerRendererRole = "general" | "volume-spatial" | "volume-slice";
+const MAX_IDLE_RENDERERS = 5;
+const idleRenderers: Array<{ renderer: THREE.WebGLRenderer; antialias: boolean; role: ViewerRendererRole }> = [];
+const rendererIdentity = new WeakMap<THREE.WebGLRenderer, { antialias: boolean; role: ViewerRendererRole }>();
 let pageUnloading = false;
+let parkingHost: HTMLDivElement | null = null;
+
+const parkCanvas = (canvas: HTMLCanvasElement): void => {
+  if (typeof document === "undefined") {
+    canvas.remove();
+    return;
+  }
+  if (!parkingHost) {
+    parkingHost = document.createElement("div");
+    parkingHost.style.cssText = "position:fixed;left:-100000px;top:0;width:0;height:0;overflow:hidden;visibility:hidden;pointer-events:none";
+    document.body.appendChild(parkingHost);
+  }
+  parkingHost.appendChild(canvas);
+};
 
 const destroyRenderer = (renderer: THREE.WebGLRenderer): void => {
   renderer.renderLists.dispose();
@@ -19,12 +35,23 @@ const destroyRenderer = (renderer: THREE.WebGLRenderer): void => {
 if (typeof window !== "undefined") {
   window.addEventListener("pagehide", () => {
     pageUnloading = true;
-    for (const renderer of idleRenderers.splice(0)) destroyRenderer(renderer);
+    for (const { renderer } of idleRenderers.splice(0)) destroyRenderer(renderer);
+    parkingHost?.remove();
+    parkingHost = null;
   }, { once: true });
 }
 
-export const acquireViewerRenderer = (): THREE.WebGLRenderer => {
-  const renderer = idleRenderers.pop() ?? new THREE.WebGLRenderer({ antialias: true, alpha: true });
+export const acquireViewerRenderer = (antialias = true, role: ViewerRendererRole = "general"): THREE.WebGLRenderer => {
+  if (role === "volume-spatial" && !antialias || role === "volume-slice" && antialias)
+    throw new TypeError("Volume renderer role and antialias setting disagree.");
+  const index = idleRenderers.findIndex(entry => entry.antialias === antialias && entry.role === role);
+  const renderer = index >= 0
+    ? idleRenderers.splice(index, 1)[0]!.renderer
+    : new THREE.WebGLRenderer({ antialias, alpha: true });
+  if (index < 0) {
+    rendererIdentity.set(renderer, { antialias, role });
+    if (idleRenderers.length >= MAX_IDLE_RENDERERS) destroyRenderer(idleRenderers.shift()!.renderer);
+  }
   renderer.resetState();
   renderer.localClippingEnabled = true;
   return renderer;
@@ -35,10 +62,27 @@ export const releaseViewerRenderer = (renderer: THREE.WebGLRenderer): void => {
   renderer.setRenderTarget(null);
   renderer.renderLists.dispose();
   renderer.resetState();
-  renderer.domElement.remove();
   if (pageUnloading || idleRenderers.length >= MAX_IDLE_RENDERERS) {
     destroyRenderer(renderer);
   } else {
-    idleRenderers.push(renderer);
+    const { antialias, role } = rendererIdentity.get(renderer) ?? { antialias: true, role: "general" };
+    // Keep the bounded canvas attached while idle. Detaching or shrinking it
+    // can make ANGLE allocate a new backing buffer on the next viewer visit.
+    parkCanvas(renderer.domElement);
+    idleRenderers.push({ renderer, antialias, role });
   }
+};
+
+// Three.js writes canvas.width/height on every setSize call, even when the
+// dimensions are unchanged. That discards the drawing buffer and makes ANGLE
+// allocate it again on each resize notification or pooled-viewer mount.
+export const setViewerRendererPixelRatio = (renderer: THREE.WebGLRenderer, ratio: number): void => {
+  if (renderer.getPixelRatio() !== ratio) renderer.setPixelRatio(ratio);
+};
+
+export const setViewerRendererSize = (
+  renderer: THREE.WebGLRenderer, width: number, height: number, updateStyle = true,
+): void => {
+  const current = renderer.getSize(new THREE.Vector2());
+  if (current.x !== width || current.y !== height) renderer.setSize(width, height, updateStyle);
 };

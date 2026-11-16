@@ -1,0 +1,152 @@
+{
+  "schema": "math3d.release20.long-memory-review.v1",
+  "mode": "source",
+  "status": "failed",
+  "plateauQualified": false,
+  "peakSampledRssMiB": 1478.5,
+  "lateGrowthMiB": 48.7,
+  "peakRendererPrivateMiB": 567.5,
+  "rendererPrivateLateGrowthMiB": 40.6,
+  "peakGpuPrivateMiB": 488.9,
+  "gpuPrivateLateGrowthMiB": 8,
+  "peakV8UsedMiB": 78.2,
+  "v8UsedLateGrowthMiB": 0.1,
+  "checks": [
+    {
+      "name": "receipt completed",
+      "pass": true,
+      "observed": "completed"
+    },
+    {
+      "name": "identified clean 2.0 build",
+      "pass": true,
+      "observed": {
+        "version": "2.0.0",
+        "commit": "73cba52abcb8216943ed29e9f592333ba0e7790c",
+        "dirty": false,
+        "builtAt": "2026-11-14T11:59:05.092Z",
+        "rendererHash": "1f3856570418078675298bb94cb5c4fd68322accdf8e49e3af403100c7156c6b"
+      }
+    },
+    {
+      "name": "two-hour elapsed duration",
+      "pass": true,
+      "observed": {
+        "requestedMinutes": 120,
+        "elapsedMs": 7226533
+      }
+    },
+    {
+      "name": "one app process and completed cycles",
+      "pass": true,
+      "observed": {
+        "pid": 13080,
+        "cycles": 94
+      }
+    },
+    {
+      "name": "no page errors",
+      "pass": true,
+      "observed": []
+    },
+    {
+      "name": "sampled peak agrees",
+      "pass": true,
+      "observed": {
+        "peak": 1478.5,
+        "reported": 1478.5
+      }
+    },
+    {
+      "name": "host class",
+      "pass": true,
+      "observed": "source checkout"
+    },
+    {
+      "name": "production runtime",
+      "pass": true,
+      "observed": false
+    },
+    {
+      "name": "CDP V8 heap sample coverage",
+      "pass": true,
+      "observed": {
+        "peakV8UsedMiB": 78.2,
+        "v8UsedLateGrowthMiB": 0.1
+      }
+    },
+    {
+      "name": "GPU process and context health",
+      "pass": true,
+      "observed": {
+        "gpuPids": [
+          34352
+        ],
+        "contextLosses": 0
+      }
+    },
+    {
+      "name": "predeclared source long-run budget",
+      "pass": true,
+      "observed": {
+        "reference": "Windows i9-12900K source build, continuous 100-action cycles for at least two hours",
+        "derivation": "The short-run 1500 MiB ceiling plus 548 MiB headroom, with at most 64 MiB late-window growth; GPU and renderer-private ceilings are separate native-memory safeguards. This is a predeclared acceptance target, not a measurement or installed budget.",
+        "peakRssMiB": 2048,
+        "lateGrowthMiB": 64,
+        "peakRendererPrivateMiB": 1024,
+        "rendererPrivateLateGrowthMiB": 32,
+        "peakGpuPrivateMiB": 512,
+        "gpuPrivateLateGrowthMiB": 32,
+        "v8PostGcLateSpanMiB": 16
+      }
+    },
+    {
+      "name": "source peak RSS ceiling",
+      "pass": true,
+      "observed": {
+        "peak": 1478.5,
+        "limit": 2048
+      }
+    },
+    {
+      "name": "source late RSS plateau",
+      "pass": true,
+      "observed": {
+        "lateGrowthMiB": 48.7,
+        "limit": 64
+      }
+    },
+    {
+      "name": "source renderer private ceiling",
+      "pass": true,
+      "observed": {
+        "peakRendererPrivateMiB": 567.5,
+        "limit": 1024
+      }
+    },
+    {
+      "name": "source renderer private plateau",
+      "pass": false,
+      "observed": {
+        "rendererPrivateLateGrowthMiB": 40.6,
+        "limit": 32
+      }
+    },
+    {
+      "name": "source GPU private ceiling",
+      "pass": true,
+      "observed": {
+        "peakGpuPrivateMiB": 488.9,
+        "limit": 512
+      }
+    },
+    {
+      "name": "source GPU private plateau",
+      "pass": true,
+      "observed": {
+        "gpuPrivateLateGrowthMiB": 8,
+        "limit": 32
+      }
+    }
+  ]
+}

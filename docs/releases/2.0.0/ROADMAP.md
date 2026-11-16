@@ -2,7 +2,7 @@
 
 **Product roadmap · Architecture / UX / Scientific interoperability / Release engineering**<br>
 **Prepared:** 2026-11-05<br>
-**Updated:** 2026-11-15<br>
+**Updated:** 2026-11-16<br>
 **Target:** Math3D 2.0.0 General Availability (GA)<br>
 **Status:** The combined source branch identifies 2.0.0 and includes Project-owned Studies, qualified cursor links, source recovery, and bounded flagship desktop journeys. RC1, RC2, and GA are not declared; no `v2.0.0` tag or signed 2.0 candidate exists.<br>
 **Primary product claim:** *Construct, compute, analyze, compare, document, and publish connected mathematical objects in one scientific workspace.*
@@ -26,11 +26,11 @@ TOP-01–04 and SHARED-01 have merged UI slices. The remaining unclaimed queue i
 
 ---
 
-## Delivery snapshot — 2026-11-12
+## Delivery snapshot — 2026-11-16
 
 | Milestone | In the combined 2.0 source branch | Still required for 2.0 acceptance |
 |---|---|---|
-| 01–02 · Contracts and handoffs | Adapter registry, compatibility fixtures, bounded `Open in…` actions, and saved return navigation | Architecture approval and all three complete flagship journeys |
+| 01–02 · Contracts and handoffs | Adapter registry, compatibility fixtures, bounded `Open in…` actions, and saved return navigation | Architecture approval and exact-candidate evidence for the four bounded journeys; QWZ scenes and Sage computation remain conditional on verified resources and runtime |
 | 03–10 · Integrated product | Project-owned Study records, qualified cursor links, missing-resource recovery, Workbook evidence, and bounded flagship source journeys | Broader Inspector coverage, exact-commit CI evidence, navigation memory plateau, and installed acceptance |
 | 11–12 · Migration and hosts | Source-format migration/transfer fixtures and scoped Windows, local-browser, and mobile-model tests | Published 1.x corpus and installed/hosted/device/package evidence for each claimed host |
 | 13–15 · Distribution and communication | Pinning and integrity checks, clean-install/upgrade scripts, user guides, capability page, and source gallery provenance | Exact signed 2.0 candidate, installed tests, candidate captures, and matching public claims |
@@ -38,17 +38,26 @@ TOP-01–04 and SHARED-01 have merged UI slices. The remaining unclaimed queue i
 | 17 · RC2 | Pinned source migration corpus, independent resource transfers, timed soak runner, and exact-candidate rehearsal verifier | Two-hour soak, exact-artifact install/upgrade, host-specific receipts, and written sign-off for one commit and manifest |
 | 18 · GA | Legacy 1.x publish-path guard, reviewed sign-off verifier, immutable asset staging, and uploaded-download audit | Approved zero-blocker receipt, `v2.0.0` tag, publication, final downloaded install, and remote-byte audit |
 
-## Product and journey state — 2026-11-14
+## Product and journey state — 2026-11-16
 
-**Assessment basis:** `main` at `df1b5fd2`, the delivery records below, the [Guided Study Gallery matrix](CURATED_STUDY_GALLERY.md), and the [cross-module acceptance matrix](#19-cross-module-acceptance-matrix). “Implemented” below means a bounded source-checkout capability with the cited tests or receipts; it does not mean the full roadmap journey, every supported host, or a signed 2.0 distribution has passed. A proposed demonstration without a completion record is **unverified for 2.0 integration**, not necessarily absent from every module.
+**Assessment basis:** the integration of `main` at `12e87f93` with memory branch `8a7935d4`, the delivery records below, the [Guided Study Gallery matrix](CURATED_STUDY_GALLERY.md), and the [cross-module acceptance matrix](#19-cross-module-acceptance-matrix). “Implemented” below means a bounded source-checkout capability with the cited tests or receipts; it does not mean the full roadmap journey, every supported host, or a signed 2.0 distribution has passed. A proposed demonstration without a completion record is **unverified for 2.0 integration**, not necessarily absent from every module.
 
-The principal 2.0 product is a connected scientific workflow: create or import a mathematical source, derive and analyze related representations, inspect source and method evidence, save the relationship in one Project/Study, then reopen or publish it without inventing fresh results. The three flagship journeys are the minimum product story:
+The principal 2.0 product is a connected scientific workflow: create or import a mathematical source, derive and analyze related representations, inspect source and method evidence, save the relationship in one Project/Study, then reopen or publish it without inventing fresh results. The original three long-form flagship targets and the added bounded Field journey are recorded here:
+
+### Advertised 2.0 journey scope
+
+The [release scope](RELEASE_SCOPE.md) requires **four bounded, source-backed journeys**: Surface → Curve → Mesh comparison, QWZ Study → Graph, CAS locus → Geometry/Curve, and Field Explorer → Graph → exact Field return. The site presents these as 2.0 targets, with source-build images and explicit limits. Each still needs acceptance on one exact signed installed candidate before it becomes a completed GA claim. Surface evidence is sampled, QWZ requires independently verified external producer scenes, CAS computation requires a compatible Sage route, and Field return is confined to a finite saved line on its declared plane.
+
+The CAS and QWZ journeys remain conditional at runtime: unavailable services or scene bundles must be reported rather than implied. Their bounded scientific and source-integrity claims remain release requirements when those paths are advertised. General algebraic visualization, new band-energy computation, and unrestricted cross-module mapping are outside the four journey claims.
+
+The Gallery has **17 entries**: 13 built-in guided Project copies, three external-bundle entries for QWZ, SSH and hydrogen, and an Algebra structures entry. The Volume → Mesh card is a candidate source Study outside the four GA journeys. Browser research previews are read-only where the host cannot safely edit; hosted browser, Android device, installed Linux, and source screenshots do not establish installed Windows parity. The [Gallery acceptance matrix](CURATED_STUDY_GALLERY.md) is the card-by-card authority. Green/Stokes, Fourier, Galois, and broader vector-field flow remain proposed content outside the advertised 2.0 catalogue.
 
 | Flagship journey | Bounded source capability on `main` | Remaining product acceptance |
 |---|---|---|
 | Surface → Curve → Mesh → comparison → Workbook | The guided Catenoid and a saved revolution Surface can publish a sampled characteristic Curve, a tessellated Mesh, local analytic/discrete curvature comparison, a Study reference, and a Workbook citation. A connected desktop source run covers native Surface worker cancellation and retry, cold reopen, changed-source withholding, resource package transfer to a clean profile, missing/corrupt Mesh refusal, cancelled import, and offline reading. | Re-run the complete journey on one frozen release commit and the exact installed candidate. The sampled maximum is not a certified continuous ridge or convergence result; native ridge selection and broader Surface representations remain outside this bounded path. |
 | QWZ Study → reciprocal selection → Graph → evidence | A four-view QWZ Study links verified producer scenes and a pinned `k` sample. Bounded band sections and authored sampled paths produce source-linked Graph results and Study evidence; source change and cold restart have focused checks. | Complete the advertised end-to-end journey and release-candidate acceptance with independently verified producer bundles. The Graph connects existing producer samples; it does not compute intervening energies. |
 | CAS polynomial/ideal → locus → Geometry/Curve → singularities | Current polynomial and bounded two-generator ideal paths retain exact equations, revision and Sage response alongside a qualified real sample, saved Geometry, selected contour Curve where supported, and offline read-only evidence. Live WSL polynomial and Docker 10.10 ideal desktop runs cover real execution and cancellation; the Docker ideal saves sampled 3D Geometry and directly opens its verified package in a clean profile. | Re-run the journey on the exact signed installed candidate. Nonrational or positive-dimensional singular sets and general algebraic visualization are outside the demonstrated bounded path. |
+| Field Explorer → Graph → exact Field return | A static analytic Field source supplies a finite line profile on its declared plane; a saved Graph row returns to the exact Field source and position. Connected source runs cover Study and Workbook evidence, restart, transfer, changed source, and missing Graph table refusal. | Re-run the bounded journey on the exact signed installed candidate. No inverse reconstruction, arbitrary document mapping, or time-dependent trajectory claim. |
 
 **Implementation verdict:** All four required journeys have bounded source capabilities and connected desktop source runs. The native Surface cancellation and Docker CAS ideal direct-open source gaps are closed. Release closure remains **open** in [#4–6a](RELEASE_CLOSURE_TODO.md); all four journeys require acceptance on the exact signed installed candidate. The fifth Volume → Mesh path is a source-build candidate, not a 2.0 GA requirement.
 
@@ -60,7 +69,7 @@ The principal 2.0 product is a connected scientific workflow: create or import a
 | Project Center and Studies · 04 | Projects own saved sources, relations, results, Notes, Workbooks, and bounded Study layouts with several exact-source pane/link paths. | The proposed visual relationship map, with inspectable operation edges, historical/missing states and filters, has no completion record here. Broader pane types, per-pane state, parameter/time linking, and Study templates remain partial. |
 | Scientific Cursor and Results · 03, 05 | Qualified Graph/Curve, Curve/Surface, Surface/Mesh, Field/Graph, and QWZ links exist. Many Results and Inspectors separate source integrity, producer claim, and mathematical verification. | Complete only the mappings and native Inspector readouts that are advertised, including unavailable-map behavior. Common Result Card actions and placement across Surface, Mesh, Graph, Field, CAS, Quantum, and remaining Volume families are still partial. No general mapping between unrelated objects should be inferred. |
 | Runtime and research narrative · 06–07 | Compute Center reports probed routes and job states. All 13 bundled guided Project paths have Study/Note/Workbook narrative lifecycle checks; the Volume and Field paths begin with source-only Studies. | Installed runtime and full route/permission receipts remain open. M3D20-07 is complete for bundled Project narratives only; external producer scenes and installed hosts are conditional. Frozen report and portable publication claims need exact-resource, omission, and host acceptance for their advertised formats. |
-| Gallery, UI, and onboarding · 08–09 | Sixteen qualified entry cards, source-build research navigation, a global palette, and scoped compact/200% zoom checks exist. | Finish or narrow the advertised Study catalogue and first-run paths. Installed/hosted/device journeys, broader keyboard and screen-reader coverage, dark/light contrast, presentation capture, and release-build media remain open. |
+| Gallery, UI, and onboarding · 08–09 | Seventeen entry cards, source-build research navigation, a global palette, and scoped compact/200% zoom checks exist. | Finish or narrow the advertised Study catalogue and first-run paths. Installed/hosted/device journeys, broader keyboard and screen-reader coverage, dark/light contrast, presentation capture, and release-build media remain open. |
 | Other cross-module cases | The [acceptance matrix](#19-cross-module-acceptance-matrix) specifies 16 happy and negative paths; several have bounded source evidence. | Explicitly disposition Field→Graph→Field, Volume→Mesh, SSH, hydrogen, migration, publication, and browser/mobile subset claims, as well as the three flagship paths. Each supported case needs exact-commit, fixture/resource, host, and negative-path evidence. |
 | Additional algebra demonstrations | The locus/singularity route is the evidenced 2.0 flagship slice. | Number-field embeddings, finite-group diagrams, and chain-complex homology appear as target demonstrations but have no integrated 2.0 journey acceptance cited here. Treat them as unverified until evidenced or explicitly deferred. |
 
@@ -72,7 +81,7 @@ The gate scripts and source tests are **preparation**, not evidence that a 2.0 i
 
 **Next release path:** [source acceptance](evidence/m3d20-rc1-1e0726b9-acceptance.json) passed 12/12 and [Windows CI](https://github.com/expert10000/Math3D/actions/runs/43220648258) passed 3/3 jobs on [frozen `1e0726b9`](evidence/m3d20-rc1-1e0726b9-freeze.json). Subsequent merge and roadmap commits need a new freeze and matching checks before they can be called a candidate. Fix the measured App render-context retention and mixed-route native/GPU growth, pass the 800-switch and two-hour source budgets on one clean build, then qualify a verified signed installer through exact-file installation, 1.7 upgrade, rollback, integrity, and installed memory tests. Resolve remaining native source, Gallery, and host claims against that candidate before GA sign-off, tagging, staging, publication, and downloaded-byte verification.
 
-**Next decision sequence (2026-11-14):** (1) finish the App ownership/memory change and obtain a clean passing 800-switch mixed-route receipt; (2) run the two-hour source plateau; (3) freeze that merged commit and complete the connected valid and negative-path receipts for the four required journeys, with independent QWZ producer bundles and a real supported Sage route; (4) build and install one signed candidate, then run its journey, memory, upgrade, rollback, and integrity gates. The Volume → Mesh candidate can be reviewed for promotion only after its memory and installed-host evidence exists. The signing setup and external producer fixtures can be prepared while memory work proceeds.
+**Next decision sequence (2026-11-16):** (1) reproduce and bound the mixed Surface/Mesh/Volume GPU-process rise on the merged source, then obtain a clean passing 800-switch receipt; (2) complete a same-commit two-hour source plateau; (3) freeze that commit and run RC1/CI and connected valid and negative-path checks for the four required journeys; (4) qualify one signed candidate through installed journey, memory, upgrade, rollback, and integrity gates. The Volume → Mesh candidate can be reviewed for promotion only after its memory and installed-host evidence exists. Signing and external producer fixtures can be prepared while memory work proceeds.
 
 **Volume → Mesh candidate source update (2026-11-14):** The [fifth-journey record](VOLUME_MESH_FIFTH_JOURNEY.md) now has a Guided Gallery entry, a current-extraction Project Study and Workbook path, and desktop source-build checks for cold reopen, changed source, independent package import, and missing/corrupt resources. Cancellation and late-response refusal have focused source coverage. The mixed-route memory gate and signed installed-candidate receipt remain open, so this is not a fifth GA journey.
 
@@ -975,7 +984,7 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **Integration evidence (2026-11-07):** The CAS locus handoff reached `main` in PR #33. Focused core checks passed (9 tests across the Open-in, locus-scene and sampling suites), and the locus and singularity desktop journeys passed (2 tests). After merging remote `main` into the local checkout, `npm run build:core` completed the main TypeScript build, renderer bundle and build-identity step. That build ran with pre-existing local working-tree changes, so it is development evidence rather than a clean release-candidate gate.
 
-**Exit:** at least the three flagship journeys use the same action pattern; missing/incompatible capability never silently executes.
+**Original milestone exit:** all three long-form flagship targets use the same action pattern; missing/incompatible capability never silently executes. The current 2.0 release scope requires those bounded paths plus Field → Graph → Field. QWZ producer bundles and Sage computation remain conditional on verified external availability, and none of the four is an installed-candidate success claim yet.
 
 ### M3D20-03 — Scientific Cursor (P0)
 
@@ -1219,7 +1228,7 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **14d guide prepared:** The [1.x migration guide](MIGRATION_1X_TO_2X.md) covers backup, compatibility preview, source packages, recovery, and explicit remaining artifact and host limits. It does not claim an unrun 2.0 upgrade passed.
 
-**Exit:** a new user can complete flagship journeys without reading source-code architecture documents.
+**Exit for advertised 2.0 scope:** a new user can complete the bounded Surface/Curve/Mesh path without reading source-code architecture documents; conditional routes explain their prerequisites and limits.
 
 ### M3D20-15 — Release Gallery and communication (P0)
 
@@ -1227,7 +1236,7 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 - `M3D20-15b docs(site): accurate platform and runtime capability claims`.
 - `M3D20-15c test(site): screenshots tied to release build and scene evidence`.
 
-**15a source prepared:** The public-site home page now presents the Surface, Quantum, and Algebra flagship journeys with existing-source imagery or an explicit diagram and labels the unfinished 2.0 release gates. It does not publish a 2.0 download or claim candidate screenshots.
+**15a source prepared:** The public-site home page presents the bounded Surface path and labels the Quantum and Algebra routes conditional on external evidence. Its source imagery and diagram do not claim a signed 2.0 candidate, completed bundled QWZ journey, or general Sage visualization.
 
 **15b source prepared:** The public site's capability page scopes journeys by host and operation, separates source-build tests from installer qualification, and removes broad desktop/browser parity claims from the home-page feature panel.
 
@@ -1256,9 +1265,15 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **17c reliability preparation:** The [source reliability soak](RC2_SOAK_GATE.md) covers Projects, scientific results, quantum, first-use Study restart, hard-exit recovery, and a same-process memory run. Its source run on `5bde394e` passed the preliminary scientific and recovery checks, but renderer private bytes crossed the predeclared budget after about 11.5 minutes. The run was stopped, so it does not establish a two-hour plateau or qualify an installed candidate.
 
-**Memory closure status (2026-11-12):** Production-mode CDP profiling distinguishes a flat Volume route from growing Mesh and mixed routes. The [route receipts and retainer analysis](PERFORMANCE_RESILIENCE_GATE.md) show that a small set of scoped callbacks does not stop the mixed-route rise: 672 reused callback names connect 814 sampled App render contexts. The 800-switch test now fails closed on post-GC V8, renderer-private, and GPU-process budgets. A cohesive App scope split and a passing 800-switch mixed-route receipt are required before the two-hour source memory gate can be signed off. No installed memory claim exists without a verified signed installer.
+**Memory closure history (2026-11-12):** Production-mode CDP profiling distinguished a flat Volume route from growing Mesh and mixed routes. The [route receipts and retainer analysis](PERFORMANCE_RESILIENCE_GATE.md) showed that a small set of scoped callbacks did not stop the mixed-route rise: 672 reused callback names connected 814 sampled App render contexts. The App callback scopes were subsequently split and the pooled renderer lifetimes changed. Current residual risk is the mixed-route GPU process, described below. No installed memory claim exists without a verified signed installer.
 
 The complete [800-switch source receipt](evidence/m3d20-memory-800-1e0726b9.json) and [budget review](evidence/m3d20-memory-800-review-1e0726b9.json) are tied to clean `1e0726b9` with production E2E hooks disabled. The Playwright journey completed without page errors, but the memory review **failed six checks**: peak process-tree RSS **2,312 / 2,048 MiB**, renderer private **1,373.1 / 1,024 MiB**, GPU-process private **541.6 / 512 MiB**, and last-four post-GC spans of **124 / 16 MiB V8**, **402.6 / 32 MiB renderer**, and **41.4 / 32 MiB GPU**. The two-hour soak was not run on this already failing build. These receipts do not qualify the newly merged source tree or any installed package.
+
+**Updated source qualification (2026-11-14):** The clean `73cba52a` [800-switch receipt](evidence/m3d20-memory-800-73cba52a.json) and [review](evidence/m3d20-memory-800-review-73cba52a.json) pass the declared post-GC V8, renderer-private, GPU-process, context-loss, and error budgets after the bounded viewer-context changes. [Windows CI](https://github.com/expert10000/Math3D/actions/runs/43591515580) and [flagship source checks](https://github.com/expert10000/Math3D/actions/runs/43591515395) pass on that same commit. The same clean build's [120.4-minute mixed-route receipt](evidence/m3d20-long-memory-73cba52a.json) and [review](evidence/m3d20-long-memory-review-73cba52a.json) pass the RSS, GPU-process, context, error, and renderer peak ceilings, but **fail the renderer-private late-growth plateau: 40.6 / 32 MiB**. The source memory blocker remains open. Installed qualification still requires a verified signed candidate and exact-byte receipts.
+
+**Latest memory measurements (2026-11-16):** Viewer lifetime fixes now retain bounded, parked drawing buffers and avoid zero-size or unchanged-size canvas resets. Clean `09a77092` [800-switch raw receipt](evidence/m3d20-memory-800-09a77092.json) and [review](evidence/m3d20-memory-800-review-09a77092.json) passed all declared checks: peak GPU-process private bytes **466.9 / 512 MiB**, last-four post-GC GPU span **14.4 / 32 MiB**, and renderer-private span **1.8 / 32 MiB**. A source [two-hour soak attempt](evidence/m3d20-long-memory-partial-09a77092.json) on that commit was stopped after **69.3 minutes** when sampled GPU private reached **514.4 MiB**; its raw status remains `running` because it did not finish, and it is not a passing receipt. Clean `8a7935d4` [800-switch raw receipt](evidence/m3d20-memory-800-8a7935d4.json) and [review](evidence/m3d20-memory-800-review-8a7935d4.json) completed without page errors or context loss and passed V8, renderer-private, and process-tree RSS checks, but failed GPU peak **551.1 / 512 MiB** and last-four post-GC GPU span **86.1 / 32 MiB**. Focused Surface+Mesh and Mesh+Volume runs were stable; the combined Surface+Mesh+Volume route breached the GPU ceiling. These measurements are tied to pre-merge commits, so the merged head needs its own clean build and qualification.
+
+**Budget review:** The 512 MiB GPU-process peak and 32 MiB post-GC span are process measurements, not direct GPU allocation measurements. They may be revised only from repeatable clean-host runs that demonstrate a bounded plateau and document the resulting headroom; raising them to the latest observed failure would conceal an unresolved mixed-route rise. The 800-switch check, two-hour same-process soak, no-error/context-loss rule, scientific-result correctness, and exact signed installed-candidate gate remain required. The next runtime investigation should isolate the interaction among Surface, Mesh, and Volume rather than infer a leak from a single high sample or claim success from the earlier passing 800-switch run.
 
 **17d release rehearsal:** The [exact-candidate rehearsal gate](RC2_REHEARSAL_GATE.md) checks that the source freeze, signed Windows install and upgrade receipts, source soak, verified assets, three gallery captures, public license metadata, and locally staged site all refer to one 2.0 commit and installer hash. It remains pending real candidate artifacts and installed evidence.
 
@@ -1365,7 +1380,7 @@ flowchart TD
 
 ### Project and workflow integrity
 
-- [ ] All three flagship journeys pass through native modules.
+- [ ] Every advertised flagship journey passes on the exact candidate through its supported native modules; QWZ and CAS remain conditional until their external-scene and live-route receipts exist.
 - [ ] Study/Project cold restart and independent import work.
 - [ ] Saved selection and backlinks retain original meaning.
 - [ ] Workbook/Notes evidence links remain reproducible.
@@ -1518,7 +1533,7 @@ The release should be known for **three visible innovations**:
 
 Surround these with one coherent Project Center, shared Results/Inspector language, a truthful Runtime Center, Workbook publication, a high-quality Study Gallery, dependable migration, and rigorous install/reliability gates.
 
-**Operational decision:** Freeze broad new 2.0 feature work after these contracts and three flagship journeys pass. Spend the remaining release effort on convergence, scientific integrity, performance, documentation and packaging. Move nonessential extensions to 2.1 rather than weakening GA confidence.
+**Operational decision:** Freeze broad new 2.0 feature work after the advertised bounded journey and explicit dispositions for the QWZ and CAS targets are reviewed. Spend the remaining release effort on convergence, scientific integrity, performance, documentation and packaging. Move nonessential extensions to 2.1 rather than weakening GA confidence.
 
 > **Math3D 2.0 succeeds when a user no longer experiences a collection of separate powerful modules, but one mathematical environment in which sources, computations, representations, results, explanations and publications remain connected.**
 

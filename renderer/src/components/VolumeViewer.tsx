@@ -8,12 +8,10 @@ import { marchingCubesVolume } from "../math/marchingCubes";
 import type { VolumeDataset, VectorGrid } from "../scene/datasets";
 import type { Image2D } from "../scene/renderPrimitives";
 import {
-  buildSliceImage,
   getSliceInfo,
   gradientMagnitudeAt,
   gridIndexToWorld,
   sampleGridTrilinear,
-  sliceVolumeData,
   volumeSliceContours,
   type SliceAxis,
   type VolumeSliceData,
@@ -21,6 +19,7 @@ import {
   type VolumeSliceReport,
   type VolumeSliceWindow,
 } from "../scene/volume/sliceVolume";
+import { viewerSliceData, viewerSliceImage } from "../scene/volume/viewerSliceCache";
 import {
   supportsVtkVolumeSlice,
   vtkVolumeIsosurface,
@@ -30,7 +29,8 @@ import {
 import { vtkSmooth } from "../services/vtkMeshClient";
 import { configureOrbitControlsForTouch, installViewerTouchGestures } from "../utils/viewerTouchGestures";
 import AxisGizmo from "./AxisGizmo";
-import { acquireViewerRenderer, releaseViewerRenderer } from "./viewerRendererPool";
+import { acquireViewerRenderer, releaseViewerRenderer, setViewerRendererPixelRatio, setViewerRendererSize } from "./viewerRendererPool";
+import { startViewerAnimationLoop } from "./viewerAnimationLoop";
 import { applyCameraOrientation, CAMERA_ORIENTATION_LABEL, orbitCameraAroundTarget, type CameraOrientation } from "./cameraOrientation";
 import {
   createVolumeTransferTextureData,
@@ -128,20 +128,23 @@ const clearGroup = (group: THREE.Group) => {
   const children = [...group.children];
   for (const child of children) {
     group.remove(child);
-    const anyChild = child as any;
-    if (anyChild.geometry) {
-      anyChild.geometry.dispose?.();
-    }
-    if (anyChild.material) {
-      const mat = anyChild.material as THREE.Material | THREE.Material[];
-      const disposeMaterial = (material: THREE.Material) => {
-        const map = (material as THREE.MeshBasicMaterial).map;
-        map?.dispose();
-        material.dispose();
-      };
-      if (Array.isArray(mat)) mat.forEach(disposeMaterial);
-      else disposeMaterial(mat);
-    }
+    child.traverse(disposeVolumeObject3D);
+  }
+};
+
+const disposeVolumeObject3D = (object: THREE.Object3D) => {
+  const renderable = object as THREE.Object3D & {
+    geometry?: THREE.BufferGeometry;
+    material?: THREE.Material | THREE.Material[];
+  };
+  renderable.geometry?.dispose();
+  const materials = renderable.material
+    ? Array.isArray(renderable.material) ? renderable.material : [renderable.material]
+    : [];
+  for (const material of materials) {
+    const map = (material as THREE.MeshBasicMaterial).map;
+    map?.dispose();
+    material.dispose();
   }
 };
 
@@ -852,10 +855,18 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     camera.position.set(2.6, 2.4, 2.8);
     camera.lookAt(0, 0, 0);
 
-    const renderer = acquireViewerRenderer();
+    const renderer = acquireViewerRenderer(viewPreset === "free",
+      viewPreset === "free" ? "volume-spatial" : "volume-slice");
     renderer.localClippingEnabled = true;
-    renderer.setPixelRatio(window.devicePixelRatio || 1);
-    renderer.setSize(mount.clientWidth || 1, mount.clientHeight || 1);
+    // Orthogonal slices display sampled source pixels in small panes. Bound
+    // the four simultaneous drawing buffers on high-DPI displays; the spatial
+    // pane retains a modest supersample for its 3D geometry.
+    const maxPixelRatio = viewPreset === "free" ? 1.25 : 1;
+    setViewerRendererPixelRatio(renderer, Math.min(Math.max(1, window.devicePixelRatio || 1), maxPixelRatio));
+    // A pane can mount before its layout has a measurable size. Preserve the
+    // pooled drawing buffer until ResizeObserver reports the real dimensions.
+    if (mount.clientWidth > 0 && mount.clientHeight > 0)
+      setViewerRendererSize(renderer, mount.clientWidth, mount.clientHeight);
     mount.appendChild(renderer.domElement);
 
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -976,11 +987,12 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     setSceneReady(true);
 
     const handleResize = () => {
-      const w = mount.clientWidth || 1;
-      const h = mount.clientHeight || 1;
+      const w = mount.clientWidth;
+      const h = mount.clientHeight;
+      if (w <= 0 || h <= 0) return;
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
-      renderer.setSize(w, h);
+      setViewerRendererSize(renderer, w, h);
     };
 
     // Establish the correct aspect before any automatic fit effect runs.
@@ -1022,10 +1034,8 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
       onDoubleTap: refitCamera,
     });
 
-    let frameId = 0;
     const localCamera = new THREE.Vector3();
-    const animate = () => {
-      frameId = requestAnimationFrame(animate);
+    const stopAnimationLoop = startViewerAnimationLoop(() => {
       controls.update();
       const directMesh = directVolumeMeshRef.current;
       const directMaterial = directVolumeMaterialRef.current;
@@ -1036,11 +1046,10 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
         directMaterial.uniforms.uCameraTexture.value.copy(localCamera);
       }
       renderer.render(scene, camera);
-    };
-    animate();
+    });
 
     return () => {
-      cancelAnimationFrame(frameId);
+      stopAnimationLoop();
       ro.disconnect();
       window.removeEventListener("resize", handleResize);
       disposeTouchGestures();
@@ -1133,6 +1142,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
       axes.geometry.dispose();
       if (Array.isArray(axesMat)) axesMat.forEach((material) => material.dispose());
       else axesMat.dispose();
+      scene.traverse(disposeVolumeObject3D);
       scene.clear();
       releaseViewerRenderer(renderer);
       rendererRef.current = null;
@@ -1178,7 +1188,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     }
     try {
       setSliceRuntimeState({ kind: "loading", message: `Preparing ${axis.toUpperCase()} slice…` });
-      setSliceData(sliceVolumeData(dataset.grid, axis, index));
+      setSliceData(viewerSliceData(dataset.grid, axis, index));
     } catch (error) {
       setSliceData(null);
       setSliceImage(null);
@@ -1242,7 +1252,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
           if (!res.ok) backendFailure = res.error;
         }
         if (!cancelled) {
-          setSliceImage(buildSliceImage(sliceData, sliceWindow ?? undefined));
+          setSliceImage(viewerSliceImage(sliceData, sliceWindow ?? undefined));
           setSliceRuntimeState(
             backendFailure
               ? { kind: "fallback", message: `VTK unavailable: ${backendFailure}. Showing CPU slice.` }
@@ -1354,8 +1364,8 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     const clippingPlanes = clipToCrop ? getCropClippingPlanes(cropCenter, cropExtents) : [];
     for (const [axisOrder, sliceAxis] of (["x", "y", "z"] as const).entries()) {
       if (spatialPlaneVisibility?.[sliceAxis] === false) continue;
-      const data = sliceVolumeData(dataset.grid, sliceAxis, spatialSlices[sliceAxis]);
-      const image = buildSliceImage(data);
+      const data = viewerSliceData(dataset.grid, sliceAxis, spatialSlices[sliceAxis]);
+      const image = viewerSliceImage(data);
       const texture = new THREE.DataTexture(image.data, image.width, image.height, THREE.RGBAFormat);
       texture.magFilter = THREE.LinearFilter;
       texture.minFilter = THREE.LinearFilter;

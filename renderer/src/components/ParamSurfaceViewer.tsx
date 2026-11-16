@@ -4,6 +4,8 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { disposeOrbitControls } from "../utils/disposeOrbitControls";
 import { ParametricGeometry } from "three/examples/jsm/geometries/ParametricGeometry.js";
+import { startViewerAnimationLoop } from "./viewerAnimationLoop";
+import { acquireViewerRenderer, releaseViewerRenderer, setViewerRendererPixelRatio, setViewerRendererSize } from "./viewerRendererPool";
 
 import DomainDirectionPicker from "./DomainDirectionPicker";
 import { integrateGeodesic } from "../math/geodesic";
@@ -2572,7 +2574,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     camera.position.set(4, 3, 5);
     camera.lookAt(0, 0, 0);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: renderQuality !== "performance", alpha: true });
+    const renderer = acquireViewerRenderer(renderQuality !== "performance");
     const heavySurface = surfaceId === "torus";
     const maxPixelRatio =
       renderQuality === "performance"
@@ -2588,8 +2590,8 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     const qualityScale =
       renderQuality === "performance" ? 1 : renderQuality === "sharp" ? 1.75 : 1.15;
     const targetPixelRatio = devicePixelRatio * qualityScale;
-    renderer.setPixelRatio(Math.min(targetPixelRatio, maxPixelRatio));
-    renderer.setSize(width, height, false);
+    setViewerRendererPixelRatio(renderer, Math.min(targetPixelRatio, maxPixelRatio));
+    setViewerRendererSize(renderer, Math.round(width), Math.round(height), false);
     renderer.setClearColor(background.color, background.alpha);
     renderer.localClippingEnabled = true;
     renderer.domElement.style.width = "100%";
@@ -3851,17 +3853,14 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
 
     renderer.domElement.addEventListener("pointerdown", handlePointerDown);
 
-    let animationFrameId = 0;
-    const animate = () => {
-      animationFrameId = requestAnimationFrame(animate);
+    const stopAnimationLoop = startViewerAnimationLoop(() => {
       if (sliceDirtyRef.current && surfaceObjRef.current) {
         updateSlice(surfaceObjRef.current);
         sliceDirtyRef.current = false;
       }
       controls.update();
       renderer.render(scene, camera);
-    };
-    animate();
+    });
 
     const syncRendererSize = (reframe = false) => {
       const { width: rawWidth, height: rawHeight } = getSize();
@@ -3871,10 +3870,10 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       const h = Math.max(1, Math.round(rawHeight));
       const nextDevicePixelRatio = Math.max(1, window.devicePixelRatio || 1);
       const nextTargetPixelRatio = nextDevicePixelRatio * qualityScale;
-      renderer.setPixelRatio(Math.min(nextTargetPixelRatio, maxPixelRatio));
+      setViewerRendererPixelRatio(renderer, Math.min(nextTargetPixelRatio, maxPixelRatio));
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
-      renderer.setSize(w, h, false);
+      setViewerRendererSize(renderer, w, h, false);
 
       const radius = radiusRef.current;
       if (!Number.isFinite(radius) || radius <= 0) return;
@@ -3930,7 +3929,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     emitViewportDebug("init");
 
       return () => {
-        cancelAnimationFrame(animationFrameId);
+        stopAnimationLoop();
         // dispose geodesic line if present
         if (geodesicLineRef.current) {
           scene.remove(geodesicLineRef.current);
@@ -4125,9 +4124,8 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       cameraRef.current = null;
       controlsRef.current = null;
       scene.traverse(disposeObject3D);
-      renderer.dispose();
-      renderer.forceContextLoss();
-      renderer.domElement.remove();
+      scene.clear();
+      releaseViewerRenderer(renderer);
     };
   }, [
     surfaceId,
