@@ -11,7 +11,7 @@ test.describe.serial("C10 adaptive Complex continuation", () => {
     await page.getByTestId("workspace-nav-complex_analysis").click();
     await page.getByRole("banner").getByRole("button", { name: "Branch Lab", exact: true }).click();
     await page.getByRole("button", { name: "sqrt(z)", exact: true }).click();
-    await page.getByRole("button", { name: "Branch", exact: true }).last().click();
+    await page.getByRole("combobox", { name: "Geometry view" }).selectOption({ label: "Branch" });
     await page.getByTestId("analyze-complex-continuation").click();
     const inspector = page.getByTestId("complex-continuation-inspector");
     await expect(inspector).toContainText("adaptive path lifting · validated");
