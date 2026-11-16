@@ -1,6 +1,6 @@
 # SURF-05 source-built Surface journey
 
-Status: draft source-built Windows qualification. Initial local source was PR #92 `3533661072e986f691eca894716523dab45db71f`; the 11-case gate was rerun after rebasing on its newer production source `5cd220b5d2812a471c332278131214627cf05867`. The exact locally exercised SURF-05 branch head is `c3845eefb35a12cf080a17d29a1ebcd971c8f891` (11 passed, 0 skipped, 0 retries, 2.1 minutes). This branch adds native tests and a scoped workflow; it does not edit production code. CI must report its own checkout SHA before its PASS is attributed to that head.
+Status: draft source-built Windows qualification. Initial local source was PR #92 `3533661072e986f691eca894716523dab45db71f`; the 11-case gate was rerun after rebasing on its newer production source `5cd220b5d2812a471c332278131214627cf05867`. The stronger recipe test branch head `7e7f354c794df23009781e0f0b9e2a3c6849f9ca` was exercised locally: 11 passed, 0 skipped, 0 retries, 1.3 minutes. This branch adds native tests and a scoped workflow; it does not edit production code. CI must report its own checkout SHA before its PASS is attributed to that head.
 
 ## Native evidence matrix
 
