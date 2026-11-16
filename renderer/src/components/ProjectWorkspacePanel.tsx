@@ -1585,6 +1585,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         try { await verifyProjectVectorFieldSources(prepared.project, undefined, item => resources.bytes(item)); }
         catch (error) {
           if (!(error instanceof ProjectScientificFieldUnavailableError)) throw error;
+          if (activationToken !== importSequence.current || inputToken !== workspaceInputSequence.current ||
+            previous && canonicalJsonStringify(currentCapture.current()) !== canonicalJsonStringify(previous))
+            throw new Error("The workspace changed during source verification. Retry opening the Project.");
           // Keep the active workspace untouched. Saved metadata is still inspectable,
           // while source-linked values and document actions remain unavailable.
           display(prepared.project, true, false, prepared.resolved);
