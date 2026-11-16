@@ -1,0 +1,35 @@
+{
+  "evidenceType": "Windows Electron source build",
+  "sourceCommit": "7d8ace8791173fa970cfcebbae7396becf4cadd8",
+  "cleanBuild": true,
+  "rendererHash": "5507fd1c45bdbf39ca25597acb648bd09f081571b3449ecc432f8e2d91fb8ede",
+  "tests": "npx playwright test tests/e2e/mesh-complex-diagnostic-ui.spec.ts tests/e2e/graph-authoring-recovery.spec.ts --reporter=line",
+  "result": "4 passed, 0 skipped (21.3s)",
+  "files": [
+    {
+      "name": "build-identity.json",
+      "sha256": "26bcd5835ca28bc6c1fb3bdc8916eb2c1226d1514e34b47284e5fde1809f48ad",
+      "bytes": 226
+    },
+    {
+      "name": "complex-display-mesh-scope-source-build.png",
+      "sha256": "7d4a59744016ae5c297b8ce54e48b8da3a2384f5e52d7e625d8aa3c2a22bd4a6",
+      "bytes": 75388
+    },
+    {
+      "name": "graph-editor-error-source-build.png",
+      "sha256": "19451cf946e20e76b38427982d7e0d0bd5001c095041793cb07b29daa629eb60",
+      "bytes": 33464
+    },
+    {
+      "name": "mesh-run-blocker-source-build.png",
+      "sha256": "316e88d636a34bf47df9ecfefe899136355792d4af4c42b9f17501abf9796261",
+      "bytes": 6374
+    },
+    {
+      "name": "surface-representations-source-build.png",
+      "sha256": "ddad387c3b39a1466510da3ca98cdf806bfcc369be541e72b495ab59d7e1f251",
+      "bytes": 8579
+    }
+  ]
+}

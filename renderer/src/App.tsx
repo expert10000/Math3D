@@ -85147,6 +85147,7 @@ case "mobius":
                           activeMeshLabel={buildActiveMeshLabel()}
                           workerReady={meshOperationServiceReady}
                           workerStatusText={meshOperationServiceStatusText}
+                          onOpenComputeCenter={() => { setComputeCenterInitialTab("runtimes"); setComputeCenterOpen(true); }}
                           cgalReady={cgalServiceReady}
                           cgalStatusText={cgalServiceStatusText}
                           busy={meshOperationBusy || surfaceMeshImportBusy}

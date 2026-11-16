@@ -1,8 +1,15 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 import { resolve } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import { closeSurfaceApp, launchSurfaceApp, openLastSavedProject,
   resetSurfaceAppState, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
+
+async function showProjectStudies(panel: Locator): Promise<void> {
+  if (!await panel.getByTestId("project-research-nav-studies").count())
+    await panel.getByTestId("project-gallery-layout-toggle").click();
+  await panel.getByTestId("project-research-nav-studies").click();
+  await expect(panel.getByTestId("project-studies-panel")).toBeVisible();
+}
 
 test("selected Surface ridge publishes Mesh error and Workbook evidence across restart, transfer and source change", async () => {
   test.setTimeout(240_000);
@@ -16,8 +23,7 @@ test("selected Surface ridge publishes Mesh error and Workbook evidence across r
     await panel.getByTestId("project-gallery-guided").click();
     await panel.getByTestId("curated-study-open-catenoid-evidence").click();
     await expect(panel.getByTestId("project-message")).toContainText("Opened supported project", { timeout: 60_000 });
-    if (!await panel.getByTestId("project-studies-panel").count())
-      await panel.getByTestId("project-gallery-layout-toggle").click();
+    await showProjectStudies(panel);
     const sourceStudy = panel.getByTestId("project-studies-panel");
     await sourceStudy.locator("[data-testid^='project-study-open-']").first().click();
     await sourceStudy.getByTestId("project-study-open-source-pane-1").click();
@@ -94,8 +100,7 @@ test("selected Surface ridge publishes Mesh error and Workbook evidence across r
     await app.app.close(); app = await launchSurfaceApp({}, profile); page = app.page;
     await openLastSavedProject(page);
     panel = page.getByTestId("project-explorer-panel");
-    if (!await panel.getByTestId("project-studies-panel").count())
-      await panel.getByTestId("project-gallery-layout-toggle").click();
+    await showProjectStudies(panel);
     await expect(panel.getByTestId("project-surface-ridge-evidence")).toContainText("spatial offset");
     const core = require(resolve("packages/core/src/index.ts"));
     const current = core.parseMath3DProject(await page.evaluate(() => localStorage.getItem("math3d.project.v1")));
@@ -115,8 +120,7 @@ test("selected Surface ridge publishes Mesh error and Workbook evidence across r
     await app.app.close(); app = await launchSurfaceApp({}, profile); page = app.page;
     await openLastSavedProject(page);
     panel = page.getByTestId("project-explorer-panel");
-    if (!await panel.getByTestId("project-studies-panel").count())
-      await panel.getByTestId("project-gallery-layout-toggle").click();
+    await showProjectStudies(panel);
     await expect(panel.getByTestId("project-surface-ridge-withheld")).toContainText("changed");
     await closeSurfaceApp(app);
     app = await launchSurfaceApp(); await resetSurfaceAppState(app.page);
@@ -149,8 +153,7 @@ test("selected Surface ridge publishes Mesh error and Workbook evidence across r
     expect(imported.workspace.results.find((item: { resultId: string }) => item.resultId === comparison.resultId))
       .toEqual(comparison);
     await page.context().setOffline(true);
-    if (!await panel.getByTestId("project-studies-panel").count())
-      await panel.getByTestId("project-gallery-layout-toggle").click();
+    await showProjectStudies(panel);
     await expect(panel.getByTestId("project-surface-ridge-evidence")).toContainText("absolute error");
     await expect(panel.getByTestId("project-surface-ridge-export")).toBeEnabled();
   } finally { await closeSurfaceApp(app); }

@@ -142,6 +142,7 @@ export type MeshOperationsPanelProps = {
   activeMeshLabel?: string | null;
   workerReady: boolean;
   workerStatusText: string;
+  onOpenComputeCenter?: () => void;
   cgalReady: boolean;
   cgalStatusText: string;
   busy: boolean;
@@ -272,6 +273,28 @@ const getMeshOperationRowRunLabel = (operation: MeshOperationVisibleRowId | null
   if (!operation) return "Run operation";
   return getMeshOperationRunLabel(operation);
 };
+
+export function meshOperationRunBlocker(input: {
+  operation: MeshOperationVisibleRowId | null; meshReady: boolean; implicitAvailable: boolean;
+  workerReady: boolean; workerStatusText: string; cgalReady: boolean; cgalStatusText: string;
+  booleanStrategy: MeshBooleanStrategy; booleanOperandObjectId: string | null; operationBusy: boolean;
+}): { reason: string; runtime: boolean } | null {
+  const { operation, meshReady, implicitAvailable, workerReady, workerStatusText, cgalReady, cgalStatusText,
+    booleanStrategy, booleanOperandObjectId, operationBusy } = input;
+  if (!operation) return { reason: "Choose an operation.", runtime: false };
+  if (operationBusy) return { reason: "Another mesh operation is running.", runtime: false };
+  const implicit = operation === "implicit-preview" || operation === "implicit-mesh";
+  if (implicit && !implicitAvailable) return { reason: "Open an implicit Surface source first.", runtime: false };
+  if (!implicit && !meshReady) return { reason: "Choose a Mesh source first.", runtime: false };
+  if (BOOLEAN_OPERATION_BY_MESH_OPERATION[operation] && !booleanOperandObjectId)
+    return { reason: "Choose a second Mesh operand.", runtime: false };
+  const needsCgal = operation === "implicit-mesh" || operation === "cgal-validate" || operation === "cgal-repair" ||
+    operation === "cgal-repair-validate" || operation === "cgal-remesh" ||
+    !!BOOLEAN_OPERATION_BY_MESH_OPERATION[operation] && booleanStrategy !== "fast";
+  if (needsCgal && !cgalReady) return { reason: `CGAL runtime unavailable: ${cgalStatusText}.`, runtime: true };
+  if (!needsCgal && !workerReady) return { reason: `Mesh worker unavailable: ${workerStatusText}.`, runtime: true };
+  return null;
+}
 
 const getSavedPresetOperationLabel = (preset: MeshOperationSavedPresetSummary) => {
   const operation = (preset.request?.operation ?? preset.operation ?? preset.lastResult?.operation ?? null) as MeshOperationUiId | null;
@@ -909,6 +932,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
   activeMeshLabel,
   workerReady,
   workerStatusText,
+  onOpenComputeCenter,
   cgalReady,
   cgalStatusText,
   busy,
@@ -1246,26 +1270,9 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
     validationForActiveMesh.selfIntersection.suspectedPairs === 0;
   const activeMeshValidationBlockers = validationForActiveMesh ? getMeshValidationBlockers(validationForActiveMesh) : [];
   const selectedBooleanStrategyNeedsCgal = booleanStrategy === "auto" || booleanStrategy === "robust";
-  const selectedBooleanStrategyReady =
-    booleanStrategy === "fast"
-      ? workerReady
-      : booleanStrategy === "robust"
-        ? cgalReady
-        : cgalReady;
-  const expandedCanRun =
-    expandedOperation === "implicit-preview"
-      ? implicitAvailable && workerReady && !operationBusy
-      : expandedOperation === "implicit-mesh"
-        ? implicitAvailable && cgalReady && !operationBusy
-        : expandedOperation === "cgal-validate"
-          ? meshReady && cgalReady && !operationBusy
-          : expandedOperation === "cgal-repair" || expandedOperation === "cgal-repair-validate" || expandedOperation === "cgal-remesh"
-            ? meshReady && cgalReady && !operationBusy
-        : expandedIsBoolean
-          ? meshReady && selectedBooleanStrategyReady && !!booleanOperandObjectId && !operationBusy
-          : expandedOperation
-            ? meshReady && workerReady && !operationBusy
-            : false;
+  const expandedRunBlocker = meshOperationRunBlocker({ operation: expandedOperation, meshReady, implicitAvailable,
+    workerReady, workerStatusText, cgalReady, cgalStatusText, booleanStrategy, booleanOperandObjectId, operationBusy });
+  const expandedCanRun = !!expandedOperation && !expandedRunBlocker;
   const previewResolution = Math.max(8, Math.min(220, Math.round(implicitResolution)));
   const booleanStageStyle = (state: "done" | "active" | "next" = "active"): React.CSSProperties => ({
     border: `1px solid ${state === "done" ? "#bbf7d0" : state === "active" ? "#93c5fd" : "#e2e8f0"}`,
@@ -2351,15 +2358,24 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                         Source: {meshReady ? activeMeshLabel?.trim() || "Active mesh" : "None"} · Output: {outputMode === "derived" ? "New object (preserve source)" : "Replace active mesh"}
                       </div>
                     )}
-                  <button
-                    data-testid={`${testId}-run-${operation}`}
-                    type="button"
-                    onClick={runExpandedOperation}
-                    disabled={!expandedCanRun}
-                    style={{ justifySelf: "start", fontWeight: 800 }}
-                  >
-                    {operationBusy ? "Working..." : getMeshOperationRowRunLabel(expandedOperation)}
-                  </button>
+                  <div data-testid={`${testId}-run-action`} style={{ display: "grid", justifyItems: "start", gap: 5 }}>
+                    <button
+                      data-testid={`${testId}-run-${operation}`}
+                      type="button"
+                      onClick={runExpandedOperation}
+                      disabled={!expandedCanRun}
+                      style={{ justifySelf: "start", fontWeight: 800 }}
+                    >
+                      {operationBusy ? "Working..." : getMeshOperationRowRunLabel(expandedOperation)}
+                    </button>
+                    {expandedRunBlocker && <div data-testid={`${testId}-run-blocker`} role="status"
+                      style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, color: "#9a3412", fontSize: 10.5 }}>
+                      <span>Run unavailable: {expandedRunBlocker.reason}</span>
+                      {expandedRunBlocker.runtime && onOpenComputeCenter && <button type="button" onClick={onOpenComputeCenter}>
+                        Open Compute Center
+                      </button>}
+                    </div>}
+                  </div>
                   </MeshOperationFormSection>
                 </div>
               )}
