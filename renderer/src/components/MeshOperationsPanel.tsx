@@ -20,6 +20,17 @@ import {
 } from "./MeshBooleanReviewCard";
 import { NativeBooleanCubeMatrixPreset } from "./NativeBooleanCubeMatrixPreset";
 
+// Presentation only: operation and Project owners remain in the existing handlers.
+function MeshOperationFormSection({ title, children }: { title?: string; children: React.ReactNode }) {
+  if (!title) return <>{children}</>;
+  return (
+    <fieldset style={{ margin: 0, padding: "7px 8px", minWidth: 0, border: "1px solid #dbe2ea", borderRadius: 7 }}>
+      <legend style={{ padding: "0 4px", fontWeight: 800 }}>{title}</legend>
+      <div style={{ display: "grid", gap: 6 }}>{children}</div>
+    </fieldset>
+  );
+}
+
 export type MeshBooleanOperation = "union" | "difference" | "intersection" | "split" | "imprint";
 export type MeshBooleanStrategy = "auto" | "fast" | "robust";
 
@@ -1557,6 +1568,12 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                       </div>
                     </div>
                   )}
+                  {(operation === "clean-normals" || operation === "decimate" || operation === "smooth") && (
+                    <MeshOperationFormSection title="Source">
+                      <span>{meshReady ? activeMeshLabel?.trim() || "Active mesh" : "No active mesh. Open or create a mesh first."}</span>
+                    </MeshOperationFormSection>
+                  )}
+                  <MeshOperationFormSection title={operation === "clean-normals" || operation === "decimate" || operation === "smooth" ? "Parameters" : undefined}>
                   {operation === "clean-normals" && (
                     <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       <input
@@ -1765,8 +1782,9 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                       </label>
                     </div>
                   )}
+                  </MeshOperationFormSection>
                   {(operation === "clean-normals" || operation === "decimate" || operation === "smooth") && (
-                    <div style={{ display: "grid", gap: 3 }}>
+                    <MeshOperationFormSection title="Output">
                       <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <input
                           data-testid={`${testId}-${operation}-output-derived`}
@@ -1787,7 +1805,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                         />
                         Replace
                       </label>
-                    </div>
+                    </MeshOperationFormSection>
                   )}
                   {expandedIsBoolean && (
           <>
@@ -2327,6 +2345,12 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                       {cgalError && <div style={{ color: "#b42318" }}>{cgalError}</div>}
                     </>
                   )}
+                  <MeshOperationFormSection title={operation === "clean-normals" || operation === "decimate" || operation === "smooth" ? "Run" : undefined}>
+                    {(operation === "clean-normals" || operation === "decimate" || operation === "smooth") && (
+                      <div data-testid={`${testId}-${operation}-run-summary`} style={{ fontSize: 11, overflowWrap: "anywhere" }}>
+                        Source: {meshReady ? activeMeshLabel?.trim() || "Active mesh" : "None"} · Output: {outputMode === "derived" ? "New object (preserve source)" : "Replace active mesh"}
+                      </div>
+                    )}
                   <button
                     data-testid={`${testId}-run-${operation}`}
                     type="button"
@@ -2336,6 +2360,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                   >
                     {operationBusy ? "Working..." : getMeshOperationRowRunLabel(expandedOperation)}
                   </button>
+                  </MeshOperationFormSection>
                 </div>
               )}
                 </div>
