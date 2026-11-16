@@ -84,6 +84,12 @@ test("SSH pair saves as a source-linked Project Study, reopens, and refuses a ch
     await projects.getByTestId("project-open-ssh-study-new").click();
     await expect(projects.getByTestId("project-quantum-scene-message")).toContainText("Both exact SSH views staged", { timeout: 60_000 });
     await expect(projects.getByTestId("project-study-view")).toContainText("SSH chain and bands");
+    await projects.getByTestId("project-study-preview-toggle-pane-1").click();
+    await expect(projects.getByTestId("project-study-quantum-view")).toHaveAttribute("data-role", "chain");
+    await expect(projects.getByTestId("project-study-ssh-units")).toContainText("Supplied axes");
+    await projects.getByTestId("project-study-preview-toggle-pane-1").click();
+    await projects.getByTestId("project-study-preview-toggle-pane-2").click();
+    await expect(projects.getByTestId("project-study-quantum-view")).toHaveAttribute("data-role", "bands");
     await projects.getByTestId("project-save").click();
     await expect(projects.getByTestId("project-message")).toContainText("Saved", { timeout: 60_000 });
     await expect(projects.getByTestId("project-quantum-scene-message")).toContainText("Study saved");

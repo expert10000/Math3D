@@ -11,7 +11,7 @@ type Opened = Extract<QuantumSceneOpenResponse, { ok: true }>;
 /** External scene bytes are independently reopened before this read-only pane receives geometry. */
 export function StudyQuantumPanePreview({ project, document, role, linkedFingerprints }: {
   project: Math3DProject; document: QuantumSceneDocument;
-  role: "curvature" | "bands" | "reciprocal" | "inspector";
+  role: "curvature" | "bands" | "reciprocal" | "inspector" | "chain";
   linkedFingerprints: readonly [string, string];
 }) {
   const [state, setState] = useState<{ opened: Opened | null; error: string }>({ opened: null, error: "" });
@@ -26,13 +26,14 @@ export function StudyQuantumPanePreview({ project, document, role, linkedFingerp
   }, [project, document]);
   useEffect(() => scientificCursorBus.subscribe(next => setCursor(next)), []);
   if (state.error) return <p role="status" data-testid="project-study-quantum-withheld">{state.error}</p>;
-  if (!state.opened) return <p role="status">Verifying QWZ {role} source…</p>;
+  if (!state.opened) return <p role="status">Verifying {document.source.provenance.model} {role} source…</p>;
   const scene = (state.opened.document.extensions[document.source.sceneSchema] as { scene?: {
     reciprocal?: ReciprocalDefinition; objects: { id: string; label: string; kind: string;
       style: { color: string; opacity: number; size: number } }[];
     topology?: { invariants: { id: string; label: string; value: number | null; status: string; method: string }[];
       limitations: string[] };
     provenance: { engine: string; engineVersion: string };
+    coordinates: { axes: [string, string, string]; units: [string, string, string] };
   } } | undefined)?.scene;
   const linkedK = cursor?.kind === "quantum" && cursor.runId === document.source.provenance.runId &&
     cursor.resultSha256 === document.source.provenance.resultSha256 &&
@@ -42,6 +43,10 @@ export function StudyQuantumPanePreview({ project, document, role, linkedFingerp
     return <p role="status" data-testid="project-study-quantum-withheld">Verified source has no reciprocal-space view.</p>;
   return <div data-testid="project-study-quantum-view" data-role={role} style={{ position: "relative", height: "100%" }}>
     <small>Verified {role} · {document.source.sceneFingerprint.slice(0, 12)}</small>
+    {document.source.provenance.model === "ssh" && <div data-testid="project-study-ssh-units">
+      Supplied axes {document.source.coordinates.axes.join(", ")} · units {document.source.coordinates.units.join(", ")};
+      {role === "chain" ? " finite chain and producer-supplied density" : " supplied band path"}.
+    </div>}
     {linkedK && <p data-testid="project-study-quantum-linked-k">Linked k=({linkedK[0]}, {linkedK[1]}) {document.source.coordinates.units[0]}</p>}
     {role === "inspector" ? <div data-testid="project-study-qwz-inspector">
       <p>Source run {document.source.provenance.runId} · result SHA-256 {document.source.provenance.resultSha256}</p>
