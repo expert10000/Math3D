@@ -1,6 +1,6 @@
 # M3D20-17d — exact-candidate release rehearsal
 
-The release rehearsal is **pending**. There is no reviewed 2.0 source freeze or signed candidate in the current 1.7 checkout. Inspect the input list with `node scripts/verify-release20-rc2-rehearsal.mjs --plan`. After RC2 inputs exist, build the public site locally with its 2.0 gallery and exact installer link, then run:
+The release rehearsal is **pending**. There is no reviewed 2.0 source freeze or signed candidate for the current 2.0 source tree. Inspect the input list with `node scripts/verify-release20-rc2-rehearsal.mjs --plan`. After RC2 inputs exist, build the public site locally with its 2.0 gallery and exact installer link, then run:
 
 ```text
 node scripts/verify-release20-rc2-rehearsal.mjs --run <candidate> <freeze> <fresh-install-evidence> <upgrade-evidence> <source-soak-evidence> <verified-gallery-dir> <built-site-dir> <report-json>

@@ -1,0 +1,27 @@
+name: Windows qualification harness validation only
+on:
+  push:
+    branches: [codex/windows-installed-qualification-harness]
+permissions:
+  contents: read
+jobs:
+  harness-only:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+      - name: Guard and fixture checks (no app or installer)
+        run: node --test tests/windows-qualification/provenance.test.mjs
+      - name: Parse Windows runner and check JavaScript syntax
+        shell: pwsh
+        run: |
+          $tokens=$null; $errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'scripts/windows-qualification/run.ps1'),[ref]$tokens,[ref]$errors) | Out-Null
+          if ($errors.Count) { $errors | Format-List; throw 'PowerShell parser rejected the harness.' }
+          node --check scripts/windows-qualification/installed-driver.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Installed driver syntax failed.' }
+          node --check scripts/windows-qualification/preflight.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Provenance CLI syntax failed.' }

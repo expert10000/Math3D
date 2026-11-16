@@ -330,11 +330,11 @@ test("Gallery cards visual baseline", async () => {
     expect(firstTopologyThumb).not.toBe(secondTopologyThumb);
 
     await page.getByTestId("mesh-action-new").click();
-    await expect(page.getByText(/Selected mesh object: Icosphere/i).first()).toBeVisible();
+    await expect(page.getByText(/Selected object: Icosphere/i).first()).toBeVisible();
     await expect(page.getByTestId("mesh-preset-grid")).toBeHidden();
 
     await page.getByTestId("mesh-action-demo").click();
-    await expect(page.getByText(/Selected mesh object: Torus knot/i).first()).toBeVisible();
+    await expect(page.getByText(/Selected object: Torus knot/i).first()).toBeVisible();
   } finally {
     if (app) {
       await app.close();

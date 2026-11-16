@@ -17,15 +17,17 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <a class="skip-link" href="#top">Skip to main content</a>
     <div class="bg-glow bg-glow-a" aria-hidden="true"></div>
     <div class="bg-glow bg-glow-b" aria-hidden="true"></div>
 
     <header class="site-header">
       <div class="container top-nav reveal">
         <a class="brand" href="./index.html#top">Math3D Lab</a>
-        <nav class="nav-links">
+        <nav class="nav-links" aria-label="Site navigation">
           <a href="./index.html#features">Features</a>
           <a href="./index.html#showcase">Showcase</a>
+          <a href="./index.html#release20">2.0 workflows</a>
           <a href="./modules.html" aria-current="page">Modules</a>
           <a href="./capabilities.html">Capabilities</a>
           <a href="./release-gallery.html">Source gallery</a>
@@ -34,7 +36,7 @@
       </div>
     </header>
 
-    <main id="top" class="modules-main">
+    <main id="top" class="modules-main" tabindex="-1">
       <section class="container section modules-hero reveal">
         <p class="eyebrow">Product Modules</p>
         <h1>Top Math3D modules in one view.</h1>
@@ -42,6 +44,7 @@
           Each module below includes a quick summary, a representative main-viewer scene screenshot, and key feature
           highlights.
         </p>
+        <p>These are source-build screenshots of existing module views, not captures of a signed 2.0 installer or the four complete release journeys.</p>
       </section>
 
       <section class="container section module-stack">

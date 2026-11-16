@@ -1,0 +1,130 @@
+name: Linux Installed Package Qualification
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: Successful Linux Package Smoke run containing exact AppImage, deb, and rpm bytes
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  ubuntu-packages:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BUILD_RUN_ID: ${{ inputs.build_run_id }}
+      CI: "1"
+      MATH3D_GPU_MODE: disabled
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Verify source run and fetch exact packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh run view "$BUILD_RUN_ID" --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)" = success
+          gh run view "$BUILD_RUN_ID" --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha > source-sha.txt
+          gh run download "$BUILD_RUN_ID" --repo "$GITHUB_REPOSITORY" --name linux-package-smoke --dir packages
+          test "$(find packages -maxdepth 1 -name '*.AppImage' | wc -l)" = 1
+          test "$(find packages -maxdepth 1 -name '*.deb' | wc -l)" = 1
+          test "$(find packages -maxdepth 1 -name '*.rpm' | wc -l)" = 1
+          sha256sum packages/*.AppImage packages/*.deb packages/*.rpm | tee package-sha256.txt
+      - name: Install test and desktop dependencies
+        run: |
+          npm ci --ignore-scripts
+          sudo apt-get update
+          sudo apt-get install -y xvfb libnss3 libatk-bridge2.0-0 libgtk-3-0 libgbm1 libxss1
+          sudo apt-get install -y libasound2t64 || sudo apt-get install -y libasound2
+      - name: Install and qualify deb
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y "$(realpath packages/*.deb)"
+          app=/opt/Math3D/math3d
+          worker="$(find /opt -type f -path '*/resources/python-worker/worker' -print -quit)"
+          test -n "$app" && test -n "$worker"
+          xvfb-run -a timeout --kill-after=20s 8m node scripts/release20-linux-package-qualify.mjs \
+            --format deb --package packages/*.deb --app "$app" --worker "$worker" \
+            --build-run "$BUILD_RUN_ID" --source-sha "$(cat source-sha.txt)" --receipt deb-receipt.json
+      - name: Qualify AppImage
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="$(realpath packages/*.AppImage)"
+          chmod +x "$app"
+          mkdir appimage-extract
+          cd appimage-extract
+          "$app" --appimage-extract > /dev/null
+          cd ..
+          worker="$(find appimage-extract/squashfs-root -type f -path '*/resources/python-worker/worker' -print -quit)"
+          test -n "$worker"
+          APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a timeout --kill-after=20s 8m \
+            node scripts/release20-linux-package-qualify.mjs \
+            --format AppImage --package "$app" --app "$app" --worker "$worker" \
+            --build-run "$BUILD_RUN_ID" --source-sha "$(cat source-sha.txt)" --receipt appimage-receipt.json
+      - name: Upload Ubuntu receipts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-installed-ubuntu-receipts
+          if-no-files-found: warn
+          path: |
+            *-receipt.json
+            package-sha256.txt
+            source-sha.txt
+
+  fedora-rpm:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BUILD_RUN_ID: ${{ inputs.build_run_id }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Verify source run and fetch exact packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh run view "$BUILD_RUN_ID" --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)" = success
+          gh run view "$BUILD_RUN_ID" --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha > source-sha.txt
+          gh run download "$BUILD_RUN_ID" --repo "$GITHUB_REPOSITORY" --name linux-package-smoke --dir packages
+          test "$(find packages -maxdepth 1 -name '*.rpm' | wc -l)" = 1
+          sha256sum packages/*.rpm > rpm-sha256.txt
+      - name: Install and qualify rpm on Fedora
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --shm-size=2g -v "$PWD:/repo" -w /repo \
+            -e BUILD_RUN_ID -e CI=1 -e MATH3D_GPU_MODE=disabled fedora:43 bash -euo pipefail -c '
+              dnf install -y nodejs npm xorg-x11-server-Xvfb xorg-x11-xauth \
+                gtk3 nss alsa-lib libdrm libXcomposite libXdamage libXrandr mesa-libgbm \
+                packages/*.rpm
+              npm ci --ignore-scripts
+              app=/opt/Math3D/math3d
+              worker="$(find /opt -type f -path "*/resources/python-worker/worker" -print -quit)"
+              test -n "$app" && test -n "$worker"
+              Xvfb :99 -screen 0 1920x1080x24 > /tmp/xvfb.log 2>&1 &
+              export DISPLAY=:99
+              timeout --kill-after=20s 8m node scripts/release20-linux-package-qualify.mjs \
+                --format rpm --package packages/*.rpm --app "$app" --worker "$worker" \
+                --build-run "$BUILD_RUN_ID" --source-sha "$(cat source-sha.txt)" --receipt rpm-receipt.json
+            '
+      - name: Upload Fedora receipt
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-installed-fedora-receipt
+          if-no-files-found: warn
+          path: |
+            rpm-receipt.json
+            rpm-sha256.txt
+            source-sha.txt

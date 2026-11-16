@@ -1,6 +1,6 @@
 # QI-01 QWZ baseline — 2026-11-04
 
-The pinned QWZ example pair remains `quantum-scene/v1`. Math3D independently opens both complete `.qscene` directories through `importQuantumSceneBundle`; it does not trust the Lab's result validation. `npm run test:quantum:qwz-baseline` checks exact scene bytes, importer fingerprints, provenance, binary hashes and numeric samples. `npm run test:quantum-scene:import` retains the existing positive and negative importer corpus. `tests/e2e/quantum-qwz-study.spec.ts` checks the linked desktop views and changed-source refusal.
+The pinned QWZ example pair remains `quantum-scene/v1`. Math3D independently opens both complete `.qscene` directories through `importQuantumSceneBundle`; it does not trust the Lab's result validation. `npm run test:quantum:qwz-baseline` checks exact scene bytes, importer fingerprints, provenance, binary hashes and every saved band and curvature sample against the independently evaluated two-band QWZ Hamiltonian at that sample's recorded reciprocal coordinate. This checks the supplied numeric arrays for mass `-1`; it does not independently certify the producer's run metadata or Chern integration. `npm run test:quantum-scene:import` retains the existing positive and negative importer corpus. `tests/e2e/quantum-qwz-study.spec.ts` checks the linked desktop views and changed-source refusal.
 
 | Source | Curvature scene JSON SHA-256 / importer fingerprint | Bands scene JSON SHA-256 / importer fingerprint | Result SHA-256 |
 | --- | --- | --- | --- |

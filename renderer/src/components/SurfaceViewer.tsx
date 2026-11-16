@@ -17,7 +17,9 @@ import { integrateGeodesic } from "../math/geodesic";
 
 import { scalarToColor01, type ColorPalette, solidColorForPalette } from "./colorPalette";
 import type { GaussPoint } from "./gaussMapUtils";
-import type { MeshValidation } from "../mesh/surfaceMesh";
+import type { MeshValidation, SurfaceMeshData } from "../mesh/surfaceMesh";
+import { buildMeshEdgeTopology } from "../mesh/edgeSelection";
+import { selectScreenRegion } from "../selection/robustSceneSelection";
 import AxisGizmo from "./AxisGizmo";
 import { applyCameraOrientation, CAMERA_ORIENTATION_LABEL, orbitCameraAroundTarget, type CameraOrientation } from "./cameraOrientation";
 import { Slice2DPreview, buildSliceSvgString } from "./Slice2DPreview";
@@ -1541,6 +1543,13 @@ const buildPrincipalProjectionGroup = (
 
 type Props = {
   surfaceId: SurfaceId;
+  meshRegionSelection?: {
+    mesh: SurfaceMeshData;
+    kind: "face" | "edge" | "vertex";
+    shape: "box" | "lasso";
+    visibility: "frontmost" | "through" | "xray";
+    onSelect: (ids: readonly string[]) => void;
+  } | null;
   graphExpr?: string;
   implicitExpr?: string;
   implicitMeshOverride?: ImplicitMeshOverride | null;
@@ -1957,6 +1966,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     selectionMask = null,
     selectRegionEnabled = false,
     onSelectionPick,
+    meshRegionSelection,
     onMeshObjectPick,
     objectPickPreferredMeshKey = null,
     geodesicPathEnabled = false,
@@ -2306,6 +2316,8 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const sliceHoverSmoothRef = useRef<{ s: number; t: number } | null>(null);
 
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const meshRegionPointsRef = useRef<Array<[number, number]>>([]);
+  const [meshRegionPoints, setMeshRegionPoints] = useState<Array<[number, number]>>([]);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const transformControlsRef = useRef<TransformControls | null>(null);
@@ -12010,6 +12022,47 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     });
   }, [surfaceMeshColors, surfaceMeshOverride, surfaceId, colorMode, colorPalette, resetToken]);
 
+  const finishMeshRegionSelection = (polygon: readonly (readonly [number, number])[], width: number, height: number) => {
+    if (!meshRegionSelection || !cameraRef.current || polygon.length < 3) return;
+    const { mesh, kind, visibility, onSelect } = meshRegionSelection;
+    const camera = cameraRef.current;
+    camera.updateMatrixWorld();
+    const vertexCount = Math.floor(mesh.positions.length / 3);
+    const project = (indices: readonly number[]) => {
+      const point = new THREE.Vector3();
+      for (const index of indices) {
+        if (!Number.isInteger(index) || index < 0 || index >= vertexCount) return null;
+        point.x += Number(mesh.positions[index * 3]);
+        point.y += Number(mesh.positions[index * 3 + 1]);
+        point.z += Number(mesh.positions[index * 3 + 2]);
+      }
+      point.divideScalar(indices.length).project(camera);
+      if (point.z < -1 || point.z > 1) return null;
+      return { x: (point.x + 1) * width / 2, y: (1 - point.y) * height / 2, depth: point.z };
+    };
+    const candidates: Array<{ id: string; x: number; y: number; depth: number }> = [];
+    if (kind === "vertex") {
+      for (let index = 0; index < vertexCount; index++) {
+        const point = project([index]);
+        if (point) candidates.push({ id: String(index), ...point });
+      }
+    } else if (kind === "edge") {
+      for (const [id, edge] of buildMeshEdgeTopology(mesh).edges) {
+        const point = project([edge.a, edge.b]);
+        if (point) candidates.push({ id, ...point });
+      }
+    } else {
+      const indices = mesh.indices;
+      const faceCount = indices ? Math.floor(indices.length / 3) : Math.floor(vertexCount / 3);
+      for (let index = 0; index < faceCount; index++) {
+        const base = index * 3;
+        const point = project(indices ? [Number(indices[base]), Number(indices[base + 1]), Number(indices[base + 2])] : [base, base + 1, base + 2]);
+        if (point) candidates.push({ id: String(index), ...point });
+      }
+    }
+    onSelect(selectScreenRegion(candidates, polygon, visibility));
+  };
+
   return (
     <div
       style={{
@@ -12029,6 +12082,45 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           pointerEvents: suspendPointerInteractions ? "none" : "auto",
         }}
       />
+      {meshRegionSelection && (
+        <div data-testid="mesh-region-selection-overlay" aria-label={`${meshRegionSelection.shape} select ${meshRegionSelection.kind}`}
+          style={{ position: "absolute", inset: 0, zIndex: 15, cursor: "crosshair", touchAction: "none" }}
+          onPointerDown={(event) => {
+            if (event.button !== 0) return;
+            const rect = event.currentTarget.getBoundingClientRect();
+            const point: [number, number] = [event.clientX - rect.left, event.clientY - rect.top];
+            meshRegionPointsRef.current = [point]; setMeshRegionPoints([point]);
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }}
+          onPointerMove={(event) => {
+            if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+            const rect = event.currentTarget.getBoundingClientRect();
+            const point: [number, number] = [event.clientX - rect.left, event.clientY - rect.top];
+            const next = meshRegionSelection.shape === "box" ? [meshRegionPointsRef.current[0], point]
+              : [...meshRegionPointsRef.current, point];
+            meshRegionPointsRef.current = next; setMeshRegionPoints(next);
+          }}
+          onPointerUp={(event) => {
+            if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+            const rect = event.currentTarget.getBoundingClientRect();
+            const point: [number, number] = [event.clientX - rect.left, event.clientY - rect.top];
+            const points = meshRegionSelection.shape === "box" ? [meshRegionPointsRef.current[0], point]
+              : [...meshRegionPointsRef.current, point];
+            const polygon = meshRegionSelection.shape === "box"
+              ? [[points[0][0], points[0][1]], [points[1][0], points[0][1]], [points[1][0], points[1][1]], [points[0][0], points[1][1]]] as Array<[number, number]>
+              : points;
+            finishMeshRegionSelection(polygon, rect.width, rect.height);
+            meshRegionPointsRef.current = []; setMeshRegionPoints([]);
+            event.currentTarget.releasePointerCapture(event.pointerId);
+          }}>
+          {meshRegionPoints.length > 1 && <svg aria-hidden="true" width="100%" height="100%" style={{ pointerEvents: "none" }}>
+            <polygon points={(meshRegionSelection.shape === "box"
+              ? [[meshRegionPoints[0][0], meshRegionPoints[0][1]], [meshRegionPoints[1][0], meshRegionPoints[0][1]], meshRegionPoints[1], [meshRegionPoints[0][0], meshRegionPoints[1][1]]]
+              : meshRegionPoints).map((point) => point.join(",")).join(" ")}
+              fill="rgba(37,99,235,0.18)" stroke="#2563eb" strokeWidth="2" />
+          </svg>}
+        </div>
+      )}
 
       {showOverlayControls && (sliceUiEnabled || showChartGrid || !!onToggleGaussMap) && (
         <div

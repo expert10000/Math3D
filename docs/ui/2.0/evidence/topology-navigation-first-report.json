@@ -1,0 +1,155 @@
+{
+  "config": {
+    "configFile": "/workspace/scratch/e4f87eaeef23/topology-ui/playwright.config.ts",
+    "rootDir": "/workspace/scratch/e4f87eaeef23/topology-ui/tests/e2e",
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/workspace/scratch/e4f87eaeef23/topology-ui/test-results/playwright",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "",
+        "name": "",
+        "testDir": "/workspace/scratch/e4f87eaeef23/topology-ui/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 180000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list"
+      ],
+      [
+        "json"
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "runAgents": "none",
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.58.2",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "topology-navigation.spec.ts",
+      "file": "topology-navigation.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "Topology guide and representation controls preserve the canonical Torus source",
+          "ok": false,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "failed",
+                  "duration": 19386,
+                  "error": {
+                    "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('topology-source-provenance')\nTimeout: 15000ms\n\u001b[32m- Expected  - 3\u001b[39m\n\u001b[31m+ Received  + 1\u001b[39m\n\n\u001b[32m- Authoritative source: fundamental-diagram\u001b[39m\n\u001b[32m- Source revision: fnv1a32:4dd25a52\u001b[39m\n\u001b[32m- Derived canonical 2-complex: schema v1 \u00b7 fundamental-diagram-quotient@1\u001b[39m\n\u001b[31m+ Authoritative source: fundamental-diagramSource revision: fnv1a32:4dd25a52Derived canonical 2-complex: schema v1 \u00b7 fundamental-diagram-quotient@1\u001b[39m\n\nCall log:\n\u001b[2m  - Expect \"toHaveText\" with timeout 15000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('topology-source-provenance')\u001b[22m\n\u001b[2m    19 \u00d7 locator resolved to <div data-testid=\"topology-source-provenance\">\u2026</div>\u001b[22m\n\u001b[2m       - unexpected value \"Authoritative source: fundamental-diagramSource revision: fnv1a32:4dd25a52Derived canonical 2-complex: schema v1 \u00b7 fundamental-diagram-quotient@1\"\u001b[22m\n",
+                    "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('topology-source-provenance')\nTimeout: 15000ms\n\u001b[32m- Expected  - 3\u001b[39m\n\u001b[31m+ Received  + 1\u001b[39m\n\n\u001b[32m- Authoritative source: fundamental-diagram\u001b[39m\n\u001b[32m- Source revision: fnv1a32:4dd25a52\u001b[39m\n\u001b[32m- Derived canonical 2-complex: schema v1 \u00b7 fundamental-diagram-quotient@1\u001b[39m\n\u001b[31m+ Authoritative source: fundamental-diagramSource revision: fnv1a32:4dd25a52Derived canonical 2-complex: schema v1 \u00b7 fundamental-diagram-quotient@1\u001b[39m\n\nCall log:\n\u001b[2m  - Expect \"toHaveText\" with timeout 15000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('topology-source-provenance')\u001b[22m\n\u001b[2m    19 \u00d7 locator resolved to <div data-testid=\"topology-source-provenance\">\u2026</div>\u001b[22m\n\u001b[2m       - unexpected value \"Authoritative source: fundamental-diagramSource revision: fnv1a32:4dd25a52Derived canonical 2-complex: schema v1 \u00b7 fundamental-diagram-quotient@1\"\u001b[22m\n\n    at /workspace/scratch/e4f87eaeef23/topology-ui/tests/e2e/topology-navigation.spec.ts:36:32",
+                    "location": {
+                      "file": "/workspace/scratch/e4f87eaeef23/topology-ui/tests/e2e/topology-navigation.spec.ts",
+                      "column": 32,
+                      "line": 36
+                    },
+                    "snippet": "  34 |       await expect(guide.locator('[aria-current=\"step\"]')).toHaveCount(1);\n  35 |       await expect(counts).toHaveText(canonicalCounts);\n> 36 |       await expect(provenance).toHaveText(sourceText);\n     |                                ^\n  37 |       await expect(provenance.locator('[title]').first()).toHaveAttribute('title', sourceHash!);\n  38 |       await expect(page.getByTestId('topology-canonical-provenance')).toHaveAttribute('title', canonicalHash!);\n  39 |       await expect(page.getByTestId('topology-count-display')).toContainText('Display geometry only');"
+                  },
+                  "errors": [
+                    {
+                      "location": {
+                        "file": "/workspace/scratch/e4f87eaeef23/topology-ui/tests/e2e/topology-navigation.spec.ts",
+                        "column": 32,
+                        "line": 36
+                      },
+                      "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('topology-source-provenance')\nTimeout: 15000ms\n\u001b[32m- Expected  - 3\u001b[39m\n\u001b[31m+ Received  + 1\u001b[39m\n\n\u001b[32m- Authoritative source: fundamental-diagram\u001b[39m\n\u001b[32m- Source revision: fnv1a32:4dd25a52\u001b[39m\n\u001b[32m- Derived canonical 2-complex: schema v1 \u00b7 fundamental-diagram-quotient@1\u001b[39m\n\u001b[31m+ Authoritative source: fundamental-diagramSource revision: fnv1a32:4dd25a52Derived canonical 2-complex: schema v1 \u00b7 fundamental-diagram-quotient@1\u001b[39m\n\nCall log:\n\u001b[2m  - Expect \"toHaveText\" with timeout 15000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('topology-source-provenance')\u001b[22m\n\u001b[2m    19 \u00d7 locator resolved to <div data-testid=\"topology-source-provenance\">\u2026</div>\u001b[22m\n\u001b[2m       - unexpected value \"Authoritative source: fundamental-diagramSource revision: fnv1a32:4dd25a52Derived canonical 2-complex: schema v1 \u00b7 fundamental-diagram-quotient@1\"\u001b[22m\n\n\n  34 |       await expect(guide.locator('[aria-current=\"step\"]')).toHaveCount(1);\n  35 |       await expect(counts).toHaveText(canonicalCounts);\n> 36 |       await expect(provenance).toHaveText(sourceText);\n     |                                ^\n  37 |       await expect(provenance.locator('[title]').first()).toHaveAttribute('title', sourceHash!);\n  38 |       await expect(page.getByTestId('topology-canonical-provenance')).toHaveAttribute('title', canonicalHash!);\n  39 |       await expect(page.getByTestId('topology-count-display')).toContainText('Display geometry only');\n    at /workspace/scratch/e4f87eaeef23/topology-ui/tests/e2e/topology-navigation.spec.ts:36:32"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [
+                    {
+                      "text": "[ensure-electron] initial state: path.txt exists: true; path.txt value: \"electron\"; executable exists: true; expected executable: /workspace/scratch/e4f87eaeef23/native-acceptance/node_modules/electron/dist/electron\n"
+                    },
+                    {
+                      "text": "[ensure-electron] initial dist: 20 entries: LICENSE, LICENSES.chromium.html, chrome-sandbox, chrome_100_percent.pak, chrome_200_percent.pak, chrome_crashpad_handler, electron, icudtl.dat, libEGL.so, libGLESv2.so, libffmpeg.so, libvk_swiftshader.so, libvulkan.so.1, locales, resources, resources.pak, snapshot_blob.bin, v8_context_snapshot.bin, version, vk_swiftshader_icd.json\n"
+                    },
+                    {
+                      "text": "[ensure-electron] Marker + executable already valid, skipping repair\n"
+                    }
+                  ],
+                  "retry": 0,
+                  "startTime": "2026-11-15T12:37:19.437Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "/workspace/scratch/e4f87eaeef23/topology-ui/test-results/playwright/topology-navigation-Topolo-4ae0c--the-canonical-Torus-source/test-failed-1.png"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "/workspace/scratch/e4f87eaeef23/topology-ui/test-results/playwright/topology-navigation-Topolo-4ae0c--the-canonical-Torus-source/trace.zip"
+                    }
+                  ],
+                  "errorLocation": {
+                    "file": "/workspace/scratch/e4f87eaeef23/topology-ui/tests/e2e/topology-navigation.spec.ts",
+                    "column": 32,
+                    "line": 36
+                  }
+                }
+              ],
+              "status": "unexpected"
+            }
+          ],
+          "id": "76c629060ca8da5ddef8-1b0ca7e5c0c2bdbb4a17",
+          "file": "topology-navigation.spec.ts",
+          "line": 4,
+          "column": 5
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-11-15T12:37:18.128Z",
+    "duration": 20778.158000000003,
+    "expected": 0,
+    "skipped": 0,
+    "unexpected": 1,
+    "flaky": 0
+  }
+}

@@ -3,19 +3,19 @@ export type ContextualEntityMode = "face" | "edge" | "vertex";
 
 export const OBJECT_CONTEXT_COPY = {
   mesh: {
-    chip: "Mesh Object",
-    selectedPrefix: "Selected mesh object",
-    selectEmpty: "Select a Mesh object",
+    chip: "Object",
+    selectedPrefix: "Selected object",
+    selectEmpty: "Select an object",
     preview: "Preview: open selected mesh in Geometry",
-    wholeSelected: "Whole mesh selected",
+    wholeSelected: "Whole object selected",
     actions: ["Open in Geometry", "Save edited", "Mesh source"],
   },
   geometry: {
-    chip: "Geometry Object",
-    selectedPrefix: "Selected geometry object",
-    selectEmpty: "Select a Geometry object",
-    preview: "Preview: open selected Geometry object details",
-    wholeSelected: "Whole Geometry object selected",
+    chip: "Object",
+    selectedPrefix: "Selected object",
+    selectEmpty: "Select an object",
+    preview: "Preview: open selected object details",
+    wholeSelected: "Whole object selected",
     actions: ["Open Object Details", "Transform", "History"],
   },
 } as const;

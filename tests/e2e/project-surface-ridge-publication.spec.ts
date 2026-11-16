@@ -1,10 +1,11 @@
 import { expect, test } from "@playwright/test";
 import { resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
 import { closeSurfaceApp, launchSurfaceApp, openLastSavedProject,
   resetSurfaceAppState, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
 
-test("selected Surface ridge publishes Mesh error and Workbook evidence across restart and source change", async () => {
-  test.setTimeout(180_000);
+test("selected Surface ridge publishes Mesh error and Workbook evidence across restart, transfer and source change", async () => {
+  test.setTimeout(240_000);
   let app: LaunchedSurfaceApp | null = null;
   try {
     app = await launchSurfaceApp(); await resetSurfaceAppState(app.page);
@@ -17,6 +18,44 @@ test("selected Surface ridge publishes Mesh error and Workbook evidence across r
     await expect(panel.getByTestId("project-message")).toContainText("Opened supported project", { timeout: 60_000 });
     if (!await panel.getByTestId("project-studies-panel").count())
       await panel.getByTestId("project-gallery-layout-toggle").click();
+    const sourceStudy = panel.getByTestId("project-studies-panel");
+    await sourceStudy.locator("[data-testid^='project-study-open-']").first().click();
+    await sourceStudy.getByTestId("project-study-open-source-pane-1").click();
+    // The real worker computes quickly; hold only its result delivery so Cancel remains actionable.
+    await page.evaluate(() => {
+      const NativeWorker = window.Worker;
+      (window as any).surfaceCurvatureWorkerCompleted = false;
+      (window as any).Worker = class extends NativeWorker {
+        private pending: ReturnType<typeof setTimeout>[] = [];
+        constructor(url: string | URL, options?: WorkerOptions) {
+          super(url, options);
+          this.addEventListener("message", (event: MessageEvent) => {
+            if (event.data?.type !== "curvature-result") return;
+            event.stopImmediatePropagation();
+            (window as any).surfaceCurvatureWorkerCompleted = true;
+            this.pending.push(setTimeout(() => this.onmessage?.(event), 2000));
+          }, { capture: true });
+        }
+        override terminate() {
+          this.pending.forEach(clearTimeout);
+          super.terminate();
+        }
+      };
+    });
+    await page.getByTestId("surfaces-left-tab-analysis").click();
+    await page.getByTestId("surface-computation-curvature-field").click();
+    await page.getByTestId("surface-curvature-compute-button").click();
+    await expect.poll(() => page.evaluate(() => (window as any).surfaceCurvatureWorkerCompleted))
+      .toBe(true);
+    await page.getByTestId("surface-curvature-cancel-button").click();
+    await expect(page.getByTestId("surface-curvature-execution-state")).toContainText("cancelled");
+    await expect(page.getByTestId("surface-curvature-result")).toHaveCount(0);
+    await page.getByTestId("surface-curvature-compute-button").click();
+    await expect(page.getByTestId("surface-curvature-execution-state"))
+      .toHaveText(/Execution: (ready|cached)/);
+    await expect(page.getByTestId("surface-curvature-result")).toBeVisible();
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByRole("button", { name: "View current project" }).click();
     const ridge = panel.getByTestId("project-surface-ridge-publication");
     await expect(ridge).toBeVisible();
     await ridge.locator("[data-testid^='project-publish-ridge-']").first().click();
@@ -37,6 +76,20 @@ test("selected Surface ridge publishes Mesh error and Workbook evidence across r
     expect(saved.workspace.entries.some((entry: { module: string; checkpoint: { source?: { definition?: { familyId?: string } } } }) =>
       entry.module === "curve" && entry.checkpoint.source?.definition?.familyId ===
       "surface.sampled-revolution-ridge-v1")).toBe(true);
+    if (await panel.getAttribute("data-project-placement"))
+      await panel.getByTestId("project-gallery-layout-toggle").click();
+    if (await panel.locator(".project-gallery-layout-detail").count())
+      await panel.getByTestId("project-detail-toggle").click();
+    const packagePath = test.info().outputPath("surface-ridge-transfer.json");
+    await app.app.evaluate(({ session }, target) => session.defaultSession.once("will-download",
+      (_event, item) => item.setSavePath(target)), packagePath);
+    await panel.getByTestId("project-export-resources").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Exported project with verified");
+    await expect.poll(() => existsSync(packagePath)).toBe(true);
+    const packageRaw = readFileSync(packagePath, "utf8"), packageData = JSON.parse(packageRaw);
+    expect(packageData.resources.some((item: { kind: string }) => item.kind === "mesh-buffers")).toBe(true);
+    expect(packageData.project.workspace.results.some((item: { resultId: string }) =>
+      item.resultId === comparison.resultId)).toBe(true);
     const profile = app.profileDir;
     await app.app.close(); app = await launchSurfaceApp({}, profile); page = app.page;
     await openLastSavedProject(page);
@@ -65,5 +118,40 @@ test("selected Surface ridge publishes Mesh error and Workbook evidence across r
     if (!await panel.getByTestId("project-studies-panel").count())
       await panel.getByTestId("project-gallery-layout-toggle").click();
     await expect(panel.getByTestId("project-surface-ridge-withheld")).toContainText("changed");
+    await closeSurfaceApp(app);
+    app = await launchSurfaceApp(); await resetSurfaceAppState(app.page);
+    page = app.page; panel = page.getByTestId("project-explorer-panel");
+    await page.getByTestId("projects-toggle").click();
+    const importFile = async (raw: string) => panel.getByTestId("project-import-file")
+      .setInputFiles({ name: "surface-ridge-transfer.json", mimeType: "application/json", buffer: Buffer.from(raw) });
+    const missing = structuredClone(packageData);
+    missing.resources = missing.resources.filter((item: { kind: string }) => item.kind !== "mesh-buffers");
+    await importFile(JSON.stringify(missing));
+    await expect(panel.getByTestId("project-import-open")).toBeDisabled();
+    await expect(panel.getByTestId("project-import-preview")).toContainText("missing or unverified");
+    const corrupt = structuredClone(packageData);
+    const sidecar = corrupt.resources.find((item: { kind: string }) => item.kind === "mesh-buffers");
+    sidecar.data = (sidecar.data[0] === "A" ? "B" : "A") + sidecar.data.slice(1);
+    await importFile(JSON.stringify(corrupt));
+    await expect(panel.getByTestId("project-message")).toContainText("rejected");
+    await importFile(packageRaw);
+    await expect(panel.getByTestId("project-import-open")).toBeEnabled();
+    await panel.getByTestId("project-import-cancel").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Import cancelled");
+    await expect(panel.getByTestId("project-import-open")).toHaveCount(0);
+    await importFile(packageRaw);
+    await expect(panel.getByTestId("project-import-open")).toBeEnabled();
+    await panel.getByTestId("project-import-open").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Opened supported project");
+    const imported = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    expect(imported.workspace.entries.map((entry: { expected: unknown }) => entry.expected))
+      .toEqual(saved.workspace.entries.map((entry: { expected: unknown }) => entry.expected));
+    expect(imported.workspace.results.find((item: { resultId: string }) => item.resultId === comparison.resultId))
+      .toEqual(comparison);
+    await page.context().setOffline(true);
+    if (!await panel.getByTestId("project-studies-panel").count())
+      await panel.getByTestId("project-gallery-layout-toggle").click();
+    await expect(panel.getByTestId("project-surface-ridge-evidence")).toContainText("absolute error");
+    await expect(panel.getByTestId("project-surface-ridge-export")).toBeEnabled();
   } finally { await closeSurfaceApp(app); }
 });

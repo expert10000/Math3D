@@ -82,11 +82,23 @@ export function inspectSavedSageLocusSingularities(project: Math3DProject, resul
     entry.expected.id === result.provenance.source.documentId);
   if (!source || source.contentHash !== parameters.algebraContentHash ||
       record?.revisions.at(-1)?.revision !== parameters.algebraRevision ||
-      !geometry || !matchesScientificSourceGeneration(result.provenance.source,
-        viewerSourceFromDocument({ identity: geometry.expected })) ||
-      geometry.checkpoint.identity.structuralHash !== geometry.expected.structuralHash)
+      !geometry || geometry.checkpoint.identity.structuralHash !== geometry.expected.structuralHash)
     return { status: "withheld" as const,
       reason: "Pinned algebra revision or saved locus Geometry changed or is missing." };
+  let sourceMatches = matchesScientificSourceGeneration(result.provenance.source,
+    viewerSourceFromDocument({ identity: geometry.expected }));
+  if (!sourceMatches && !parameters.sampleResultHash) {
+    // Publishing a bounded sample replaces the exact-only Geometry checkpoint at the same ID.
+    // The earlier exact Sage result remains qualified only if that sample contains the identical scene.
+    try {
+      const { sample } = parseSampledAlgebraicLocusGeometryDocument(geometry.checkpoint, project);
+      sourceMatches = sample.scene.sceneHash === parameters.sceneHash &&
+        matchesScientificSourceGeneration(result.provenance.source,
+          viewerSourceFromDocument(algebraicLocusGeometryDocument(sample.scene)));
+    } catch { /* An invalid or different sample cannot carry the exact result. */ }
+  }
+  if (!sourceMatches) return { status: "withheld" as const,
+    reason: "Pinned algebra revision or saved locus Geometry changed or is missing." };
   if (parameters.sampleResultHash) {
     try {
       const parsed = parseSampledAlgebraicLocusGeometryDocument(geometry.checkpoint, project);

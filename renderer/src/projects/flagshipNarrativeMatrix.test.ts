@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { createGraph2DDocument, createMixedWorkspaceDocument, instantiateMath3DProjectTemplate,
   inspectResearchReference, MATH3D_PROJECT_TEMPLATES, parseMath3DProject,
-  replaceGeometryDocumentSource, replaceMath3DProjectWorkspace, replaceMeshDocumentSource,
+  replaceGeometryDocumentSource, replaceMath3DProjectWorkspace, replaceMeshDocumentSource, reviseVectorField3DDocument,
   replaceSurfaceDocumentSource, replaceVolumeDocumentSource, serializeMath3DProject, sha256Checksum, structuralHash,
-  type Math3DProject, type MixedWorkspaceDocument } from "@math3d/core";
+  vectorField3DExpression, type Math3DProject, type MixedWorkspaceDocument } from "@math3d/core";
 import { CURATED_STUDIES } from "./curatedStudyCatalog";
 import { prepareCuratedStudyBundle } from "./curatedStudyProject";
 import { instantiateNotebookStarter } from "./notebookStarters";
@@ -32,6 +32,11 @@ const editStudySource = (project: Math3DProject, documentId: string): Math3DProj
       : old.format === "math3d.geometry-document"
         ? replaceGeometryDocumentSource(old, { ...old.source,
           parameters: { ...old.source.parameters, narrativeEdit: true } })
+        : old.format === "math3d.vector-field3d-document"
+          ? reviseVectorField3DDocument(old, { ...old.source,
+            field: { ...old.source.field, components: old.source.field.kind === "expressions" ?
+              old.source.field.components.map((component, index) => index === 0 ?
+                vectorField3DExpression("-2*y", component.unit) : component) : old.source.field.components } })
         : old.format === "math3d.mesh-document"
           ? replaceMeshDocumentSource(old, { ...old.source,
             resource: { ...old.source.resource, checksum: structuralHash("narrative source edit") } })
@@ -49,7 +54,7 @@ const editStudySource = (project: Math3DProject, documentId: string): Math3DProj
 
 describe("M3D20-07 built-in flagship narrative matrix", () => {
   it("covers every advertised built-in route and keeps external routes conditional", () => {
-    expect(builtInJourneys).toHaveLength(12);
+    expect(builtInJourneys).toHaveLength(13);
     expect(CURATED_STUDIES.filter(card => card.route.kind === "verified-quantum-import")
       .map(card => card.id)).toEqual(["quantum-qwz", "quantum-ssh", "quantum-hydrogen"]);
     expect(CURATED_STUDIES.filter(card => card.route.kind === "cas-gallery").map(card => card.id))

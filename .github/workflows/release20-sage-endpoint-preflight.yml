@@ -1,0 +1,30 @@
+name: Check live Sage endpoint from Windows
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows_sage:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - name: Require live SageMath 10.10 route from Windows
+        shell: pwsh
+        env:
+          MATH3D_RELEASE20_SAGE_SERVICE_URL: ${{ secrets.MATH3D_RELEASE20_SAGE_SERVICE_URL }}
+        run: |
+          node scripts/release20-sage-oracle.mjs (Join-Path $env:RUNNER_TEMP 'sage-oracle.json')
+          if ($LASTEXITCODE -ne 0) { throw 'Windows runner cannot qualify the live Sage route.' }
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: release20-windows-sage-oracle
+          path: ${{ runner.temp }}/sage-oracle.json
+          if-no-files-found: warn

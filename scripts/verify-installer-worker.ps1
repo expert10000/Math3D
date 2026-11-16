@@ -3,7 +3,8 @@ param(
   [string]$InstallRoot = "",
   [switch]$SkipInstall,
   [switch]$SkipSmoke,
-  [switch]$SkipLaunchCheck
+  [switch]$SkipLaunchCheck,
+  [switch]$SourceDev
 )
 
 $ErrorActionPreference = "Stop"
@@ -75,24 +76,26 @@ function Test-SafeInstallRoot {
   return $true
 }
 
-$unpackedWorker = Join-Path $repo "release/win-unpacked/resources/python-worker/worker.exe"
+$releaseDir = if ($SourceDev) { "release-dev" } else { "release" }
+$appName = if ($SourceDev) { "Math3D Dev" } else { "Math3D" }
+$unpackedWorker = Join-Path $repo "$releaseDir/win-unpacked/resources/python-worker/worker.exe"
 if (-not (Test-Path $unpackedWorker)) {
-  throw "Missing packaged worker at $unpackedWorker. Run npm run dist first."
+  throw "Missing packaged worker at $unpackedWorker. Build the selected installer first."
 }
 Write-Host "[verify] packaged worker found: $unpackedWorker"
 
-$unpackedWebApp = Join-Path $repo "release/win-unpacked/resources/web-app/index.html"
+$unpackedWebApp = Join-Path $repo "$releaseDir/win-unpacked/resources/web-app/index.html"
 if (-not (Test-Path $unpackedWebApp)) {
   throw "Missing packaged web app at $unpackedWebApp. Run npm run build:web before packaging."
 }
 Write-Host "[verify] packaged web app found: $unpackedWebApp"
 
 if ([string]::IsNullOrWhiteSpace($InstallerPath)) {
-  $candidate = Get-ChildItem -Path (Join-Path $repo "release") -Filter "Math3D Setup *.exe" -File |
+  $candidate = Get-ChildItem -Path (Join-Path $repo $releaseDir) -Filter "$appName Setup *.exe" -File |
     Sort-Object LastWriteTime -Descending |
     Select-Object -First 1
   if (-not $candidate) {
-    throw "No installer found in $repo/release (expected Math3D Setup *.exe)."
+    throw "No installer found in $repo/$releaseDir (expected $appName Setup *.exe)."
   }
   $InstallerPath = $candidate.FullName
 }
@@ -158,12 +161,12 @@ if (-not $SkipSmoke) {
 }
 
 if (-not $SkipLaunchCheck) {
-  $installedExe = Join-Path $InstallRoot "Math3D.exe"
+  $installedExe = Join-Path $InstallRoot "$appName.exe"
   if (Test-Path $installedExe) {
-    $before = @(Get-Process -Name "Math3D" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
-    Start-Process -FilePath $installedExe
+    $before = @(Get-Process -Name $appName -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
+    Start-Process -FilePath $installedExe -WindowStyle Hidden
     Start-Sleep -Seconds 6
-    $after = @(Get-Process -Name "Math3D" -ErrorAction SilentlyContinue)
+    $after = @(Get-Process -Name $appName -ErrorAction SilentlyContinue)
     $new = @($after | Where-Object { $before -notcontains $_.Id })
     if ($new.Count -gt 0) {
       Write-Host "[verify] launch check observed running Math3D process(es): $($new.Id -join ', ')"

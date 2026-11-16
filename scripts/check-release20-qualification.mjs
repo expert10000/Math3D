@@ -15,8 +15,14 @@ try {
     assets.sourceCommit === commit && assets.installerSha256 === installerHash, assets.status);
   check('fresh Windows installation', fresh.schema === 'math3d/release20-fresh-install/v1' && fresh.status === 'passed' &&
     fresh.sourceCommit === commit && fresh.installerSha256 === installerHash &&
-    Object.values(fresh.checks ?? {}).every(value => value === 'passed') && Object.keys(fresh.checks ?? {}).length >= 7,
+    Object.values(fresh.checks ?? {}).every(value => value === 'passed') && Object.keys(fresh.checks ?? {}).length >= 8,
   fresh.status);
+  const journeys = fresh.journeys;
+  check('four installed journeys and live Sage', journeys?.schema === 'math3d/release20-four-journeys/v1' &&
+    journeys.status === 'passed' && journeys.sourceCommit === commit && journeys.installerSha256 === installerHash &&
+    journeys.sage === 'passed' && /^10\.10(?:\.|$)/.test(journeys.sageVersion ?? '') &&
+    ['surface', 'quantum', 'casPolynomial', 'casIdeal', 'field'].every(name => journeys.journeys?.[name] === 'passed') &&
+    Object.keys(journeys.journeys ?? {}).length === 5, journeys?.status);
   check('1.7 upgrade and rollback', upgrade.schema === 'math3d/release20-upgrade/v1' && upgrade.status === 'passed' &&
     upgrade.candidateCommit === commit && upgrade.candidateInstallerSha256 === installerHash &&
     upgrade.oldInstallerSha256 === 'eacffc903e988a15636f556b36d12621b9918f4cec69e5c8b19e7daa512222db' &&
@@ -29,7 +35,7 @@ try {
 } catch (error) { check('receipts readable', false, error.message); }
 const report = { schema: 'math3d/release20-installed-qualification/v1', sourceCommit: commit,
   installerSha256: installerHash, status: checks.every(item => item.pass) ? 'passed' : 'failed',
-  scope: 'asset integrity, fresh installation, 1.7 upgrade and rollback; installed memory remains separate', checks };
+  scope: 'asset integrity, fresh installation, four installed journeys with live Sage, 1.7 upgrade and rollback; installed memory remains separate', checks };
 mkdirSync(dirname(resolve(outputPath)), { recursive: true });
 writeFileSync(resolve(outputPath), JSON.stringify(report, null, 2) + '\n');
 console.log(JSON.stringify(report));

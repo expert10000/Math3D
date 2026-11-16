@@ -42,8 +42,8 @@ $evidence = [ordered]@{
   sourceCommit = $candidate.math3d.commit; version = '2.0.0'; installerSha256 = $hash
   signerThumbprint = $signature.SignerCertificate.Thumbprint; checks = [ordered]@{
     exactBytes = 'passed'; signature = 'passed'; pinnedNsis = 'passed'; cleanInstall = 'pending'; installedResources = 'pending'
-    workerWithoutPython = 'pending'; firstUseStudy = 'pending'
-  }; failure = $null
+    workerWithoutPython = 'pending'; firstUseStudy = 'pending'; fourJourneys = 'pending'
+  }; journeys = $null; failure = $null
 }
 try {
   $process = Start-Process -FilePath $installer -ArgumentList @('/S', '/CURRENTUSER', "/D=$install") -WindowStyle Hidden -PassThru
@@ -86,6 +86,33 @@ try {
     Remove-Item Env:MATH3D_RELEASE20_EXPECTED_VERSION -ErrorAction SilentlyContinue
   }
   $evidence.checks.firstUseStudy = 'passed'
+  if (-not $env:MATH3D_RELEASE20_SAGE_SERVICE_URL) {
+    throw 'MATH3D_RELEASE20_SAGE_SERVICE_URL must point to a reachable live SageMath 10.10 service.'
+  }
+  $sageReceipt = Join-Path $temporaryBase 'release20-sage-oracle.json'
+  node (Join-Path $repo 'scripts/release20-sage-oracle.mjs') $sageReceipt
+  if ($LASTEXITCODE -ne 0) { throw 'Live Sage oracle failed.' }
+  $journeyReport = Join-Path $temporaryBase 'release20-journeys-playwright.json'
+  $journeyReceipt = Join-Path $temporaryBase 'release20-four-journeys.json'
+  $env:MATH3D_PACKAGED_APP_EXE = $app
+  $env:MATH3D_RELEASE20_EXPECTED_VERSION = '2.0.0'
+  $env:MATH3D_RELEASE20_JOURNEY_REPORT = $journeyReport
+  Push-Location $repo
+  try {
+    & (Join-Path $repo 'node_modules/.bin/playwright.cmd') test --config playwright.release20-journeys.config.ts
+    if ($LASTEXITCODE -ne 0) { throw 'Installed four-journey desktop run failed.' }
+    node (Join-Path $repo 'scripts/check-release20-journeys.mjs') $journeyReport $sageReceipt `
+      $candidate.math3d.commit $hash $journeyReceipt
+    if ($LASTEXITCODE -ne 0) { throw 'Installed four-journey receipt failed.' }
+    $evidence.journeys = Get-Content -LiteralPath $journeyReceipt -Raw | ConvertFrom-Json
+  } finally {
+    Pop-Location
+    foreach ($name in @('MATH3D_PACKAGED_APP_EXE', 'MATH3D_RELEASE20_EXPECTED_VERSION',
+        'MATH3D_RELEASE20_JOURNEY_REPORT')) {
+      Remove-Item "Env:$name" -ErrorAction SilentlyContinue
+    }
+  }
+  $evidence.checks.fourJourneys = 'passed'
   $evidence.status = 'passed'
 } catch {
   $evidence.status = 'failed'; $evidence.failure = $_.Exception.Message

@@ -1,0 +1,106 @@
+name: M3D20 frame and resource relink regressions
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/m3d20-frame-relink-regressions.yml
+      - tests/unit/crossModuleFrameBoundary.test.ts
+      - tests/unit/crossModuleAdapterRegistry.test.ts
+      - tests/e2e/quantum-q09-project-lifecycle.spec.ts
+      - tests/e2e/helpers/electronLauncher.ts
+      - tests/e2e/helpers/projectFreeze.ts
+      - packages/core/src/crossModuleAdapterRegistry.ts
+      - packages/core/src/crossModuleSelectionAdapters.ts
+      - packages/core/fixtures/cross-module/**
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/m3d20-frame-relink-regressions.yml
+      - tests/unit/crossModuleFrameBoundary.test.ts
+      - tests/unit/crossModuleAdapterRegistry.test.ts
+      - tests/e2e/quantum-q09-project-lifecycle.spec.ts
+      - tests/e2e/helpers/electronLauncher.ts
+      - tests/e2e/helpers/projectFreeze.ts
+      - packages/core/src/crossModuleAdapterRegistry.ts
+      - packages/core/src/crossModuleSelectionAdapters.ts
+      - packages/core/fixtures/cross-module/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  frame-and-relink:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    env:
+      TEST_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      electron_config_cache: '${{ github.workspace }}\\.cache\\electron'
+      MATH3D_ELECTRON_DOWNLOAD_TIMEOUT_MS: '600000'
+      MATH3D_ELECTRON_EXTRACT_TIMEOUT_MS: '180000'
+      MATH3D_ELECTRON_DOWNLOAD_RETRIES: '2'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TEST_SOURCE_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+          cache: npm
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - uses: actions/cache@v6
+        with:
+          path: ${{ env.electron_config_cache }}
+          key: ${{ runner.os }}-electron-cache-${{ hashFiles('package-lock.json') }}
+      - name: Install locked dependencies and retain the committed source tree
+        run: |
+          set -euo pipefail
+          npm ci
+          npm --prefix renderer ci
+          # npm synchronizes unused Yarn metadata; tests use the npm locks.
+          git restore -- yarn.lock renderer/yarn.lock
+          test -z "$(git status --porcelain --untracked-files=no)"
+      - name: Record exact tested source, workflow and assertion hashes
+        run: |
+          node <<'JS'
+          const fs=require('node:fs'),cp=require('node:child_process'),crypto=require('node:crypto');
+          const source=cp.execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
+          if(source!==process.env.TEST_SOURCE_SHA||process.version!=='v24.15.0')throw Error('Source or Node mismatch');
+          const files=['tests/unit/crossModuleFrameBoundary.test.ts','tests/unit/crossModuleAdapterRegistry.test.ts','tests/e2e/quantum-q09-project-lifecycle.spec.ts','tests/e2e/helpers/electronLauncher.ts','tests/e2e/helpers/projectFreeze.ts','packages/core/src/crossModuleAdapterRegistry.ts'];
+          fs.mkdirSync('regression-evidence',{recursive:true});
+          fs.writeFileSync('regression-evidence/manifest.json',JSON.stringify({sourceCommit:source,treeSha:cp.execFileSync('git',['rev-parse','HEAD^{tree}'],{encoding:'utf8'}).trim(),workflowCommit:process.env.GITHUB_WORKFLOW_SHA,eventCommit:process.env.GITHUB_SHA,runId:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,runner:'windows-2022',node:process.version,python:cp.execFileSync('python',['--version'],{encoding:'utf8'}).trim(),startedAt:new Date().toISOString(),files:Object.fromEntries(files.map(f=>[f,crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex')])),scope:'Permanent frame guards and existing Q09 integrity/relink/restart journey. PR head and merge executions remain distinct. No milestone baseline inheritance, signing or Cloudflare qualification.'},null,2));
+          JS
+      - name: Frame-boundary and existing adapter-owner regressions
+        run: node renderer/node_modules/vitest/vitest.mjs run --config renderer/vite.config.ts tests/unit/crossModuleFrameBoundary.test.ts tests/unit/crossModuleAdapterRegistry.test.ts --maxWorkers=1 --reporter=default --reporter=json --outputFile=regression-evidence/unit.json
+      - name: Typecheck desktop test navigation
+        run: npx tsc -p tests/e2e/tsconfig.json --noEmit
+      - name: Build the tested desktop source
+        run: npm run build:main && npm run build:renderer
+      - name: Exact resource relink and cold restart with original assertions
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: regression-evidence/native.json
+        run: npx playwright test tests/e2e/quantum-q09-project-lifecycle.spec.ts --workers=1 --retries=0 --reporter=list,json --output=test-results/frame-relink
+      - name: Require complete assertion reports without skips or retries
+        run: |
+          node <<'JS'
+          const fs=require('node:fs'),u=JSON.parse(fs.readFileSync('regression-evidence/unit.json')),n=JSON.parse(fs.readFileSync('regression-evidence/native.json'));
+          if(u.testResults.length!==2||u.numPassedTests<16||u.numFailedTests||u.numPendingTests||u.numTodoTests||!u.success||u.testResults.some(s=>s.status!=='passed'||!s.assertionResults.length||s.assertionResults.some(a=>a.status!=='passed')))throw Error('Missing frame or adapter assertions');
+          if(n.stats.expected!==1||n.stats.unexpected||n.stats.skipped||n.stats.flaky)throw Error('Incomplete relink journey');
+          const results=[];function visit(s){for(const p of s.specs||[])for(const t of p.tests)results.push(...t.results);for(const q of s.suites||[])visit(q)}visit(n);
+          if(results.length!==1||results[0].status!=='passed'||results[0].retry!==0)throw Error('Missing executed result or automatic retry');
+          const m=JSON.parse(fs.readFileSync('regression-evidence/manifest.json'));m.completedAt=new Date().toISOString();m.ownerCases=u.numPassedTests;m.nativeJourneys=1;m.result='passed';m.milestoneBaselineInherited=false;fs.writeFileSync('regression-evidence/manifest.json',JSON.stringify(m,null,2));
+          JS
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: m3d20-frame-relink-evidence
+          path: |
+            regression-evidence/**
+            test-results/frame-relink/**
+          retention-days: 30

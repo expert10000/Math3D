@@ -32,6 +32,16 @@ const policy = { frame: "cartesian-identical" as const, grid: [5, 5, 5] as const
   coverage: "complete-or-withhold" as const };
 
 describe("native Field Explorer workflow", () => {
+  it("records a selected dataset A for portable fallback without activating ordinary checkpoints", () => {
+    const pin = pinProjectFieldExplorerBaseline(project(), initial, "selected-run-B");
+    expect(checkpointProjectFieldExplorerDocument(pin.project, pin.baseline).workspace.activeDocumentIds)
+      .toEqual(pin.project.workspace.activeDocumentIds);
+    const selected = checkpointProjectFieldExplorerDocument(pin.project, pin.baseline, true);
+    expect(selected.workspace.activeDocumentIds).toEqual([pin.baseline.identity.id]);
+    expect(selected.workspace.entries.find(entry => entry.expected.id === initial.identity.id)?.checkpoint).toEqual(pin.document);
+    expect(parseMath3DProject(serializeMath3DProject(selected)).workspace.activeDocumentIds)
+      .toEqual([pin.baseline.identity.id]);
+  });
   it("leaves optional workflow data out of legacy canonical documents", () => {
     const bytes = serializeVectorField3DDocument(original);
     expect(bytes).not.toContain('"explorer"');

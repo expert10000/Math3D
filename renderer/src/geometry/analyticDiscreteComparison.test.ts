@@ -27,5 +27,20 @@ describe("analytic versus discrete comparison", () => {
     expect(result.targets[0].quantities.find((entry) => entry.quantity === "normal")).toMatchObject({ available: false, explanation: "Target has no vertex-normal field." });
     expect(result.targets[0].warnings.join(" ")).toContain("No compatible saved mesh curvature field");
     expect(result.targets[0].mapping.confidence).toBe("heuristic");
+    expect(result.targets[0].quantities.find((entry) => entry.quantity === "volume")).toMatchObject({
+      available: false, discreteValue: null, explanation: expect.stringContaining("watertight"),
+    });
+  });
+  it("permits a discrete volume only for a closed consistently oriented mesh", () => {
+    const tetra: SurfaceMeshData = { ...planeMesh(), label: "tetrahedron",
+      positions: Float32Array.from([1, 1, 1, -1, -1, 1, -1, 1, -1, 1, -1, -1]),
+      indices: Uint32Array.from([0, 2, 1, 0, 1, 3, 0, 3, 2, 1, 2, 3]), normals: null };
+    const result = compareAnalyticGeometryToDiscrete({ definition: getGeometryExactSurfacePreset("sphere"),
+      targets: [target(tetra), target({ ...tetra, indices: Uint32Array.from([0, 1, 2, 0, 1, 3, 0, 3, 2, 1, 2, 3]) }),
+        target({ ...tetra, indices: Uint32Array.from([...tetra.indices!, 0, 2, 1]) })],
+      uCount: 2, vCount: 2 });
+    expect(result.targets[0].quantities.find((entry) => entry.quantity === "volume")?.available).toBe(true);
+    expect(result.targets[1].quantities.find((entry) => entry.quantity === "volume")?.available).toBe(false);
+    expect(result.targets[2].quantities.find((entry) => entry.quantity === "volume")?.available).toBe(false);
   });
 });

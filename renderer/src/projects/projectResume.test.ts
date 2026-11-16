@@ -1,10 +1,29 @@
 import { describe, expect, it } from "vitest";
-import { instantiateMath3DProjectTemplate, serializeMath3DProject } from "@math3d/core";
+import { instantiateMath3DProjectTemplate, serializeMath3DProject, createMixedWorkspaceDocument,
+  replaceMath3DProjectWorkspace, updateMath3DProjectMetadata, pinProjectFieldExplorerBaseline } from "@math3d/core";
+import { portableScientificProjectFixture } from "../../../tests/fixtures/graph-field/portableScientificProject";
 import { PROJECT_RESUME_KEY, projectResumeDocument, rememberProjectDocument, projectUiPreferences, selectProjectDocument } from "./projectResume";
 
 describe("Project document resume", () => {
   const project = instantiateMath3DProjectTemplate("catenary-study", "resume-contract");
   const surface = project.workspace.entries.find(entry => entry.module === "surface")!;
+  it("uses an explicitly active field A when a portable Project has no local selection", () => {
+    const a = portableScientificProjectFixture();
+    const pinned = pinProjectFieldExplorerBaseline(a.project, a.document, "resume-field-B");
+    const current = replaceMath3DProjectWorkspace(pinned.project, createMixedWorkspaceDocument({ ...pinned.project.workspace,
+      entries: [surface, ...pinned.project.workspace.entries],
+      activeDocumentIds: [pinned.baseline.identity.id, surface.expected.id] }));
+    expect(selectProjectDocument(current, null).selected.expected.id).toBe(pinned.baseline.identity.id);
+    expect(selectProjectDocument(current, JSON.stringify({ projectId: current.identity.id, documentId: "missing" }))
+      .selected.expected.id).toBe(pinned.baseline.identity.id);
+    expect(selectProjectDocument(updateMath3DProjectMetadata(current, { ...current.metadata, tags: ["starter"] }), null)
+      .selected.expected.id).toBe(pinned.baseline.identity.id);
+  });
+  it("retains legacy entry-order fallback for other document types", () => {
+    const current = replaceMath3DProjectWorkspace(updateMath3DProjectMetadata(project, { ...project.metadata, tags: [] }),
+      createMixedWorkspaceDocument({ ...project.workspace, activeDocumentIds: project.workspace.entries.map(entry => entry.expected.id).reverse() }));
+    expect(selectProjectDocument(current, null).selected.expected.id).toBe(current.workspace.entries[0]!.expected.id);
+  });
   it("keeps document selection outside scientific project bytes", () => {
     const before = serializeMath3DProject(project), values = new Map<string, string>();
     rememberProjectDocument({ setItem: (key, value) => { values.set(key, value); } }, project, surface.expected.id);

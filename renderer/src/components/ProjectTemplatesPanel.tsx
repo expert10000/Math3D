@@ -19,6 +19,7 @@ const starters = [...MATH3D_PROJECT_TEMPLATES, ...NOTEBOOK_STARTERS.map(item => 
     item.id === "mesh-geometry-probe" ? "Open Compare saved documents → Mesh / Geometry · shared metres, then pick either source and save a coordinate observation." :
     item.id === "surface-mesh-probe" ? "Open Compare saved documents → Surface / Mesh · shared metres, then pick either source to mark its 3D coordinate in the other pane." :
     item.id === "surface-geometry-probe" ? "Open Compare saved documents → Surface / Geometry · shared metres, then pick either source and save a coordinate observation." :
+    item.id === "field-line-profile-study" ? "Open the Field in Field Explorer, preview an XY slice, send a line profile to Graphs, then select a row to return to its exact Field position. Review the Study and Workbook in Projects." :
     "Find its Workbook and Notes in Projects → Contents."] }))];
 
 export const PROJECT_STARTER_MODULES: Record<ProjectStarterId, readonly string[]> = {
@@ -44,6 +45,7 @@ export const PROJECT_STARTER_MODULES: Record<ProjectStarterId, readonly string[]
   "surface-mesh-probe": ["Surface", "Mesh", "Notes"],
   "surface-geometry-probe": ["Surface", "Geometry", "Notes"],
   "volume-isosurface-study": ["Volume", "Mesh", "Analysis", "Workbook"],
+  "field-line-profile-study": ["3D vector field", "Graph", "Workbook"],
 };
 
 export const StarterArtwork: React.FC<{ id: ProjectStarterId }> = ({ id }) => <svg viewBox="0 0 320 152" aria-hidden="true" focusable="false">
@@ -154,14 +156,15 @@ export const CuratedStudyCard: React.FC<{ item: CuratedStudy; starterTitle?: str
     const starter = item.route.kind === "project" ? item.route.starterId : null;
     const quantum = item.route.kind === "verified-quantum-import";
     const title = starterTitle ?? (quantum ? item.route.model.toUpperCase() : item.route.kind === "cas-gallery" ? "Algebra structures" : item.question);
-    return <article className="curated-study-card" data-testid={`curated-study-card-${item.id}`}>
+    return <article className="curated-study-card" data-testid={`curated-study-card-${item.id}`}
+      aria-labelledby={`curated-study-title-${item.id}`}>
       <div className="curated-study-art">{starter ? <StarterArtwork id={starter} /> :
         <div className="curated-study-quantum-art" aria-hidden="true">{quantum ? "ψ" : "𝔄"}</div>}</div>
       <div className="curated-study-content">
         <div className="curated-study-badges"><span>{item.field}</span><span>{qualification ? `${qualification.mode} on this host` : item.platforms.join(" · ")}</span>
           <span>{starter ? curatedStudyHasLayout(starter) ? "Saved Study layout" : "Built-in Project" : quantum ? "External verified scene" : "Built-in algebra examples"}</span></div>
         {qualification?.reason && <p role="status" data-testid={`curated-study-limit-${item.id}`}>{qualification.reason}</p>}
-        <h4>{title}</h4>
+        <h4 id={`curated-study-title-${item.id}`}>{title}</h4>
         <p className="curated-study-question">{item.question}</p>
         {item.route.kind === "cas-gallery" && casProvenance && <div data-testid="curated-study-cas-provenance">
           <strong>Saved in {casProvenance.projectTitle}</strong>
@@ -181,12 +184,14 @@ export const CuratedStudyCard: React.FC<{ item: CuratedStudy; starterTitle?: str
           <p><strong>Reset:</strong> {item.reset}</p><p><strong>Limit:</strong> {item.limitation}</p>
         </details>
         <div className="curated-study-actions">{starter ? <>
-          <button type="button" data-testid={`curated-study-open-${item.id}`} disabled={busy || qualification?.mode !== undefined && qualification.mode !== "open"} onClick={() => onOpen(starter)}>{hasCopy ? "Resume Project" : "Open Project"}</button>
-          <button type="button" data-testid={`curated-study-preview-${item.id}`} disabled={busy || qualification?.mode === "unavailable"} onClick={() => onPreview(starter)}>Preview</button>
-          {hasCopy && <button type="button" data-testid={`curated-study-reset-${item.id}`} disabled={busy || qualification?.mode !== undefined && qualification.mode !== "open"} onClick={() => onNewCopy(starter)}>New copy</button>}
+          <button type="button" data-testid={`curated-study-open-${item.id}`} aria-label={`${hasCopy ? "Resume" : "Open"} ${title} Project`} disabled={busy || qualification?.mode !== undefined && qualification.mode !== "open"} onClick={() => onOpen(starter)}>{hasCopy ? "Resume Project" : "Open Project"}</button>
+          <button type="button" data-testid={`curated-study-preview-${item.id}`} aria-label={`Preview ${title}`} disabled={busy || qualification?.mode === "unavailable"} onClick={() => onPreview(starter)}>Preview</button>
+          {hasCopy && <button type="button" data-testid={`curated-study-reset-${item.id}`} aria-label={`Create new ${title} Project copy`} disabled={busy || qualification?.mode !== undefined && qualification.mode !== "open"} onClick={() => onNewCopy(starter)}>New copy</button>}
         </> : quantum ? <button type="button" data-testid={`curated-study-import-${item.id}`}
+          aria-label={`Choose verified ${title} scene bundle`}
           disabled={busy || qualification?.mode !== undefined && qualification.mode !== "open" || !quantumImportAvailable || !onImportQuantumScene} onClick={onImportQuantumScene}>
-          Choose verified scene bundle</button> : <button type="button" data-testid="curated-study-open-cas-structures"
+        Choose verified scene bundle</button> : <button type="button" data-testid="curated-study-open-cas-structures"
+          aria-label={`Open ${title} CAS examples`}
           disabled={busy || qualification?.mode !== undefined && qualification.mode !== "open" || !onOpenCasGallery} onClick={onOpenCasGallery}>Open CAS examples</button>}</div>
         {quantum && !quantumImportAvailable && <small>{qualification?.reason ?? "Scene import requires the desktop app."}</small>}
       </div>

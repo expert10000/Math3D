@@ -1,0 +1,34 @@
+{
+  "sourceCommit": "4fca932b2802d4b9085fbfe1134793f976c446fd",
+  "applicationBlob": "1b9a4a64404eb2776b0b633460c6fb013d417804",
+  "rendererSha256": "c43944dd4cbe3498bc81400a09998a7aadcf77278d0e035ddcdc28055c8719d3",
+  "scope": "native source-app after review; no full acceptance or installer certification",
+  "observations": [
+    "Graphs current scene and document revision; no retained mesh facts",
+    "Topology own module/display footer",
+    "Function Explorer own analytic/display footer; contextual actions retained",
+    "Mesh return displays actual retained Complex Map Sweep and9600/18802 mesh counts"
+  ],
+  "screenshots": [
+    {
+      "path": "evidence/graphs-footer-after.png",
+      "sha256": "330d89f8fe4a0db1c347a3572f9a6ab69b7af895c5b007fb6f68327580eb4ce6",
+      "bytes": 104310
+    },
+    {
+      "path": "evidence/topology-footer-after.png",
+      "sha256": "38cf26d3109116d270024983c4a935e5bd97b89022fcea89f96623dfe0c0fbe8",
+      "bytes": 151307
+    },
+    {
+      "path": "evidence/mesh-footer-return-after.png",
+      "sha256": "73ac3734cf3a4ff19146397779845ef5d6cdbc9d2681e38dea392dc444624cf8",
+      "bytes": 158815
+    },
+    {
+      "path": "evidence/complex-footer-after.png",
+      "sha256": "b08519d68217bd4d4088f06351b6c57125861734bdb28f50019f9947bbeee234",
+      "bytes": 132525
+    }
+  ]
+}

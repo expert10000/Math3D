@@ -32,6 +32,29 @@ body {
   line-height: 1.5;
 }
 
+.skip-link {
+  position: fixed;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 100;
+  padding: 0.6rem 0.9rem;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--brand-strong);
+  font-weight: 700;
+  transform: translateY(-150%);
+}
+
+.skip-link:focus { transform: translateY(0); }
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+[tabindex="0"]:focus-visible {
+  outline: 3px solid var(--brand-strong);
+  outline-offset: 3px;
+}
+
 .container {
   width: min(1100px, 92vw);
   margin: 0 auto;
@@ -210,6 +233,16 @@ h1 {
   border: 1px solid #d7e5f5;
   box-shadow: 0 10px 24px rgba(10, 46, 84, 0.16);
 }
+
+.hero-shot figcaption,
+.shot-grid figcaption {
+  color: #4a607b;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.hero-shot figcaption { margin-top: 0.4rem; }
+.shot-grid figcaption { padding: 0.4rem 0.55rem; }
 
 .chip-row {
   display: flex;
@@ -690,5 +723,20 @@ h1 {
   .shot-grid img,
   .shot-grid-mobile img {
     height: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal,
+  .reveal.in {
+    opacity: 1;
+    transform: none;
+    animation: none;
+  }
+
+  .btn,
+  .chip-btn,
+  .shot-link img {
+    transition: none;
   }
 }

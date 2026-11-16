@@ -1,6 +1,6 @@
 # Moving 1.x work toward Math3D 2.0
 
-**Release state:** the repository still identifies as 1.7.0. The exact signed 2.0.0 installer and its 1.7→2.0 upgrade gate have not run. This guide describes the current compatibility controls and the procedure to follow once a candidate passes. It is not a claim that every 1.x Project or local profile has been migrated.
+**Release state:** the source repository identifies as 2.0.0. The published desktop download remains 1.7.0; the exact signed 2.0.0 installer and its 1.7→2.0 upgrade gate have not run. This guide describes the current compatibility controls and the procedure to follow once a candidate passes. It is not a claim that every 1.x Project or local profile has been migrated.
 
 ## Preserve a recoverable original
 

@@ -8,7 +8,7 @@ import { prepareProjectWorkbook } from "./projectWorkbookBinding";
 import { captureProjectResources, type VerifiedProjectResources } from "./projectResources";
 
 const layouts: Partial<Record<CuratedStarterId, Readonly<{
-  title: string; modules: readonly ("graph2d" | "curve" | "surface" | "geometry" | "topology" | "mesh" | "volume")[];
+  title: string; modules: readonly ("graph2d" | "curve" | "surface" | "geometry" | "topology" | "mesh" | "volume" | "vector3d")[];
   resultOnModule?: "graph2d" | "mesh";
 }>>> = {
   "catenary-study": { title: "Catenary, catenoid and derivative", modules: ["graph2d", "surface"], resultOnModule: "graph2d" },
@@ -23,6 +23,7 @@ const layouts: Partial<Record<CuratedStarterId, Readonly<{
   "mesh-comparison-study": { title: "Retained Mesh generations", modules: ["mesh"], resultOnModule: "mesh" },
   "mesh-curvature-study": { title: "Discrete curvature across Mesh scales", modules: ["mesh"], resultOnModule: "mesh" },
   "volume-isosurface-study": { title: "Extract an isosurface from this Volume", modules: ["volume"] },
+  "field-line-profile-study": { title: "Sample a line from this Field", modules: ["vector3d"] },
 };
 
 /** Add a saved reference layout only for an explicitly chosen guided Gallery copy. */

@@ -144,7 +144,7 @@ export function createDefaultVectorField3DDocument(): VectorField3DDocument {
 }
 
 export function VectorField3DPanel({ initialDocument, savedDocument, project, focusSelectionRequest,
-  onSaveDocument, onPinBaseline, onClose, mount,
+  onSaveDocument, onSelectComparisonSource, onPinBaseline, onClose, mount,
   onAddGraphLine, isGraphLineImported, onAddAnalyticLine, onAddDerivedLine,
   onAddLinkedOverlayLine, onFocusRegionInGraphs, onFocusSubrectangleInGraphs,
   onPublishVectorSubrectangle, onPublishCombinedSubrectangle,
@@ -191,6 +191,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   derivedProfileError?: string;
   onPinBaseline?: (document: VectorField3DDocument) => VectorField3DDocument;
   onSaveDocument?: (document: VectorField3DDocument) => void; onClose: () => void;
+  onSelectComparisonSource?: (next: VectorField3DDocument, current: VectorField3DDocument) => void;
   mount?: HTMLElement;
   onAddGraphLine?: (preview: Graph2DScientificDatasetPreview, selection: VectorField3DGraphLineSelection) => void;
   isGraphLineImported?: (selection: VectorField3DGraphLineSelection, document: VectorField3DDocument) => boolean;
@@ -307,10 +308,14 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   const previewEpoch = useRef(0);
   useEffect(() => {
     cancelRequested.current = false;
-    const previous = globalThis.document.activeElement as HTMLElement | null;
-    dialogRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    const focusFrame = requestAnimationFrame(() => requestAnimationFrame(() => {
+      const heading = dialogRef.current?.querySelector<HTMLElement>("h3");
+      if (heading) { heading.tabIndex = -1; heading.focus({ preventScroll: true }); }
+    }));
     return () => { cancelRequested.current = true; cancelRunRef.current?.(); probeEpoch.current++;
-      previewEpoch.current++; previous?.focus(); };
+      previewEpoch.current++; cancelAnimationFrame(focusFrame);
+      requestAnimationFrame(() => globalThis.document.querySelector<HTMLElement>(
+        '[data-testid="workspace-nav-graphs"]')?.focus({ preventScroll: true })); };
   }, []);
   useEffect(() => {
     if (!focusSelectionRequest) return;
@@ -870,6 +875,10 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
       components: expressions.map((source, index) => vectorField3DExpression(source,
         document.source.field.kind === "expressions" ? document.source.field.components[index]!.unit : "m/s")) as
         [VectorField3DExpression, VectorField3DExpression, VectorField3DExpression] } }) : document;
+  // Verification publishes source artifacts; same-generation view/probe edits remain current.
+  const publishPreviewDocument = (next: VectorField3DDocument) => setDocument(current =>
+    current.identity.id === next.identity.id && current.identity.revision === next.identity.revision &&
+    current.identity.structuralHash === next.identity.structuralHash ? current : next);
   const publishProbeCursor = () => {
     if (!workspace.probe || busy || lineBusy) return;
     try {
@@ -930,12 +939,12 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
       fingerprint = opened.source.fingerprint;
       const { artifact: result, volumes } = await previewVerifiedVectorField3D(next,
         opened.source.manifestJson, fingerprint, bridge, initial => {
-          if (epoch === previewEpoch.current) { setArtifact(initial.artifact); setDocument(next); }
+          if (epoch === previewEpoch.current) { setArtifact(initial.artifact); publishPreviewDocument(next); }
         }, () => new Promise(resolve => setTimeout(resolve, 120)));
       if (epoch !== previewEpoch.current) return;
       if (next.workspace?.probe) setProbeArtifact(sampleVectorField3DProbe(next, next.workspace.probe,
         { manifestJson: opened.source.manifestJson, fingerprint, volumes }));
-      setArtifact(result); setDocument(next); setSourceVerification("verified");
+      setArtifact(result); publishPreviewDocument(next); setSourceVerification("verified");
       previewReady = true;
     } catch (cause) { if (epoch === previewEpoch.current) {
       setArtifact(null); setSourceVerification("failed");
@@ -2467,7 +2476,14 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
       {inspectorSection === "all" ? "Overview" :
         inspectorSection[0]!.toUpperCase() + inspectorSection.slice(1)}</h5>
     {!fieldLayer && <div data-gf06-section="analyze" className="field-explorer-compare-inspector">
-      <VectorField3DComparisonPanel document={document} project={project}
+      <VectorField3DComparisonPanel document={document} project={project} disabled={busy || lineBusy}
+        onSelectSourceA={onSelectComparisonSource && !busy && !lineBusy ? id => {
+          const entry = project?.workspace.entries.find(item => item.module === "vector3d" && item.expected.id === id);
+          if (entry?.checkpoint.format !== "math3d.vector-field3d-document") return;
+          const current = currentDocument();
+          onSelectComparisonSource(entry.checkpoint, reviseVectorField3DWorkspace(current,
+            { ...(current.workspace ?? defaultVectorField3DWorkspace(current.source)), linkedProbe }));
+        } : undefined}
         onWorkflowChange={changes => setDocument(current => reviseFieldExplorerWorkflow(current, changes))}
         onSave={onSaveComparisonResult} onOpenProfile={onOpenComparisonProfile} />
     </div>}
@@ -3121,6 +3137,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
         data-testid="vector-field3d-viewer-error">{error}</div>}
       {fieldExplorerWorkflow(document).comparisonVisible ? <FieldExplorerBaselineViews
         document={document} baseline={baseline} project={project} onProbeSelect={point => void selectProbe(point)}
+        onDifferenceChange={busy || lineBusy ? undefined : differenceView =>
+          setDocument(current => reviseFieldExplorerWorkflow(current, { differenceView }))}
         onSendLineToGraphs={sendAnalyticLine} onSendDerivedLineToGraphs={sendDerivedLine}
         onClose={() => setDocument(current => reviseFieldExplorerWorkflow(current,
           { comparisonVisible: false }))} /> : multiView ? <div className={`vector-field3d-linked-grid vector-field3d-linked-grid-${workspace.layout}`}>

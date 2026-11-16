@@ -1,0 +1,21 @@
+{
+  "schema": "math3d/release20-linux-upgrade-qualification/v1",
+  "format": "rpm",
+  "buildSourceSha": "d15c694ee6e5b14ca594dfe75bcc3c670842ef9a",
+  "oldPackageSha256": "947b604818853a82ecb71aba8756dfa5f467f5eee6f359eaa8d39448c9dd9120",
+  "newPackageSha256": "3fbea9c94d19c58aebaef1cfa1b61c299d7a8db0189fe488581259e9843e9fae",
+  "profileInventorySha256": "c15cf4746dc9dfc2371aed27dd583c8e54f9e023182af3b8e62f33b1b405b279",
+  "graphCheckpointSha256": "f76f0162828c92a8b6c5db2a551cc6ae7fdcb09f1d2323466976e20690a32f64",
+  "journeyProjectSha256": "06ae1933d0954866b92a0954c796423c32492ec2fc95ab7a0c26261ba60157a8",
+  "checks": {
+    "oldInstall": "passed",
+    "seededGraphProject": "passed",
+    "profileBackup": "passed",
+    "upgradeOpen": "passed",
+    "installedWorkerJourney": "passed",
+    "journeyProjectColdReopen": "passed",
+    "profileRestore": "passed",
+    "oldPackageRollback": "passed"
+  },
+  "status": "passed"
+}

@@ -1,0 +1,94 @@
+{
+  "sourceCommit": "2cf4b6a4b096ff08f3e7c8e928c542d25acca065",
+  "date": "2026-11-15",
+  "environment": "Linux native source Electron; 1100x750; software GPU; isolated disposable profile",
+  "appBuild": "production core build; renderer Node heap8192MB",
+  "scope": "manual UI review, not full acceptance or installed qualification",
+  "screenshots": [
+    {
+      "path": "evidence/complex-explorer.png",
+      "sha256": "fe9b9330829f19306621179e88e0e8b976d51a91eaa0cf4cfe81b924c83ed9c5",
+      "bytes": 134522
+    },
+    {
+      "path": "evidence/complex-map.png",
+      "sha256": "14bb764d2ba3ad47e338522d2ee9a7d1dcb50c0e4f460a4ef996f4f5d7373ad9",
+      "bytes": 129405
+    },
+    {
+      "path": "evidence/complex-one-over-z.png",
+      "sha256": "d7fae8601c337d90a3f8b918391414b11db4bf374b5397e99646374eab7add1f",
+      "bytes": 134404
+    },
+    {
+      "path": "evidence/graphs-authoring.png",
+      "sha256": "93bc97884572ceb292ab49d158493b31e15ea0f47f31909900434167a376eec4",
+      "bytes": 94952
+    },
+    {
+      "path": "evidence/graphs-created.png",
+      "sha256": "0baab688e52300e3c44c4fa8ddf175d3f2213f158754793857d0b97f3244bd4f",
+      "bytes": 111614
+    },
+    {
+      "path": "evidence/graphs-empty.png",
+      "sha256": "cb593c3aa3f2c53f7aefea27915b38d951f6d71fbdab8b30c6989a7cf72efe63",
+      "bytes": 105794
+    },
+    {
+      "path": "evidence/graphs-hidden.png",
+      "sha256": "b64dface60c4f365508badcaa9f1b5cfc29265b0f8dfb3df12afd746920687fb",
+      "bytes": 106328
+    },
+    {
+      "path": "evidence/graphs-tools.png",
+      "sha256": "c6b38e270dba0c3b09116e58c4b915a13804eba92ec55002f942c795ef26b7c3",
+      "bytes": 123144
+    },
+    {
+      "path": "evidence/mesh-overview.png",
+      "sha256": "01b250c6e1c92e2fed45125725fc209eb2d6bd2c696392269d3cb0882f9d8ddc",
+      "bytes": 153482
+    },
+    {
+      "path": "evidence/mesh-smooth-configure.png",
+      "sha256": "0a8ed67a18d29bbbc26a61441bfe4622991f36bade95d5568db3a8d16b9e079e",
+      "bytes": 161458
+    },
+    {
+      "path": "evidence/mesh-smooth-result.png",
+      "sha256": "1dd168222fc8b9fddb55d49613530e4b20abad94411e1768ddbcdc384525c85c",
+      "bytes": 166427
+    },
+    {
+      "path": "evidence/mesh-undo.png",
+      "sha256": "f6ee3cf0fa98289870b5fcd227c1db6eb5006920b777aec15c76fbe291594f3c",
+      "bytes": 160668
+    },
+    {
+      "path": "evidence/surfaces-analysis.png",
+      "sha256": "891fbf235890c5a03215cdcdd337cc8d55292e0c1fbf21b6eaf9e9facd2d422c",
+      "bytes": 163173
+    },
+    {
+      "path": "evidence/surfaces-before.png",
+      "sha256": "980e435b974805ce64e84fbacffa04d24dd550eeaec5f2bc750c12082ba2f676",
+      "bytes": 155053
+    },
+    {
+      "path": "evidence/topology-algebra.png",
+      "sha256": "fc1419f552c6f150457623af17058b24e71681f2c7e194d556ae73a26c045394",
+      "bytes": 160657
+    },
+    {
+      "path": "evidence/topology-overview.png",
+      "sha256": "21586a82d1963ce8ea637bc77ab6d6be822fadfc6a94047e1fe80bb2e0268dd4",
+      "bytes": 152477
+    },
+    {
+      "path": "evidence/topology-torus.png",
+      "sha256": "e765909adf5040d7c1a06622e2d0ba6891cb86c853ef8e7ae430b01082060af9",
+      "bytes": 153602
+    }
+  ]
+}

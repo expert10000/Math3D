@@ -1,0 +1,3 @@
+3041b4a6bd6607b8861f47160d17a90449af82f7db9df32ea83cc5a2fb0b28a0  packages/Math3D-2.0.0-linux-x86_64.AppImage
+650e23dc5cd9f21e368166b130ba3323783904ab1f87e3e0fdbc2a9334f8ed3b  packages/Math3D-2.0.0-linux-amd64.deb
+3fbea9c94d19c58aebaef1cfa1b61c299d7a8db0189fe488581259e9843e9fae  packages/Math3D-2.0.0-linux-x86_64.rpm

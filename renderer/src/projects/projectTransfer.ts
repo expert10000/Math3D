@@ -186,5 +186,8 @@ export const mergeProjectLiveWorkspace = (retained: MixedWorkspaceDocument, live
   const merged = mergeGraph2DHandoffCheckpoint(projectCheckpoint(retained), projectCheckpoint(combined));
   const entries = new Map([...retained.entries, ...combined.entries].map((entry) => [entry.expected.id, entry]));
   return createMixedWorkspaceDocument({ ...merged, ...selectionFields, ...derivedFieldsField,
+    ...(combined.entries.find(entry => entry.expected.id === combined.activeDocumentIds[0])?.module === "vector3d" ? {
+      activeDocumentIds: [...new Set([...combined.activeDocumentIds,
+        ...retained.activeDocumentIds.filter(id => !combined.entries.some(entry => entry.expected.id === id))])] } : {}),
     constructions: live.constructions, entries: merged.entries.map((entry) => entries.get(entry.expected.id)!) });
 };

@@ -44,12 +44,10 @@ test("SAGE-F01/F02 saves exact-source contract and bounded sphere/plane plot, th
     await ctx.page.getByTestId(`project-open-saved-${project.identity.id}`).click();
     const projectPanel = ctx.page.getByTestId("project-explorer-panel");
     await expect(projectPanel.getByTestId("project-view-mode")).toContainText("Current workspace");
-    // Opening a saved Project finishes asynchronously and places its details
-    // in the compact viewer dock. Wait for that transition before expanding it.
-    const layoutToggle = projectPanel.getByTestId("project-gallery-layout-toggle");
-    await expect(layoutToggle).toHaveAttribute("aria-label", "Project details", { timeout: 45_000 });
-    await layoutToggle.click();
+    // Saved Project opening and compact-dock selection finish asynchronously.
+    await expect(projectPanel.getByTestId("project-breadcrumb")).toContainText("Project Surface", { timeout: 45_000 });
     const detailToggle = projectPanel.getByTestId("project-detail-toggle");
+    if (await detailToggle.count() === 0) await projectPanel.getByTestId("project-gallery-layout-toggle").click();
     await expect(detailToggle).toBeVisible();
     if (await detailToggle.getAttribute("aria-pressed") === "false") await detailToggle.click();
     await projectPanel.getByTestId("project-detail-tab-documents").click();

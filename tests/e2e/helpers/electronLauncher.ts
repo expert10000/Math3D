@@ -27,20 +27,22 @@ async function resolveExecutablePathOnce(): Promise<string> {
   return executablePathPromise;
 }
 
-function withIsolatedProfileArgs(args: string[], userDataDir: string, cacheDir: string): string[] {
+function withIsolatedProfileArgs(args: string[], userDataDir: string, cacheDir: string, packaged: boolean): string[] {
   const profileArgs = [
     `--user-data-dir=${userDataDir}`,
     `--disk-cache-dir=${cacheDir}`,
     `--media-cache-dir=${path.join(cacheDir, "media")}`,
   ];
+  if (packaged) return [...profileArgs, ...args];
   const appPathIndex = args.findIndex((arg) => arg && !arg.startsWith("-"));
   if (appPathIndex < 0) return [...profileArgs, ...args];
   return [...args.slice(0, appPathIndex), ...profileArgs, ...args.slice(appPathIndex)];
 }
 
 export async function launchRepoElectron(options: ElectronLaunchOptions): Promise<ElectronApplication> {
-  const executablePath = options.executablePath ?? await resolveExecutablePathOnce();
   const providedEnv = options.env as Record<string, string | undefined> | undefined;
+  const packagedExecutable = providedEnv?.MATH3D_PACKAGED_APP_EXE ?? process.env.MATH3D_PACKAGED_APP_EXE;
+  const executablePath = options.executablePath ?? packagedExecutable ?? await resolveExecutablePathOnce();
   const profileRoot = providedEnv?.MATH3D_E2E_PROFILE_ROOT
     ? path.resolve(providedEnv.MATH3D_E2E_PROFILE_ROOT)
     : providedEnv?.LOCALAPPDATA || providedEnv?.APPDATA
@@ -56,11 +58,25 @@ export async function launchRepoElectron(options: ElectronLaunchOptions): Promis
     MATH3D_E2E_USER_DATA_DIR: userDataDir,
   };
   delete env.ELECTRON_RUN_AS_NODE;
-  const args = options.args ?? ["."];
-  return electron.launch({
+  const requestedArgs = options.args ?? ["."];
+  const args = packagedExecutable && requestedArgs[0] === "." ? requestedArgs.slice(1) : requestedArgs;
+  const app = await electron.launch({
     ...options,
-    args: withIsolatedProfileArgs(args, userDataDir, cacheDir),
+    args: withIsolatedProfileArgs(args, userDataDir, cacheDir, !!packagedExecutable),
     env: definedEnvironment(env),
     executablePath,
   });
+  const expectedVersion = providedEnv?.MATH3D_RELEASE20_EXPECTED_VERSION;
+  if (expectedVersion) {
+    if (!packagedExecutable) {
+      await app.close();
+      throw new Error("Installed candidate acceptance requires MATH3D_PACKAGED_APP_EXE.");
+    }
+    const actualVersion = await app.evaluate(({ app }) => app.getVersion());
+    if (actualVersion !== expectedVersion) {
+      await app.close();
+      throw new Error(`Installed candidate version ${actualVersion} differs from ${expectedVersion}.`);
+    }
+  }
+  return app;
 }

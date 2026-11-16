@@ -5,7 +5,7 @@ import { join, resolve, sep } from "node:path";
 import { launchRepoElectron } from "./helpers/electronLauncher";
 
 test("Lab QWZ study handoff stages both exact scenes in a new Math3D Project", async () => {
-  test.setTimeout(240_000);
+  test.setTimeout(360_000);
   const root = await mkdtemp(join(tmpdir(), "m3d-qi08-ui-"));
   const handoff = join(root, "study");
   const runId = "run-05ce1036d70c466eb4f900944a85c474";
@@ -147,6 +147,17 @@ test("Lab QWZ study handoff stages both exact scenes in a new Math3D Project", a
       .bytes({ kind: "graph-point-table", id: tableId })).toBeNull();
     expect(project.workspace.entries.some((entry: { module: string; expected: { id: string } }) =>
       entry.module === "graph2d" && entry.expected.id === profile.provenance.operation.parameters.graphDocumentId)).toBe(true);
+    if (await projects.getByTestId("project-detail-tab-documents").count())
+      await projects.getByTestId("project-detail-tab-documents").click();
+    const pack = join(root, "qwz-source.qpack"), moved = join(root, "qwz-transfer.qpack");
+    await app.evaluate(({ dialog }, filePath) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath }); }, pack);
+    await projects.getByTestId("project-export-quantum-pack").click();
+    await expect(projects.getByTestId("project-quantum-scene-message"))
+      .toContainText("Portable quantum Project exported", { timeout: 60_000 });
+    const packed = portable.parseProjectPackage(await readFile(join(pack, "project.json"), "utf8"));
+    expect(JSON.parse(Buffer.from(packed.resources.bytes({ kind: "graph-point-table", id: tableId })!).toString("utf8")))
+      .toEqual(rows);
+    await cp(pack, moved, { recursive: true });
     await app.close();
     app = await launchRepoElectron({ args: ["."], cwd: resolve(__dirname, "..", ".."),
       env: { ...process.env, MATH3D_E2E_PROFILE_ROOT: join(root, "profile"),
@@ -228,6 +239,74 @@ test("Lab QWZ study handoff stages both exact scenes in a new Math3D Project", a
     expect(missingEvidence.verification).toMatchObject({ status: "withheld", selection: null });
     expect(missingEvidence.profile).toMatchObject({ status: "withheld", resultId: profile.resultId });
     await writeFile(missingBand, bandBytes);
+    await app.close();
+    app = await launchRepoElectron({ args: ["."], cwd: resolve(__dirname, "..", ".."),
+      env: { ...process.env, MATH3D_E2E_PROFILE_ROOT: join(root, "independent-profile"),
+        QLAB_PYTHON: join(root, "missing-worker") } });
+    const transferPage = await app.firstWindow();
+    await transferPage.getByTestId("projects-toggle").click();
+    const transferProjects = transferPage.getByTestId("project-explorer-panel");
+    await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () =>
+      ({ canceled: false, filePaths: [folder] }); }, moved);
+    await transferProjects.getByTestId("project-open-quantum-pack").click();
+    await expect(transferProjects.getByTestId("project-quantum-scene-message"))
+      .toContainText("Portable quantum Project verified", { timeout: 60_000 });
+    await expect(transferPage.getByTestId("project-import-open")).toBeEnabled();
+    await transferPage.getByTestId("project-import-open").click();
+    await expect(transferProjects.getByTestId("project-message"))
+      .toContainText("Opened supported project", { timeout: 60_000 });
+    const transferred = await transferPage.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    expect(transferred.workspace.results.find((result: { resultId: string }) => result.resultId === profile.resultId))
+      .toEqual(profile);
+    expect(transferred.quantumScenes).toHaveLength(2);
+    expect(transferred.quantumScenes.every((reference: { directory: string }) =>
+      reference.directory.includes("quantum-pack-scenes"))).toBe(true);
+    if (!await transferProjects.getByTestId("project-export-resources").isVisible())
+      await transferProjects.getByTestId("project-gallery-layout-toggle").first().click();
+    await transferProjects.locator(".project-header-more summary").click();
+    await transferProjects.getByRole("button", { name: "Import / export" }).click();
+    const transferPackage = join(root, "qwz-roundtrip.json");
+    await app.evaluate(({ session }, target) => session.defaultSession.once("will-download",
+      (_event, item) => item.setSavePath(target)), transferPackage);
+    await transferProjects.getByTestId("project-export-resources").click();
+    await expect.poll(async () => {
+      try { return await readFile(transferPackage, "utf8"); } catch { return null; }
+    }, { timeout: 60_000 }).not.toBeNull();
+    const roundtrip = portable.parseProjectPackage(await readFile(transferPackage, "utf8"));
+    expect(JSON.parse(Buffer.from(roundtrip.resources.bytes({ kind: "graph-point-table", id: tableId })!).toString("utf8")))
+      .toEqual(rows);
+    await transferProjects.getByTestId("project-detail-tab-overview").click();
+    let transferStudies = transferProjects.getByTestId("project-studies-panel");
+    if (!await transferStudies.count()) await transferProjects.getByTestId("project-gallery-layout-toggle").click();
+    transferStudies = transferProjects.getByTestId("project-studies-panel");
+    await expect(transferStudies).toBeVisible();
+    await transferStudies.locator('[data-testid^="project-study-open-"]').click();
+    await expect(transferStudies.getByTestId("project-study-panes")).toHaveAttribute("data-layout", "quad");
+    await expect(transferStudies.getByTestId("project-study-qwz-pin-status"))
+      .toContainText("Pinned band sample 0");
+    await expect(transferStudies.getByTestId("project-study-qwz-saved-profile"))
+      .toContainText("authored-sample-path");
+    await transferPage.context().setOffline(true);
+    await expect(transferStudies.getByTestId("project-study-qwz-cursor-status"))
+      .toContainText("Berry curvature", { timeout: 60_000 });
+    await transferPage.context().setOffline(false);
+    if (await transferProjects.getByTestId("project-detail-tab-documents").count())
+      await transferProjects.getByTestId("project-detail-tab-documents").click();
+    const manifest = JSON.parse(await readFile(join(moved, "manifest.json"), "utf8"));
+    const packBlob = join(moved, "blobs", manifest.scenes[0].files.find((file: { name: string }) =>
+      file.name === "scene.json").sha256);
+    const blobBytes = await readFile(packBlob);
+    const tampered = Buffer.from(blobBytes); tampered[0] ^= 1; await writeFile(packBlob, tampered);
+    await transferProjects.getByTestId("project-open-quantum-pack").click();
+    await expect(transferProjects.getByTestId("project-quantum-scene-message"))
+      .toContainText("blob hash changed", { timeout: 60_000 });
+    await writeFile(packBlob, blobBytes);
+    await rm(packBlob);
+    await transferProjects.getByTestId("project-open-quantum-pack").click();
+    await expect(transferProjects.getByTestId("project-quantum-scene-message"))
+      .toContainText("missing", { timeout: 60_000 });
+    expect(await transferPage.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).identity.id))
+      .toBe(project.identity.id);
   } finally {
     await app.close();
     if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-qi08-ui-")) throw new Error("Unsafe QI-08 cleanup path");

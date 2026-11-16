@@ -49,6 +49,13 @@ test.describe("Packaged desktop flow", () => {
       await page.waitForLoadState("domcontentloaded");
       await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
 
+      const preferences = page.getByTestId("settings-preferences-panel");
+      await preferences.waitFor({ state: "visible", timeout: 5000 }).catch(() => {});
+      if (await preferences.isVisible()) {
+        await preferences.locator("..").getByRole("button", { name: "Close" }).click();
+        await expect(preferences).toHaveCount(0);
+      }
+
       for (const label of sectionLabels) {
         const sectionButton = page.getByRole("button", { name: label, exact: true }).first();
         await expect(sectionButton).toBeVisible();

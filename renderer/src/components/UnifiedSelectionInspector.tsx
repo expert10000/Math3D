@@ -1,9 +1,22 @@
-import type React from "react";
+import { useState, type CSSProperties } from "react";
 import type { SelectionResult, UnifiedSelectionSet } from "../selection/unifiedSelection";
+import type { SceneSelection } from "../selection/sceneSelection";
+import type { SceneEntity, SceneRepresentationAction } from "../scene/sceneRepresentations";
+import type { NamedSceneSelection } from "../selection/robustSceneSelection";
 
 type UnifiedSelectionInspectorProps = {
   selection: SelectionResult | null;
   selectionSet?: UnifiedSelectionSet | null;
+  sceneSelection?: SceneSelection | null;
+  sceneEntity?: SceneEntity | null;
+  activeRepresentationId?: string | null;
+  onSelectRepresentation?: (id: string) => void;
+  onRepresentationAction?: (action: SceneRepresentationAction) => void;
+  representationActions?: readonly SceneRepresentationAction[];
+  namedSelections?: readonly NamedSceneSelection[];
+  onSaveNamedSelection?: (name: string) => void;
+  onRestoreNamedSelection?: (id: string) => void;
+  onDeleteNamedSelection?: (id: string) => void;
   title?: string;
   materialInfo?: string | null;
   creaseInfo?: string | null;
@@ -39,19 +52,19 @@ const uniqueSorted = <T extends number | string>(values: readonly T[]): T[] => {
   });
 };
 
-const rowStyle: React.CSSProperties = {
+const rowStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "116px minmax(0, 1fr)",
   gap: "4px 8px",
   alignItems: "baseline",
 };
 
-const labelStyle: React.CSSProperties = {
+const labelStyle: CSSProperties = {
   color: "#556",
   fontWeight: 600,
 };
 
-const multiSummaryStyle: React.CSSProperties = {
+const multiSummaryStyle: CSSProperties = {
   border: "1px solid #bfdbfe",
   borderRadius: 7,
   background: "#eff6ff",
@@ -63,19 +76,34 @@ const multiSummaryStyle: React.CSSProperties = {
 export const UnifiedSelectionInspector = ({
   selection,
   selectionSet = null,
+  sceneSelection = null,
+  sceneEntity = null,
+  activeRepresentationId = null,
+  onSelectRepresentation,
+  onRepresentationAction,
+  representationActions = [],
+  namedSelections = [],
+  onSaveNamedSelection,
+  onRestoreNamedSelection,
+  onDeleteNamedSelection,
   title = "Selection inspector",
   materialInfo = null,
   creaseInfo = null,
 }: UnifiedSelectionInspectorProps) => {
-  const multiSelection = selectionSet && selectionSet.count > 1 ? selectionSet : null;
-  const activeSelection = selection ?? selectionSet?.activeSelection ?? null;
+  const [selectionName, setSelectionName] = useState("");
+  const localSelection = selection ?? selectionSet?.activeSelection ?? null;
+  const localObjectId = localSelection?.workspace === "mesh"
+    ? localSelection.sourceSceneEntityId ?? localSelection.sceneEntityId ?? localSelection.objectId
+    : localSelection?.sceneEntityId ?? localSelection?.objectId;
+  const activeSelection = sceneSelection && localObjectId !== sceneSelection.objectId ? null : localSelection;
+  const multiSelection = activeSelection && selectionSet && selectionSet.count > 1 ? selectionSet : null;
   const selectedItems = multiSelection?.items ?? [];
   const adjacentVertices = uniqueSorted(selectedItems.flatMap((item) => item.adjacency.vertices));
   const adjacentEdges = uniqueSorted(selectedItems.flatMap((item) => item.adjacency.edges));
   const adjacentFaces = uniqueSorted(selectedItems.flatMap((item) => item.adjacency.faces));
   const boundaryCount = selectedItems.filter((item) => item.topologyFlags.hasTopology && item.topologyFlags.boundary).length;
   const nonManifoldCount = selectedItems.filter((item) => item.topologyFlags.hasTopology && item.topologyFlags.nonManifold).length;
-  const stateLabel = multiSelection ? "selected" : activeSelection ? activeSelection.state : "none";
+  const stateLabel = multiSelection || sceneSelection ? "selected" : activeSelection ? activeSelection.state : "none";
   const multiObjectLabel =
     multiSelection && multiSelection.objectLabels.length === 1
       ? multiSelection.objectLabels[0]
@@ -113,6 +141,50 @@ export const UnifiedSelectionInspector = ({
         <strong>{title}</strong>
         <span style={{ color: "#075985", fontWeight: 700 }}>{stateLabel}</span>
       </div>
+      {sceneSelection && (
+        <div data-testid="shared-scene-selection" style={{ color: "#334155" }}>
+          Scene: {sceneSelection.objectId} · {sceneSelection.kind}
+          {sceneSelection.componentIds.length ? ` ${sceneSelection.componentIds.join(", ")}` : ""}
+        </div>
+      )}
+      {sceneSelection && onSaveNamedSelection && (
+        <div data-testid="named-scene-selections" style={{ display: "grid", gap: 4 }}>
+          <strong>Selection sets</strong>
+          <div style={{ display: "flex", gap: 4 }}>
+            <input aria-label="Selection set name" value={selectionName} onChange={(event) => setSelectionName(event.target.value)} placeholder="Name selection" style={{ minWidth: 0, flex: 1 }} />
+            <button type="button" disabled={!selectionName.trim()} onClick={() => { onSaveNamedSelection(selectionName); setSelectionName(""); }}>Save</button>
+          </div>
+          {namedSelections.filter((set) => set.selection.objectId === sceneSelection.objectId).map((set) => <div key={set.id} style={{ display: "flex", gap: 4, alignItems: "center" }}>
+            <button type="button" onClick={() => onRestoreNamedSelection?.(set.id)}>{set.name} ({set.selection.componentIds.length || 1})</button>
+            <button type="button" aria-label={`Delete ${set.name}`} onClick={() => onDeleteNamedSelection?.(set.id)}>×</button>
+          </div>)}
+        </div>
+      )}
+      {sceneEntity && (
+        <div data-testid="scene-representations" style={{ display: "grid", gap: 3 }}>
+          <strong>Representations</strong>
+          {sceneEntity.representations.map((representation) => (
+            <label key={representation.id} style={{ display: "flex", gap: 5, alignItems: "center" }}>
+              <input
+                type="radio"
+                name={`representation-${sceneEntity.id}`}
+                checked={(activeRepresentationId ?? sceneEntity.representations[0]?.id) === representation.id}
+                onChange={() => onSelectRepresentation?.(representation.id)}
+              />
+              <span>{representation.label} · {representation.state}</span>
+            </label>
+          ))}
+          {onRepresentationAction && (
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+              {representationActions.map((action) => (
+                <button key={action} type="button" onClick={() => onRepresentationAction(action)} style={{ fontSize: 10 }}>
+                  {action}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       {multiSelection ? (
         <div style={{ display: "grid", gap: 6 }} data-testid="unified-selection-multi-summary">
           <div style={multiSummaryStyle}>
@@ -203,7 +275,9 @@ export const UnifiedSelectionInspector = ({
         <span>{materialInfo ?? "n/a"}</span>
       </div>
     ) : (
-      <div style={{ color: "#64748b" }}>No selected entity.</div>
+      <div style={{ color: "#64748b" }}>
+        {sceneSelection ? `${sceneSelection.kind} on ${sceneSelection.objectId} (open its representation to inspect components)` : "No selected entity."}
+      </div>
     )}
   </div>
   );

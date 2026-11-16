@@ -41,6 +41,7 @@ import { projectAlgebraLocusCurveSourceStatus, resolveProjectAlgebraLocusCurveSo
   resolveProjectAlgebraLocusCurveAlgebraReturn } from "@math3d/core";
 import { createSavedSurfaceMesh } from "../projects/savedSurfaceMesh";
 import { MeshDocumentAdapter } from "../mesh/meshDocumentAdapter";
+import { GEOMETRY_MESH_PROJECT_TAG, geometryMeshProjectWorkspace, isGeometryMeshProject } from "../projects/projectGeometryMeshScope";
 import { prepareSurfaceRidgeWorkbook, recordSurfaceRidgeComparison,
   SURFACE_RIDGE_COMPARISON_OPERATION } from "../projects/surfaceRidgePublication";
 import { inspectProjectDependencies } from "../projects/projectDependencies";
@@ -125,8 +126,9 @@ import { resolveProjectNoteValues } from "../projects/projectNoteValues";
 import { projectAnalysisAvailability, type ProjectAnalysisRoute } from "../projects/projectAnalysisAvailability";
 import { verifyProjectVectorFieldSources } from "../projects/scientificFieldAdmission";
 import { capturePortableProjectResources } from "../projects/scientificProjectPackage";
-import { readBrowserScientificProjectPackage } from "../projects/scientificBundleImport";
-import { ScientificBundleImport } from "./ScientificBundleImport";
+import { readBrowserScientificProjectPackage, type ScientificUploadKind } from "../projects/scientificBundleImport";
+import { appendScientificBundleProject } from "../projects/appendScientificBundleProject";
+import { ScientificBundleImport, type ScientificImportDestination } from "./ScientificBundleImport";
 import { verifyProjectQuantumSceneDocuments } from "../projects/quantumSceneAdmission";
 import { quantumSceneDocumentFromVerifiedOpen } from "../projects/quantumSceneAdmission";
 import { promoteQuantumNative, type QuantumNativeTarget } from "../projects/quantumNativePromotion";
@@ -135,6 +137,9 @@ import type { NoteValuePatch } from "./ProjectNoteLiveValues";
 import { PROJECT_RESUME_KEY, PROJECT_UI_KEY, projectUiPreferences, rememberProjectUi, selectProjectDocument, rememberProjectDocument } from "../projects/projectResume";
 
 export { PROJECT_STORAGE_KEY } from "../projects/projectLibrary";
+type ScientificAppendTarget = {
+  project: Math3DProject; owner: string; workspace: string; inputToken: number; savedBytes: string;
+};
 type StudyLaunchResponse = Awaited<ReturnType<NonNullable<Window["quantumScenes"]>["consumeStudyLaunch"]>>;
 const ProjectThumbnail: React.FC<{ src: string | null; modules: string[] }> = ({ src, modules }) => {
   const [failed, setFailed] = useState(false);
@@ -480,6 +485,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [explorer, setExplorer] = useState<ReturnType<typeof buildProjectExplorer> | null>(null);
   const [inspectionOpen, setInspectionOpen] = useState(false), [inspectedId, setInspectedId] = useState<string | null>(null);
   const [incoming, setIncoming] = useState<ReturnType<typeof previewProjectImport> | null>(null);
+  const [incomingScientificTarget, setIncomingScientificTarget] = useState<ScientificAppendTarget | null>(null);
   const [incomingNarrative, setIncomingNarrative] = useState<ReturnType<typeof createPortableResearchNarrative> | null>(null);
   const [incomingHostLimit, setIncomingHostLimit] = useState<string | null>(null);
   const [galleryAssetBytes, setGalleryAssetBytes] = useState<Record<string, number>>({});
@@ -637,7 +643,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     if (!keepManagement) { setThumbnail(null); setReplaceThumbnail(false); setThumbnailMessage(""); } setExplorer(tree); setPreview(savedPreview);
     if (!keepManagement) { setManaged(null); setManagedBytes(undefined); }
     if (!keepManagement) { setInspectionOpen(false); setInspectedId(null); }
-    if (!keepManagement) { setIncoming(null); setIncomingHostLimit(null); importSequence.current++; }
+    if (!keepManagement) { setIncoming(null); setIncomingScientificTarget(null); setIncomingHostLimit(null); importSequence.current++; }
     if (!savedPreview) { loadedProject.current = next; onCurrentProjectChange?.(next, resourceSession.current ?? undefined); }
   };
   const refreshLibrary = () => {
@@ -652,7 +658,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       const raw = localStorage.getItem(PROJECT_STORAGE_KEY);
       if (raw) base = parseMath3DProject(raw);
     }
-    const workspace = capturedWorkspace ?? capture();
+    const sourceWorkspace = capturedWorkspace ?? capture();
+    const workspace = isGeometryMeshProject(base) ? geometryMeshProjectWorkspace(sourceWorkspace) : sourceWorkspace;
     verifyMixedWorkspaceReplay(workspace);
     const next = base ? replaceMath3DProjectWorkspace(base, mergeProjectLiveWorkspace(base.workspace, workspace)) :
       createMath3DProject(workspace, { stableKey: crypto.randomUUID(), title: title.trim() || "Untitled project" });
@@ -944,7 +951,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const save = async () => {
     if (busy) return; setBusy(true);
     try {
-      const capturedWorkspace = managed ? undefined : capture();
+      const capturedWorkspace = managed ? undefined : isGeometryMeshProject(project) ?
+        geometryMeshProjectWorkspace(capture()) : capture();
       let next = updateMath3DProjectMetadata(managed?.project() ?? liveProject(capturedWorkspace), { ...(managed?.project() ?? project)?.metadata,
         title: title.trim(), description, tags: [...new Set(tags.split(",").map((tag) => tag.trim()).filter(Boolean))] });
       next = migrateProjectScientificSelections(next, verifyMixedWorkspaceReplay(next.workspace));
@@ -963,9 +971,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       if (!managed && !image && automaticThumbnail && (replaceThumbnail || !existing || !readProjectThumbnail(localStorage, existing) || isAutomaticProjectThumbnail(localStorage, existing))) {
         try {
           if (!captureProjectThumbnail) throw new Error("Automatic previews are available in the desktop app.");
-          if (canonicalJsonStringify(capture()) !== canonicalJsonStringify(capturedWorkspace!)) throw new Error("The view changed during saving; save again to update its preview.");
+          const currentCapture = () => isGeometryMeshProject(project) ? geometryMeshProjectWorkspace(capture()) : capture();
+          if (canonicalJsonStringify(currentCapture()) !== canonicalJsonStringify(capturedWorkspace!)) throw new Error("The view changed during saving; save again to update its preview.");
           const captured = await captureProjectThumbnail();
-          if (canonicalJsonStringify(capture()) !== canonicalJsonStringify(capturedWorkspace!)) throw new Error("The view changed during capture; the previous preview was kept.");
+          if (canonicalJsonStringify(currentCapture()) !== canonicalJsonStringify(capturedWorkspace!)) throw new Error("The view changed during capture; the previous preview was kept.");
           image = captured; imageMode = "automatic";
         } catch (error) { imageMessage = `Preview kept: ${(error as Error).message}`; }
       }
@@ -1345,6 +1354,15 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     try { display(createMath3DProject(capture(), { stableKey: crypto.randomUUID() }), false); setMessage("New project from the current workspace. Save to add it to the library."); }
     catch (error) { setMessage(`Project unavailable: ${(error as Error).message}`); }
   };
+  const newGeometryMeshProject = () => {
+    try {
+      const focused = geometryMeshProjectWorkspace(capture());
+      const draft = createMath3DProject(focused, { stableKey: crypto.randomUUID(), title: "Geometry and Mesh" });
+      display(updateMath3DProjectMetadata(draft, { ...draft.metadata,
+        tags: [...new Set([...(draft.metadata.tags ?? []), GEOMETRY_MESH_PROJECT_TAG])] }), false);
+      setMessage("Focused Geometry–Mesh Project. Save to add it to the library.");
+    } catch (error) { setMessage(`Focused Project unavailable: ${(error as Error).message}`); }
+  };
   const chooseThumbnail = async (file: File | undefined) => {
     if (!file || !project) return;
     const id = project.identity.id;
@@ -1363,10 +1381,19 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     catch (error) { setLibraryMessage(`Favorite unavailable: ${(error as Error).message}`); }
   };
   const transferOptions = (resources = resourceSession.current) => ({ artifactAvailable, resources, tableAvailable: (reference: Parameters<typeof pointTableStore.resolve>[0]) => pointTableStore.resolve(reference) !== null });
-  const importProjectBytes = async (read: () => Promise<Uint8Array>) => {
+  const assertScientificAppendCurrent = (target: ScientificAppendTarget) => {
+    const owner = projectStateRef.current;
+    if (preview || managed || !owner || serializeMath3DProject(owner) !== target.owner ||
+        workspaceInputSequence.current !== target.inputToken ||
+        canonicalJsonStringify(currentCapture.current()) !== target.workspace ||
+        localStorage.getItem(projectPayloadKey(target.project.identity.id)) !== target.savedBytes)
+      throw new Error("The current Project changed while preparing scientific data. Existing work was kept; choose the bundle again.");
+  };
+  const importProjectBytes = async (read: () => Promise<Uint8Array>, appendTarget?: ScientificAppendTarget) => {
     const sequence = ++importSequence.current;
     setIncoming(null);
     setIncomingNarrative(null);
+    setIncomingScientificTarget(null);
     setIncomingHostLimit(null);
     try {
       const bytes = await read();
@@ -1385,14 +1412,44 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           resources: inspected.resources, inputKind: "Independent legacy Project copy", migration: inspected.migration };
       }
       if (sequence !== importSequence.current) return;
+      if (appendTarget) {
+        assertScientificAppendCurrent(appendTarget);
+        if (!inspected.resources) throw new Error("Verified scientific source bytes are unavailable.");
+        const combined = appendScientificBundleProject(appendTarget.project,
+          { project: inspected.project, resources: inspected.resources }, resourceBytes());
+        prepared = { ...inspectProjectCompatibility(combined.project, transferOptions(combined.resources)),
+          resources: combined.resources, inputKind: "Scientific data for current Project" };
+      }
       if (research) {
         assertIndependentNarrativeImport(prepared.project,
           parseProjectLibrary(localStorage.getItem(PROJECT_LIBRARY_KEY)).entries.map(entry => entry.id),
           localStorage.getItem(projectPayloadKey(prepared.project.identity.id)) !== null ? prepared.project.identity.id : project?.identity.id);
         setIncomingNarrative(research.narrative);
       }
+      setIncomingScientificTarget(appendTarget ?? null);
       setIncoming(prepared); setMessage("Project validated. Review compatibility before importing or opening.");
     } catch (error) { if (sequence === importSequence.current) setMessage(`Project import rejected: ${(error as Error).message}`); }
+  };
+  const importScientificBundle = async (files: File[], kind: ScientificUploadKind,
+    destination: ScientificImportDestination) => {
+    importSequence.current++; setIncoming(null); setIncomingScientificTarget(null);
+    setIncomingNarrative(null); setIncomingHostLimit(null);
+    try {
+      let target: ScientificAppendTarget | undefined;
+      if (destination === "current") {
+        if (!project || !hasOpenProject || preview || managed)
+          throw new Error("Open or save a Project before adding scientific data.");
+        const savedBytes = localStorage.getItem(projectPayloadKey(project.identity.id));
+        if (savedBytes === null) throw new Error("Save the current Project before adding scientific data.");
+        const workspace = currentCapture.current();
+        let current = updateMath3DProjectMetadata(liveProject(workspace), { ...project.metadata,
+          title: title.trim(), description, tags: [...new Set(tags.split(",").map(tag => tag.trim()).filter(Boolean))] });
+        if (noteDrafts.length) current = bindProjectNoteDrafts(current, noteDrafts);
+        target = { project: current, owner: serializeMath3DProject(projectStateRef.current!),
+          workspace: canonicalJsonStringify(workspace), inputToken: workspaceInputSequence.current, savedBytes };
+      }
+      await importProjectBytes(() => readBrowserScientificProjectPackage(files, kind), target);
+    } catch (error) { setMessage(`Project import rejected: ${(error as Error).message}`); }
   };
   const importFile = async (file: File | undefined) => {
     if (!file) return;
@@ -1476,9 +1533,14 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     setBusy(true);
     const activationToken = ++importSequence.current;
     const inputToken = workspaceInputSequence.current;
+    const appendTarget = candidate === incoming ? incomingScientificTarget : null;
     const previousResources = resourceSession.current, previousOwner = loadedProject.current;
     let previous: MixedWorkspaceDocument | null = null, rollbackTables: (() => void) | undefined, hostRestored = false;
     try {
+      if (appendTarget) {
+        if (!openWorkspace) throw new Error("Adding scientific data requires opening the combined current Project.");
+        assertScientificAppendCurrent(appendTarget);
+      }
       let phaseStart = performance.now();
       const measurePhase = (name: string) => {
         performance.clearMeasures(`project-open:${name}`);
@@ -1531,7 +1593,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       const commitStart = performance.now();
       setLibrary(await commitProjectResources(prepared.project, resources, () => {
         const writeStart = performance.now();
-        const saved = importLibraryProject(localStorage, prepared.project, Date.now(), { activate: openWorkspace, backup,
+        const saveOptions = { activate: openWorkspace, backup,
         ...(openWorkspace && previous && onRestoreWorkspace ? { afterWrite: () => {
           const restoreStart = performance.now();
           if (activationToken !== importSequence.current || inputToken !== workspaceInputSequence.current || canonicalJsonStringify(currentCapture.current()) !== canonicalJsonStringify(previous)) throw new Error("Project opening was superseded or the workspace changed. Retry opening the Project.");
@@ -1545,7 +1607,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           measurePart("host-restore", hostStart);
           hostRestored = true;
           if (choice) onNavigateDocument?.(choice.selected.expected.id, choice.selected.module);
-        } } : {}) });
+        } } : {}) };
+        const saved = appendTarget ? saveLibraryProject(localStorage, prepared.project, Date.now(), undefined,
+          { ...saveOptions, expectedBytes: appendTarget.savedBytes }) :
+          importLibraryProject(localStorage, prepared.project, Date.now(), saveOptions);
         measurePart("library-write", writeStart);
         return saved;
       }, rollback, backupProject && backupResources ? { project: backupProject, resources: backupResources } : undefined,
@@ -1568,7 +1633,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         placeProject("left");
         onOpenChange(true);
       }
-      setMessage(openWorkspace ? "Opened supported project workspace. Previous workspace saved locally; historical analysis and external refs are retained." : "Imported into the library as a verified saved preview. The current workspace is unchanged.");
+      if (appendTarget) { setNoteDrafts([]); setNotesProject(prepared.project); }
+      setMessage(appendTarget ? "Added verified scientific datasets to the current Project. Existing sources and work retained." : openWorkspace ? "Opened supported project workspace. Previous workspace saved locally; historical analysis and external refs are retained." : "Imported into the library as a verified saved preview. The current workspace is unchanged.");
       return true;
     } catch (error) { setMessage(`Project import failed: ${(error as Error).message}`); return false; }
     finally { setBusy(false); }
@@ -1599,6 +1665,12 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     setStudyFocus(previous => ({ id: study.id, token: (previous?.token ?? 0) + 1 }));
     setQuick(false); setViewerCompanion(false); setDetailView(true); setDetailPage("overview");
     onOpenChange(true);
+    // Opening a guided copy replaces its card. Move focus into the new Project
+    // context instead of leaving keyboard users on the document body.
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+      const heading = document.querySelector<HTMLElement>('#project-explorer-panel h2');
+      if (heading) { heading.tabIndex = -1; heading.focus({ preventScroll: true }); }
+    }));
   };
   useEffect(() => {
     if (hasOpenProject && project && !preview && !managed && activeProjectDocumentId)
@@ -1739,6 +1811,15 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     setDetailView(true);
     setViewerCompanion(true);
     setQuick(true);
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+      const selectors = module === "vector3d" ? ['[data-testid="scientific-field-explorer"] h3'] :
+        module === "graph2d" ? ['[data-testid="graphs-workspace"]'] :
+        ['[data-testid="project-source-view"]', '[data-testid="module-workspace"]'];
+      selectors.push('#project-explorer-panel h2');
+      const target = selectors.map(selector => document.querySelector<HTMLElement>(selector))
+        .find(element => element && element.getClientRects().length);
+      if (target) { target.tabIndex = -1; target.focus({ preventScroll: true }); }
+    }));
   };
   const meshGeometryAvailability = (id: string) => {
     const entry = project?.workspace.entries.find(item => item.expected.id === id);
@@ -2463,6 +2544,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       {thumbnailMessage && <p role="status" data-testid="project-thumbnail-message">{thumbnailMessage}</p>}
           <div className="project-workspace-actions">
             <button type="button" data-testid="project-new" disabled={busy} onClick={newProject}>New from current workspace</button>
+            <button type="button" data-testid="project-new-geometry-mesh" disabled={busy} onClick={newGeometryMeshProject}>New Geometry–Mesh Project</button>
             <button type="button" data-testid="project-view-saved" disabled={busy} onClick={viewSaved}>Preview saved version</button>
             <button type="button" data-testid="project-manage" disabled={busy || !project || !!managed || !library.entries.some((entry) => entry.id === project.identity.id)} onClick={manageSaved}>Edit saved copy</button>
             {managed && <><button type="button" data-testid="project-undo" disabled={!managed.history().undoDepth} onClick={() => history("undo")}>Undo</button>
@@ -2834,8 +2916,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
             <input type="file" data-testid="project-import-file" disabled={busy} accept="application/json,.json" onChange={(event) => { void importFile(event.target.files?.[0]); event.target.value = ""; }} />
           </label>
           <small>Choose a JSON file, then review its sources, citations and omissions before importing or opening it.</small>
-          <ScientificBundleImport disabled={busy} onImport={(files, kind) =>
-            importProjectBytes(() => readBrowserScientificProjectPackage(files, kind))} />
+          <ScientificBundleImport disabled={busy} canAdd={hasOpenProject && !preview && !managed && !!project}
+            onImport={importScientificBundle} />
           <div className="project-workspace-transfer-options">
             {project?.workspace.entries.some(entry => entry.checkpoint.format === "math3d.vector-field3d-document" &&
               entry.checkpoint.source.field.kind === "scientific-bundle") && <p>Download with resources includes the scientific field data needed to reopen small vector fields in a browser. Opening verifies the packaged data again.</p>}
@@ -2868,11 +2950,11 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           {!incomingNarrative.evidence.omissions.length && <p>No evidence omitted.</p>}
         </section>}
         {incoming.project.metadata.tags?.includes("curated-study-v1") && <CuratedStudyResearchPreview project={incoming.project} resources={incoming.resources} />}
-        <ProjectCompatibilityPanel busy={busy} preview={incoming} canOpen={!!onRestoreWorkspace && !incomingHostLimit} openLimit={incomingHostLimit} onDownloadOriginal={() => {
+        <ProjectCompatibilityPanel busy={busy} appendScientific={!!incomingScientificTarget} preview={incoming} canOpen={!!onRestoreWorkspace && !incomingHostLimit} openLimit={incomingHostLimit} onDownloadOriginal={() => {
           if ("migration" in incoming && incoming.migration)
             downloadStudyBlob(new Blob([new Uint8Array(incoming.migration.originalBytes)], { type: "application/octet-stream" }),
               `math3d-original-${incoming.migration.source.sha256.slice(7, 19)}.json`);
-        }} onCancel={() => { importSequence.current++; setIncoming(null); setIncomingNarrative(null); setIncomingHostLimit(null); setMessage("Import cancelled. Current workspace and library unchanged."); }} onImport={() => { void importPreview(false); }} onOpen={() => { void importPreview(true); }} /></div></div>}
+        }} onCancel={() => { importSequence.current++; setIncoming(null); setIncomingScientificTarget(null); setIncomingNarrative(null); setIncomingHostLimit(null); setMessage("Import cancelled. Current workspace and library unchanged."); }} onImport={() => { void importPreview(false); }} onOpen={() => { void importPreview(true); }} /></div></div>}
       {quantumOverlay && project && <React.Suspense fallback={<p role="status">Opening quantum overlay…</p>}>
         <QuantumNativeOverlayView project={project} reference={quantumOverlay} readResource={comparisonResource}
           onClose={() => setQuantumOverlay(null)} onOpenQuantum={() => { setQuantumOverlay(null); void openLinkedQuantumScene(quantumOverlay); }}

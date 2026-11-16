@@ -86,9 +86,14 @@ else:
     elif operation == "sage.symbolic.factor": value = value.factor()
     elif operation == "sage.symbolic.expand": value = value.expand()
     elif operation in ("sage.symbolic.gradient", "sage.symbolic.hessian", "sage.symbolic.singularities"):
-        if len(variables) != 3 or set(variables) != {"x", "y", "z"}:
-            raise ValueError("Surface calculus requires x, y, z as the three variables.")
-        axes = [symbols[name] for name in ("x", "y", "z")]
+        if operation == "sage.symbolic.singularities":
+            if variables not in (["x", "y"], ["x", "y", "z"]):
+                raise ValueError("Locus singularities require x, y or x, y, z variables.")
+            axes = [symbols[name] for name in variables]
+        else:
+            if len(variables) != 3 or set(variables) != {"x", "y", "z"}:
+                raise ValueError("Surface calculus requires x, y, z as the three variables.")
+            axes = [symbols[name] for name in ("x", "y", "z")]
         gradient = [value.diff(axis).simplify_full() for axis in axes]
         if operation == "sage.symbolic.gradient":
             result = {"components": [str(item) for item in gradient], "text": str(gradient)}

@@ -1,4 +1,4 @@
-name: Windows Installer Smoke
+name: Windows Source Smoke
 
 on:
   pull_request:
@@ -14,23 +14,18 @@ on:
   schedule:
     - cron: "0 4 * * 1"
   workflow_dispatch:
-    inputs:
-      skip_launch_check:
-        description: Skip installed app launch persistence check
-        required: false
-        default: true
-        type: boolean
   repository_dispatch:
     types:
       - run-installer-smoke
+      - run-source-smoke
 
 concurrency:
-  group: windows-installer-smoke-${{ github.ref }}
+  group: windows-source-smoke-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  release-smoke:
-    if: ${{ github.event_name != 'pull_request' || github.event.label.name == 'ci:installer-smoke' }}
+  source-smoke:
+    if: ${{ github.event_name != 'pull_request' || github.event.label.name == 'ci:source-smoke' || github.event.label.name == 'ci:installer-smoke' }}
     runs-on: windows-latest
     timeout-minutes: 120
     env:
@@ -142,35 +137,5 @@ jobs:
       - name: Run geometry functional smoke
         run: npm run test:app:geometry:smoke
 
-      - name: Build installer, install, and run smoke tests
-        shell: pwsh
-        run: |
-          $skipLaunchCheck = "${{ github.event.inputs.skip_launch_check }}"
-          if ([string]::IsNullOrWhiteSpace($skipLaunchCheck)) {
-            $skipLaunchCheck = "true"
-          }
-
-          if ($skipLaunchCheck -eq "true") {
-            npm run test:release:smoke
-          } else {
-            powershell -ExecutionPolicy Bypass -File scripts/release-smoke.ps1 -StrictLaunchCheck
-          }
-
-      - name: Run packaged Playwright e2e tests
-        shell: pwsh
-        run: |
-          $env:MATH3D_RUN_PACKAGED_E2E = "1"
-          npm run test:app:e2e:packaged
-
-      - name: Upload release artifacts
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: windows-installer-smoke-artifacts
-          if-no-files-found: warn
-          path: |
-            release/*.exe
-            release/builder-debug.yml
-            release/latest.yml
-            playwright-report/**
-            test-results/**
+      - name: Freeze and smoke the source worker
+        run: npm run test:worker:smoke

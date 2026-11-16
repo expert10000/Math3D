@@ -1,0 +1,30 @@
+{
+  "schema": "math3d/release20-unsigned-dev-upgrade-rehearsal/v1",
+  "status": "passed",
+  "sourceCommit": "00af8a8f99474e6632c681b3da44dd4d5832c75f",
+  "checkedAtUtc": "2026-11-14T23:56:48.3616710Z",
+  "installMode": "same-directory-dev-overlay",
+  "stableIdentityUpgrade": false,
+  "oldVersion": "1.7.0",
+  "devVersion": "2.0.0",
+  "oldInstallerSha256": "eacffc903e988a15636f556b36d12621b9918f4cec69e5c8b19e7daa512222db",
+  "devInstallerSha256": "459bf0b13a9000f7b03df4a5fb9f6a9b3eaa2dd2135604e00ef8bfee85aad3ce",
+  "oldInstalledExecutableSha256": "ff9ec3b9ea65f2d97ab79aeb8a8e52d4ed78d73319d4b69690a6f6c5c144afea",
+  "devInstalledExecutableSha256": "8e7f0cc86bd8baf08104309dca4ac16e04d16ea2249ecbd8f22dde5a922a703c",
+  "checkpointSha256": "bc75156e05d6adc680ad3b01fd26f74d7780976a17fc3b143339f3997ead3207",
+  "profileInventorySha256": "a4e6458bc196f04d555673bbf50b9670059e87fe2c3d1dd270ba69cd04dff213",
+  "profileFileCount": 43,
+  "checks": {
+    "publishedBytes": "passed",
+    "unsignedDevBytes": "passed",
+    "oldInstall": "passed",
+    "seed": "passed",
+    "profileBackup": "passed",
+    "sameDirectoryDevInstall": "passed",
+    "retainedProjectAndSetting": "passed",
+    "rollbackProfile": "passed",
+    "rollbackOpen": "passed"
+  },
+  "failure": null,
+  "devSignatureStatus": "NotSigned"
+}

@@ -260,7 +260,7 @@ type Props = {
   onImportPersonalProject?: (preview: Graph2DPersonalPresetPreview) => void;
   savedVectorField3D?: VectorField3DDocument | null;
   openVectorField3DRequest?: { document: VectorField3DDocument; token: number } | null;
-  onSaveVectorField3D?: (document: VectorField3DDocument) => void;
+  onSaveVectorField3D?: (document: VectorField3DDocument, activate?: boolean) => void;
   onPinVectorField3DBaseline?: (document: VectorField3DDocument) => VectorField3DDocument;
   savedVectorField3DPointResults?: readonly import("@math3d/core").AnalysisResultEnvelope[];
   onSaveVectorField3DPointResult?: (document: VectorField3DDocument,
@@ -4645,6 +4645,12 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
             const next = onPinVectorField3DBaseline(field); setVectorField3DDocument(next); return next;
           } : undefined}
           onSaveDocument={field => { setVectorField3DDocument(field); onSaveVectorField3D?.(field); }}
+          onSelectComparisonSource={onSaveVectorField3D ? (next, current) => {
+            onSaveVectorField3D(current);
+            onSaveVectorField3D(next, true);
+            setLinkedExplorerProbe(next.workspace?.linkedProbe ?? null);
+            setVectorField3DDocument(next);
+          } : undefined}
           onClose={() => { window.sessionStorage.removeItem(fieldExplorerSessionKey);
             setVectorField3DOpen(false); setLinkedRegionFocus(null);
             requestAnimationFrame(() => viewerRef.current?.querySelector<HTMLElement>(".graph2d-toolbar-menu > summary")?.focus()); }} />}

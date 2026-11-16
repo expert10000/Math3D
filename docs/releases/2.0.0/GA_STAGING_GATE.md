@@ -1,6 +1,6 @@
 # M3D20-18c — immutable GA asset staging
 
-No GA staging has passed in the current 1.7 checkout. After the reviewed `v2.0.0` tag points to the exact signed-off commit, run from that clean checkout:
+No GA staging has passed for the current 2.0 source tree. After the reviewed `v2.0.0` tag points to the exact signed-off commit, run from that clean checkout:
 
 ```text
 node scripts/stage-release20-ga.mjs <signoff> <candidate> <rc2-report> <final-release-notes> <empty-output-dir>

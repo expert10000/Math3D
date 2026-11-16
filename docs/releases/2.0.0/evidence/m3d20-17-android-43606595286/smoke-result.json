@@ -1,0 +1,16 @@
+{
+  "ok": true,
+  "sourceCommit": "02c42bb3776dd6143f403ad9780ec11eff4e599c",
+  "build": 150008,
+  "apkSha256": "9ec3512224155d51d2fc4b4de130f44c2bd726d43e0a0317b6d2d2be7b019aba",
+  "serial": "emulator-5554",
+  "checks": [
+    "clean install",
+    "Workspace opens or restores the bundled offline Catenoid",
+    "inspector swipe and opacity",
+    "five destination navigation and Explore sections",
+    "Explore example survives process restart without saving to Projects",
+    "Surface example remains current after leaving a saved Graph and restarting",
+    "app remains alive with no fatal JS or Android errors"
+  ]
+}
