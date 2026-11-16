@@ -104,3 +104,7 @@ Read DRAFT_STATE first. Claim one task with owner/branch/base SHA, exact owned f
 ## Implementation update — 2026-11-15
 
 GR-01 is covered by SHARED-01: the Graphs footer preserves the Graph scene label and current document revision while excluding unrelated retained mesh facts. Production fix merged through PR70. Exact-head Windows scoped regression passed at `fa27817fb69c38dc0b6dae8bc2ec108cab03b13a`, [run43710641247](https://github.com/expert10000/Math3D/actions/runs/43710641247). GR-02…05 remain proposed. This does not qualify full Graph scientific-transfer or persistence acceptance.
+
+## GR-05 source-built qualification — 2026-11-16
+
+[GR05_ACCEPTANCE.md](GR05_ACCEPTANCE.md) records five passing Windows native journeys and 17 focused unit cases against PR92 preview source `836bdb52b5253cf8a683d3d02a8b218fa539ed1d`, with exact commands and limits. Cartesian, polar, parametric and data authoring, probes, polar grid, Workbook/Notes IDs, verified scientific imports, frame checks and portable Project return have scoped passes. A changed scientific bundle blocks Project cold reopen before its saved cross-grid Graph profile can be inspected in withheld state. GR-05 remains open; no shared Project or Graph production code was changed in this evidence slice.

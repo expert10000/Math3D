@@ -78,12 +78,25 @@ test("GF-34 compares different verified grids and guards the Graph profile", asy
       domain: [[-4, 4], [-4, 4], [-3, 3]] });
     expect(result.provenance.source.documentId).toBe(first.identity.id);
     expect(result.provenance.operation.parameters.secondSource.documentId).toBe(second.identity.id);
+    const graphEntry = saved.workspace.entries.find((entry: { module: string;
+      checkpoint: { source?: { objects?: { comparisonProfileOrigin?: unknown }[] } } }) =>
+      entry.module === "graph2d" && entry.checkpoint.source?.objects?.some(object =>
+        !!object.comparisonProfileOrigin));
+    expect(graphEntry).toBeTruthy();
     const bytes = Buffer.from(await readFile(join(coarsePath, "east.f64")));
     bytes.writeDoubleLE(bytes.readDoubleLE(0) + .1, 0);
     await writeFile(join(coarsePath, "east.f64"), bytes);
     await page.reload();
     await openLastSavedProject(page);
-    await page.getByTestId("workspace-nav-graphs").click();
+    await expect(page.getByTestId("project-explorer-panel").getByTestId("project-message"))
+      .toContainText("Opened supported project");
+    await page.getByTestId(`project-open-${graphEntry.expected.id}`).click();
+    await expect(page.getByTestId("app-shell"))
+      .toHaveAttribute("data-project-document-id", graphEntry.expected.id);
+    await expect(page.getByLabel("Graph functions", { exact: true }))
+      .toContainText("Field difference profile");
+    await page.getByLabel("Graph functions", { exact: true })
+      .getByRole("button", { name: "Select Field difference profile" }).click();
     const reopenedExplorer = page.getByRole("region", { name: "Scientific Field Explorer" });
     if (await reopenedExplorer.isVisible())
       await reopenedExplorer.getByRole("button", { name: "Back to Graphs" }).click();
