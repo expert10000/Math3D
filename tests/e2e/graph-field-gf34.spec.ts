@@ -101,6 +101,7 @@ test("GF-34 compares different verified grids and guards the Graph profile", asy
     await expect(graphProvenance).toContainText("saved rows SHA256");
     await expect(graphProvenance).toContainText("values withheld");
     await expect(savedPreview.getByTestId(`project-open-${graphEntry.expected.id}`)).toBeDisabled();
+    await savedPreview.getByRole("button", { name: "View current project" }).click();
     await expect(savedPreview.getByTestId(`project-result-freshness-${result.resultId}`))
       .toHaveText("Source unverified");
     await expect(page.getByTestId("app-shell"))
