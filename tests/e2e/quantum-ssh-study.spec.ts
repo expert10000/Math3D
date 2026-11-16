@@ -80,8 +80,10 @@ test("SSH pair saves as a source-linked Project Study, reopens, and refuses a ch
     await viewer.getByTestId("ssh-save-project-study").click();
     const projects = page.getByTestId("project-explorer-panel");
     await expect(projects.getByTestId("project-ssh-study-request")).toBeVisible();
+    await expect(projects.getByTestId("project-ssh-study-request")).toBeInViewport();
     await projects.getByTestId("project-open-ssh-study-new").click();
     await expect(projects.getByTestId("project-quantum-scene-message")).toContainText("Both exact SSH views staged", { timeout: 60_000 });
+    await expect(projects.getByTestId("project-study-view")).toContainText("SSH chain and bands");
     await projects.getByTestId("project-save").click();
     await expect(projects.getByTestId("project-message")).toContainText("Saved", { timeout: 60_000 });
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));

@@ -1523,6 +1523,11 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       display(next, false);
       setStudyLaunch(null);
       setSshStudyRequest(null);
+      if (handoff.model === "ssh") {
+        const study = next.workspace.studies?.find(item => item.title === handoff.title);
+        setQuick(false); setViewerCompanion(false); setDetailView(true); setDetailPage("overview");
+        if (study) setStudyFocus(previous => ({ id: study.id, token: (previous?.token ?? 0) + 1 }));
+      }
       setQuantumSceneMessage(`Both exact ${handoff.model === "qwz" ? "QWZ" : handoff.model === "ssh" ? "SSH" : "Hofstadter"} views staged in ${next.metadata.title}. Save Project to retain them.`);
     } catch (error) { setQuantumSceneMessage(`Study attachment refused: ${String((error as Error).message)}`); }
     finally { setBusy(false); }
@@ -2199,6 +2204,15 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           <button type="button" aria-label="Close project explorer" title="Close Project panel" onClick={closeExplorer}>{(viewerCompanion && quick) || fullDetails ? "×" : "Close"}</button></div></div>
         <div className="project-gallery-statusline"><p data-testid="project-view-mode" role="status">{managed ? "Managing saved project" : preview ? "Saved project preview" : "Current workspace"}{!fullDetails && ` · ${project?.metadata.title ?? "Untitled project"}`}{project && library.entries.some((entry) => entry.id === project.identity.id) && <strong className="project-gallery-saved-badge">Saved in Your saved projects</strong>}</p>
           {!fullDetails && <button type="button" data-testid="project-restore-saved" disabled={busy || !!managed || !project || !library.entries.some((entry) => entry.id === project.identity.id)} onClick={previewSavedOpen}>{preview ? "Open saved project" : "Review saved version"}</button>}</div>
+      {sshStudyRequest && <div data-testid="project-ssh-study-request" role="region" aria-label="Create SSH Project Study"
+        style={{ marginTop: 12, padding: 12, border: "2px solid #4f9e8e", borderRadius: 10, background: "#eaf8f3", color: "#153d35" }}>
+        <strong>Create SSH chain and bands Study</strong>
+        <p style={{ margin: "6px 0" }}>Choose a Project target for run <code>{sshStudyRequest.runId}</code>. Both sources will be checked again before staging. Then save the Project.</p>
+        <button type="button" data-testid="project-open-ssh-study-new" disabled={busy}
+          onClick={() => void stageVerifiedStudy("new", sshStudyRequest)}>Create in new Project</button>{" "}
+        <button type="button" data-testid="project-attach-ssh-study-current" disabled={busy || !project || preview || !!managed}
+          onClick={() => void stageVerifiedStudy("attach", sshStudyRequest)}>Attach to current Project</button>
+      </div>}
       {hasOpenProject && !quick && <nav className="project-research-navigation" aria-label="Research navigation" data-testid="project-research-navigation">
         {(["gallery", "studies", "results", "workbooks", "notes"] as const).map(section =>
           <button key={section} type="button" data-testid={`project-research-nav-${section}`}
@@ -2585,14 +2599,6 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                 <button type="button" data-testid="project-open-study-new" disabled={busy} onClick={() => void stageVerifiedStudy("new")}>Open in new Project</button>{" "}
                 <button type="button" data-testid="project-attach-study-current" disabled={busy || !project || preview || !!managed} onClick={() => void stageVerifiedStudy("attach")}>Attach to current Project</button>{" "}
                 <small>Lab requested {studyLaunch.mode === "new" ? "a new Project" : "the current Project"}; choose the intended target here.</small>
-              </div>}
-              {sshStudyRequest && <div data-testid="project-ssh-study-request" className="project-workspace-workbook">
-                <strong>SSH chain and bands Study</strong>
-                <p>Run <code>{sshStudyRequest.runId}</code>. Math3D will recheck both scene bundles and the exact result hash before creating the saved Study.</p>
-                <button type="button" data-testid="project-open-ssh-study-new" disabled={busy}
-                  onClick={() => void stageVerifiedStudy("new", sshStudyRequest)}>Create in new Project</button>{" "}
-                <button type="button" data-testid="project-attach-ssh-study-current" disabled={busy || !project || preview || !!managed}
-                  onClick={() => void stageVerifiedStudy("attach", sshStudyRequest)}>Attach to current Project</button>
               </div>}
               {project?.workspace.quantumStudies?.map(study => <article key={study.id} data-testid="project-quantum-study" className="project-workspace-workbook">
                 <strong>{study.title}</strong><small> · {study.layout} · linked selection: {study.link.selection}</small>
