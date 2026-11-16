@@ -124,7 +124,7 @@ import { createProjectNoteSelectionAnchor, projectNoteSourceResolver, type NoteS
 import { createProjectStudySelectionNoteAnchor, pinProjectStudyScientificSelection } from "../projects/projectStudyNoteAnchor";
 import { resolveProjectNoteValues } from "../projects/projectNoteValues";
 import { projectAnalysisAvailability, type ProjectAnalysisRoute } from "../projects/projectAnalysisAvailability";
-import { verifyProjectVectorFieldSources } from "../projects/scientificFieldAdmission";
+import { ProjectScientificFieldUnavailableError, verifyProjectVectorFieldSources } from "../projects/scientificFieldAdmission";
 import { capturePortableProjectResources } from "../projects/scientificProjectPackage";
 import { readBrowserScientificProjectPackage, type ScientificUploadKind } from "../projects/scientificBundleImport";
 import { appendScientificBundleProject } from "../projects/appendScientificBundleProject";
@@ -373,6 +373,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [exampleMessage, setExampleMessage] = useState("");
   const [query, setQuery] = useState("");
   const [preview, setPreview] = useState(false);
+  const [unverifiedPreviewReason, setUnverifiedPreviewReason] = useState<string | null>(null);
   const [managed, setManaged] = useState<ProjectCommandAdapter | null>(null);
   const [managedBytes, setManagedBytes] = useState<string | undefined>();
   const openLinkedQuantumScene = async (item: ProjectQuantumSceneReference) => {
@@ -641,6 +642,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     const tree = buildProjectExplorer(next, resolved ?? verifyMixedWorkspaceReplay(next.workspace));
     setProject(next); setTitle(next.metadata.title); setDescription(next.metadata.description ?? ""); setTags((next.metadata.tags ?? []).join(", "));
     if (!keepManagement) { setThumbnail(null); setReplaceThumbnail(false); setThumbnailMessage(""); } setExplorer(tree); setPreview(savedPreview);
+    setUnverifiedPreviewReason(null);
     if (!keepManagement) { setManaged(null); setManagedBytes(undefined); }
     if (!keepManagement) { setInspectionOpen(false); setInspectedId(null); }
     if (!keepManagement) { setIncoming(null); setIncomingScientificTarget(null); setIncomingHostLimit(null); importSequence.current++; }
@@ -1579,7 +1581,19 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       // Preview-only JSON may deliberately lack resources. Preserve that explicit state.
       const resources = candidate.resources ?? await loadProjectResources(prepared.project);
       if (openWorkspace) await verifyProjectQuantumSceneDocuments(prepared.project, onVerifyQuantumSceneDocument);
-      if (openWorkspace) await verifyProjectVectorFieldSources(prepared.project, undefined, item => resources.bytes(item));
+      if (openWorkspace) {
+        try { await verifyProjectVectorFieldSources(prepared.project, undefined, item => resources.bytes(item)); }
+        catch (error) {
+          if (!(error instanceof ProjectScientificFieldUnavailableError)) throw error;
+          // Keep the active workspace untouched. Saved metadata is still inspectable,
+          // while source-linked values and document actions remain unavailable.
+          display(prepared.project, true, false, prepared.resolved);
+          setUnverifiedPreviewReason(error.message);
+          setDetailView(true);
+          setMessage(`${error.message} Saved metadata preview opened; no scientific values were activated. Repair or relink the source before opening this Project.`);
+          return false;
+        }
+      }
       if (activationToken !== importSequence.current || inputToken !== workspaceInputSequence.current ||
         previous && canonicalJsonStringify(currentCapture.current()) !== canonicalJsonStringify(previous))
         throw new Error("The workspace changed during source verification. Retry opening the Project.");
@@ -2201,7 +2215,22 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         {activeEvidence?.source.documentId === viewingDocumentId && activeEvidence.operation && <><span aria-hidden="true">›</span><span title={`Evidence ${activeEvidence.status}`}>{activeEvidence.operation} · {activeEvidence.status}</span></>}
         {activeEvidence?.source.documentId === viewingDocumentId && !!activeEvidence.selectedEntityIds.length && <><span aria-hidden="true">›</span><span>{activeEvidence.selectedEntityIds[0]}{activeEvidence.selectedEntityIds.length > 1 ? ` +${activeEvidence.selectedEntityIds.length - 1}` : ""}</span></>}
       </nav>}
-      {preview && !managed && <p data-testid="project-open-guidance" style={{ marginBottom: 0 }}>Open saved project, then choose Open project in the compatibility preview to enable document buttons.</p>}
+      {preview && unverifiedPreviewReason && <p role="alert" data-testid="project-source-verification-warning">
+        Saved metadata only. Scientific source bytes failed verification; values and document actions remain unavailable. {unverifiedPreviewReason}
+      </p>}
+      {preview && unverifiedPreviewReason && project && <section aria-label="Saved Graph profile provenance"
+        data-testid="project-unverified-graph-profiles">
+        <h3>Saved Graph profiles · values withheld</h3>
+        <ul>{project.workspace.entries.flatMap(entry => entry.checkpoint.format === "math3d.graph2d-document"
+          ? entry.checkpoint.source.objects.flatMap(object => object.kind === "point-series" && object.comparisonProfileOrigin
+            ? [{ label: object.label, origin: object.comparisonProfileOrigin }] : []) : []).map(({ label, origin }) =>
+          <li key={`${origin.resultId}:${label}`}>{label} · result {origin.resultId} · axis {origin.axis.name} ({origin.axis.unit})
+            · value unit {origin.unit} · saved rows SHA256 {origin.rowsSha256} · values withheld</li>)}</ul>
+      </section>}
+      {preview && !managed && <p data-testid="project-open-guidance" style={{ marginBottom: 0 }}>
+        {unverifiedPreviewReason ? "Repair or relink the scientific source before opening this Project." :
+          "Open saved project, then choose Open project in the compatibility preview to enable document buttons."}
+      </p>}
       {hasOpenProject && projectNavigation && !fullDetails && <div className="project-history-controls" aria-label="Project navigation"><button data-testid="project-navigation-back" aria-label="Back" title="Back" disabled={!projectNavigation.canBack} onClick={projectNavigation.back}>{viewerCompanion && quick ? "‹" : "Back"}</button><button data-testid="project-navigation-forward" aria-label="Forward" title="Forward" disabled={!projectNavigation.canForward} onClick={projectNavigation.forward}>{viewerCompanion && quick ? "›" : "Forward"}</button></div>}
       {hasOpenProject && !preview && !managed && detailView && !fullDetails && <div className="project-placement-controls" role="group" aria-label="Project placement">
         {viewerCompanion && quick && <span className="project-placement-label">Layout</span>}
@@ -2369,7 +2398,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               {savedProjectEntry && <p>Saved {new Date(savedProjectEntry.savedAt).toLocaleString()}</p>}
               {dashboardDependencies && (dashboardDependencies.results.length > 0 || dashboardDependencies.artifacts.length > 0) && <div className="project-dashboard-outputs" aria-label="Saved output freshness">
                 <h5>Saved outputs</h5>
-                {dashboardDependencies.results.map(result => { const status = result.operation === VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE ?
+                {dashboardDependencies.results.map(result => { const status = unverifiedPreviewReason ?
+                  { tone: "unavailable", label: "Source unverified", detail: "Saved metadata only; scientific bytes failed verification." } :
+                  result.operation === VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE ?
                   typeof regionResultStatuses[result.id] === "object" ?
                     { tone: (["vector", "scalar", "complex"] as const).every(key =>
                         (regionResultStatuses[result.id] as CombinedRegionSourceStatus)[key] ===
@@ -2384,8 +2415,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                   <span>{result.operation}</span><span className="project-freshness-badge" data-tone={status.tone} data-testid={`project-result-freshness-${result.id}`} title={status.detail}>{status.label}</span>
                 </div>; })}
                 {dashboardDependencies.artifacts.map(artifact => <div key={artifact.id}>
-                  <span>{artifact.role} · {artifact.kind}</span><span className="project-freshness-badge" data-tone={artifact.available ? "current" : "unavailable"}
-                    data-testid={`project-artifact-freshness-${artifact.id}`}>{artifact.available ? "Available" : "Unavailable"}</span>
+                  <span>{artifact.role} · {artifact.kind}</span><span className="project-freshness-badge" data-tone={unverifiedPreviewReason ? "unavailable" : artifact.available ? "current" : "unavailable"}
+                    data-testid={`project-artifact-freshness-${artifact.id}`}>{unverifiedPreviewReason ? "Source unverified" : artifact.available ? "Available" : "Unavailable"}</span>
                 </div>)}
               </div>}
             </aside>

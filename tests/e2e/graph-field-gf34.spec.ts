@@ -88,23 +88,23 @@ test("GF-34 compares different verified grids and guards the Graph profile", asy
     await writeFile(join(coarsePath, "east.f64"), bytes);
     await page.reload();
     await openLastSavedProject(page);
-    await expect(page.getByTestId("project-explorer-panel").getByTestId("project-message"))
-      .toContainText("Opened supported project");
-    await page.getByTestId(`project-open-${graphEntry.expected.id}`).click();
+    const savedPreview = page.getByTestId("project-explorer-panel");
+    await expect(savedPreview.getByTestId("project-message"))
+      .toContainText("Project scientific field unavailable");
+    await expect(savedPreview.getByTestId("project-view-mode"))
+      .toContainText("Saved project preview");
+    await expect(savedPreview.getByTestId("project-source-verification-warning"))
+      .toContainText("Saved metadata only");
+    const graphProvenance = savedPreview.getByTestId("project-unverified-graph-profiles");
+    await expect(graphProvenance).toContainText("Field difference profile");
+    await expect(graphProvenance).toContainText(result.resultId);
+    await expect(graphProvenance).toContainText("saved rows SHA256");
+    await expect(graphProvenance).toContainText("values withheld");
+    await expect(savedPreview.getByTestId(`project-open-${graphEntry.expected.id}`)).toBeDisabled();
+    await expect(savedPreview.getByTestId(`project-result-freshness-${result.resultId}`))
+      .toHaveText("Source unverified");
     await expect(page.getByTestId("app-shell"))
-      .toHaveAttribute("data-project-document-id", graphEntry.expected.id);
-    await expect(page.getByLabel("Graph functions", { exact: true }))
-      .toContainText("Field difference profile");
-    await page.getByLabel("Graph functions", { exact: true })
-      .getByRole("button", { name: "Select Field difference profile" }).click();
-    const reopenedExplorer = page.getByRole("region", { name: "Scientific Field Explorer" });
-    if (await reopenedExplorer.isVisible())
-      await reopenedExplorer.getByRole("button", { name: "Back to Graphs" }).click();
-    const reopened = page.locator(
-      ".graph2d-compact-panels > details:has(> summary:text-is('Inspector'))");
-    if (await reopened.isVisible()) await reopened.locator(":scope > summary").click();
-    await expect(reopened.getByTestId("gf24-graph-profile-status"))
-      .toContainText("values withheld", { timeout: 30_000 });
+      .not.toHaveAttribute("data-project-document-id", graphEntry.expected.id);
   } finally {
     await closeSurfaceApp(app);
     if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-gf34-cross-grid-"))
