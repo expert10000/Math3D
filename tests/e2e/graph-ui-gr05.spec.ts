@@ -63,21 +63,9 @@ test("GR-05 authored Graph types, probes and Project pins survive cold reopen an
       .toEqual(initial.notes.map((note: { identity: { id: string } }) => note.identity.id));
     expect(saved.workspace.entries.some((entry: { module: string }) => entry.module === "graph2d")).toBe(true);
 
-    const profile = app.profileDir;
-    await app.app.close();
-    app = await launchSurfaceApp({}, profile);
-    page = app.page;
-    await openLastSavedProject(page);
-    await page.getByTestId("workspace-nav-graphs").click();
-    for (const name of ["GR05 Cartesian", "GR05 parametric", "GR05 polar", "GR05 samples"])
-      await expect(page.getByLabel("Graph functions", { exact: true }).getByRole("button", { name: `Select ${name}` })).toBeVisible();
-    projects = page.getByTestId("project-explorer-panel");
     if (!await projects.getByTestId("project-export-resources").isVisible()) {
-      await projects.getByTestId("project-gallery-layout-toggle").click();
-      if (!await projects.getByTestId("project-export-resources").isVisible()) {
-        await projects.locator("details.project-header-more summary").click();
-        await projects.locator("details.project-header-more button").filter({ hasText: "Import / export" }).click();
-      }
+      await projects.getByTestId("project-explorer-header").getByText("More", { exact: true }).click();
+      await projects.getByTestId("project-explorer-header").getByRole("button", { name: "Import / export" }).click();
     }
     const exportedPath = test.info().outputPath("gr05-portable-project.json");
     await app.app.evaluate(({ session }, target) => session.defaultSession.once("will-download",
@@ -90,6 +78,15 @@ test("GR-05 authored Graph types, probes and Project pins survive cold reopen an
     expect(portable.project.workbooks[0].id).toBe(workbookId);
     expect(portable.project.notes.map((note: { identity: { id: string } }) => note.identity.id))
       .toEqual(saved.notes.map((note: { identity: { id: string } }) => note.identity.id));
+
+    const profile = app.profileDir;
+    await app.app.close();
+    app = await launchSurfaceApp({}, profile);
+    page = app.page;
+    await openLastSavedProject(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    for (const name of ["GR05 Cartesian", "GR05 parametric", "GR05 polar", "GR05 samples"])
+      await expect(page.getByLabel("Graph functions", { exact: true }).getByRole("button", { name: `Select ${name}` })).toBeVisible();
 
     await closeSurfaceApp(app);
     app = await launchSurfaceApp();
