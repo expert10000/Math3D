@@ -6,6 +6,10 @@ on:
       - tests/e2e/surf05-recipes.spec.ts
       - tests/e2e/saved-surface-workflow.spec.ts
       - tests/e2e/surface-functional.spec.ts
+      - tests/e2e/project-catenoid-waist-failure.spec.ts
+      - tests/e2e/project-surface-ridge-publication.spec.ts
+      - tests/e2e/project-composition.spec.ts
+      - renderer/src/surfaceAnalysis/scheduler.test.ts
       - .github/workflows/surf05-source-acceptance.yml
   workflow_dispatch:
 permissions:
@@ -13,7 +17,7 @@ permissions:
 jobs:
   surf05-source:
     runs-on: windows-2022
-    timeout-minutes: 40
+    timeout-minutes: 45
     env:
       NODE_OPTIONS: --max-old-space-size=8192
       electron_config_cache: '${{ github.workspace }}\.cache\electron'
@@ -42,6 +46,22 @@ jobs:
           git rev-parse HEAD > surf05-evidence/source.txt
           npx playwright test tests/e2e/surf05-recipes.spec.ts tests/e2e/saved-surface-workflow.spec.ts tests/e2e/surface-functional.spec.ts --grep 'SURF-05|PRJ31–33|Test (3|7|8|11)' --workers=1 --retries=0 --reporter=list,json
           node -e 'const s=require("./surf05-evidence/native.json").stats; if (s.expected!==11 || s.skipped || s.unexpected || s.flaky) { console.error(s); process.exit(1); }'
+      - name: Reject stale and missing resources in native Project journeys
+        shell: bash
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: surf05-evidence/project-negatives.json
+        run: |
+          npx playwright test tests/e2e/project-catenoid-waist-failure.spec.ts tests/e2e/project-surface-ridge-publication.spec.ts --workers=1 --retries=0 --reporter=list,json
+          node -e 'const s=require("./surf05-evidence/project-negatives.json").stats; if (s.expected!==3 || s.skipped || s.unexpected || s.flaky) { console.error(s); process.exit(1); }'
+      - name: Reject contradictory Surface frame mapping
+        shell: bash
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: surf05-evidence/frame-negative.json
+        run: |
+          npx playwright test tests/e2e/project-composition.spec.ts --grep 'PC05 refuses camera sync across contradictory declared Surface frames' --workers=1 --retries=0 --reporter=list,json
+          node -e 'const s=require("./surf05-evidence/frame-negative.json").stats; if (s.expected!==1 || s.skipped || s.unexpected || s.flaky) { console.error(s); process.exit(1); }'
+      - name: Check late jobs, backend readiness and Project freshness
+        run: npm --prefix renderer test -- src/surfaceAnalysis/scheduler.test.ts src/surfaceAnalysis/derivedMeshBackendBridge.test.ts src/projects/projectNativeCursor.test.ts src/projects/appendScientificBundleProject.test.ts
       - uses: actions/upload-artifact@v7
         if: always()
         with:
