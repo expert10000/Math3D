@@ -519,6 +519,127 @@ test("a Mesh face region opens its source and result Geometry with a retained li
   }
 });
 
+test("Geometry–Mesh flagship Project keeps measurements, edit lineage and representations after restart", async () => {
+  test.setTimeout(180_000);
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-geometry-mesh-project-"));
+  let app: ElectronApplication | null = null;
+  try {
+    let launched = await launchApp(profileDir);
+    app = launched.app;
+    let page = launched.page;
+    await resetStorage(page);
+    await openProceduralGeometry(page, "box");
+    await page.getByTestId("geometry-professional-panel-object").click();
+    for (const [key, value] of [["width", "2"], ["height", "3"], ["depth", "4"]] as const)
+      await page.getByTestId(`geometry-object-param-${key}`).fill(value);
+    await expect(page.getByTestId("geometry-object-measurement-method")).toContainText("Box definition");
+    await expect(page.getByTestId("geometry-object-space-diagonal")).toContainText(/5\.385/);
+    await expect(page.getByTestId("geometry-object-volume")).toContainText("24.0 scene-unit³");
+    await expect(page.getByTestId("geometry-object-surface-area")).toContainText("52.0 scene-unit²");
+    await commitDeterministicGeometryPick(page, "object");
+    await clickFirstVisibleButton(page, "Mesh");
+    await clickFirstVisibleButton(page, "Geometry");
+    await page.getByTestId("scene-representations").getByLabel(/Editable Mesh/).check();
+    await page.getByTestId("scene-representations").getByRole("button", { name: "Edit Mesh", exact: true }).click();
+    const browser = page.getByTestId("mesh-component-browser");
+    await browser.getByRole("button", { name: "Show component selection list" }).click();
+    await browser.getByRole("button", { name: "face 0", exact: true }).click();
+    await page.getByRole("button", { name: "Subdivide Face", exact: true }).first().click();
+    await clickFirstVisibleButton(page, "Geometry");
+    const history = page.getByTestId("scene-history").first();
+    await expect(history.getByTestId("scene-history-operation").first()).toContainText("Mesh");
+    await history.getByRole("button", { name: "Undo", exact: true }).click();
+    await history.getByRole("button", { name: "Redo", exact: true }).click();
+    await expect(history.getByTestId("scene-history-operation").first()).toContainText("Mesh");
+    await expect(history.getByTestId("scene-history-operation").first()).toContainText("Box / Mesh Snapshot");
+    await page.getByTestId("projects-toggle").click();
+    const panel = page.getByTestId("project-explorer-panel");
+    await panel.getByTestId("project-new-geometry-mesh").click();
+    await panel.getByTestId("project-title").fill("Geometry Mesh flagship");
+    await panel.getByTestId("project-save").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Saved");
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    expect(saved.workspace.entries.map((entry: { module: string }) => entry.module).sort()).toEqual(["geometry", "mesh"]);
+    await app.close();
+    launched = await launchApp(profileDir);
+    app = launched.app; page = launched.page;
+    await page.getByTestId("projects-toggle").click();
+    const restoredPanel = page.getByTestId("project-explorer-panel");
+    await restoredPanel.getByTestId("project-view-saved").click();
+    await restoredPanel.getByTestId("project-restore-saved").click();
+    await restoredPanel.getByTestId("project-import-open").click();
+    await expect(page.getByTestId("project-geometry-editor")).toBeVisible();
+    await expect(page.getByTestId("project-geometry-param-width")).toHaveValue("2");
+    await expect(page.getByTestId("project-geometry-param-height")).toHaveValue("3");
+    await expect(page.getByTestId("project-geometry-param-depth")).toHaveValue("4");
+  } finally {
+    if (app) await app.close().catch(() => undefined);
+    await removeProfileDir(profileDir);
+  }
+});
+
+test("dense Mesh selection pages remain keyboard operable in a low-height layout", async () => {
+  test.setTimeout(120_000);
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-mesh-dense-selection-"));
+  let app: ElectronApplication | null = null;
+  try {
+    const launched = await launchApp(profileDir);
+    app = launched.app;
+    const page = launched.page;
+    await resetStorage(page);
+    await openProceduralGeometry(page, "box");
+    await page.getByTestId("geometry-professional-panel-object").click();
+    await page.getByTestId("geometry-object-param-widthSegments").fill("20");
+    await commitDeterministicGeometryPick(page, "object");
+    await clickFirstVisibleButton(page, "Mesh");
+    await clickFirstVisibleButton(page, "Geometry");
+    await page.getByTestId("scene-representations").getByLabel(/Editable Mesh/).check();
+    await page.getByTestId("scene-representations").getByRole("button", { name: "Edit Mesh", exact: true }).click();
+    const browser = page.getByTestId("mesh-component-browser");
+    await browser.getByRole("button", { name: "Show component selection list" }).click();
+    await page.setViewportSize({ width: 1600, height: 600 });
+    const pageControls = browser.getByTestId("mesh-component-browser-page");
+    await expect(pageControls).toContainText(/1–100 of \d{3,}/);
+    const next = pageControls.getByRole("button", { name: "Next component page" });
+    await next.click();
+    await expect(browser.getByRole("button", { name: "face 100", exact: true })).toBeVisible();
+    await browser.getByRole("textbox", { name: "Component ID filter" }).fill("157");
+    const face = browser.getByRole("button", { name: "face 157", exact: true });
+    await face.click();
+    await expect(page.getByTestId("mesh-context-selection-label")).toContainText(/face 157/i);
+    const history = page.getByTestId("scene-history").first();
+    const before = await history.getByTestId("scene-history-operation").count();
+    await page.getByTestId("mesh-context-toolbar").getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(history.getByTestId("scene-history-operation")).toHaveCount(before);
+    await face.click();
+    const subdivide = page.getByRole("button", { name: "Subdivide Face", exact: true }).first();
+    await subdivide.focus(); await page.keyboard.press("Enter");
+    await expect(history.getByTestId("scene-history-operation").first()).toContainText(/subdivide/i);
+  } finally {
+    if (app) await app.close().catch(() => undefined);
+    await removeProfileDir(profileDir);
+  }
+});
+
+test("Geometry withholds solid volume for an unqualified non-Box display mesh", async () => {
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-geometry-volume-claim-"));
+  let app: ElectronApplication | null = null;
+  try {
+    const launched = await launchApp(profileDir);
+    app = launched.app;
+    const page = launched.page;
+    await resetStorage(page);
+    await openProceduralGeometry(page, "torus");
+    await page.getByTestId("geometry-professional-panel-object").click();
+    await expect(page.getByTestId("geometry-object-measurement-method")).toContainText("solid volume unqualified");
+    await expect(page.getByTestId("geometry-object-volume")).toContainText("n/a · requires qualified closed solid");
+    await expect(page.getByTestId("geometry-object-surface-area")).toContainText("mesh estimate");
+  } finally {
+    if (app) await app.close().catch(() => undefined);
+    await removeProfileDir(profileDir);
+  }
+});
+
 test("Geometry analysis shortcuts focus their controls and Pick modes stay in sync", async () => {
   const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-geometry-controls-"));
   let app: ElectronApplication | null = null;

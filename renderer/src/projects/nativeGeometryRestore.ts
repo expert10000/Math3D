@@ -1,10 +1,15 @@
 import { canonicalJsonStringify, geometryDocumentToSceneDocument, SAGE_LOCUS_GEOMETRY_EXTENSION, type CanonicalJsonValue, type GeometryDocument, type MixedWorkspaceDocument } from "@math3d/core";
+import { normalizeMeshFaceRegionLink } from "../mesh/meshDerivedGeometry";
 
 export const LIVE_GEOMETRY_CONSTRUCTIONS = "math3d.geometry.live-derived.v1";
+export const GEOMETRY_DATASET_MESH_OBJECTS = "math3d.geometry.datasetMeshObjects.v1";
 const supportedConstructions = new Set([
   "vertex-point-marker", "vertex-coordinate-label", "vertex-normal-endpoint", "vertex-translated-copy-point", "edge-midpoint", "edge-line-through-two-vertices", "edge-line-through-midpoint-and-vertex", "edge-direction-vector", "edge-perpendicular-bisector-line", "edge-aligned-axis", "edge-parallel-line-through-vertex", "edge-equal-length-copied-segment", "plane-normal-line-through-vertex", "face-centroid", "face-normal-line", "face-line-perpendicular-to-plane", "face-tangent-plane-preview", "face-plane-through-centroid", "face-plane-normal-to-selected-edge", "face-offset-plane", "face-parallel-face-plane", "face-plane-through-three-vertices", "line-pair-intersection-point", "line-pair-common-perpendicular", "line-pair-plane-through-lines", "line-pair-mid-plane", "line-pair-angle-marker", "object-centroid", "object-bounding-box", "object-principal-axes-preview", "object-principal-plane", "object-best-fit-plane", "object-symmetry-plane-preview", "object-circumscribed-sphere-preview", "object-inscribed-reference-sphere",
 ]);
 const record = (value: unknown): value is Record<string, any> => !!value && typeof value === "object" && !Array.isArray(value);
+const finiteTransform = (value: unknown): boolean => value === undefined || record(value) &&
+  ["position", "rotation", "scale"].every((field) => record(value[field]) &&
+    ["x", "y", "z"].every((axis) => typeof value[field][axis] === "number" && Number.isFinite(value[field][axis])));
 export const geometryEditorSeed = (document: GeometryDocument) => {
   // Procedural objects and their live-derived constructions have a native adapter.
   // Point/scene primitives and separate canonical construction graphs use another UI.
@@ -13,8 +18,27 @@ export const geometryEditorSeed = (document: GeometryDocument) => {
   const raw = document.source.extensions[LIVE_GEOMETRY_CONSTRUCTIONS] ?? [];
   if (!Array.isArray(raw) || raw.length > 80 || raw.some((entry) => !record(entry) || typeof entry.id !== "string" || !supportedConstructions.has(entry.type) || !["vertex", "edge", "face", "object"].includes(entry.sourceKind) || typeof entry.sourceObjectId !== "string" || typeof entry.dependent !== "boolean"))
     throw new TypeError("Unsupported Geometry construction state.");
+  const datasetMeshObjects = document.source.extensions[GEOMETRY_DATASET_MESH_OBJECTS] ?? [];
+  if (!Array.isArray(datasetMeshObjects) || datasetMeshObjects.length > 128 || datasetMeshObjects.some((entry) =>
+    !record(entry) || typeof entry.id !== "string" || !record(entry.mesh) ||
+    !finiteTransform(entry.transform) ||
+    entry.sourceRevision !== undefined && (!Number.isSafeInteger(entry.sourceRevision) || entry.sourceRevision < 0) ||
+    entry.derivedRegion != null && !normalizeMeshFaceRegionLink(entry.derivedRegion) ||
+    !Array.isArray(entry.mesh.positions) || !Array.isArray(entry.mesh.indices) ||
+    entry.mesh.positions.length % 3 !== 0 || entry.mesh.indices.length % 3 !== 0 ||
+    entry.mesh.positions.some((value: unknown) => typeof value !== "number" || !Number.isFinite(value)) ||
+    entry.mesh.indices.some((value: unknown) => !Number.isSafeInteger(value) || Number(value) < 0 || Number(value) >= entry.mesh.positions.length / 3)))
+    throw new TypeError("Unsupported Geometry mesh representation state.");
+  const datasetRevisions: Record<string, number> = {};
+  for (const entry of datasetMeshObjects) {
+    if (entry.sourceRevision !== undefined) { datasetRevisions[entry.id] = entry.sourceRevision; continue; }
+    const linked = datasetMeshObjects.map((item) => normalizeMeshFaceRegionLink(item.derivedRegion))
+      .filter((link) => link?.sourceObjectId === entry.id);
+    const generations = [...new Set(linked.map((link) => link!.sourceRevision))];
+    datasetRevisions[entry.id] = generations.length === 1 ? generations[0]! : 0;
+  }
   const scene = geometryDocumentToSceneDocument(document);
-  return { objects: scene.objects ?? [], constructions: raw.map((entry) => ({ ...(entry as Record<string, any>), id: String((entry as Record<string, any>).id), ...document.display.constructions[(entry as Record<string, any>).id], createdAt: document.metadata.constructionCreatedAt[(entry as Record<string, any>).id] ?? document.display.constructions[(entry as Record<string, any>).id]?.createdAt ?? 0 })) };
+  return { objects: scene.objects ?? [], datasetMeshObjects, datasetRevisions, constructions: raw.map((entry) => ({ ...(entry as Record<string, any>), id: String((entry as Record<string, any>).id), ...document.display.constructions[(entry as Record<string, any>).id], createdAt: document.metadata.constructionCreatedAt[(entry as Record<string, any>).id] ?? document.display.constructions[(entry as Record<string, any>).id]?.createdAt ?? 0 })) };
 };
 export const geometryDocumentEditable = (document: GeometryDocument) => { try { geometryEditorSeed(document); return true; } catch { return false; } };
 /** Copy editable native fields while preserving every other mathematical/display input. */
@@ -34,6 +58,27 @@ export const geometrySourceFromEditor = (saved: GeometryDocument, live: Geometry
   }) : raw;
   const extensions = { ...saved.source.extensions };
   if (Object.prototype.hasOwnProperty.call(extensions, LIVE_GEOMETRY_CONSTRUCTIONS) || Array.isArray(current) && current.length) extensions[LIVE_GEOMETRY_CONSTRUCTIONS] = current;
+  const comparableMeshObjects = (value: unknown) => Array.isArray(value) ? value.map((item) => {
+    if (!record(item)) return item;
+    const { sourceRevision: _revision, ...copy } = item;
+    for (const key of ["promotion", "restoredGeometryPreset", "sourceSelectionOverlay", "derivedRegion"])
+      if (copy[key] == null) delete copy[key];
+    if (record(copy.material)) {
+      copy.material = { ...copy.material };
+      if (copy.material.roughness === 0.3) delete copy.material.roughness;
+      if (copy.material.metalness === 0.1) delete copy.material.metalness;
+    }
+    return copy;
+  }) : value;
+  if (Object.prototype.hasOwnProperty.call(extensions, GEOMETRY_DATASET_MESH_OBJECTS) ||
+      Object.prototype.hasOwnProperty.call(live.source.extensions, GEOMETRY_DATASET_MESH_OBJECTS)) {
+    const savedMeshes = saved.source.extensions[GEOMETRY_DATASET_MESH_OBJECTS];
+    const liveMeshes = live.source.extensions[GEOMETRY_DATASET_MESH_OBJECTS] ?? [];
+    extensions[GEOMETRY_DATASET_MESH_OBJECTS] = savedMeshes !== undefined &&
+      canonicalJsonStringify(comparableMeshObjects(savedMeshes) as CanonicalJsonValue) ===
+        canonicalJsonStringify(comparableMeshObjects(liveMeshes) as CanonicalJsonValue)
+      ? savedMeshes : liveMeshes;
+  }
   return { ...saved.source, objects: live.source.objects, extensions };
 };
 export const geometryDisplayFromEditor = (saved: GeometryDocument, live: GeometryDocument) => ({ ...saved.display, objects: live.display.objects, constructions: live.display.constructions });

@@ -41,6 +41,7 @@ import { projectAlgebraLocusCurveSourceStatus, resolveProjectAlgebraLocusCurveSo
   resolveProjectAlgebraLocusCurveAlgebraReturn } from "@math3d/core";
 import { createSavedSurfaceMesh } from "../projects/savedSurfaceMesh";
 import { MeshDocumentAdapter } from "../mesh/meshDocumentAdapter";
+import { GEOMETRY_MESH_PROJECT_TAG, geometryMeshProjectWorkspace, isGeometryMeshProject } from "../projects/projectGeometryMeshScope";
 import { prepareSurfaceRidgeWorkbook, recordSurfaceRidgeComparison,
   SURFACE_RIDGE_COMPARISON_OPERATION } from "../projects/surfaceRidgePublication";
 import { inspectProjectDependencies } from "../projects/projectDependencies";
@@ -657,7 +658,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       const raw = localStorage.getItem(PROJECT_STORAGE_KEY);
       if (raw) base = parseMath3DProject(raw);
     }
-    const workspace = capturedWorkspace ?? capture();
+    const sourceWorkspace = capturedWorkspace ?? capture();
+    const workspace = isGeometryMeshProject(base) ? geometryMeshProjectWorkspace(sourceWorkspace) : sourceWorkspace;
     verifyMixedWorkspaceReplay(workspace);
     const next = base ? replaceMath3DProjectWorkspace(base, mergeProjectLiveWorkspace(base.workspace, workspace)) :
       createMath3DProject(workspace, { stableKey: crypto.randomUUID(), title: title.trim() || "Untitled project" });
@@ -949,7 +951,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const save = async () => {
     if (busy) return; setBusy(true);
     try {
-      const capturedWorkspace = managed ? undefined : capture();
+      const capturedWorkspace = managed ? undefined : isGeometryMeshProject(project) ?
+        geometryMeshProjectWorkspace(capture()) : capture();
       let next = updateMath3DProjectMetadata(managed?.project() ?? liveProject(capturedWorkspace), { ...(managed?.project() ?? project)?.metadata,
         title: title.trim(), description, tags: [...new Set(tags.split(",").map((tag) => tag.trim()).filter(Boolean))] });
       next = migrateProjectScientificSelections(next, verifyMixedWorkspaceReplay(next.workspace));
@@ -968,9 +971,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       if (!managed && !image && automaticThumbnail && (replaceThumbnail || !existing || !readProjectThumbnail(localStorage, existing) || isAutomaticProjectThumbnail(localStorage, existing))) {
         try {
           if (!captureProjectThumbnail) throw new Error("Automatic previews are available in the desktop app.");
-          if (canonicalJsonStringify(capture()) !== canonicalJsonStringify(capturedWorkspace!)) throw new Error("The view changed during saving; save again to update its preview.");
+          const currentCapture = () => isGeometryMeshProject(project) ? geometryMeshProjectWorkspace(capture()) : capture();
+          if (canonicalJsonStringify(currentCapture()) !== canonicalJsonStringify(capturedWorkspace!)) throw new Error("The view changed during saving; save again to update its preview.");
           const captured = await captureProjectThumbnail();
-          if (canonicalJsonStringify(capture()) !== canonicalJsonStringify(capturedWorkspace!)) throw new Error("The view changed during capture; the previous preview was kept.");
+          if (canonicalJsonStringify(currentCapture()) !== canonicalJsonStringify(capturedWorkspace!)) throw new Error("The view changed during capture; the previous preview was kept.");
           image = captured; imageMode = "automatic";
         } catch (error) { imageMessage = `Preview kept: ${(error as Error).message}`; }
       }
@@ -1349,6 +1353,15 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const newProject = () => {
     try { display(createMath3DProject(capture(), { stableKey: crypto.randomUUID() }), false); setMessage("New project from the current workspace. Save to add it to the library."); }
     catch (error) { setMessage(`Project unavailable: ${(error as Error).message}`); }
+  };
+  const newGeometryMeshProject = () => {
+    try {
+      const focused = geometryMeshProjectWorkspace(capture());
+      const draft = createMath3DProject(focused, { stableKey: crypto.randomUUID(), title: "Geometry and Mesh" });
+      display(updateMath3DProjectMetadata(draft, { ...draft.metadata,
+        tags: [...new Set([...(draft.metadata.tags ?? []), GEOMETRY_MESH_PROJECT_TAG])] }), false);
+      setMessage("Focused Geometry–Mesh Project. Save to add it to the library.");
+    } catch (error) { setMessage(`Focused Project unavailable: ${(error as Error).message}`); }
   };
   const chooseThumbnail = async (file: File | undefined) => {
     if (!file || !project) return;
@@ -2531,6 +2544,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       {thumbnailMessage && <p role="status" data-testid="project-thumbnail-message">{thumbnailMessage}</p>}
           <div className="project-workspace-actions">
             <button type="button" data-testid="project-new" disabled={busy} onClick={newProject}>New from current workspace</button>
+            <button type="button" data-testid="project-new-geometry-mesh" disabled={busy} onClick={newGeometryMeshProject}>New Geometry–Mesh Project</button>
             <button type="button" data-testid="project-view-saved" disabled={busy} onClick={viewSaved}>Preview saved version</button>
             <button type="button" data-testid="project-manage" disabled={busy || !project || !!managed || !library.entries.some((entry) => entry.id === project.identity.id)} onClick={manageSaved}>Edit saved copy</button>
             {managed && <><button type="button" data-testid="project-undo" disabled={!managed.history().undoDepth} onClick={() => history("undo")}>Undo</button>
