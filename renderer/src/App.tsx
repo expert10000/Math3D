@@ -1,3 +1,4 @@
+import "./math/complexExplorerLayout.css";
 import { checkpointProjectFieldExplorerDocument, pinProjectFieldExplorerBaseline } from "@math3d/core";
 import { rememberProjectDocument } from "./projects/projectResume";
 import { measureBooleanResult, type BooleanResultEvidence } from './services/booleanResultEvidence';
@@ -112042,7 +112043,7 @@ case "mobius":
                   )}
                 </>
                 ) : (
-                  <div style={{ display: "grid", gap: 10, minHeight: 0 }}>
+                  <div className="complex-explorer-layout" data-testid="complex-explorer-layout" style={{ display: "grid", gap: 10, minHeight: 0 }}>
                     <div style={{ ...cardStyle, marginTop: 2, display: "grid", gap: 8 }}>
                       <div style={{ fontWeight: 800 }}>{otherComplexLabHeader}</div>
                       <div style={{ fontSize: 12, opacity: 0.8 }}>
@@ -112105,27 +112106,28 @@ case "mobius":
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 11 }}>
                         <span>Layout:</span>
-                        <button type="button" onClick={() => setOtherComplexLayoutMode("two_pane")} style={pill(otherComplexLayoutMode === "two_pane")}>
+                        <button type="button" aria-pressed={otherComplexLayoutMode === "two_pane"} onClick={() => setOtherComplexLayoutMode("two_pane")} style={pill(otherComplexLayoutMode === "two_pane")}>
                           2-pane
                         </button>
-                        <button type="button" onClick={() => setOtherComplexLayoutMode("three_pane")} style={pill(otherComplexLayoutMode === "three_pane")}>
+                        <button type="button" aria-pressed={otherComplexLayoutMode === "three_pane"} onClick={() => setOtherComplexLayoutMode("three_pane")} style={pill(otherComplexLayoutMode === "three_pane")}>
                           3-pane
                         </button>
-                        <button type="button" onClick={() => setOtherComplexLayoutMode("focus")} style={pill(otherComplexLayoutMode === "focus")}>
+                        <button type="button" aria-pressed={otherComplexLayoutMode === "focus"} onClick={() => setOtherComplexLayoutMode("focus")} style={pill(otherComplexLayoutMode === "focus")}>
                           Focus Z
                         </button>
                       </div>
                     </div>
                     <div
+                      className="complex-explorer-workspace"
+                      data-testid="complex-explorer-workspace"
                       style={{
                         display: "grid",
-                        gridTemplateColumns: "minmax(0, 1fr) minmax(280px, 360px)",
                         gap: 12,
                         alignItems: "start",
                         minHeight: 0,
                       }}
                       >
-                      <div style={{ display: "grid", gap: 12, minWidth: 0 }}>
+                      <div className="complex-explorer-plots" data-testid="complex-explorer-plots" style={{ display: "grid", gap: 12, minWidth: 0 }}>
                         {!otherComplexShowZPanel && (
                           <div style={{ display: "none" }}>
                             <PlanePlot
@@ -112154,6 +112156,7 @@ case "mobius":
                         )}
                         {otherComplexMainViewMode === "sphere" || (otherComplexLayoutMode === "three_pane" && (otherComplexMainViewMode === "path" || otherComplexMainViewMode === "residue")) ? (
                           <div
+                            className="complex-explorer-plane-grid"
                             style={{
                               display: "grid",
                               gridTemplateColumns: `repeat(${Math.max(
@@ -112244,6 +112247,7 @@ case "mobius":
                           </div>
                         ) : otherComplexMainViewMode === "plane" && otherComplexLayoutMode === "focus" ? (
                           <div
+                            className="complex-explorer-plane-grid"
                             style={{
                               display: "grid",
                               gridTemplateColumns:
@@ -112293,6 +112297,7 @@ case "mobius":
                           </div>
                         ) : (
                           <div
+                            className="complex-explorer-plane-grid"
                             style={{
                               display: "grid",
                               gridTemplateColumns:
@@ -112377,6 +112382,7 @@ case "mobius":
                           <div style={{ ...cardStyle, marginTop: 0, display: "grid", gap: 8 }}>
                             <div style={{ fontWeight: 700, fontSize: 12 }}>Synchronized value domains</div>
                             <div
+                              className="complex-explorer-plane-grid"
                               style={{
                                 display: "grid",
                                 gridTemplateColumns: "repeat(2, minmax(220px, 1fr))",
@@ -112414,7 +112420,7 @@ case "mobius":
                           </div>
                         )}
                       </div>
-                      <div style={{ ...cardStyle, display: "grid", gap: 8 }}>
+                      <div className="complex-explorer-inspector" data-testid="complex-explorer-inspector" style={{ ...cardStyle, display: "grid", gap: 8 }}>
                         <SharedInspectorShell
                           activeCategory={otherComplexInspectorCategory}
                           onCategoryChange={selectOtherComplexInspectorCategory}
