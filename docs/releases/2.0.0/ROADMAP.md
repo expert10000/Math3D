@@ -11,6 +11,8 @@
 
 **Active closure checklist:** [Ranked release closure TODO](RELEASE_CLOSURE_TODO.md). The [2.0 scope decision](RELEASE_SCOPE.md) adds a fourth bounded Field Explorer → Graph → Field journey to the three original roadmap flagships; Volume → Mesh remains a fifth candidate outside the current GA claim.
 
+**Geometry–Mesh source qualification (2026-11-16):** The connected Project import, export, clean-profile transfer, and cold-reopen test for separately indexed coincident open patches now passes. Its Mesh status retains two components and eight boundary edges and withholds solid volume; exact positions and indices survive the package transfer. The [Geometry–Mesh qualification record](../../geometry/2.0/TOPOLOGY_RECONCILIATION.md) tracks the remaining exact signed installed-candidate run. This focused source case does not add a fifth advertised GA journey.
+
 ---
 
 ## Delivery snapshot — 2026-11-16
