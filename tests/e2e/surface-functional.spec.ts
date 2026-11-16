@@ -131,6 +131,11 @@ test.describe("Surface functional flow", () => {
       await ctx.page.getByTestId("surface-computation-curvature-field").click();
       const compute = ctx.page.getByTestId("surface-curvature-compute-button");
       await expect(compute).toBeEnabled({ timeout: 10_000 });
+      const readiness = ctx.page.getByTestId("surface-compute-readiness");
+      await expect(readiness).toContainText("Domain:");
+      await expect(readiness).toContainText("sampling:");
+      await expect(readiness).toContainText("units:");
+      await expect(readiness).toContainText("Backend:");
       await compute.click();
       await expect(ctx.page.getByTestId("surface-curvature-execution-state")).toHaveText(/Execution: (ready|cached)/);
       await expect(ctx.page.getByTestId("surface-curvature-result")).toBeVisible();
@@ -331,6 +336,10 @@ test.describe("Surface functional flow", () => {
 
       await ctx.page.getByTestId("surface-derived-mesh-bake").click();
       await expect(ctx.page.getByTestId("surface-derived-mesh-provenance")).toContainText("frozen-snapshot");
+      const handoff = ctx.page.getByTestId("surface-derived-mesh-handoff-preview");
+      await expect(handoff).toContainText("Geometry bytes: available");
+      await expect(handoff).toContainText("separate editable Mesh snapshot");
+      await expect(handoff).toContainText(/Source: .* r\d+ → derived Mesh r\d+/);
       await ctx.page.getByTestId("surface-derived-mesh-open-analysis").click();
       await expect(sourceCard).toBeVisible();
       await expect(sourceCard).toContainText("frozen-snapshot");

@@ -79553,6 +79553,7 @@ case "mobius":
                   onRestoreMeshOperationHistoryEntry={restoreMeshOperationHistoryEntry}
                   onUndoLatestMeshOperation={undoLatestMeshOperation}
                   canUndoLatestMeshOperation={canUndoLatestMeshOperation}
+                  onCompareLatestMeshOperation={(entryId) => previewSurfaceMeshTopologyHistoryEntry(entryId, "after")}
                   onApplyMeshOperationPreset={handleApplyMeshOperationPreset}
                   onApplyMeshOperationSavedPreset={handleApplyGeometryOperationPreset}
                   onSaveMeshOperationPreset={handleSaveMeshOperationPreset}
@@ -80842,6 +80843,7 @@ case "mobius":
                       selected: activeSurfaceDerivedMeshRecord ? {
                         id: activeSurfaceDerivedMeshRecord.identity.meshId,
                         label: activeSurfaceDerivedMeshRecord.label,
+                        sourceLabel: activeSurfaceDerivedMeshRecord.identity.source.label,
                         state: activeSurfaceDerivedMeshRecord.identity.state,
                         sourceRevision: activeSurfaceDerivedMeshRecord.identity.source.surfaceRevision,
                         meshRevision: activeSurfaceDerivedMeshRecord.identity.meshRevision,
@@ -80855,6 +80857,7 @@ case "mobius":
                         boundaryEdgeCount: activeDerivedSurfaceMeshBackendSummary?.validation?.boundaryEdgeCount ?? null,
                         staleReason: activeSurfaceDerivedMeshRecord.identity.staleReason,
                         historyCount: activeSurfaceDerivedMeshRecord.history.length,
+                        geometryAvailable: surfaceDerivedMeshPayloadCacheRef.current.has(activeSurfaceDerivedMeshRecord.identity.meshId) && surfaceDerivedMeshGeometryCacheRef.current.has(activeSurfaceDerivedMeshRecord.identity.meshId),
                       } : null,
                       records: activeSourceDerivedMeshRecords.map((record) => ({ id: record.identity.meshId, label: record.label, state: record.identity.state })),
                       status: surfaceDerivedMeshStatus,
@@ -113051,6 +113054,14 @@ case "mobius":
                             </div>
                             <div style={{ padding: "7px 8px", border: "1px solid #fed7aa", borderRadius: 8, background: "#fff7ed", color: "#9a3412", fontSize: 11 }}>
                               Live values below are legacy numerical previews until published; they are not exact proof.
+                            </div>
+                            <div data-testid="complex-contour-preflight" role="group" aria-label="Contour analysis before execution" style={{ display: "grid", gap: 3, padding: "7px 8px", border: "1px solid #cbd5e1", borderRadius: 8, background: "#f8fafc", fontSize: 11 }}>
+                              <strong>Before analysis · {otherComplexPathMode}{otherComplexContourAnalysis.loopCount > 1 ? ` · ${otherComplexContourAnalysis.loopCount} loops` : ""}</strong>
+                              <div>Orientation: {otherComplexContourAnalysis.orientation ?? "undetermined"} · {otherComplexContourAnalysis.closed ? "closed contour" : "open contour"}</div>
+                              <div>Branch/cut policy: {otherComplexBranchCutLabel}{otherComplexContourAnalysis.branchCutCrossingWarning ? " · current path crosses cut" : ""}</div>
+                              <div>Numerical publication: centered finite differences + nested trapezoid quadrature · Math3D TypeScript numerical kernel.</div>
+                              <div>Exact analysis: reviewed symbolic profile + adaptive numerical contour · Math3D exact Complex kernel.</div>
+                              <div>Error estimate: calculated after execution for each contour method; neither estimate is an exact proof.</div>
                             </div>
                             <button type="button" onClick={publishOtherComplexNumericalResult} data-testid="publish-complex-numerical-result">
                               Publish numerical analysis

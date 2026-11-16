@@ -89,7 +89,7 @@ export function SurfaceAnalysisComputationPanel({
   onOpenConfiguration: () => void;
   derivedMesh: { available: boolean; label: string; vertexCount: number; faceCount: number };
   derivedMeshLifecycle?: {
-    selected: { id: string; label: string; state: string; sourceRevision: number; meshRevision: number; method: string; backend: string; backendVersion: string | null; variant: string; correspondence: string; mappedVertexCount: number; watertight: boolean | null; boundaryEdgeCount: number | null; staleReason?: string; historyCount: number } | null;
+    selected: { id: string; label: string; sourceLabel: string; state: string; sourceRevision: number; meshRevision: number; method: string; backend: string; backendVersion: string | null; variant: string; correspondence: string; mappedVertexCount: number; watertight: boolean | null; boundaryEdgeCount: number | null; staleReason?: string; historyCount: number; geometryAvailable: boolean } | null;
     records: ReadonlyArray<{ id: string; label: string; state: string }>;
     status: string;
     backendAvailability: "ready" | "checking" | "unavailable" | "browser-limited";
@@ -134,6 +134,20 @@ export function SurfaceAnalysisComputationPanel({
   presetStatus?: string;
   onApplyPreset?: (id: string) => void | Promise<void>;
 }) {
+  const domain = definition.domain;
+  const domainSummary = domain.kind === "parameter"
+    ? `${domain.u.label ?? "u"} [${domain.u.min}, ${domain.u.max}], ${domain.v.label ?? "v"} [${domain.v.min}, ${domain.v.max}]`
+    : domain.kind === "graph"
+      ? `${domain.x.label ?? "x"} [${domain.x.min}, ${domain.x.max}], ${domain.y.label ?? "y"} [${domain.y.min}, ${domain.y.max}]`
+      : domain.kind === "spatial-bounds"
+        ? `xyz [${domain.min.join(", ")}] to [${domain.max.join(", ")}]`
+        : `${domain.vertexCount.toLocaleString()} vertices, ${domain.faceCount.toLocaleString()} faces`;
+  const samplingSummary = [
+    definition.sampling.uSegments != null && `u ${definition.sampling.uSegments}`,
+    definition.sampling.vSegments != null && `v ${definition.sampling.vSegments}`,
+    definition.sampling.resolution != null && `resolution ${definition.sampling.resolution}`,
+    definition.sampling.adaptive && "adaptive",
+  ].filter(Boolean).join(" · ") || "source mesh";
   return (
     <section data-testid="surface-analysis-computation-panel" style={{ display: "grid", gap: 9 }}>
       <div>
@@ -188,6 +202,12 @@ export function SurfaceAnalysisComputationPanel({
         <section data-testid="surface-curvature-compute" style={{ border: "1px solid #bfdbfe", borderRadius: 8, background: "#eff6ff", padding: 8, display: "grid", gap: 6 }}>
           <strong style={{ fontSize: 10.5 }}>Canonical Curvature result</strong>
           <span style={{ color: "#475467", fontSize: 9.5 }}>Publishes K, H, k1, k2, shape index, curvedness, principal directions, masks, regions, statistics and provenance together.</span>
+          <div data-testid="surface-compute-readiness" style={{ display: "grid", gap: 2, padding: 6, border: "1px solid #bfdbfe", borderRadius: 6, background: "#fff", fontSize: 9.5 }}>
+            <strong>Numerical input · {definition.representation}</strong>
+            <span>Domain: {domainSummary} · sampling: {samplingSummary}</span>
+            <span>Precision: {definition.sampling.tolerance == null ? "no configured tolerance" : `tolerance ${definition.sampling.tolerance}`} · units: {definition.units.length} · frame: {definition.orientation.description}</span>
+            <span>Backend: {typeof Worker !== "undefined" ? "Surface Analysis worker supported" : "local sampler"} · {curvatureState === "unavailable" ? "source unavailable" : "ready to compute"}</span>
+          </div>
           <span data-testid="surface-curvature-execution-state" style={{ color: curvatureExecution === "failed" ? "#b42318" : "#475467", fontSize: 9.5 }}>Execution: {curvatureExecution ?? "idle"}</span>
           <div style={{ display: "grid", gridTemplateColumns: curvatureExecution === "running" || curvatureExecution === "progressive" || curvatureExecution === "queued" ? "1fr 1fr" : "1fr", gap: 4 }}>
             <button type="button" data-testid="surface-curvature-compute-button" disabled={curvatureState === "unavailable" || curvatureExecution === "running" || curvatureExecution === "progressive" || curvatureExecution === "queued"} onClick={onComputeCurvature}>
@@ -282,11 +302,17 @@ export function SurfaceAnalysisComputationPanel({
           <span>Mapping: {derivedMeshLifecycle.selected.correspondence} · {derivedMeshLifecycle.selected.mappedVertexCount.toLocaleString()} vertices · {derivedMeshLifecycle.selected.historyCount} history entries</span>
           {derivedMeshLifecycle.selected.staleReason && <span style={{ color: "#9a3412" }}>{derivedMeshLifecycle.selected.staleReason}</span>}
         </div>}
+        {derivedMeshLifecycle?.selected && <div data-testid="surface-derived-mesh-handoff-preview" role="status" style={{ display: "grid", gap: 2, padding: 6, border: "1px solid #c7d7ee", borderRadius: 6, background: "#fff", fontSize: 9.5 }}>
+          <strong>Before handoff · {derivedMeshLifecycle.selected.label}</strong>
+          <span>Source: {derivedMeshLifecycle.selected.sourceLabel} r{derivedMeshLifecycle.selected.sourceRevision} → derived Mesh r{derivedMeshLifecycle.selected.meshRevision} ({derivedMeshLifecycle.selected.state}).</span>
+          <span>Bake / Promote creates a separate editable Mesh snapshot with this Surface revision as lineage. Open in Mesh Analysis navigates to the selected Mesh without baking.</span>
+          <span style={{ color: derivedMeshLifecycle.selected.geometryAvailable ? "#166534" : "#9a3412" }}>Geometry bytes: {derivedMeshLifecycle.selected.geometryAvailable ? "available for handoff" : "unavailable in this session; regenerate the live tessellation first"}.</span>
+        </div>}
         {derivedMeshLifecycle && <>
           <div data-testid="surface-derived-mesh-primary-actions" role="group" aria-label="Surface Mesh workflows" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 4 }}>
             <button type="button" data-testid="surface-derived-mesh-live" disabled={!derivedMesh.available} onClick={derivedMeshLifecycle.onShowLive}>Mesh (live)</button>
-            <button type="button" data-testid="surface-derived-mesh-bake" disabled={!derivedMeshLifecycle.selected} onClick={derivedMeshLifecycle.onBake}>Bake to Mesh</button>
-            <button type="button" data-testid="surface-derived-mesh-open-analysis" disabled={!derivedMeshLifecycle.selected} onClick={onOpenDerivedMesh}>Open in Mesh Analysis</button>
+            <button type="button" data-testid="surface-derived-mesh-bake" disabled={!derivedMeshLifecycle.selected?.geometryAvailable || derivedMeshLifecycle.selected.state === "stale" || derivedMeshLifecycle.selected.sourceRevision !== definition.identity.surfaceRevision} onClick={derivedMeshLifecycle.onBake}>Bake to Mesh</button>
+            <button type="button" data-testid="surface-derived-mesh-open-analysis" disabled={!derivedMeshLifecycle.selected?.geometryAvailable || derivedMeshLifecycle.selected.state === "stale"} onClick={onOpenDerivedMesh}>Open in Mesh Analysis</button>
           </div>
           <div style={{ color: "#64748b", fontSize: 9.5 }}>Mesh follows the current Surface. Bake creates an independently editable snapshot. Open sends the selected live or saved mesh to Mesh Analysis.</div>
           <div data-testid="surface-derived-mesh-backend-actions" style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 4 }}>

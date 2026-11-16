@@ -2,7 +2,7 @@
 
 **Product roadmap · Architecture / UX / Scientific interoperability / Release engineering**<br>
 **Prepared:** 2026-11-05<br>
-**Updated:** 2026-11-14<br>
+**Updated:** 2026-11-15<br>
 **Target:** Math3D 2.0.0 General Availability (GA)<br>
 **Status:** The combined source branch identifies 2.0.0 and includes Project-owned Studies, qualified cursor links, source recovery, and bounded flagship desktop journeys. RC1, RC2, and GA are not declared; no `v2.0.0` tag or signed 2.0 candidate exists.<br>
 **Primary product claim:** *Construct, compute, analyze, compare, document, and publish connected mathematical objects in one scientific workspace.*
@@ -10,6 +10,19 @@
 > **Release principle.** Version 2.0.0 is not another sequence of independent scientific-module expansions. It is the release that makes the already substantial Geometry, Curves, Surfaces, Mesh, Volume, Graphs, Field Explorer, Topology, CAS/Sage, Projects, Workbooks, and Quantum capabilities behave as **one integrated, reproducible scientific application**.
 
 **Active closure checklist:** [Ranked release closure TODO](RELEASE_CLOSURE_TODO.md). The [2.0 scope decision](RELEASE_SCOPE.md) adds a fourth bounded Field Explorer → Graph → Field journey to the three original roadmap flagships; Volume → Mesh remains a fifth candidate outside the current GA claim.
+
+**UI ownership, 2026-11-15:** The [UI work queue](../../ui/2.0/DRAFT_STATE.md) is the detailed claim and evidence record. The current open slices are:
+
+| Tasks | Owner / review | Current boundary |
+| --- | --- | --- |
+| CA-01 | [PR #71](https://github.com/expert10000/Math3D/pull/71) · UI cleanup | Responsive Complex layout; draft, broader review pending |
+| MESH-01 | [PR #74](https://github.com/expert10000/Math3D/pull/74) · UI cleanup | Basic operation forms; draft, overlaps the Mesh Run region below |
+| SURF-01, GR-03, MESH-02, CA-03 | [PR #78](https://github.com/expert10000/Math3D/pull/78) · UI four slices | Surface header, Graph authoring, Mesh capability reason, Complex diagnostics; draft |
+| GR-04, GR-02, SURF-02, CA-02 | [PR #81](https://github.com/expert10000/Math3D/pull/81) · UI next four | Graph rendering/navigation, Surface navigation, Complex status; draft |
+| SURF-03, CA-04, SURF-04, MESH-03 | [PR #82](https://github.com/expert10000/Math3D/pull/82) · UI follow-up | Surface readiness/handoff, Complex contour preflight, Mesh result actions; draft; scoped Windows check queued |
+| TOP-05 | [PR #83](https://github.com/expert10000/Math3D/pull/83) · Topology qualification | Evidence-only draft; full persistence, installed-app and release acceptance remain open |
+
+TOP-01–04 and SHARED-01 have merged UI slices. The remaining unclaimed queue items are SURF-05, GR-05, MESH-04–05, and CA-05. A source UI slice or focused check does not qualify the signed installed candidate.
 
 ---
 
