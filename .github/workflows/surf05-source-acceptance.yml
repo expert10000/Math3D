@@ -10,6 +10,8 @@ on:
       - tests/e2e/project-surface-ridge-publication.spec.ts
       - tests/e2e/project-composition.spec.ts
       - renderer/src/surfaceAnalysis/scheduler.test.ts
+      - docs/ui/2.0/SURF05_SOURCE_ACCEPTANCE.md
+      - docs/ui/2.0/DRAFT_STATE.md
       - .github/workflows/surf05-source-acceptance.yml
   workflow_dispatch:
 permissions:
