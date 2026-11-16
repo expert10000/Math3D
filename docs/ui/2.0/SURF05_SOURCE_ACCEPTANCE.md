@@ -1,6 +1,6 @@
 # SURF-05 source-built Surface journey
 
-Status: draft source-built Windows qualification. This document records executed checks against the PR #92 integration preview, whose production source is `3533661072e986f691eca894716523dab45db71f`. The SURF-05 branch adds native tests and a scoped workflow; it does not edit production code. The branch and CI checkout SHA must be recorded separately from that production base when reviewing a PASS.
+Status: draft source-built Windows qualification. Initial local source was PR #92 `3533661072e986f691eca894716523dab45db71f`; the 11-case gate was rerun after rebasing on its newer production source `5cd220b5d2812a471c332278131214627cf05867`. The exact locally exercised SURF-05 branch head is `c3845eefb35a12cf080a17d29a1ebcd971c8f891` (11 passed, 0 skipped, 0 retries, 2.1 minutes). This branch adds native tests and a scoped workflow; it does not edit production code. CI must report its own checkout SHA before its PASS is attributed to that head.
 
 ## Native evidence matrix
 
@@ -14,7 +14,7 @@ Status: draft source-built Windows qualification. This document records executed
 | Saved Project, resource transfer and cold reopen | `saved-surface-workflow.spec.ts` edits Weierstrass formula/domain, tests undo/redo, creates two linked Mesh generations, runs saved analyses, edits a Mesh so earlier results become historical, exports three verified resources, imports into a new profile and cold reopens. | Local PASS. Exact saved results, Surface formula, Mesh generations and historical status are asserted after reopen. |
 | Local Surface result reload | `surface-functional.spec.ts` Test 11 saves curvature and a baked Mesh then reloads and checks both references. | Local PASS. Local reload is distinct from the full Project transfer above. |
 
-Local command: `npx playwright test tests/e2e/surf05-recipes.spec.ts tests/e2e/saved-surface-workflow.spec.ts tests/e2e/surface-functional.spec.ts --grep 'SURF-05|PRJ31–33|Test (3|7|8|11)' --workers=1 --retries=0 --reporter=list`. Native Electron on Windows; zero retries. `npm run build:main`, `NODE_OPTIONS=--max-old-space-size=8192 npm run build:renderer` and `npm run typecheck:noemit` were also executed. The scoped workflow repeats the 11 native cases at its checkout and uploads the exact checkout SHA and JSON results.
+Local command: `npx playwright test tests/e2e/surf05-recipes.spec.ts tests/e2e/saved-surface-workflow.spec.ts tests/e2e/surface-functional.spec.ts --grep 'SURF-05|PRJ31–33|Test (3|7|8|11)' --workers=1 --retries=0 --reporter=list`. Native Electron on Windows; zero retries. `npm run build:main`, `NODE_OPTIONS=--max-old-space-size=8192 npm run build:renderer` and `npm run typecheck:noemit` were also executed on the refreshed source. The scoped workflow repeats the 11 native cases at its checkout and uploads the exact checkout SHA and JSON results.
 
 ## Remaining boundaries
 
