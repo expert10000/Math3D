@@ -55,6 +55,8 @@ SHARED-01 is reserved by the current cleanup thread: remove unrelated retained m
 
 ## Important complete acceptance journey
 
+The authored/scientific import, probe, pin and portable reopen gates for GR-05 are in [Workbench acceptance criteria](WORKBENCH_ACCEPTANCE_CRITERIA.md#gr-05--authored-and-scientific-graphs). They are design requirements; no execution PASS is implied.
+
 > Add a graph or import an existing scientific dataset → preview and validate before committing → select/probe and inspect source-linked analysis → change parameters/source and observe stale derived results → publish through existing Workbook/Notes/Project owners → save/export/import/cold-reopen with identities, selections, pinned resources and exact sidecar hashes intact.
 
 Qualify the complete journey; passing isolated toolbar clicks is insufficient. Preserve the distinction between exact mathematics, sampled approximation, display geometry and cached/historical output. Report unsupported operations explicitly rather than changing the scientific claim to fit a badge.

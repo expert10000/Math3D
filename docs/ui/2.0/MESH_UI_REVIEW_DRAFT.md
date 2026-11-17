@@ -53,6 +53,8 @@ SHARED-01 is reserved by the current cleanup thread: remove unrelated retained m
 
 ## Important complete acceptance journey
 
+The observable MESH-04 indexed/connected and MESH-05 lifecycle gates are in [Workbench acceptance criteria](WORKBENCH_ACCEPTANCE_CRITERIA.md#mesh-04--indexed-source-versus-connected-interpretation). They are design requirements; no execution PASS is implied.
+
 > Open the Box source → select an operation → inspect source identity/revision and explicit New object/Replace choice → run through the existing Job/runtime owner → inspect warnings and real output → validate or compare with the source → undo → save and cold-reopen with document identities, committed selection, result history and exact resource hashes intact.
 
 Qualify the complete journey; passing isolated toolbar clicks is insufficient. Preserve the distinction between exact mathematics, sampled approximation, display geometry and cached/historical output. Report unsupported operations explicitly rather than changing the scientific claim to fit a badge.
