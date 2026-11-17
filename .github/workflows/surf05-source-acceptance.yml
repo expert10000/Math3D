@@ -9,6 +9,7 @@ on:
       - tests/e2e/project-catenoid-waist-failure.spec.ts
       - tests/e2e/project-surface-ridge-publication.spec.ts
       - tests/e2e/project-composition.spec.ts
+      - tests/e2e/surf05-offline-restart.spec.ts
       - renderer/src/surfaceAnalysis/scheduler.test.ts
       - docs/ui/2.0/SURF05_SOURCE_ACCEPTANCE.md
       - docs/ui/2.0/DRAFT_STATE.md
@@ -62,6 +63,13 @@ jobs:
         run: |
           npx playwright test tests/e2e/project-composition.spec.ts --grep 'PC05 refuses camera sync across contradictory declared Surface frames' --workers=1 --retries=0 --reporter=list,json
           node -e 'const s=require("./surf05-evidence/frame-negative.json").stats; if (s.expected!==1 || s.skipped || s.unexpected || s.flaky) { console.error(s); process.exit(1); }'
+      - name: Recover saved Surface after offline worker and cold restart
+        shell: bash
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: surf05-evidence/offline-restart.json
+        run: |
+          npx playwright test tests/e2e/surf05-offline-restart.spec.ts --workers=1 --retries=0 --reporter=list,json
+          node -e 'const s=require("./surf05-evidence/offline-restart.json").stats; if (s.expected!==1 || s.skipped || s.unexpected || s.flaky) { console.error(s); process.exit(1); }'
       - name: Check late jobs, backend readiness and Project freshness
         run: npm --prefix renderer test -- src/surfaceAnalysis/scheduler.test.ts src/surfaceAnalysis/derivedMeshBackendBridge.test.ts src/projects/projectNativeCursor.test.ts src/projects/appendScientificBundleProject.test.ts
       - uses: actions/upload-artifact@v7
