@@ -53,6 +53,9 @@ test("GF-34 compares different verified grids and guards the Graph profile", asy
     await explorer.getByRole("button", { name: "Analyze", exact: true }).click();
     const panel = explorer.getByTestId("gf18-field-comparison");
     await panel.getByLabel("Second saved field").selectOption(second.identity.id);
+    await panel.getByRole("button", { name: "Compare fields" }).click();
+    await expect(panel.getByRole("alert")).toContainText("identical Cartesian bounds");
+    await expect(panel.getByRole("button", { name: "Save comparison in Project" })).toHaveCount(0);
     await panel.getByTestId("gf34-alignment").selectOption("cartesian-aligned-overlap");
     await expect(panel.getByTestId("gf34-overlap-bounds"))
       .toContainText("physical-overlap-grid resampling");
@@ -78,20 +81,35 @@ test("GF-34 compares different verified grids and guards the Graph profile", asy
       domain: [[-4, 4], [-4, 4], [-3, 3]] });
     expect(result.provenance.source.documentId).toBe(first.identity.id);
     expect(result.provenance.operation.parameters.secondSource.documentId).toBe(second.identity.id);
+    const graphEntry = saved.workspace.entries.find((entry: { module: string;
+      checkpoint: { source?: { objects?: { comparisonProfileOrigin?: unknown }[] } } }) =>
+      entry.module === "graph2d" && entry.checkpoint.source?.objects?.some(object =>
+        !!object.comparisonProfileOrigin));
+    expect(graphEntry).toBeTruthy();
     const bytes = Buffer.from(await readFile(join(coarsePath, "east.f64")));
     bytes.writeDoubleLE(bytes.readDoubleLE(0) + .1, 0);
     await writeFile(join(coarsePath, "east.f64"), bytes);
     await page.reload();
     await openLastSavedProject(page);
-    await page.getByTestId("workspace-nav-graphs").click();
-    const reopenedExplorer = page.getByRole("region", { name: "Scientific Field Explorer" });
-    if (await reopenedExplorer.isVisible())
-      await reopenedExplorer.getByRole("button", { name: "Back to Graphs" }).click();
-    const reopened = page.locator(
-      ".graph2d-compact-panels > details:has(> summary:text-is('Inspector'))");
-    if (await reopened.isVisible()) await reopened.locator(":scope > summary").click();
-    await expect(reopened.getByTestId("gf24-graph-profile-status"))
-      .toContainText("values withheld", { timeout: 30_000 });
+    const savedPreview = page.getByTestId("project-explorer-panel");
+    await expect(savedPreview.getByTestId("project-message"))
+      .toContainText("Project scientific field unavailable");
+    await expect(savedPreview.getByTestId("project-view-mode"))
+      .toContainText("Saved project preview");
+    await expect(savedPreview.getByTestId("project-source-verification-warning"))
+      .toContainText("Saved metadata only");
+    const graphProvenance = savedPreview.getByTestId("project-unverified-graph-profiles");
+    await expect(graphProvenance).toContainText("Field difference profile");
+    await expect(graphProvenance).toContainText(result.resultId);
+    await expect(graphProvenance).toContainText("saved rows SHA256");
+    await expect(graphProvenance).toContainText("values withheld");
+    await expect(savedPreview.getByTestId(`project-open-${graphEntry.expected.id}`)).toBeDisabled();
+    await savedPreview.getByRole("button", { name: "View current project" }).click();
+    await expect(savedPreview.getByTestId(`project-result-freshness-${result.resultId}`))
+      .toHaveText("Source unverified");
+    await expect(page.getByTestId("app-shell"))
+      .not.toHaveAttribute("data-project-document-id", graphEntry.expected.id);
+    await page.screenshot({ path: test.info().outputPath("gf34-unverified-saved-preview.png"), fullPage: true });
   } finally {
     await closeSurfaceApp(app);
     if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-gf34-cross-grid-"))

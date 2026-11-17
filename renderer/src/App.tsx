@@ -855,6 +855,7 @@ import {
   createEmptyGraph2DDocument,
   applyGraph2DAuthoring,
   createMixedWorkspaceDocument,
+  createDocumentRelation,
   replaceMath3DProjectWorkspace,
   upsertMath3DProjectAlgebraicLocusScene,
   SAGE_LOCUS_GEOMETRY_EXTENSION,
@@ -916,6 +917,7 @@ import {
   VECTOR_FIELD3D_EQUILIBRIUM_RESULT_TYPE,
   vectorField3DRegionResultRelation,
   type AnalysisResultEnvelope,
+  type DocumentRelation,
   type ComplexContourRecord,
   type ComplexAnalysisDocument,
   type CanonicalJsonValue,
@@ -23511,6 +23513,11 @@ const App: React.FC = () => {
   } | null>(null);
   const meshDatasetPublishTraceCounterRef = useRef(0);
   const meshDocumentAdapterRef = useRef<MeshDocumentAdapter | null>(null);
+  const meshOperationDerivationsRef = useRef(new Map<string, Readonly<{
+    source: MeshDocumentAdapter;
+    target: MeshDocumentAdapter;
+    relation: DocumentRelation;
+  }>>());
   const [scientificMeshSourceStates, setScientificMeshSourceStates] = useState<Record<string,
     "pending" | "current" | "stale">>({});
   const scientificMeshRebuildAbortRef = useRef<AbortController | null>(null);
@@ -23604,7 +23611,7 @@ const App: React.FC = () => {
   const [topologyKernelReplay, setTopologyKernelReplay] = useState<TopologyReplayBundle | null>(null);
   const largeSurfaceMeshResolutionCacheRef = useRef<LargeSurfaceMeshResolutionCache | null>(null);
   const largeSurfaceMeshFullRestorePendingRef = useRef(false);
-  const setMeshDataset = useCallback((mesh: SurfaceMeshData | null, traceOperation = "mesh-dataset:set", kernelParameters: Readonly<Record<string, CanonicalJsonValue>> = {}) => {
+  const setMeshDataset = useCallback((mesh: SurfaceMeshData | null, traceOperation = "mesh-dataset:set", kernelParameters: Readonly<Record<string, CanonicalJsonValue>> = {}, newDocument: MeshDocumentAdapter | null = null) => {
     const publishStart = benchmarkNowMs();
     const token = ++meshDatasetPublishTraceCounterRef.current;
     if (!mesh) {
@@ -23641,7 +23648,9 @@ const App: React.FC = () => {
     const vertices = Math.floor(mesh.positions.length / 3);
     const editKind = meshKernelEditKind(traceOperation);
     if (editKind !== "preview" && traceOperation !== "project-restore") {
-      if (editKind && meshDocumentAdapterRef.current) {
+      if (newDocument) {
+        meshDocumentAdapterRef.current = newDocument;
+      } else if (editKind && meshDocumentAdapterRef.current) {
         meshDocumentAdapterRef.current.replaceMesh(mesh, editKind, { traceOperation, ...kernelParameters });
       } else {
         let next = MeshDocumentAdapter.fromMesh(mesh);
@@ -38073,6 +38082,7 @@ const App: React.FC = () => {
     message?: string;
   }>(() => ({ revision: complexPreviewSession.commands.document().identity.revision, artifactCount: 0, state: "computing" }));
   const [complexNumericalResult, setComplexNumericalResult] = useState<AnalysisResultEnvelope | null>(null);
+  const publishedComplexNumericalResultsRef = useRef(new Map<string, AnalysisResultEnvelope>());
   const [complexNumericalError, setComplexNumericalError] = useState<string | null>(null);
   const [complexExactResult, setComplexExactResult] = useState<ComplexExactMvpAnalysis | null>(null);
   const [complexContinuationResult, setComplexContinuationResult] = useState<AnalysisResultEnvelope | null>(null);
@@ -47733,11 +47743,13 @@ const App: React.FC = () => {
         `complex-numerical-${document.identity.revision}`,
         "complex.numerical-analysis"
       );
-      setComplexNumericalResult(publishComplexNumericalAnalysis({
+      const published = publishComplexNumericalAnalysis({
         document,
         probe: otherComplexSelectedPoint,
         artifacts: [],
-      }));
+      });
+      publishedComplexNumericalResultsRef.current.set(published.resultId, published);
+      setComplexNumericalResult(published);
       setComplexNumericalError(null);
     } catch (error) {
       setComplexNumericalError(String((error as Error).message ?? error));
@@ -50872,6 +50884,14 @@ case "mobius":
   }, [graphCurvatures, surfaceMeshCurvatures, surfaceMeshData?.positions, surfaceSampleSet]);
 
   activeSurfaceCurvatureIdentityRef.current = activeCanonicalSurfaceDefinition.identity.key;
+  const previousSurfaceCurvatureIdentityRef = useRef(activeCanonicalSurfaceDefinition.identity.key);
+  useEffect(() => {
+    const identity = activeCanonicalSurfaceDefinition.identity.key;
+    if (previousSurfaceCurvatureIdentityRef.current === identity) return;
+    previousSurfaceCurvatureIdentityRef.current = identity;
+    surfaceCurvatureSchedulerRef.current.cancel();
+    setSurfaceCurvatureExecution("idle");
+  }, [activeCanonicalSurfaceDefinition.identity.key]);
   const handleComputeSurfaceCurvature = useCallback(async (display?: { scalar?: SurfaceCurvatureScalar; palette?: ColorPalette; rangeMode?: "automatic" | "percentile" | "symmetric"; visible?: boolean }) => {
     if (!surfaceCurvatureSource) return;
     const runInWorker = savedSurfaceModuleActive || shouldWorkerizeSurfaceAnalysis("curvature", surfaceCurvatureSource.sampleCount);
@@ -62527,11 +62547,36 @@ case "mobius":
         setSurfaceMeshTopologyHistoryPreviewId(null);
         setSurfaceMeshTopologyHistoryPreviewMode("after");
       }
+      const sourceAdapter = meshDocumentAdapterRef.current;
+      let derivedAdapter: MeshDocumentAdapter | null = null;
+      if ((meshOperationOutputMode === "derived" || meta.forceDerived) && sourceAdapter) {
+        const published = MeshDocumentAdapter.fromMesh(processed, sourceAdapter.resources);
+        const publishedDocument = published.document();
+        derivedAdapter = new MeshDocumentAdapter(createMeshDocument({
+          source: { ...publishedDocument.source, objectId: `mesh-object:${crypto.randomUUID()}` },
+          stableKey: { source: sourceAdapter.sourceGeneration(), operation: meta.operation, nonce: crypto.randomUUID() },
+          label: processed.label,
+          importedFrom: null,
+        }), published.resources);
+        const relation = createDocumentRelation({
+          kind: "derived-from",
+          sources: [sourceAdapter.sourceGeneration()],
+          sourceOrder: "ordered",
+          target: { type: "document", generation: derivedAdapter.sourceGeneration() },
+          operation: `mesh.${meta.operation.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+          parameters: { outputMode: "new-object", engine: meta.engine ?? null },
+        });
+        meshOperationDerivationsRef.current.set(derivedAdapter.document().identity.id, {
+          source: sourceAdapter,
+          target: derivedAdapter,
+          relation,
+        });
+      }
       setMeshDataset(processed, `mesh-operation:${meta.operation}`, {
         operation: meta.operation,
         engine: meta.engine ?? null,
         outputMode: meta.resultSummary?.outputMode ?? null,
-      });
+      }, derivedAdapter);
       setMeshOperationLastValidation(null);
       setDatasetKind("mesh");
       setSurfaceViewerKind("mesh");
@@ -62550,6 +62595,7 @@ case "mobius":
       focusSurfaceMeshViewport,
       meshOperationOutputMode,
       publishMeshOperationResult,
+      setMeshDataset,
       surfaceMeshData,
       surfaceMeshData?.source,
     ]
@@ -78915,6 +78961,12 @@ case "mobius":
     add("geometry", geometryAdapter.document(), geometryReplay.checkpoint.document, MIXED_REPLAY_FORMATS.geometry, geometryReplay as unknown as CanonicalJsonValue);
     const meshAdapter = meshDocumentAdapterRef.current;
     if (meshAdapter) { const replay = meshAdapter.replayBundle(); add("mesh", meshAdapter.document(), replay.checkpoint.document, MIXED_REPLAY_FORMATS.mesh, replay as unknown as CanonicalJsonValue); }
+    for (const derivation of meshOperationDerivationsRef.current.values()) {
+      for (const adapter of [derivation.source, derivation.target]) {
+        const replay = adapter.replayBundle();
+        add("mesh", adapter.document(), replay.checkpoint.document, MIXED_REPLAY_FORMATS.mesh, replay as unknown as CanonicalJsonValue);
+      }
+    }
     const surfaceAdapter = (restoredSurfaceAdapter && surfaceViewerKind === "param" && paramSurfaceId === "custom" ? restoredSurfaceAdapter : surfaceDocumentAdapters.get(activeCanonicalSurfaceDefinition.identity.surfaceId));
     if (surfaceAdapter) { const replay = surfaceAdapter.replayBundle(); add("surface", surfaceAdapter.document(), replay.checkpoint, MIXED_REPLAY_FORMATS.surface, replay as unknown as CanonicalJsonValue); }
     const curveReplay = activeCurveKernelAdapter.replayBundle();
@@ -78944,11 +78996,26 @@ case "mobius":
       add("surface", openedCurveConstruction.record.target);
     }
     const ids = new Set(entries.map((entry) => entry.expected.id));
+    const complexNumericalResults = [...publishedComplexNumericalResultsRef.current.values()]
+      .filter((result) => ids.has(result.provenance.source.documentId));
     const results = [...volumeExtractionRecords.map((record) => record.result), ...meshAnalysisKernelBridge.results(),
-      ...vectorField3DPointResults, ...vectorField3DRegionResults]
+      ...vectorField3DPointResults, ...vectorField3DRegionResults, ...complexNumericalResults]
       .filter((result) => ids.has(result.provenance.source.documentId));
     const uniqueResults = [...new Map(results.map((result) => [result.resultId, result])).values()];
     const relations = [...volumeExtractionRecords.flatMap((record) => record.relations), ...surfaceHandoffs.flatMap((record) => record.relations),
+      ...[...meshOperationDerivationsRef.current.values()].map((derivation) => derivation.relation),
+      ...complexNumericalResults.map((result) => {
+        const source = entries.find((entry) => entry.expected.id === result.provenance.source.documentId);
+        return createDocumentRelation({
+          kind: "analysis-of",
+          sources: [result.provenance.source],
+          sourceOrder: "ordered",
+          target: { type: "result", resultId: result.resultId, resultType: result.provenance.operation.type },
+          operation: result.provenance.operation.type,
+          parameters: result.provenance.operation.parameters,
+          status: source && matchesScientificSourceGeneration(result.provenance.source, viewerSourceFromDocument({ identity: source.expected })) ? "current" : "stale",
+        });
+      }),
       ...vectorField3DPointResults.filter(result => ids.has(result.provenance.source.documentId))
         .map(vectorField3DPointResultRelation),
       ...vectorField3DRegionResults.filter(result => ids.has(result.provenance.source.documentId))
@@ -78996,7 +79063,7 @@ case "mobius":
       const reference = item.reference as import("@math3d/core").MeshResourceReference;
       const extracted = volumeExtractionBridgeRef.current?.meshResources().bytes(reference);
       if (extracted) return extracted;
-      for (const adapter of [meshDocumentAdapterRef.current, ...restoredProjectRef.current?.meshes.values() ?? []]) {
+      for (const adapter of [meshDocumentAdapterRef.current, ...[...meshOperationDerivationsRef.current.values()].flatMap(({ source, target }) => [source, target]), ...restoredProjectRef.current?.meshes.values() ?? []]) {
         const bytes = adapter?.resources.bytes(reference);
         if (bytes) return bytes;
       }
@@ -79071,7 +79138,7 @@ case "mobius":
     const payload = createPortableNotebookPublication(reportProject!, [book], resources, context.readArtifact, item => {
       if (exactResources) return exactResources.bytes(item);
       const stored = restoredProjectRef.current?.resources?.bytes(item); if (stored) return stored;
-      if (item.kind === "mesh-buffers") for (const adapter of [meshDocumentAdapterRef.current, ...restoredProjectRef.current?.meshes.values() ?? []]) {
+      if (item.kind === "mesh-buffers") for (const adapter of [meshDocumentAdapterRef.current, ...[...meshOperationDerivationsRef.current.values()].flatMap(({ source, target }) => [source, target]), ...restoredProjectRef.current?.meshes.values() ?? []]) {
         const bytes = adapter?.resources.bytes(item.reference as import("@math3d/core").MeshResourceReference); if (bytes) return bytes;
       }
       if (item.kind === "volume-payload") { const data = volumeStorageStoreRef.current.get(item.id); if (data) return new Uint8Array(data.buffer, data.byteOffset, data.byteLength).slice(); }
@@ -81793,7 +81860,7 @@ case "mobius":
             const reference = item.reference as import("@math3d/core").MeshResourceReference;
             const extracted = volumeExtractionBridgeRef.current?.meshResources().bytes(reference);
             if (extracted) return extracted;
-            for (const adapter of [meshDocumentAdapterRef.current, ...restoredProjectRef.current?.meshes.values() ?? []]) { const bytes = adapter?.resources.bytes(reference); if (bytes) return bytes; }
+            for (const adapter of [meshDocumentAdapterRef.current, ...[...meshOperationDerivationsRef.current.values()].flatMap(({ source, target }) => [source, target]), ...restoredProjectRef.current?.meshes.values() ?? []]) { const bytes = adapter?.resources.bytes(reference); if (bytes) return bytes; }
             for (const record of surfaceMeshKernelHandoff.records()) if (record.meshDocument?.source.resource.id === item.id) return surfaceMeshKernelHandoff.resolvePromoted(record.meshId);
           }
           if (item.kind === "volume-payload") {
@@ -110455,7 +110522,7 @@ case "mobius":
         ) : (
           <>
             {/* LEFT (2D modes) */}
-            <div style={{ ...styles.panelLeft, width: leftWidth, display: activeDockLayout.leftCollapsed || activeDockLayout.viewerMaximized ? "none" : undefined }}>
+            <div className={mode === "mobius" && functionExplorerScene !== "mobius" ? "complex-explorer-dock" : undefined} style={{ ...styles.panelLeft, width: leftWidth, display: activeDockLayout.leftCollapsed || activeDockLayout.viewerMaximized ? "none" : undefined }}>
               {mode === "mobius" && (
                 functionExplorerScene === "mobius" ? (
                   <MobiusScreen
@@ -110471,7 +110538,7 @@ case "mobius":
                     integrationStatus={mobiusIntegrationStatus}
                   />
                 ) : (
-                  <section style={{ display: "grid", gap: 10 }}>
+                  <section className="complex-explorer-dock-content" data-testid="complex-explorer-dock-content" style={{ display: "grid", gap: 10 }}>
                     <div>
                       <h2 style={{ ...styles.h2, marginTop: 0, marginBottom: 6 }}>{otherComplexLabTitle}</h2>
                       <div
@@ -110484,11 +110551,13 @@ case "mobius":
                         f: C -&gt; C
                       </div>
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                    <div className="complex-explorer-dock-tabs" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
                       <div style={{ fontSize: 11, opacity: 0.72 }}>Left panel: setup / gallery</div>
                       <div style={{ display: "flex", gap: 6 }}>
                         <button
                           type="button"
+                          aria-pressed={otherComplexLeftPanelView === "setup"}
+                          data-testid="complex-dock-setup"
                           onClick={() => setOtherComplexLeftPanelView("setup")}
                           style={pill(otherComplexLeftPanelView === "setup")}
                         >
@@ -110496,6 +110565,8 @@ case "mobius":
                         </button>
                         <button
                           type="button"
+                          aria-pressed={otherComplexLeftPanelView === "gallery"}
+                          data-testid="complex-dock-gallery"
                           onClick={() => setOtherComplexLeftPanelView("gallery")}
                           style={pill(otherComplexLeftPanelView === "gallery")}
                         >
@@ -110505,6 +110576,7 @@ case "mobius":
                     </div>
                     {otherComplexLeftPanelView === "setup" ? (
                     <div
+                      className="complex-explorer-setup-grid"
                       style={{
                         display: "grid",
                         gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
@@ -111625,7 +111697,7 @@ case "mobius":
                       </details>
                     </div>
                     ) : (
-                      <div style={{ ...cardStyle, display: "grid", gap: 10 }}>
+                      <div className="complex-explorer-gallery" style={{ ...cardStyle, display: "grid", gap: 10 }}>
                         <div style={{ fontWeight: 700, fontSize: 12 }}>Riemann Surface Gallery</div>
                         <div style={{ fontSize: 11, opacity: 0.78 }}>
                           Gallery {"->"} lab workflow for multi-valued functions.

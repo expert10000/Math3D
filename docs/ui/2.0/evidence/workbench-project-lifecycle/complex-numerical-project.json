@@ -1,0 +1,13 @@
+{
+  "publishedInspector": "F06 numerical result · not proof\nstatus: numerical\nsource revision: r4\nmethod: centered finite differences and nested trapezoid contour quadrature\ntolerance: 1.00e-8\nerror estimate: 3.028e-4\nsamples: 641 / 641\nbranch crossings: 2; near pole: no\nartifacts available: 0",
+  "savedSource": {
+    "expected": {
+      "id": "math3d:complex:4ba9baca7cda175b0f9fb57c4dad6909",
+      "revision": 4,
+      "schemaVersion": 1,
+      "structuralHash": "sha256:68548fcd3e3c8ea50ec4ee11f73bce044706b89638897622fca12301446237a0"
+    },
+    "expression": "1/z"
+  },
+  "savedComplexResults": []
+}

@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   appendProjectDerivedField, createGraph2DFieldReference, createMath3DProject,
   createMixedWorkspaceDocument, createStableDocumentId, createVectorField3DDocument,
@@ -10,7 +9,7 @@ import {
   type VectorField3DVolumes, type VerifiedVectorFieldTransfer,
 } from "../../../packages/core/src/index";
 
-const root = fileURLToPath(new URL("../scientific-scene/vortex-volume.sscene/", import.meta.url));
+const root = resolve(__dirname, "../scientific-scene/vortex-volume.sscene");
 export const gf23ManifestJson = readFileSync(resolve(root, "manifest.json"), "utf8");
 export const gf23Fingerprint = sha256Checksum(new TextEncoder().encode(gf23ManifestJson)).slice(7);
 const manifest = JSON.parse(gf23ManifestJson) as { resources: readonly Readonly<{

@@ -1,0 +1,25 @@
+{
+  "source": {
+    "expected": {
+      "id": "math3d:mesh:912f30fc2b9cc1a9a4f01bfbc053ee83",
+      "revision": 1,
+      "schemaVersion": 1,
+      "structuralHash": "sha256:c0553161ea98a0c97171b82619d8dba52f35be6841aed4bf2a3315136aebe3df"
+    },
+    "checksum": "sha256:7e2cb8183e5321d1d0e814ddd363e7f45cb50e40c69f4eff7f2a5d34c5d6c409"
+  },
+  "savedMeshEntries": [
+    {
+      "expected": {
+        "id": "math3d:mesh:912f30fc2b9cc1a9a4f01bfbc053ee83",
+        "revision": 2,
+        "schemaVersion": 1,
+        "structuralHash": "sha256:36e1cc0504d3ef7bcf640446fd04e8ab970ec2a2c4564021376de9c7e9959a0b"
+      },
+      "checkpointChecksum": "sha256:7e2cb8183e5321d1d0e814ddd363e7f45cb50e40c69f4eff7f2a5d34c5d6c409",
+      "replayTransactions": 1
+    }
+  ],
+  "sourceToDerived": null,
+  "operationPanel": "Last operation\nsuccess\nSmooth · VTK · 37 ms\nVertices: 602 -> 602\nTriangles: 1200 -> 1200\nOutput: new-object\nSources: Box\nShow result details\nSend to Geometry\nOpen result in Geometry"
+}
