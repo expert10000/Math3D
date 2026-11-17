@@ -56,7 +56,8 @@ describe("Graphs workspace shell", () => {
     expect(empty).toContain("Reset view");
     expect(empty).toContain("<summary>More</summary>");
     expect(empty).toContain('aria-label="Construction tools"');
-    expect(empty).toContain('aria-label="Analysis"');
+    expect(empty).toContain('aria-label="Navigation"');
+    expect(empty).toContain('title="Focus the Graph inspector"');
     expect(empty).toContain('aria-label="Export and presentation"');
     expect(renderToStaticMarkup(<GraphsWorkspace document={document} dockLayout={dockLayout} status="loading" />))
       .toContain("Loading graph");

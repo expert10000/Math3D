@@ -861,6 +861,7 @@ export type SurfacesLeftPanelProps = {
   onRestoreMeshOperationHistoryEntry: (entryId: string) => void;
   onUndoLatestMeshOperation: () => void;
   canUndoLatestMeshOperation: boolean;
+  onCompareLatestMeshOperation: (topologyHistoryEntryId: string) => void;
   onApplyMeshOperationPreset: (presetId: MeshOperationPresetId) => void | Promise<void>;
   onApplyMeshOperationSavedPreset: (presetId: string) => void | Promise<void>;
   onSaveMeshOperationPreset: () => void;
@@ -1563,6 +1564,7 @@ export const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onRestoreMeshOperationHistoryEntry,
   onUndoLatestMeshOperation,
   canUndoLatestMeshOperation,
+  onCompareLatestMeshOperation,
   onApplyMeshOperationPreset,
   onApplyMeshOperationSavedPreset,
   onSaveMeshOperationPreset,
@@ -6435,6 +6437,7 @@ onChangeImplicitExpr,
               onRestoreOperationHistoryEntry={onRestoreMeshOperationHistoryEntry}
               onUndoLastOperation={onUndoLatestMeshOperation}
               canUndoLastOperation={canUndoLatestMeshOperation}
+              onCompareLastOperation={onCompareLatestMeshOperation}
               onApplyOperationPreset={onApplyMeshOperationPreset}
               onApplySavedOperationPreset={onApplyMeshOperationSavedPreset}
               onSaveOperationPreset={onSaveMeshOperationPreset}
@@ -8364,7 +8367,8 @@ onChangeImplicitExpr,
       </div>
 
       <div style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Material</div>
+        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Rendering · material</div>
+        <div style={{ fontSize: 11, color: "#64748b", marginBottom: 6 }}>Changes appearance only; it does not change the sampled Surface or analysis results.</div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
           <span style={{ minWidth: 80 }}>Roughness</span>
@@ -8445,7 +8449,8 @@ onChangeImplicitExpr,
       )}
 
       <div style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Mesh resolution</div>
+        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Sampling · mesh resolution</div>
+        <div style={{ fontSize: 11, color: "#64748b", marginBottom: 6 }}>Changes generated geometry and numerical sampling; use Domain for bounds.</div>
         {viewerKind === "graph" && (
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ minWidth: 80 }}>Graph</span>
@@ -11523,8 +11528,14 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   const meshHealthStatusLabel = meshSummaryTopologyDeferred
     ? "Unverified"
     : meshAnalyzeDiagnostics?.state ?? "Unverified";
+  const complexMapOpenSheetOnly = viewerKind === "complex" && meshHealthStatusLabel === "Invalid" &&
+    (meshHealthBoundaryEdgeCount ?? 0) > 0 && meshHealthNonManifoldEdgeCount === 0 &&
+    meshHealthDegenerateFaceCount === 0 && meshHealthDuplicateFaceCount === 0 &&
+    meshHealthSuspectedSelfIntersectionCount === 0;
   const meshHealthStatusDisplay =
-    meshHealthStatusLabel === "Healthy"
+    complexMapOpenSheetOnly
+      ? "Open sampled sheet"
+      : meshHealthStatusLabel === "Healthy"
       ? "✓ Clean"
       : meshHealthStatusLabel === "Invalid"
         ? "✕ Invalid"
@@ -11542,7 +11553,9 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         ? { border: "#fca5a5", background: "#fef2f2", color: "#b42318" }
         : { border: "#fcd34d", background: "#fffbeb", color: "#92400e" };
   const meshHealthTone =
-    meshHealthStatusLabel === "Healthy"
+    complexMapOpenSheetOnly
+      ? { border: "#fcd34d", background: "#fffbeb", color: "#92400e" }
+      : meshHealthStatusLabel === "Healthy"
       ? { border: "#86efac", background: "#f0fdf4", color: "#166534" }
       : meshHealthStatusLabel === "Invalid"
         ? { border: "#fca5a5", background: "#fef2f2", color: "#b42318" }
@@ -11648,7 +11661,7 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         summary={
           <div style={{ display: "grid", gap: 2 }}>
             <strong>{activeMeta.label}</strong>
-            <span>{isMeshViewer ? "Surface / Mesh" : activeMeta.formula}</span>
+            <span>{viewerKind === "complex" ? "Complex map / sampled display Mesh" : isMeshViewer ? "Surface / Mesh" : activeMeta.formula}</span>
             <span>{documentDefinition
               ? documentDefinition.displayStats ? `Display: ${documentDefinition.displayStats.vertCount.toLocaleString()} V · ${documentDefinition.displayStats.triCount.toLocaleString()} F` : "Display geometry pending"
               : surfaceMeshStats ? `${surfaceMeshStats.vertCount.toLocaleString()} V · ${surfaceMeshStats.triCount.toLocaleString()} F` : "Geometry pending"}</span>
@@ -11732,7 +11745,7 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                 <div style={{ display: "grid", gap: 10 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
                       <div style={{ fontSize: 11, fontWeight: 900, color: "#0f172a", textTransform: "uppercase" }}>
-                        State check
+                        {viewerKind === "complex" ? "Display Mesh check" : "State check"}
                     </div>
                     <span
                       data-testid="mesh-health-status"
@@ -11750,6 +11763,9 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                       {meshHealthStatusDisplay}
                     </span>
                   </div>
+                  {viewerKind === "complex" && <p data-testid="complex-map-diagnostic-scope" style={{ margin: 0, color: "#475467", fontSize: 10.5, lineHeight: 1.4 }}>
+                    This check describes sampled 3D display Mesh topology. Open boundaries can be expected on a sampled sheet. Inspect function, domain and branch validity in Function Explorer.
+                  </p>}
                   <div style={{ display: "grid", gap: 2 }}>
                     <div
                       style={{
@@ -11780,7 +11796,7 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                       }}
                     >
                       <strong style={{ color: meshHealthTone.color }}>
-                        {meshHealthStatusLabel === "Healthy" ? "Clean" : meshHealthStatusLabel} · {meshHealthIssueCategoryCount} issue categor{meshHealthIssueCategoryCount === 1 ? "y" : "ies"}
+                        {viewerKind === "complex" ? "Display Mesh: " : ""}{complexMapOpenSheetOnly ? "Open sampled sheet" : meshHealthStatusLabel === "Healthy" ? "Clean" : meshHealthStatusLabel} · {meshHealthIssueCategoryCount} issue categor{meshHealthIssueCategoryCount === 1 ? "y" : "ies"}
                       </strong>
                       {renderHealthCountRow("Boundary edges", meshHealthBoundaryEdgeCount)}
                       {renderHealthCountRow("Non-manifold edges", meshHealthNonManifoldEdgeCount)}
@@ -13326,7 +13342,7 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
 
       {(showDomainPicker || isImplicitViewer) && (
         <div id="surfaces-inspector-domain-card" tabIndex={-1} style={workflowCardStyle("domain")}>
-          <div style={inspectorSectionTitle}>Domain</div>
+          <div style={inspectorSectionTitle}>Sampling domain</div>
           <div style={{ marginTop: -2, marginBottom: 7 }}>{renderWorkflowStatus("Domain", "domain")}</div>
           <div style={{ fontSize: 11, marginBottom: 6 }}>
             <strong>Resolution:</strong> {Math.round(activeResolution)}

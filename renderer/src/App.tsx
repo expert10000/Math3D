@@ -1,3 +1,4 @@
+import "./math/complexExplorerLayout.css";
 import { checkpointProjectFieldExplorerDocument, pinProjectFieldExplorerBaseline } from "@math3d/core";
 import { rememberProjectDocument } from "./projects/projectResume";
 import { measureBooleanResult, type BooleanResultEvidence } from './services/booleanResultEvidence';
@@ -38312,7 +38313,9 @@ const App: React.FC = () => {
           ? "Covering Map Lab - cover space, base space, fibers, deck transformations"
         : "Function Explorer - general complex functions";
   const otherComplexFunctionExprSafe = (otherComplexFunctionExpr || "z").trim() || "z";
-  const otherComplexExprNormalized = otherComplexFunctionExprSafe.replace(/\s+/g, "");
+  const otherComplexExpressionIsDefault = !otherComplexFunctionExpr.trim();
+  const otherComplexIdentityDefault = otherComplexFunctionExprSafe.replace(/\s+/g, "") === "z";
+  const otherComplexExprNormalized = otherComplexFunctionExpr.trim().replace(/\s+/g, "");
   const otherComplexCorePresets = useMemo(
     () =>
       FUNCTION_EXPLORER_CORE_PRESET_IDS.map((id) => FUNCTION_EXPLORER_OTHER_PRESETS.find((preset) => preset.id === id)).filter(
@@ -38389,6 +38392,18 @@ const App: React.FC = () => {
     () => compileComplexMapExpressions(complexMapSpec.reExpr, complexMapSpec.imExpr, { inputMode: "fz", fExpr: otherComplexFunctionExprSafe }),
     [complexMapSpec.reExpr, complexMapSpec.imExpr, otherComplexFunctionExprSafe]
   );
+  const otherComplexExpressionStatus = otherComplexCompiled2d.error
+    ? `Expression needs attention: ${otherComplexCompiled2d.error}`
+    : otherComplexExpressionIsDefault
+      ? "No f(z) expression entered; Function Explorer previews default f(z) = z."
+      : otherComplexIdentityDefault
+        ? "Function Explorer previews the default identity function f(z) = z."
+      : "Expression accepted for preview. Domain and branch behavior are assessed separately.";
+  const otherComplexBranchStatus = otherComplexCompiled2d.error
+    ? "Branch profile unavailable until the expression is accepted."
+    : otherComplexBranchProfile.id === "none"
+      ? "No supported branch profile detected for this expression."
+      : `Detected branch profile: ${otherComplexBranchProfile.label}.`;
   const evalOtherComplexW = useCallback((u: number, v: number) => {
     const reFn = otherComplexCompiled2d.reFn;
     const imFn = otherComplexCompiled2d.imFn;
@@ -79549,6 +79564,7 @@ case "mobius":
                   onRestoreMeshOperationHistoryEntry={restoreMeshOperationHistoryEntry}
                   onUndoLatestMeshOperation={undoLatestMeshOperation}
                   canUndoLatestMeshOperation={canUndoLatestMeshOperation}
+                  onCompareLatestMeshOperation={(entryId) => previewSurfaceMeshTopologyHistoryEntry(entryId, "after")}
                   onApplyMeshOperationPreset={handleApplyMeshOperationPreset}
                   onApplyMeshOperationSavedPreset={handleApplyGeometryOperationPreset}
                   onSaveMeshOperationPreset={handleSaveMeshOperationPreset}
@@ -80843,6 +80859,7 @@ case "mobius":
                       selected: activeSurfaceDerivedMeshRecord ? {
                         id: activeSurfaceDerivedMeshRecord.identity.meshId,
                         label: activeSurfaceDerivedMeshRecord.label,
+                        sourceLabel: activeSurfaceDerivedMeshRecord.identity.source.label,
                         state: activeSurfaceDerivedMeshRecord.identity.state,
                         sourceRevision: activeSurfaceDerivedMeshRecord.identity.source.surfaceRevision,
                         meshRevision: activeSurfaceDerivedMeshRecord.identity.meshRevision,
@@ -80856,6 +80873,7 @@ case "mobius":
                         boundaryEdgeCount: activeDerivedSurfaceMeshBackendSummary?.validation?.boundaryEdgeCount ?? null,
                         staleReason: activeSurfaceDerivedMeshRecord.identity.staleReason,
                         historyCount: activeSurfaceDerivedMeshRecord.history.length,
+                        geometryAvailable: surfaceDerivedMeshPayloadCacheRef.current.has(activeSurfaceDerivedMeshRecord.identity.meshId) && surfaceDerivedMeshGeometryCacheRef.current.has(activeSurfaceDerivedMeshRecord.identity.meshId),
                       } : null,
                       records: activeSourceDerivedMeshRecords.map((record) => ({ id: record.identity.meshId, label: record.label, state: record.identity.state })),
                       status: surfaceDerivedMeshStatus,
@@ -83967,6 +83985,8 @@ case "mobius":
             </div>
           ) : (
             <div
+              data-testid="surface-workflow-strip"
+              className="surface-workflow-strip"
               style={{
                 width: "100%",
                 border: "1px solid #dbe4f0",
@@ -83980,6 +84000,11 @@ case "mobius":
                 flexWrap: "wrap",
               }}
             >
+              <details data-testid="surface-workflow-stages">
+                <summary style={{ cursor: "pointer", color: "#334155", fontSize: 11, fontWeight: 700 }}>
+                  Workflow navigation · {SURFACE_WORKFLOW_STEPS.find(step => step.id === surfaceWorkflowActiveStepId)?.label} · show stages
+                </summary>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, flexWrap: "wrap", paddingTop: 6 }}>
               {SURFACE_WORKFLOW_STEPS.map((step, index) => {
               const stepState = surfaceWorkflowStepStateById[step.id];
               const isDisabled = stepState === "disabled";
@@ -84031,6 +84056,15 @@ case "mobius":
                 </React.Fragment>
               );
             })}
+                </div>
+              </details>
+              <button type="button" data-testid="surface-workflow-preview-primary"
+                onClick={() => handleSurfaceWorkflowStepClick("preview")}
+                disabled={surfaceWorkflowStepStateById.preview === "disabled"}
+                style={{ borderRadius: 999, border: "1px solid #d1d5db", background: "#ffffff", color: "#334155",
+                  fontWeight: 650, fontSize: 11, padding: "3px 10px", whiteSpace: "nowrap" }}>
+                Preview
+              </button>
               {mode === "surfaces" && (
               <>
                 <span style={{ color: "#94a3b8", fontSize: 11 }}>|</span>
@@ -85132,6 +85166,7 @@ case "mobius":
                           activeMeshLabel={buildActiveMeshLabel()}
                           workerReady={meshOperationServiceReady}
                           workerStatusText={meshOperationServiceStatusText}
+                          onOpenComputeCenter={() => { setComputeCenterInitialTab("runtimes"); setComputeCenterOpen(true); }}
                           cgalReady={cgalServiceReady}
                           cgalStatusText={cgalServiceStatusText}
                           busy={meshOperationBusy || surfaceMeshImportBusy}
@@ -110523,9 +110558,13 @@ case "mobius":
                         <div style={{ fontSize: 11, opacity: 0.75 }}>
                           Supports z, +, -, *, /, ^, sin, cos, tan, exp, log, sqrt, abs.
                         </div>
-                        {otherComplexCompiled2d.error && (
-                          <div style={{ fontSize: 11, color: "#b42318" }}>{otherComplexCompiled2d.error}</div>
-                        )}
+                        <div data-testid="complex-function-status" role={otherComplexCompiled2d.error ? "alert" : "status"}
+                          style={{ fontSize: 11, color: otherComplexCompiled2d.error ? "#b42318" : "#334155" }}>
+                          {otherComplexExpressionStatus}
+                        </div>
+                        <div data-testid="complex-branch-profile-status" style={{ fontSize: 11, color: "#475569" }}>
+                          {otherComplexBranchStatus}
+                        </div>
                       </div>
                       <div style={{ ...cardStyle, display: "grid", gap: 8 }}>
                         <div style={{ fontWeight: 700, fontSize: 12 }}>Domain / Resolution</div>
@@ -112052,7 +112091,7 @@ case "mobius":
                   )}
                 </>
                 ) : (
-                  <div style={{ display: "grid", gap: 10, minHeight: 0 }}>
+                  <div className="complex-explorer-layout" data-testid="complex-explorer-layout" style={{ display: "grid", gap: 10, minHeight: 0 }}>
                     <div style={{ ...cardStyle, marginTop: 2, display: "grid", gap: 8 }}>
                       <div style={{ fontWeight: 800 }}>{otherComplexLabHeader}</div>
                       <div style={{ fontSize: 12, opacity: 0.8 }}>
@@ -112115,27 +112154,28 @@ case "mobius":
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 11 }}>
                         <span>Layout:</span>
-                        <button type="button" onClick={() => setOtherComplexLayoutMode("two_pane")} style={pill(otherComplexLayoutMode === "two_pane")}>
+                        <button type="button" aria-pressed={otherComplexLayoutMode === "two_pane"} onClick={() => setOtherComplexLayoutMode("two_pane")} style={pill(otherComplexLayoutMode === "two_pane")}>
                           2-pane
                         </button>
-                        <button type="button" onClick={() => setOtherComplexLayoutMode("three_pane")} style={pill(otherComplexLayoutMode === "three_pane")}>
+                        <button type="button" aria-pressed={otherComplexLayoutMode === "three_pane"} onClick={() => setOtherComplexLayoutMode("three_pane")} style={pill(otherComplexLayoutMode === "three_pane")}>
                           3-pane
                         </button>
-                        <button type="button" onClick={() => setOtherComplexLayoutMode("focus")} style={pill(otherComplexLayoutMode === "focus")}>
+                        <button type="button" aria-pressed={otherComplexLayoutMode === "focus"} onClick={() => setOtherComplexLayoutMode("focus")} style={pill(otherComplexLayoutMode === "focus")}>
                           Focus Z
                         </button>
                       </div>
                     </div>
                     <div
+                      className="complex-explorer-workspace"
+                      data-testid="complex-explorer-workspace"
                       style={{
                         display: "grid",
-                        gridTemplateColumns: "minmax(0, 1fr) minmax(280px, 360px)",
                         gap: 12,
                         alignItems: "start",
                         minHeight: 0,
                       }}
                       >
-                      <div style={{ display: "grid", gap: 12, minWidth: 0 }}>
+                      <div className="complex-explorer-plots" data-testid="complex-explorer-plots" style={{ display: "grid", gap: 12, minWidth: 0 }}>
                         {!otherComplexShowZPanel && (
                           <div style={{ display: "none" }}>
                             <PlanePlot
@@ -112164,6 +112204,7 @@ case "mobius":
                         )}
                         {otherComplexMainViewMode === "sphere" || (otherComplexLayoutMode === "three_pane" && (otherComplexMainViewMode === "path" || otherComplexMainViewMode === "residue")) ? (
                           <div
+                            className="complex-explorer-plane-grid"
                             style={{
                               display: "grid",
                               gridTemplateColumns: `repeat(${Math.max(
@@ -112254,6 +112295,7 @@ case "mobius":
                           </div>
                         ) : otherComplexMainViewMode === "plane" && otherComplexLayoutMode === "focus" ? (
                           <div
+                            className="complex-explorer-plane-grid"
                             style={{
                               display: "grid",
                               gridTemplateColumns:
@@ -112303,6 +112345,7 @@ case "mobius":
                           </div>
                         ) : (
                           <div
+                            className="complex-explorer-plane-grid"
                             style={{
                               display: "grid",
                               gridTemplateColumns:
@@ -112387,6 +112430,7 @@ case "mobius":
                           <div style={{ ...cardStyle, marginTop: 0, display: "grid", gap: 8 }}>
                             <div style={{ fontWeight: 700, fontSize: 12 }}>Synchronized value domains</div>
                             <div
+                              className="complex-explorer-plane-grid"
                               style={{
                                 display: "grid",
                                 gridTemplateColumns: "repeat(2, minmax(220px, 1fr))",
@@ -112424,11 +112468,14 @@ case "mobius":
                           </div>
                         )}
                       </div>
-                      <div style={{ ...cardStyle, display: "grid", gap: 8 }}>
+                      <div className="complex-explorer-inspector" data-testid="complex-explorer-inspector" style={{ ...cardStyle, display: "grid", gap: 8 }}>
                         <SharedInspectorShell
                           activeCategory={otherComplexInspectorCategory}
                           onCategoryChange={selectOtherComplexInspectorCategory}
-                          summary={<div style={{ display: "grid", gap: 2 }}><strong>Complex Function Explorer</strong><span>Complex / {otherComplexBranchProfile.label}</span><span>{otherComplexCompiled2d.error ? "Needs attention" : "Ready"}</span></div>}
+                          summary={<div style={{ display: "grid", gap: 2 }}><strong>Complex Function Explorer</strong>
+                            <span>f(z) = {otherComplexFunctionExprSafe}{otherComplexIdentityDefault ? " (default)" : ""}</span>
+                            <span>{otherComplexCompiled2d.error ? "Expression needs attention" : otherComplexIdentityDefault ? "Default preview" : "Expression accepted"}</span>
+                            <span>{otherComplexBranchStatus}</span></div>}
                         >
                         {otherComplexSheetTracker && otherComplexBranchProfile.id !== "none" && (
                           <div style={{ border: "1px solid #dbe2ea", borderRadius: 8, padding: "6px 8px", background: "#f8fafc", display: "grid", gap: 2, fontSize: 11 }}>
@@ -113051,6 +113098,14 @@ case "mobius":
                             </div>
                             <div style={{ padding: "7px 8px", border: "1px solid #fed7aa", borderRadius: 8, background: "#fff7ed", color: "#9a3412", fontSize: 11 }}>
                               Live values below are legacy numerical previews until published; they are not exact proof.
+                            </div>
+                            <div data-testid="complex-contour-preflight" role="group" aria-label="Contour analysis before execution" style={{ display: "grid", gap: 3, padding: "7px 8px", border: "1px solid #cbd5e1", borderRadius: 8, background: "#f8fafc", fontSize: 11 }}>
+                              <strong>Before analysis · {otherComplexPathMode}{otherComplexContourAnalysis.loopCount > 1 ? ` · ${otherComplexContourAnalysis.loopCount} loops` : ""}</strong>
+                              <div>Orientation: {otherComplexContourAnalysis.orientation ?? "undetermined"} · {otherComplexContourAnalysis.closed ? "closed contour" : "open contour"}</div>
+                              <div>Branch/cut policy: {otherComplexBranchCutLabel}{otherComplexContourAnalysis.branchCutCrossingWarning ? " · current path crosses cut" : ""}</div>
+                              <div>Numerical publication: centered finite differences + nested trapezoid quadrature · Math3D TypeScript numerical kernel.</div>
+                              <div>Exact analysis: reviewed symbolic profile + adaptive numerical contour · Math3D exact Complex kernel.</div>
+                              <div>Error estimate: calculated after execution for each contour method; neither estimate is an exact proof.</div>
                             </div>
                             <button type="button" onClick={publishOtherComplexNumericalResult} data-testid="publish-complex-numerical-result">
                               Publish numerical analysis

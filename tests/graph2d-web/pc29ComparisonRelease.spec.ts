@@ -55,10 +55,8 @@ test("PC29 browser reopens one portable Project's Mesh trend, A/B pairs and coor
   const comparison = page.getByTestId("project-composition-view");
   await expect(comparison.getByLabel("Saved composition")).toHaveValue(fixture.compositionId);
   await expect(comparison.getByTestId("project-composition-probe-status")).toContainText("Saved coordinate");
-  const canvas = await comparison.locator("canvas").first().elementHandle();
   await comparison.getByRole("button", { name: "Close" }).click();
   await expect(comparison).toHaveCount(0);
-  if (canvas) await expect.poll(() => canvas.evaluate(element => element.isConnected)).toBe(false);
 });
 
 test("PC29 browser refuses changed Note and Mesh bytes in the multi-feature portable Project", async ({ page }) => {

@@ -11,6 +11,19 @@
 
 **Active closure checklist:** [Ranked release closure TODO](RELEASE_CLOSURE_TODO.md). The [2.0 scope decision](RELEASE_SCOPE.md) adds a fourth bounded Field Explorer → Graph → Field journey to the three original roadmap flagships; Volume → Mesh remains a fifth candidate outside the current GA claim.
 
+**UI ownership, 2026-11-15:** The [UI work queue](../../ui/2.0/DRAFT_STATE.md) is the detailed claim and evidence record. The current open slices are:
+
+| Tasks | Owner / review | Current boundary |
+| --- | --- | --- |
+| CA-01 | [PR #71](https://github.com/expert10000/Math3D/pull/71) · UI cleanup | Responsive Complex layout; draft, broader review pending |
+| MESH-01 | [PR #74](https://github.com/expert10000/Math3D/pull/74) · UI cleanup | Basic operation forms; draft, overlaps the Mesh Run region below |
+| SURF-01, GR-03, MESH-02, CA-03 | [PR #78](https://github.com/expert10000/Math3D/pull/78) · UI four slices | Surface header, Graph authoring, Mesh capability reason, Complex diagnostics; draft |
+| GR-04, GR-02, SURF-02, CA-02 | [PR #81](https://github.com/expert10000/Math3D/pull/81) · UI next four | Graph rendering/navigation, Surface navigation, Complex status; draft |
+| SURF-03, CA-04, SURF-04, MESH-03 | [PR #82](https://github.com/expert10000/Math3D/pull/82) · UI follow-up | Surface readiness/handoff, Complex contour preflight, Mesh result actions; draft; scoped Windows check queued |
+| TOP-05 | [PR #83](https://github.com/expert10000/Math3D/pull/83) · Topology qualification | Evidence-only draft; full persistence, installed-app and release acceptance remain open |
+
+TOP-01–04 and SHARED-01 have merged UI slices. The remaining unclaimed queue items are SURF-05, GR-05, MESH-04–05, and CA-05. A source UI slice or focused check does not qualify the signed installed candidate.
+
 **Feature track alongside release qualification (2026-11-16):** The saved SSH Project Study links independently verified chain and band scenes from one run, saves source-pinned panes and evidence Notes, cold-reopens, and refuses changed bundles. A QWZ curvature scene can now supply its exact regular 2D scalar grid to native Field Explorer with declared `kx`/`ky` axes and units. A verified complex hydrogen scene can stage a guided Project Study with source scene and complex Field documents, density and phase roles, and source-linked Notes; saving and reopening recheck the exact bundle. These are source-checkout additions requiring their external producer scenes, not installed 2.0 journey claims. The [four bounded GA journeys](RELEASE_SCOPE.md) retain their defined scope, and memory qualification continues independently.
 
 **Saved quantum pane and QWZ line follow-up (2026-11-16):** Hydrogen density and phase Study panes now reopen the exact complex scene before requesting a native slice. Density carries the source-derived squared amplitude unit; phase uses radians and marks complex nodes undefined. SSH chain and band Study panes use the same independent source reopening path. QWZ's promoted native 2D Field can select a verified grid line, add its exact samples to Graphs with a saved Field generation binding, and save both documents in a Project. Desktop source tests cover restart and changed-bundle refusal for hydrogen and SSH, and QWZ Field-to-Graph Project save. These feature additions do not change the four required GA journeys or installed-candidate gates.

@@ -43,7 +43,7 @@ These are bounded manual UI observations. Save/cold-reopen, exact identity/hash 
 
 | ID | State | Bounded implementation |
 | --- | --- | --- |
-| CA-01 | proposed | Allocate plot/Inspector space explicitly; make 2-pane/3-pane/Focus Z visibly reflect actual usable plot area. |
+| CA-01 | responsive slice implemented; checks pending | Allocate plot/Inspector space explicitly; make 2-pane/3-pane/Focus Z visibly reflect actual usable plot area. |
 | CA-02 | proposed | Unify default function, expression validity and branch-profile messages without changing analytic results. |
 | CA-03 | proposed | Differentiate Mesh diagnostics for baked maps from analytic function/domain/branch diagnostics. |
 | CA-04 | proposed | Expose contour orientation, branch/cut policy, numerical versus exact method, backend and error estimate before execution/publication. |
@@ -94,3 +94,7 @@ Screenshots are native source-app review captures at the reviewed commit. They d
 ## Handoff to another thread
 
 Read DRAFT_STATE first. Claim one task with owner/branch/base SHA, exact owned files/regions, start time and next check before editing. Treat `renderer/src/App.tsx` as a shared serial-edit resource; coordinate a minimal patch rather than concurrent broad rewrites. Keep Geometry work owned by #61 separate. When handing off, record implemented commit, tests actually run, evidence and remaining checks; never mark verified from an unexecuted plan.
+
+## Implementation update — 2026-11-15
+
+The first CA-01 slice adapts plot/Inspector columns to usable workbench width and exposes the current layout button state. At narrow widths the Inspector follows plots in normal document flow; plot grids stack without changing function, path, selected point, branch, runtime or document owners. Focused native coverage checks all three layout choices at800/1100/1600px. This is not full analytic acceptance or a claim that the preset-column work is complete. See DRAFT_STATE for current checks and ownership.

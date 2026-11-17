@@ -13,6 +13,9 @@ test.describe.serial("C08 exact residue and contour Analyze layer", () => {
     await page.getByRole("banner").getByRole("button", { name: "Residue Lab", exact: true }).click();
     await page.getByRole("button", { name: "1/z", exact: true }).click();
     await page.getByRole("button", { name: "Residue", exact: true }).last().click();
+    await page.getByRole("tablist", { name: "Inspector categories" }).getByRole("tab", { name: "Provenance" }).click();
+    await page.getByRole("combobox", { name: "Provenance view" }).selectOption("residue");
+    await expect(page.getByTestId("complex-contour-preflight")).toContainText("Exact analysis: reviewed symbolic profile + adaptive numerical contour");
     await page.getByTestId("analyze-complex-exact-mvp").click();
     const inspector = page.getByTestId("complex-exact-result-inspector");
     await expect(inspector).toContainText("symbolic status: exact");

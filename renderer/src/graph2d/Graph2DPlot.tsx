@@ -365,7 +365,8 @@ export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, re
           </g>;
         })}
       </g>
-      {intervals && <g data-testid="graph2d-interval-overlays" data-result-id={intervals.resultId} aria-hidden="true">
+      {intervals && <g data-testid="graph2d-interval-overlays" data-result-id={intervals.resultId}
+        clipPath={`url(#${clipId})`} aria-hidden="true">
         {intervals.partitions.map((part) => {
           const x = (part.min - bounds.xMin) / xSpan * size.width;
           const width = (part.max - part.min) / xSpan * size.width;

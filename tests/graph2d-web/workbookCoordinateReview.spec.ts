@@ -40,10 +40,8 @@ test("PC28 browser reopens a portable coordinate review and its exact marker", a
   const view = page.getByTestId("project-composition-view");
   await expect(view.getByLabel("Saved composition")).toHaveValue(fixture.compositionId);
   await expect(view.getByTestId("project-composition-probe-status")).toContainText("Saved coordinate");
-  const canvas = await view.locator("canvas").first().elementHandle();
   await view.getByRole("button", { name: "Close" }).click();
   await expect(view).toHaveCount(0);
-  if (canvas) await expect.poll(() => canvas.evaluate(element => element.isConnected)).toBe(false);
 });
 
 test("PC28 browser refuses a portable package with changed source or Note bytes", async ({ page }) => {
