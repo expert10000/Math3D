@@ -1,6 +1,12 @@
 # GR-05 Graph UI acceptance — source-built Windows draft
 
-Date: 2026-11-16. Status: **scoped native pass; broader GR-05 gates remain**. This is source-built Electron evidence, not an installed-app or release approval.
+Date: 2026-11-17. Status: **post-integration scoped native pass; refreshed PR95 CI pending**. This is source-built Electron evidence, not an installed-app or release approval.
+
+## Post-PR92 integration refresh
+
+PR92 merged as `55031773e1927d27cd8c25deefcbc7c866b58469`; the follow-up docs-only main head was `b1fdc09d1f053145c49068defe948ca44e55b91c`. PR95 merged those heads without production conflicts. The only later conflict was in this draft-state documentation and preserved PR92's final integration row alongside the GR-05 rows. Relative to main, PR95 changes only its 12 Graph/Project files.
+
+On clean merged Graph source `4e897973e7bd5d9d0134bec3ce625269e17dc5ec`, `npm run build:core` passed with `dirty:false`. `npx playwright test tests/e2e/graph-ui-gr05.spec.ts tests/e2e/graph-field-gf34.spec.ts tests/e2e/graph-ui-gr05-negative-frame-units.spec.ts tests/e2e/graph-ui-gr05-late-job.spec.ts tests/e2e/field-explorer-scientific-workflow.spec.ts --workers=1 --retries=0 --reporter=list` passed **5/5 in 2.4 minutes**. The final docs-only refresh does not change production or tests. CI must still run on the new published PR head; this local result does not establish broad acceptance.
 
 ## Exact execution boundary
 
@@ -41,6 +47,6 @@ The recovery change preserves that refusal. It opens the saved Project as a read
 
 ## Next acceptance checks
 
-1. Review the narrow Project preview recovery in draft PR95 against PR92's updated merge head; keep fail-closed scientific activation.
-2. Confirm the corrected GF-23 fixture in PR95 CI.
-3. Rerun the bounded native suite after PR92 integration. Installed Windows E8 remains separate.
+1. Review the narrow Project preview recovery in draft PR95 against merged main; keep fail-closed scientific activation.
+2. Confirm the corrected GF-23 fixture and the relevant broad workflows on PR95's new exact head.
+3. Complete installed Windows E8 separately.
