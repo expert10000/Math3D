@@ -1590,12 +1590,25 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                       </div>
                     </div>
                   )}
-                  {(operation === "clean-normals" || operation === "decimate" || operation === "smooth") && (
-                    <MeshOperationFormSection title="Source">
-                      <span>{meshReady ? activeMeshLabel?.trim() || "Active mesh" : "No active mesh. Open or create a mesh first."}</span>
-                    </MeshOperationFormSection>
-                  )}
-                  <MeshOperationFormSection title={operation === "clean-normals" || operation === "decimate" || operation === "smooth" ? "Parameters" : undefined}>
+                  <MeshOperationFormSection title="Source">
+                    {operation === "implicit-preview" || operation === "implicit-mesh" ? (
+                      <>
+                        <span>{implicitAvailable ? implicitExpr : "Open an implicit surface first"}</span>
+                        {!implicitAvailable && (
+                          <button data-testid={`${testId}-open-implicit-sphere`} type="button"
+                            onClick={onOpenImplicitSpherePreset} disabled={operationBusy}
+                            style={{ justifySelf: "start", fontWeight: 800 }}>
+                            Open implicit sphere preset
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <span>{meshReady ? activeMeshLabel?.trim() || "Active mesh" : "No active mesh. Open or create a mesh first."}
+                        {expandedIsBoolean ? ` · B: ${booleanOperandLabel}` : ""}</span>
+                    )}
+                  </MeshOperationFormSection>
+                  {!expandedIsBoolean && operation !== "implicit-preview" && operation !== "implicit-mesh" && (
+                  <MeshOperationFormSection title="Parameters">
                   {operation === "clean-normals" && (
                     <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       <input
@@ -1710,28 +1723,6 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                           style={{ width: 65 }}
                         />
                       </label>
-                      <div style={{ display: "grid", gap: 3 }}>
-                        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <input
-                            data-testid={`${testId}-${operation}-output-derived`}
-                            type="radio"
-                            name={`${testId}-${operation}-output-mode`}
-                            checked={outputMode === "derived"}
-                            onChange={() => onChangeOutputMode("derived")}
-                          />
-                          New object
-                        </label>
-                        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <input
-                            data-testid={`${testId}-${operation}-output-replace`}
-                            type="radio"
-                            name={`${testId}-${operation}-output-mode`}
-                            checked={outputMode === "replace"}
-                            onChange={() => onChangeOutputMode("replace")}
-                          />
-                          Replace
-                        </label>
-                      </div>
                     </>
                   )}
                   {operation === "decimate" && (
@@ -1805,32 +1796,9 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                     </div>
                   )}
                   </MeshOperationFormSection>
-                  {(operation === "clean-normals" || operation === "decimate" || operation === "smooth") && (
-                    <MeshOperationFormSection title="Output">
-                      <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <input
-                          data-testid={`${testId}-${operation}-output-derived`}
-                          type="radio"
-                          name={`${testId}-${operation}-output-mode`}
-                          checked={outputMode === "derived"}
-                          onChange={() => onChangeOutputMode("derived")}
-                        />
-                        New object
-                      </label>
-                      <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <input
-                          data-testid={`${testId}-${operation}-output-replace`}
-                          type="radio"
-                          name={`${testId}-${operation}-output-mode`}
-                          checked={outputMode === "replace"}
-                          onChange={() => onChangeOutputMode("replace")}
-                        />
-                        Replace
-                      </label>
-                    </MeshOperationFormSection>
                   )}
                   {expandedIsBoolean && (
-          <>
+                    <MeshOperationFormSection title="Parameters">
                       <div
                         data-testid={`${testId}-boolean-formula`}
                         style={booleanStageStyle("active")}
@@ -2108,28 +2076,6 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                       )}
                       <div style={booleanStageStyle("next")}>
                         {booleanStageHeader(4, `Run ${booleanStrategy === "fast" ? "Fast" : booleanStrategy === "robust" ? "Robust" : "Auto"} Boolean`, "next")}
-                      <div style={{ display: "grid", gap: 3 }}>
-                        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <input
-                            data-testid={`${testId}-${operation}-output-derived`}
-                            type="radio"
-                            name={`${testId}-output-mode`}
-                            checked={outputMode === "derived"}
-                            onChange={() => onChangeOutputMode("derived")}
-                          />
-                          New object
-                        </label>
-                        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <input
-                            data-testid={`${testId}-${operation}-output-replace`}
-                            type="radio"
-                            name={`${testId}-output-mode`}
-                            checked={outputMode === "replace"}
-                            onChange={() => onChangeOutputMode("replace")}
-                          />
-                          Replace
-                        </label>
-                      </div>
                       {booleanStatus && <div style={{ color: "#0a66c2" }}>{booleanStatus}</div>}
                       {operationBusy && booleanStatus?.startsWith("Running") && onCancelBoolean && <button type="button" onClick={onCancelBoolean} data-testid={`${testId}-cancel-boolean`}>Stop Boolean</button>}
                       </div>
@@ -2145,7 +2091,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                         {booleanStageHeader(7, "Keep Result", "next")}
                         <div style={{ color: "#475569", fontSize: 10 }}>Use the Boolean Review toolbar to keep or exit the review.</div>
                       </div>
-                    </>
+                    </MeshOperationFormSection>
                   )}
                   {operation === "cgal-remesh" && (
                     <>
@@ -2205,57 +2151,10 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                         />
                         preserve sharp/boundary edges
                       </label>
-                      <div style={{ display: "grid", gap: 3 }}>
-                        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <input
-                            data-testid={`${testId}-remesh-output-derived`}
-                            type="radio"
-                            name={`${testId}-remesh-output-mode`}
-                            checked={outputMode === "derived"}
-                            onChange={() => onChangeOutputMode("derived")}
-                          />
-                          New object
-                        </label>
-                        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <input
-                            data-testid={`${testId}-remesh-output-replace`}
-                            type="radio"
-                            name={`${testId}-remesh-output-mode`}
-                            checked={outputMode === "replace"}
-                            onChange={() => onChangeOutputMode("replace")}
-                          />
-                          Replace
-                        </label>
-                      </div>
                     </>
                   )}
                   {operation === "implicit-preview" && (
-                    <>
-                      <div>Source: {implicitAvailable ? implicitExpr : "Open an implicit surface first"}</div>
-                      {!implicitAvailable && (
-                        <div
-                          style={{
-                            border: "1px solid #fed7aa",
-                            background: "#fff7ed",
-                            borderRadius: 6,
-                            padding: "5px 6px",
-                            color: "#9a3412",
-                            display: "grid",
-                            gap: 5,
-                          }}
-                        >
-                          <strong>Open an implicit surface first.</strong>
-                          <button
-                            data-testid={`${testId}-open-implicit-sphere`}
-                            type="button"
-                            onClick={onOpenImplicitSpherePreset}
-                            disabled={operationBusy}
-                            style={{ justifySelf: "start", fontWeight: 800 }}
-                          >
-                            Open implicit sphere preset
-                          </button>
-                        </div>
-                      )}
+                    <MeshOperationFormSection title="Parameters">
                       <div>Resolution: {previewResolution}^3</div>
                       <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <input
@@ -2285,35 +2184,10 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                         />
                       </label>
                       {previewError && <div style={{ color: "#b42318" }}>{previewError}</div>}
-                    </>
+                    </MeshOperationFormSection>
                   )}
                   {operation === "implicit-mesh" && (
-                    <>
-                      <div>Source: {implicitAvailable ? implicitExpr : "Open an implicit surface first"}</div>
-                      {!implicitAvailable && (
-                        <div
-                          style={{
-                            border: "1px solid #fed7aa",
-                            background: "#fff7ed",
-                            borderRadius: 6,
-                            padding: "5px 6px",
-                            color: "#9a3412",
-                            display: "grid",
-                            gap: 5,
-                          }}
-                        >
-                          <strong>Open an implicit surface first.</strong>
-                          <button
-                            data-testid={`${testId}-open-implicit-sphere`}
-                            type="button"
-                            onClick={onOpenImplicitSpherePreset}
-                            disabled={operationBusy}
-                            style={{ justifySelf: "start", fontWeight: 800 }}
-                          >
-                            Open implicit sphere preset
-                          </button>
-                        </div>
-                      )}
+                    <MeshOperationFormSection title="Parameters">
                       <div>Robust backend: {cgalStatusText}</div>
                       <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <input
@@ -2365,14 +2239,40 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                         effective edge {cgalEffectiveEdge.toFixed(3)} · est {Math.round(cgalEstimatedTris).toLocaleString()} tris
                       </div>
                       {cgalError && <div style={{ color: "#b42318" }}>{cgalError}</div>}
-                    </>
+                    </MeshOperationFormSection>
                   )}
-                  <MeshOperationFormSection title={operation === "clean-normals" || operation === "decimate" || operation === "smooth" ? "Run" : undefined}>
-                    {(operation === "clean-normals" || operation === "decimate" || operation === "smooth") && (
-                      <div data-testid={`${testId}-${operation}-run-summary`} style={{ fontSize: 11, overflowWrap: "anywhere" }}>
-                        Source: {meshReady ? activeMeshLabel?.trim() || "Active mesh" : "None"} · Output: {outputMode === "derived" ? "New object (preserve source)" : "Replace active mesh"}
-                      </div>
+                  <MeshOperationFormSection title="Output">
+                    {operation === "cgal-validate" || operation === "implicit-preview" ? (
+                      <span>Analysis only · active mesh unchanged</span>
+                    ) : operation === "implicit-mesh" ? (
+                      <span>New object · generated from the implicit surface</span>
+                    ) : (
+                      <>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <input data-testid={`${testId}-${operation === "cgal-remesh" ? "remesh" : operation}-output-derived`}
+                            type="radio" name={`${testId}-${operation}-output-mode`}
+                            checked={outputMode === "derived"} onChange={() => onChangeOutputMode("derived")} />
+                          New object
+                        </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <input data-testid={`${testId}-${operation === "cgal-remesh" ? "remesh" : operation}-output-replace`}
+                            type="radio" name={`${testId}-${operation}-output-mode`}
+                            checked={outputMode === "replace"} onChange={() => onChangeOutputMode("replace")} />
+                          Replace
+                        </label>
+                      </>
                     )}
+                  </MeshOperationFormSection>
+                  <MeshOperationFormSection title="Run">
+                    <div data-testid={`${testId}-${operation}-run-summary`} style={{ fontSize: 11, overflowWrap: "anywhere" }}>
+                      Source: {operation === "implicit-preview" || operation === "implicit-mesh"
+                        ? implicitAvailable ? implicitExpr : "None"
+                        : meshReady ? activeMeshLabel?.trim() || "Active mesh" : "None"} · Output: {
+                          operation === "cgal-validate" || operation === "implicit-preview" ? "Analysis only"
+                            : operation === "implicit-mesh" ? "New object"
+                              : outputMode === "derived" ? "New object (preserve source)" : "Replace active mesh"
+                        }
+                    </div>
                   <div data-testid={`${testId}-run-action`} style={{ display: "grid", justifyItems: "start", gap: 5 }}>
                     <button
                       data-testid={`${testId}-run-${operation}`}

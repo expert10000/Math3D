@@ -1,4 +1,44 @@
 /* Respond to usable workbench width, including the app's open docks. */
+.complex-explorer-dock {
+  container: complex-dock / inline-size;
+}
+.complex-explorer-dock-content,
+.complex-explorer-dock-content > *,
+.complex-explorer-setup-grid > *,
+.complex-explorer-gallery > * {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+}
+.complex-explorer-dock-content {
+  overflow-wrap: anywhere;
+}
+.complex-explorer-setup-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)) !important;
+}
+.complex-explorer-dock-content label {
+  min-width: 0;
+}
+.complex-explorer-dock-content input[type="number"],
+.complex-explorer-dock-content input[type="text"],
+.complex-explorer-dock-content select {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+}
+@container complex-dock (max-width: 350px) {
+  .complex-explorer-dock-tabs {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .complex-explorer-dock-tabs > div:last-child {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .complex-explorer-dock-tabs button {
+    min-width: 0;
+  }
+}
 .complex-explorer-layout {
   container-type: inline-size;
   min-width: 0;
