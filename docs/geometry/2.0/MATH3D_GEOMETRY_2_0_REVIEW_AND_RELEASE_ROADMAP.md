@@ -281,6 +281,8 @@ The release should demonstrate supported behavior completely and expose unsuppor
 
 ## 9. IMPORTANT — Complete Geometry–Mesh journey
 
+**Source status, 2026-11-16:** The continuous Box → Mesh edit → Geometry → Project restart desktop journey passes. A separate connected Project test now transfers two coincident, separately indexed open Mesh patches, restarts both source and destination profiles, and verifies two components, eight boundary edges, exact buffer retention, and withheld solid volume. See the [qualification record](TOPOLOGY_RECONCILIATION.md). Exact signed installed-candidate acceptance remains open; this source result does not broaden the 2.0 GA journey scope.
+
 > **Create a parameterized box, measure it, open its mesh, edit a supported component, return to Geometry, inspect dependencies, undo across workbenches, and save/reopen with the relationships intact.**
 
 This is the flagship acceptance scenario for the proposed Geometry improvements. Run it as one continuous workflow, without manually repairing project state between steps.

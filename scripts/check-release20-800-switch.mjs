@@ -13,6 +13,12 @@ export function reviewMixedRouteMemory(receipt, budgets) {
   const span = values => values.length === 8 && values.every(Number.isFinite)
     ? Number((Math.max(...values.slice(4)) - Math.min(...values.slice(4))).toFixed(1)) : null;
   const late = name => span(metric(name));
+  // The GPU subprocess can return native allocations between samples. A
+  // max-minus-min span calls that recovery "growth"; compare the two late
+  // windows instead, as the two-hour checker does. The absolute peak remains
+  // a separate guard against a large transient allocation.
+  const gpuLateGrowth = values => values.length === 8 && values.every(Number.isFinite)
+    ? Number((((values[6] + values[7]) - (values[4] + values[5])) / 2).toFixed(1)) : null;
   const allSamples = cycles.flatMap(cycle => cycle.samples ?? []);
   const peak = name => allSamples.length && allSamples.every(sample => Number.isFinite(sample[name]))
     ? Math.max(...allSamples.map(sample => sample[name])) : null;
@@ -31,11 +37,14 @@ export function reviewMixedRouteMemory(receipt, budgets) {
   ]) check(`${name} peak`, peak(name) !== null && peak(name) <= ceiling, { observed: peak(name), ceiling });
   for (const [name, ceiling] of [
     ['v8UsedMiB', limits?.v8PostGcLateSpanMiB],
-    ['rendererPrivateMiB', limits?.rendererPrivateLateGrowthMiB],
-    ['gpuPrivateMiB', limits?.gpuPrivateLateGrowthMiB]
+    ['rendererPrivateMiB', limits?.rendererPrivateLateGrowthMiB]
   ]) check(`${name} post-GC plateau`, late(name) !== null && late(name) <= ceiling,
     { observed: late(name), ceiling, lastFour: metric(name).slice(4) });
-  return { schema: 'math3d.release20.mixed-route-memory-review.v1',
+  const gpuGrowth = gpuLateGrowth(metric('gpuPrivateMiB'));
+  check('gpuPrivateMiB post-GC late growth', gpuGrowth !== null && gpuGrowth <= limits?.gpuPrivateLateGrowthMiB,
+    { observed: gpuGrowth, ceiling: limits?.gpuPrivateLateGrowthMiB,
+      lastFour: metric('gpuPrivateMiB').slice(4) });
+  return { schema: 'math3d.release20.mixed-route-memory-review.v2',
     status: checks.every(item => item.pass) ? 'passed' : 'failed',
     build: receipt.build, routeSequence: receipt.method?.routeSequence,
     postGc: postGc.map(sample => sample && ({ rssMiB: sample.rssMiB,

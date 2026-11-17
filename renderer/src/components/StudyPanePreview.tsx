@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { qualifyProjectQwzQuadStudy, sampleGraph2DScene,
-  type Graph2DProbe, type Math3DProject, type StudyRecordV1 } from "@math3d/core";
+  type Graph2DProbe, type Math3DProject, type QuantumSceneDocument, type StudyRecordV1 } from "@math3d/core";
 import { Graph2DPlot } from "../graph2d/Graph2DPlot";
 import { GeometryViewer } from "./GeometryViewer";
 import { additionalRepresentationView } from "../projects/additionalProjectRepresentations";
@@ -10,6 +10,7 @@ import { qualifyStudyGraphCurveLink, studyHasQualifiedGraphCurveLink } from "../
 import { projectCurveParameterToGraph } from "../graph2d/graphCurveCursor";
 import { scientificCursorBus } from "./scientificCursor";
 import { StudyQuantumPanePreview } from "./StudyQuantumPanePreview";
+import { StudyHydrogenPanePreview } from "./StudyHydrogenPanePreview";
 import { StudyVectorFieldPanePreview } from "./StudyVectorFieldPanePreview";
 
 const plotSize = { width: 360, height: 280 };
@@ -60,6 +61,27 @@ export function StudyPanePreview({ project, study, paneId, resources }: {
         return { kind: "geometry" as const, view };
       }
       const viewConfigId = study.layout.panes.find(item => item.paneId === paneId)?.viewConfigId;
+      const hydrogen = project.workspace.quantumStudies?.find(item => item.templateId === "hydrogen" &&
+        item.title === study.title && item.panels.length === 2);
+      if (hydrogen && (document.format === "math3d.quantum-scene-document" ||
+          document.format === "math3d.quantum-field-document")) {
+        const fingerprint = document.format === "math3d.quantum-scene-document" ?
+          document.source.sceneFingerprint : document.source.scene.sceneFingerprint;
+        const sceneDocument = [...resolved.documents.values()].find(item =>
+          item.format === "math3d.quantum-scene-document" && item.source.sceneFingerprint === fingerprint);
+        const role = document.format === "math3d.quantum-scene-document" ? "density" : "phase";
+        if (sceneDocument?.format === "math3d.quantum-scene-document" &&
+            hydrogen.panels.some(item => item.role === role && item.sceneFingerprint === fingerprint))
+          return { kind: "hydrogen" as const, document: sceneDocument, role: role as "density" | "phase" };
+      }
+      const ssh = project.workspace.quantumStudies?.find(item => item.templateId === "ssh" &&
+        item.title === study.title && item.panels.length === 2);
+      if (document.format === "math3d.quantum-scene-document" && ssh) {
+        const panel = ssh.panels.find(item => item.sceneFingerprint === document.source.sceneFingerprint);
+        if (panel?.role === "chain" || panel?.role === "bands")
+          return { kind: "quantum" as const, document, role: panel.role as "chain" | "bands",
+            linkedFingerprints: ssh.panels.map(item => item.sceneFingerprint) as [string, string] };
+      }
       const qwzPair = qualifyProjectQwzQuadStudy(project, study);
       if (document.format === "math3d.quantum-scene-document" && qwzPair &&
           (viewConfigId === "qwz.curvature" || viewConfigId === "qwz.bands" ||
@@ -76,7 +98,9 @@ export function StudyPanePreview({ project, study, paneId, resources }: {
   if (preview.kind === "withheld") return <p role="status" data-testid="project-study-preview-withheld">{preview.reason}</p>;
   return <div data-testid="project-study-pane-preview" data-kind={preview.kind}
     style={{ position: "relative", height: 320, minWidth: 0, overflow: "hidden" }}>
-    {preview.kind === "volume" ? <div data-testid="project-study-volume-source" style={{ padding: 16 }}>
+    {preview.kind === "hydrogen" ? <StudyHydrogenPanePreview project={project}
+      document={preview.document as QuantumSceneDocument} role={preview.role} /> :
+    preview.kind === "volume" ? <div data-testid="project-study-volume-source" style={{ padding: 16 }}>
       <strong>{preview.document.metadata.title}</strong>
       <p>Saved Volume source · revision {preview.document.identity.revision}</p>
       <p>Grid {preview.document.source.spatial.dimensions.join(" × ")} · {preview.document.source.spatial.positionUnits} · {preview.document.source.spatial.valueUnits}</p>
