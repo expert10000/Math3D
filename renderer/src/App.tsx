@@ -36267,6 +36267,7 @@ const App: React.FC = () => {
   const [surfaceMeshExportError, setSurfaceMeshExportError] = useState<string | null>(null);
   const [surfaceMeshWeldTolerance, setSurfaceMeshWeldTolerance] = useState(1e-4);
   const [surfaceMeshWeldBusy, setSurfaceMeshWeldBusy] = useState(false);
+  const [weldUndoTarget, setWeldUndoTarget] = useState<{ id: string; revision: number; structuralHash: string } | null>(null);
   const [surfaceMeshWeldError, setSurfaceMeshWeldError] = useState<string | null>(null);
   const [meshAnalyzeDiagnosticsNonce, setMeshAnalyzeDiagnosticsNonce] = useState(0);
   const [surfaceMeshSubdivideIterations, setSurfaceMeshSubdivideIterations] = useState(1);
@@ -62113,6 +62114,8 @@ case "mobius":
       const label = `${surfaceMeshData.label ?? "Surface mesh"} (welded)`;
       const welded = weldSurfaceMeshVertices(surfaceMeshData, tol, label);
       setMeshDataset(applySurfaceMeshOps(welded), "mesh-op:weld");
+      const weldedIdentity = meshDocumentAdapterRef.current?.document().identity;
+      setWeldUndoTarget(weldedIdentity ? { id: weldedIdentity.id, revision: weldedIdentity.revision, structuralHash: weldedIdentity.structuralHash } : null);
       appendMeshPromotionOperation(`welded vertices (tol ${fmt(tol)})`);
       handleChangeViewerKind("mesh");
     } catch (err: any) {
@@ -62128,6 +62131,20 @@ case "mobius":
     surfaceMeshWeldBusy,
     surfaceMeshWeldTolerance,
   ]);
+
+  const canUndoWeldSurfaceMesh = !!weldUndoTarget &&
+    meshKernelDocument?.identity.id === weldUndoTarget.id &&
+    meshKernelDocument.identity.revision === weldUndoTarget.revision &&
+    meshKernelDocument.identity.structuralHash === weldUndoTarget.structuralHash &&
+    !!meshDocumentAdapterRef.current?.history().undoDepth;
+  const handleUndoWeldSurfaceMesh = useCallback(() => {
+    if (!canUndoWeldSurfaceMesh) return;
+    const adapter = meshDocumentAdapterRef.current;
+    if (!adapter?.undo()) return;
+    setMeshKernelDocument(adapter.document());
+    setMeshDataset(adapter.mesh(), "mesh-op:history-preview");
+    setWeldUndoTarget(null);
+  }, [canUndoWeldSurfaceMesh, setMeshDataset]);
 
   const handleTriangulateSurfaceMesh = useCallback(() => {
     setSurfaceMeshOpsError(null);
@@ -66757,6 +66774,24 @@ case "mobius":
         : computeMeshTopologyInspector(surfaceInspectorTopologyMesh, { rowLimit: 18, itemLimit: 12 }),
     [surfaceInspectorTopologyDeferred, surfaceInspectorTopologyMesh]
   );
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.appRuntime?.e2e) return;
+    const testWindow = window as Window & { __MATH3D_E2E_MESH_TOPOLOGY_SOURCE__?: () => unknown };
+    testWindow.__MATH3D_E2E_MESH_TOPOLOGY_SOURCE__ = () => {
+      const document = meshDocumentAdapterRef.current?.document();
+      const mesh = meshDocumentAdapterRef.current?.mesh();
+      return document && mesh ? {
+        id: document.identity.id,
+        revision: document.identity.revision,
+        structuralHash: document.identity.structuralHash,
+        checksum: document.source.resource.checksum,
+        selection: [...meshDocumentAdapterRef.current!.selection()],
+        positions: Array.from(mesh.positions),
+        indices: Array.from(mesh.indices ?? []),
+      } : null;
+    };
+    return () => { delete testWindow.__MATH3D_E2E_MESH_TOPOLOGY_SOURCE__; };
+  }, [meshKernelDocument]);
   const activeSurfaceMeshBenchmarkVerification = useMemo(() => {
     if (!isDev || !surfaceMeshBenchmarkVerification || surfaceMeshData?.source.kind !== "import") return null;
     const activeFileName = surfaceMeshData.source.filename?.toLowerCase() ?? "";
@@ -79550,6 +79585,8 @@ case "mobius":
                   onExportSurfaceMeshGlb={handleExportSurfaceMeshGlb}
                   onChangeSurfaceMeshWeldTolerance={setSurfaceMeshWeldTolerance}
                   onWeldSurfaceMesh={handleWeldSurfaceMesh}
+                  onUndoWeldSurfaceMesh={handleUndoWeldSurfaceMesh}
+                  canUndoWeldSurfaceMesh={canUndoWeldSurfaceMesh}
                   onTriangulateSurfaceMesh={handleTriangulateSurfaceMesh}
                   onRecomputeSurfaceMeshNormals={handleRecomputeSurfaceMeshNormals}
                   onChangeSurfaceMeshSubdivideIterations={setSurfaceMeshSubdivideIterations}
@@ -81583,6 +81620,7 @@ case "mobius":
                       deferredSurfaceSampleSetInfo={deferredSurfaceSampleSetInfo}
                       onPrepareDeferredSurfaceAnalysisData={handlePrepareDeferredSurfaceAnalysisData}
                       meshTopologyDetails={surfaceInspectorTopologyDetails}
+                      meshTopologySourceMesh={surfaceViewerKind === "mesh" ? surfaceInspectorTopologyMesh : null}
                       meshAnalyzeDiagnostics={surfaceMeshAnalyzeDiagnostics}
                       meshBenchmarkVerification={activeSurfaceMeshBenchmarkVerification}
                       onHighlightMeshAnalyzeBoundary={handleHighlightMeshAnalyzeBoundary}
@@ -85227,6 +85265,20 @@ case "mobius":
                         </div>
                         {meshWorkspaceLeftTab === "operations" && (
                           <>
+                        <div data-testid="mesh-workspace-weld" style={{ border: "1px solid #cbd5e1", borderRadius: 8, padding: 8, display: "grid", gap: 6, fontSize: 11 }}>
+                          <strong>Weld active mesh</strong>
+                          <div>Destination: Replace active Mesh document with a revisioned result.</div>
+                          <div>Weld preserves normal and UV seams, so its topology can differ from the position-only interpretation.</div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                            <label>Tolerance <input type="number" min={1e-6} max={0.1} step="any" value={surfaceMeshWeldTolerance} onChange={(event) => {
+                              const value = Number(event.target.value);
+                              if (Number.isFinite(value)) setSurfaceMeshWeldTolerance(Math.max(1e-6, Math.min(0.1, value)));
+                            }} style={{ width: 100, marginLeft: 4 }} /></label>
+                            <button type="button" onClick={handleWeldSurfaceMesh} disabled={surfaceMeshWeldBusy || !surfaceMeshData?.positions.length}>Weld and replace active mesh</button>
+                            <button data-testid="mesh-undo-weld" type="button" onClick={handleUndoWeldSurfaceMesh} disabled={!canUndoWeldSurfaceMesh}>Undo weld</button>
+                          </div>
+                          {surfaceMeshWeldError && <div role="alert">{surfaceMeshWeldError}</div>}
+                        </div>
                         <MeshOperationsPanel
                           testId="mesh-workspace-operation-registry"
                           meshReady={!!surfaceMeshStats}
