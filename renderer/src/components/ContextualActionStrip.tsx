@@ -152,13 +152,13 @@ export function ContextualActionStrip<T extends string>({
         tagName === "textarea" ||
         tagName === "select" ||
         Boolean(target?.isContentEditable);
-      if (editingText || target?.closest('button, a, [role="button"], [role="link"]')) return;
+      if (editingText) return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z" && canUndoLast && onUndoLast) {
         event.preventDefault();
         onUndoLast();
         return;
       }
-      if (event.key === "Enter" && canRunPrimaryAction && onPrimaryAction) {
+      if (event.key === "Enter" && !target?.closest('button, a, [role="button"], [role="link"]') && canRunPrimaryAction && onPrimaryAction) {
         event.preventDefault();
         applyOperation(false);
       }
