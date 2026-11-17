@@ -1,0 +1,159 @@
+{
+  "schema": "math3d.release20.long-memory-review.v2",
+  "mode": "source",
+  "status": "failed",
+  "lateGrowthMethod": "final and preceding fifths of cycle-end CDP post-GC samples",
+  "plateauSampleAction": 101,
+  "plateauQualified": false,
+  "peakSampledRssMiB": 1453.3,
+  "lateGrowthMiB": 48.6,
+  "peakRendererPrivateMiB": 522.3,
+  "rendererPrivateLateGrowthMiB": 53.8,
+  "peakGpuPrivateMiB": 460.1,
+  "gpuPrivateLateGrowthMiB": -5.8,
+  "peakV8UsedMiB": 90,
+  "v8UsedLateGrowthMiB": 0.4,
+  "checks": [
+    {
+      "name": "receipt completed",
+      "pass": true,
+      "observed": "completed"
+    },
+    {
+      "name": "identified clean 2.0 build",
+      "pass": true,
+      "observed": {
+        "version": "2.0.0",
+        "commit": "79325f2dcfca069e793bf94e17fb2822d95ada52",
+        "dirty": false,
+        "builtAt": "2026-11-17T12:09:34.262Z",
+        "rendererHash": "f118f33b0d320711a1e260671ad04597dec6ad6d34864c51211e8507a44ac57f"
+      }
+    },
+    {
+      "name": "two-hour elapsed duration",
+      "pass": true,
+      "observed": {
+        "requestedMinutes": 120,
+        "elapsedMs": 7297824
+      }
+    },
+    {
+      "name": "one app process and completed cycles",
+      "pass": true,
+      "observed": {
+        "pid": 11736,
+        "cycles": 56
+      }
+    },
+    {
+      "name": "no page errors",
+      "pass": true,
+      "observed": []
+    },
+    {
+      "name": "cycle-end CDP collection",
+      "pass": true,
+      "observed": "CDP HeapProfiler.collectGarbage"
+    },
+    {
+      "name": "sampled peak agrees",
+      "pass": true,
+      "observed": {
+        "peak": 1453.3,
+        "reported": 1453.3
+      }
+    },
+    {
+      "name": "host class",
+      "pass": true,
+      "observed": "source checkout"
+    },
+    {
+      "name": "production runtime",
+      "pass": true,
+      "observed": false
+    },
+    {
+      "name": "CDP V8 heap sample coverage",
+      "pass": true,
+      "observed": {
+        "peakV8UsedMiB": 90,
+        "v8UsedLateGrowthMiB": 0.4
+      }
+    },
+    {
+      "name": "GPU process and context health",
+      "pass": true,
+      "observed": {
+        "gpuPids": [
+          38308
+        ],
+        "contextLosses": 0
+      }
+    },
+    {
+      "name": "predeclared source long-run budget",
+      "pass": true,
+      "observed": {
+        "reference": "Windows i9-12900K source build, continuous 100-action cycles for at least two hours",
+        "derivation": "The short-run 1500 MiB ceiling plus 548 MiB headroom, with at most 64 MiB late-window growth; renderer-private and GPU-process ceilings are separate native-memory safeguards. The source GPU-process peak was revised from 512 to 544 MiB after three clean 800-switch runs of the same renderer bundle peaked at 445.5, 520.7, and 524.5 MiB while late GPU growth stayed within 32 MiB. The 544 MiB ceiling leaves 19.5 MiB above the highest measured peak. Long-memory receipt v2 applies the same absolute ceilings to all samples and measures late retention from cycle-end post-GC samples. This source budget does not qualify an installed candidate or replace the two-hour soak.",
+        "peakRssMiB": 2048,
+        "lateGrowthMiB": 64,
+        "peakRendererPrivateMiB": 1024,
+        "rendererPrivateLateGrowthMiB": 32,
+        "peakGpuPrivateMiB": 544,
+        "gpuPrivateLateGrowthMiB": 32,
+        "v8PostGcLateSpanMiB": 16
+      }
+    },
+    {
+      "name": "source peak RSS ceiling",
+      "pass": true,
+      "observed": {
+        "peak": 1453.3,
+        "limit": 2048
+      }
+    },
+    {
+      "name": "source late RSS plateau",
+      "pass": true,
+      "observed": {
+        "lateGrowthMiB": 48.6,
+        "limit": 64
+      }
+    },
+    {
+      "name": "source renderer private ceiling",
+      "pass": true,
+      "observed": {
+        "peakRendererPrivateMiB": 522.3,
+        "limit": 1024
+      }
+    },
+    {
+      "name": "source renderer private plateau",
+      "pass": false,
+      "observed": {
+        "rendererPrivateLateGrowthMiB": 53.8,
+        "limit": 32
+      }
+    },
+    {
+      "name": "source GPU private ceiling",
+      "pass": true,
+      "observed": {
+        "peakGpuPrivateMiB": 460.1,
+        "limit": 544
+      }
+    },
+    {
+      "name": "source GPU private plateau",
+      "pass": true,
+      "observed": {
+        "gpuPrivateLateGrowthMiB": -5.8,
+        "limit": 32
+      }
+    }
+  ]
+}
