@@ -9,7 +9,7 @@ on:
       - tests/e2e/mesh-topology-interpretation.spec.ts
       - .github/workflows/mesh04-topology-ui.yml
   pull_request:
-    branches: [codex/ui-next-acceptance-aggregate]
+    branches: [main, codex/ui-next-acceptance-aggregate]
     paths:
       - renderer/src/App.tsx
       - renderer/src/surfacePanels.tsx
