@@ -50884,6 +50884,14 @@ case "mobius":
   }, [graphCurvatures, surfaceMeshCurvatures, surfaceMeshData?.positions, surfaceSampleSet]);
 
   activeSurfaceCurvatureIdentityRef.current = activeCanonicalSurfaceDefinition.identity.key;
+  const previousSurfaceCurvatureIdentityRef = useRef(activeCanonicalSurfaceDefinition.identity.key);
+  useEffect(() => {
+    const identity = activeCanonicalSurfaceDefinition.identity.key;
+    if (previousSurfaceCurvatureIdentityRef.current === identity) return;
+    previousSurfaceCurvatureIdentityRef.current = identity;
+    surfaceCurvatureSchedulerRef.current.cancel();
+    setSurfaceCurvatureExecution("idle");
+  }, [activeCanonicalSurfaceDefinition.identity.key]);
   const handleComputeSurfaceCurvature = useCallback(async (display?: { scalar?: SurfaceCurvatureScalar; palette?: ColorPalette; rangeMode?: "automatic" | "percentile" | "symmetric"; visible?: boolean }) => {
     if (!surfaceCurvatureSource) return;
     const runInWorker = savedSurfaceModuleActive || shouldWorkerizeSurfaceAnalysis("curvature", surfaceCurvatureSource.sampleCount);

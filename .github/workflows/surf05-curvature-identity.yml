@@ -1,0 +1,50 @@
+name: SURF-05 curvature identity native regression
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - renderer/src/App.tsx
+      - tests/e2e/surf05-late-curvature-response.spec.ts
+      - .github/workflows/surf05-curvature-identity.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  curvature-identity:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    env:
+      NODE_OPTIONS: --max-old-space-size=8192
+      electron_config_cache: '${{ github.workspace }}\.cache\electron'
+      MATH3D_ELECTRON_DOWNLOAD_TIMEOUT_MS: '600000'
+      MATH3D_ELECTRON_EXTRACT_TIMEOUT_MS: '180000'
+      MATH3D_ELECTRON_DOWNLOAD_RETRIES: '2'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+          cache: npm
+      - uses: actions/cache@v6
+        with:
+          path: ${{ env.electron_config_cache }}
+          key: ${{ runner.os }}-electron-cache-${{ hashFiles('package-lock.json') }}
+      - uses: ./.github/actions/source-python-worker
+      - run: npm ci --foreground-scripts && npm --prefix renderer ci --foreground-scripts
+      - run: npm run typecheck:noemit && npm run build:main && npm run build:renderer
+      - name: Exercise late response, canonical curvature and saved Surface module
+        shell: bash
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: surf05-curvature-evidence/native.json
+        run: |
+          mkdir -p surf05-curvature-evidence
+          git rev-parse HEAD > surf05-curvature-evidence/source.txt
+          npx playwright test tests/e2e/surf05-late-curvature-response.spec.ts tests/e2e/surface-functional.spec.ts tests/e2e/project-surface-module.spec.ts --grep 'SURF-05 late curvature|Test 3 — canonical curvature|saved Surface opens the real module' --workers=1 --retries=0 --reporter=list,json
+          node -e 'const s=require("./surf05-curvature-evidence/native.json").stats; if (s.expected!==3 || s.skipped || s.unexpected || s.flaky) { console.error(s); process.exit(1); }'
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: surf05-curvature-identity-evidence
+          path: |
+            surf05-curvature-evidence/**
+            test-results/playwright/**
