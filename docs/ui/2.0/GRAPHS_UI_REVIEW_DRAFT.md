@@ -104,3 +104,7 @@ Read DRAFT_STATE first. Claim one task with owner/branch/base SHA, exact owned f
 ## Implementation update — 2026-11-15
 
 GR-01 is covered by SHARED-01: the Graphs footer preserves the Graph scene label and current document revision while excluding unrelated retained mesh facts. Production fix merged through PR70. Exact-head Windows scoped regression passed at `fa27817fb69c38dc0b6dae8bc2ec108cab03b13a`, [run43710641247](https://github.com/expert10000/Math3D/actions/runs/43710641247). GR-02…05 remain proposed. This does not qualify full Graph scientific-transfer or persistence acceptance.
+
+## GR-05 source-built qualification — 2026-11-16
+
+[GR05_ACCEPTANCE.md](GR05_ACCEPTANCE.md) records scoped Windows native and unit evidence against exact source builds. Cartesian, polar, parametric and data authoring, probes, polar grid, Workbook/Notes IDs, verified scientific imports, negative frame/unit comparisons and portable Project return have bounded passes. Draft PR95 preserves fail-closed activation when a bundle changes, while opening a read-only saved Project preview with the Graph profile's provenance and values withheld. GF-34, Field Explorer missing-source repair/reopen and a late Graph Job after source change pass on the recovery source. GR-05 remains open for integrated-base and installed acceptance.
