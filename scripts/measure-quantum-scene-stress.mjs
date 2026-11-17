@@ -99,10 +99,12 @@ try {
       const role = String(item.type ?? "unknown");
       roleWorkingSetKiB[role] = (roleWorkingSetKiB[role] ?? 0) + item.workingSetKiB;
     }
-    const canvasCounts = await page.locator("canvas").evaluateAll(nodes => ({
-      active: nodes.filter(node => !node.closest('[data-viewer-renderer-pool="idle"]')).length,
-      idle: nodes.filter(node => !!node.closest('[data-viewer-renderer-pool="idle"]')).length,
-    }));
+    const canvasCounts = await page.locator("canvas").evaluateAll(nodes => {
+      const idle = (node) => Boolean(node.closest('[data-viewer-renderer-pool="idle"]')) ||
+        (node.parentElement?.style.position === "fixed" && node.parentElement.style.left === "-100000px" &&
+          node.parentElement.style.visibility === "hidden");
+      return { active: nodes.filter(node => !idle(node)).length, idle: nodes.filter(idle).length };
+    });
     return { heapBytes: heap.usedSize,
       workingSetKiB: processes.reduce((sum, item) => sum + item.workingSetKiB, 0),
       roleWorkingSetKiB,
