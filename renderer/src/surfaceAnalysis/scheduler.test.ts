@@ -43,6 +43,24 @@ describe("Surface analysis scheduler", () => {
     expect(retry).toMatchObject({ state: "ready", value: 7 });
   });
 
+  it("withholds a late result from an earlier source revision", async () => {
+    const scheduler = new SurfaceAnalysisScheduler<number>();
+    const oldStates: string[] = [];
+    let releaseOld!: (value: number) => void;
+    const oldCompute = new Promise<number>(resolve => { releaseOld = resolve; });
+    const oldRun = scheduler.run({ requestId: "curvature:source-2", surfaceRevision: 2,
+      cacheKey: "curvature:source-2", publish: job => oldStates.push(job.state),
+      compute: () => oldCompute });
+    const newRun = scheduler.run({ requestId: "curvature:source-3", surfaceRevision: 3,
+      cacheKey: "curvature:source-3", publish: () => {}, compute: () => 73 });
+    releaseOld(42);
+    expect(await oldRun).toMatchObject({ state: "cancelled", value: null });
+    expect(await newRun).toMatchObject({ state: "ready", value: 73 });
+    expect(scheduler.getCached("curvature:source-2")).toBeNull();
+    expect(scheduler.getCached("curvature:source-3")).toBe(73);
+    expect(oldStates).toEqual(["queued", "running", "cancelled"]);
+  });
+
   it("records reviewed performance budgets", () => {
     expect(createSurfacePerformanceReport([{ scenario: "pointProbe", durationMs: 40 }, { scenario: "moduleSwitch", durationMs: 300 }]).measurements.map((entry) => entry.withinBudget)).toEqual([true, false]);
   });
