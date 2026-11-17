@@ -110455,7 +110455,7 @@ case "mobius":
         ) : (
           <>
             {/* LEFT (2D modes) */}
-            <div style={{ ...styles.panelLeft, width: leftWidth, display: activeDockLayout.leftCollapsed || activeDockLayout.viewerMaximized ? "none" : undefined }}>
+            <div className={mode === "mobius" && functionExplorerScene !== "mobius" ? "complex-explorer-dock" : undefined} style={{ ...styles.panelLeft, width: leftWidth, display: activeDockLayout.leftCollapsed || activeDockLayout.viewerMaximized ? "none" : undefined }}>
               {mode === "mobius" && (
                 functionExplorerScene === "mobius" ? (
                   <MobiusScreen
@@ -110471,7 +110471,7 @@ case "mobius":
                     integrationStatus={mobiusIntegrationStatus}
                   />
                 ) : (
-                  <section style={{ display: "grid", gap: 10 }}>
+                  <section className="complex-explorer-dock-content" data-testid="complex-explorer-dock-content" style={{ display: "grid", gap: 10 }}>
                     <div>
                       <h2 style={{ ...styles.h2, marginTop: 0, marginBottom: 6 }}>{otherComplexLabTitle}</h2>
                       <div
@@ -110484,11 +110484,13 @@ case "mobius":
                         f: C -&gt; C
                       </div>
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                    <div className="complex-explorer-dock-tabs" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
                       <div style={{ fontSize: 11, opacity: 0.72 }}>Left panel: setup / gallery</div>
                       <div style={{ display: "flex", gap: 6 }}>
                         <button
                           type="button"
+                          aria-pressed={otherComplexLeftPanelView === "setup"}
+                          data-testid="complex-dock-setup"
                           onClick={() => setOtherComplexLeftPanelView("setup")}
                           style={pill(otherComplexLeftPanelView === "setup")}
                         >
@@ -110496,6 +110498,8 @@ case "mobius":
                         </button>
                         <button
                           type="button"
+                          aria-pressed={otherComplexLeftPanelView === "gallery"}
+                          data-testid="complex-dock-gallery"
                           onClick={() => setOtherComplexLeftPanelView("gallery")}
                           style={pill(otherComplexLeftPanelView === "gallery")}
                         >
@@ -110505,6 +110509,7 @@ case "mobius":
                     </div>
                     {otherComplexLeftPanelView === "setup" ? (
                     <div
+                      className="complex-explorer-setup-grid"
                       style={{
                         display: "grid",
                         gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
@@ -111625,7 +111630,7 @@ case "mobius":
                       </details>
                     </div>
                     ) : (
-                      <div style={{ ...cardStyle, display: "grid", gap: 10 }}>
+                      <div className="complex-explorer-gallery" style={{ ...cardStyle, display: "grid", gap: 10 }}>
                         <div style={{ fontWeight: 700, fontSize: 12 }}>Riemann Surface Gallery</div>
                         <div style={{ fontSize: 11, opacity: 0.78 }}>
                           Gallery {"->"} lab workflow for multi-valued functions.
