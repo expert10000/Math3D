@@ -24,6 +24,7 @@ test("one Electron process retains responsive navigation and records long-run me
       diagnosticRoutes.some(route => !["graphs", "surfaces", "mesh", "volume", "projects"].includes(route))))
     throw new Error("Diagnostic route sets require smoke mode, graphs first, and unique supported routes.");
   const routes = diagnosticRoutes ?? (diagnosticRoute ? ["graphs", diagnosticRoute] : ["graphs", "surfaces", "mesh", "volume", "projects"]);
+  const collectAfterCycle = !smoke || process.env.MATH3D_MEMORY_SOAK_FORCE_GC === "1";
   // A clean 800-switch Windows run can exceed 29 minutes even when all
   // navigation actions succeed; memory budgets, not this wall clock, qualify it.
   test.setTimeout(smoke ? (smokeCycles * 5 + 10) * 60_000 : (minutes + 45) * 60_000);
@@ -34,13 +35,14 @@ test("one Electron process retains responsive navigation and records long-run me
   if (expectedCommit && build.commit !== expectedCommit) throw new Error("Memory soak build differs from the frozen commit.");
   const started = Date.now(), deadline = started + minutes * 60_000;
   const report = {
-    schema: "math3d.release20.long-memory.v1", status: "running", build,
+    schema: "math3d.release20.long-memory.v2", status: "running", build,
     host: { os: `${os.platform()} ${os.release()}`, cpu: os.cpus()[0]?.model, logicalCpus: os.cpus().length,
       totalMemoryGiB: Math.round(os.totalmem() / 1024 ** 3 * 10) / 10 },
     method: { host: process.env.MATH3D_PACKAGED_APP_EXE ? "installed candidate" : "source checkout",
       packageSha256: process.env.MATH3D_CANDIDATE_INSTALLER_SHA256 || null,
       routeSequence: routes,
-      measurement: "same-process process-tree RSS, Electron private bytes, CDP V8 heap, GPU-process RSS and context-loss events; GPU allocations are not measured",
+      measurement: "same-process process-tree RSS, Electron private bytes, CDP V8 heap, GPU-process RSS and context-loss events; raw peaks and cycle-end post-GC retention are recorded; GPU allocations are not measured",
+      postCycleGc: collectAfterCycle ? "CDP HeapProfiler.collectGarbage" : null,
       runtimeE2e: false },
     requestedMinutes: smoke ? 0 : minutes, startedAtUtc: new Date(started).toISOString(), elapsedMs: 0,
     pid: 0, cycles: [] as Array<{ startedAtMs: number; finishedAtMs?: number; actions: number;
@@ -128,7 +130,7 @@ test("one Electron process retains responsive navigation and records long-run me
         if (action % 10 === 0) { cycle.samples.push(await sample(action)); save(); }
       }
       await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
-      if (smoke && process.env.MATH3D_MEMORY_SOAK_FORCE_GC === "1") {
+      if (collectAfterCycle) {
         await heapSession.send("HeapProfiler.collectGarbage");
         await page.waitForTimeout(2_000);
         cycle.samples.push(await sample(101));
