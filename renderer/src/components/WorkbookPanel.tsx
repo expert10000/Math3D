@@ -17,6 +17,7 @@ import { WorkbookAlgebraResultCell } from "./WorkbookAlgebraResultCell";
 import { WorkbookDependencies } from "./WorkbookDependencies";
 import { WorkbookDocumentView } from "./WorkbookDocumentView";
 import { ScientificSubrectangleWorkbookReport } from "./ScientificSubrectangleWorkbookReport";
+import { QuantumStudyWorkbookCitation } from "./QuantumStudyWorkbookCitation";
 import { ScientificTrajectoryWorkbookReport } from "./ScientificTrajectoryWorkbookReport";
 import { ScientificEquilibriumWorkbookReport } from "./ScientificEquilibriumWorkbookReport";
 import { WorkbookContentEditor } from "./WorkbookContentEditor";
@@ -1911,6 +1912,8 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
               {block.scientificRegionReport?.kind === "scientific-subrectangle-report/v1" &&
                 <ScientificSubrectangleWorkbookReport project={dependencyProject} reference={block.notebookReference}
                   workbookId={activeWorkbook?.id} previousResultId={block.scientificRegionReport.previousResultId} />}
+              {block.quantumStudyEvidence && <QuantumStudyWorkbookCitation project={dependencyProject}
+                reference={block.notebookReference} evidence={block.quantumStudyEvidence} />}
               {block.scientificRegionReport?.kind === "scientific-trajectory-report/v1" &&
                 <ScientificTrajectoryWorkbookReport project={dependencyProject}
                   reference={block.notebookReference} />}

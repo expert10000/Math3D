@@ -2,6 +2,7 @@ import type { Math3DProject, StudyRecordV1 } from "@math3d/core";
 import { inspectNotebookReference, normalizeNotebookReference,
   type NotebookReference, type WorkbookStageId } from "@math3d/workbook";
 import { readProjectWorkbook } from "./projectWorkbookBinding";
+import { normalizeQuantumStudyWorkbookEvidence, quantumStudySelectionHash } from "./quantumStudyWorkbook";
 
 export type ProjectStudyWorkbookReference = Readonly<{
   workbookId: string;
@@ -33,11 +34,16 @@ export function projectStudyWorkbookReferences(project: Math3DProject, study: St
       const linked = candidates.map(normalizeNotebookReference).filter(reference => reference?.kind === "study" &&
         reference.projectId === project.identity.id && reference.targetId === study.id);
       if (!linked.length) continue;
-      const current = linked.some(reference => inspectNotebookReference(project, reference).status === "current");
+      const quantum = block.quantumStudyEvidence ? normalizeQuantumStudyWorkbookEvidence(block.quantumStudyEvidence) : null;
+      const selectionCurrent = !block.quantumStudyEvidence || !!quantum &&
+        quantum.studyId === study.id && quantum.selectionHash === quantumStudySelectionHash(project, study);
+      const current = selectionCurrent && linked.some(reference => inspectNotebookReference(project, reference).status === "current");
       output.push({ workbookId: saved.id, title: `${saved.title} / ${block.title}`,
         stageId: stage.id, blockId: block.id, status: current ? "current" : "historical",
-        reason: current ? "Workbook cites this exact Study and its current member generations." :
-          "Workbook cites an earlier Study record or member generation." });
+        reason: current ? block.quantumStudyEvidence ?
+          "Saved Study selection matches; open the Workbook to recheck source bundles and values." :
+          "Workbook cites this exact Study and its current member generations." :
+          "Workbook cites an earlier Study or selection generation." });
     }
   }
   return output;

@@ -134,6 +134,7 @@ import { SelectionStatsPanel } from "./components/SelectionStatsPanel";
 import { DiskStatsPanel } from "./components/DiskStatsPanel";
 import { WorkbookPanel } from "./components/WorkbookPanel";
 import { ScientificSubrectangleWorkbookReport } from "./components/ScientificSubrectangleWorkbookReport";
+import { QuantumStudyWorkbookCitation } from "./components/QuantumStudyWorkbookCitation";
 import { GeometryPickReadout } from "./components/GeometryPickReadout";
 import { GeometryAnalysisInspectorPanel } from "./components/GeometryAnalysisInspectorPanel";
 import { KernelWorkspacePanel } from "./components/KernelWorkspacePanel";
@@ -94035,6 +94036,10 @@ case "mobius":
                         <ScientificSubrectangleWorkbookReport project={getWorkbookDependencyProjectRef.current()}
                           reference={fullWorkbookSelectedBlockMeta.block.notebookReference} workbookId={activeWorkbook?.id}
                           previousResultId={fullWorkbookSelectedBlockMeta.block.scientificRegionReport.previousResultId} />}
+                      {fullWorkbookSelectedBlockMeta.block.quantumStudyEvidence &&
+                        <QuantumStudyWorkbookCitation project={getWorkbookDependencyProjectRef.current()}
+                          reference={fullWorkbookSelectedBlockMeta.block.notebookReference}
+                          evidence={fullWorkbookSelectedBlockMeta.block.quantumStudyEvidence} />}
                       {fullWorkbookSelectedBlockMeta.block.notebookReference && !IS_REPLAY_MODE && <WorkbookAnalysisRerun context={getNotebookContext()} reference={fullWorkbookSelectedBlockMeta.block.notebookReference} onRelink={notebookReference => handleUpdateWorkbookBlock(fullWorkbookSelectedBlockMeta.stageId, fullWorkbookSelectedBlockMeta.block.id, { notebookReference })} />}
                       {fullWorkbookSelectedBlockMeta.block.type === "assert" && activeWorkbook && (() => {
                         const context = getNotebookContext();

@@ -37,6 +37,7 @@ type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoi
   onPinQwz: (studyId: string, sampleIndex: number) => void;
   onPinQuantumSample: (studyId: string, role: "density" | "phase" | "chain" | "bands", index: number,
     objectId: string | null) => void;
+  onPublishQuantumWorkbook?: (studyId: string) => Promise<void>;
   onUnpinQwz: (studyId: string) => void;
   onDeriveQwzProfile?: (studyId: string) => Promise<{ graphId: string; resultId: string }>;
   onPublishSurfaceRidge?: (surfaceId: string, meshId: string, ridgeIndex: number) => Promise<void>;
@@ -53,7 +54,7 @@ type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoi
 /** A Study is a saved layout of references; opening a pane delegates to its owning document. */
 export function ProjectStudiesPanel({ project, documents, editable, resources, focusStudy, onCreate, onRename, onFork, onConfigure,
   onLink, onLinkCurveSurface, onLinkSurfaceMesh, onCreateQwz, onPinQwz, onUnpinQwz, onDeriveQwzProfile,
-  onPinQuantumSample,
+  onPinQuantumSample, onPublishQuantumWorkbook,
   onPublishSurfaceRidge,
   onPublishVolumeMesh,
   onPinScientificSelection, workbookBytes, onOpenWorkbookBlock,
@@ -236,7 +237,7 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
         onDeriveProfile={onDeriveQwzProfile}
         onOpenGraphProfile={id => { setVisiblePaneId(null); onOpenDocument(id, "graph2d"); }} />}
       {quantumStudyRecord(project, open) && <StudyQuantumSelectionPanel project={project} study={open}
-        editable={editable} onPin={onPinQuantumSample} />}
+        editable={editable} onPin={onPinQuantumSample} onPublishWorkbook={onPublishQuantumWorkbook} />}
       {quantumSelectionMessage && quantumStudyRecord(project, open) &&
         <p role="status" data-testid="project-study-quantum-selection-message">{quantumSelectionMessage}</p>}
       {project.metadata.tags?.includes("catenoid-evidence") && open.members.some(member =>

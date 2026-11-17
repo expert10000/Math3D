@@ -7,9 +7,10 @@ type Role = "density" | "phase" | "chain" | "bands";
 type Evidence = Awaited<ReturnType<typeof quantumStudySelectionEvidence>>;
 
 /** Saved coordinates are shown only after reopening every exact source bundle. */
-export function StudyQuantumSelectionPanel({ project, study, editable, onPin }: {
+export function StudyQuantumSelectionPanel({ project, study, editable, onPin, onPublishWorkbook }: {
   project: Math3DProject; study: StudyRecordV1; editable: boolean;
   onPin: (studyId: string, role: Role, index: number, objectId: string | null) => void;
+  onPublishWorkbook?: (studyId: string) => Promise<void>;
 }) {
   const record = quantumStudyRecord(project, study);
   const [evidence, setEvidence] = useState<Evidence | null>(null);
@@ -51,6 +52,13 @@ export function StudyQuantumSelectionPanel({ project, study, editable, onPin }: 
     } catch (cause) { setError(`Evidence export failed: ${String((cause as Error).message)}`); }
     finally { setBusy(false); }
   };
+  const publishWorkbook = async () => {
+    if (!onPublishWorkbook) return;
+    setError(""); setBusy(true);
+    try { await onPublishWorkbook(study.id); }
+    catch (cause) { setError(`Workbook citation refused: ${String((cause as Error).message)}`); }
+    finally { setBusy(false); }
+  };
   return <section data-testid="project-study-quantum-selection" aria-label="Saved quantum Study selection">
     <h6>Saved selection and evidence</h6>
     {record.templateId === "hydrogen" ? <p>Click a grid point in either density or phase preview. The same exact grid point is saved for both panes when you save the Project.</p> :
@@ -85,5 +93,8 @@ export function StudyQuantumSelectionPanel({ project, study, editable, onPin }: 
     </div>}
     <button type="button" disabled={busy} data-testid="project-study-export-quantum-evidence"
       onClick={() => void exportEvidence()}>Export verified evidence JSON</button>
+    {editable && onPublishWorkbook && <button type="button" disabled={busy || !evidence || !Object.keys(evidence.values).length}
+      data-testid="project-study-publish-quantum-workbook" onClick={() => void publishWorkbook()}>
+      Create Workbook citation from saved selection</button>}
   </section>;
 }

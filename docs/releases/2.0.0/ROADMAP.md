@@ -2,7 +2,7 @@
 
 **Product roadmap · Architecture / UX / Scientific interoperability / Release engineering**<br>
 **Prepared:** 2026-11-05<br>
-**Updated:** 2026-11-16<br>
+**Updated:** 2026-11-17<br>
 **Target:** Math3D 2.0.0 General Availability (GA)<br>
 **Status:** The combined source branch identifies 2.0.0 and includes Project-owned Studies, qualified cursor links, source recovery, and bounded flagship desktop journeys. RC1, RC2, and GA are not declared; no `v2.0.0` tag or signed 2.0 candidate exists.<br>
 **Primary product claim:** *Construct, compute, analyze, compare, document, and publish connected mathematical objects in one scientific workspace.*
@@ -29,6 +29,8 @@ TOP-01–04 and SHARED-01 have merged UI slices. The remaining unclaimed queue i
 **Saved quantum pane and QWZ line follow-up (2026-11-16):** Hydrogen density and phase Study panes now reopen the exact complex scene before requesting a native slice. Density carries the source-derived squared amplitude unit; phase uses radians and marks complex nodes undefined. SSH chain and band Study panes use the same independent source reopening path. QWZ's promoted native 2D Field can select a verified grid line, add its exact samples to Graphs with a saved Field generation binding, and save both documents in a Project. Desktop source tests cover restart and changed-bundle refusal for hydrogen and SSH, and QWZ Field-to-Graph Project save. These feature additions do not change the four required GA journeys or installed-candidate gates.
 
 **Quantum Study selection and evidence follow-up (2026-11-17, feature track):** A saved hydrogen Study can pin one native grid coordinate across density and phase panes; a saved SSH Study can pin independently qualified chain and band samples without deriving edge/bulk classification. The Project retains these indices across restart. The Study evidence view reopens exact scene bundles before displaying values, coordinates and source units. Its JSON export records run/result hashes, scene and dataset hashes, values and explicit omissions; a changed source withholds all values, and phase at a complex node is marked undefined. Desktop restart, changed-source and export checks are the acceptance gate for this slice. Memory qualification and the four bounded 2.0 journeys keep their existing gates.
+
+**Quantum Study Workbook citation follow-up (2026-11-17, feature track):** A saved hydrogen or SSH selection can publish its verified JSON evidence into a Project-owned Workbook reference block. The block retains the publication snapshot, Study generation, source fingerprints, dataset hashes, units, selected values and omissions. On reopen it rechecks the exact Study selection and source bundles before showing values; changed or missing evidence is withheld with a reason. The focused desktop qualification covers both models across restart and bundle mutation. QI-40 direct-launch qualification, memory work and the four bounded 2.0 journeys retain separate gates.
 
 **Geometry–Mesh source qualification (2026-11-16):** The connected Project import, export, clean-profile transfer, and cold-reopen test for separately indexed coincident open patches now passes. Its Mesh status retains two components and eight boundary edges and withholds solid volume; exact positions and indices survive the package transfer. The [Geometry–Mesh qualification record](../../geometry/2.0/TOPOLOGY_RECONCILIATION.md) tracks the remaining exact signed installed-candidate run. This focused source case does not add a fifth advertised GA journey.
 

@@ -19,6 +19,7 @@ import { WorkbookSavedMeshReviewBlock } from "./WorkbookSavedMeshReviewBlock";
 import { WorkbookCoordinateReviewBlock } from "./WorkbookCoordinateReviewBlock";
 import type { SavedMeshTrendTarget } from "../projects/projectSavedMeshTrendPoint";
 import { ScientificSubrectangleWorkbookReport } from "./ScientificSubrectangleWorkbookReport";
+import { QuantumStudyWorkbookCitation } from "./QuantumStudyWorkbookCitation";
 import { WorkbookAlgebraResultCell } from "./WorkbookAlgebraResultCell";
 
 type Props = {
@@ -135,6 +136,8 @@ export const WorkbookDocumentView: React.FC<Props> = ({
           {block.scientificRegionReport?.kind === "scientific-subrectangle-report/v1" &&
             <ScientificSubrectangleWorkbookReport project={project} reference={reference} workbookId={workbook.id}
               previousResultId={block.scientificRegionReport.previousResultId} />}
+          {block.quantumStudyEvidence && <QuantumStudyWorkbookCitation project={project}
+            reference={reference} evidence={block.quantumStudyEvidence} />}
           {block.type === "compute" && <div style={{ display: "grid", gap: 4 }}>
             <div>{block.compute?.summary || latestRun?.summary || "No saved result summary."}</div>
             {latestRun && <small>Saved run: {latestRun.status} · {new Date(latestRun.savedAt).toLocaleString()} · input {latestRun.inputHash.slice(0, 12)}</small>}
