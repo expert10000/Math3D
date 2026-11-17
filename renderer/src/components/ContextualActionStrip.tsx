@@ -152,7 +152,7 @@ export function ContextualActionStrip<T extends string>({
         tagName === "textarea" ||
         tagName === "select" ||
         Boolean(target?.isContentEditable);
-      if (editingText) return;
+      if (editingText || target?.closest('button, a, [role="button"], [role="link"]')) return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z" && canUndoLast && onUndoLast) {
         event.preventDefault();
         onUndoLast();

@@ -6,6 +6,7 @@ on:
       - renderer/src/App.tsx
       - renderer/src/math/complexExplorerLayout.css
       - renderer/src/components/MeshOperationsPanel.tsx
+      - renderer/src/components/ContextualActionStrip.tsx
       - tests/e2e/complex-explorer-layout.spec.ts
       - tests/e2e/mesh-operation-form.spec.ts
       - .github/workflows/workbench-layout-forms.yml
@@ -15,6 +16,7 @@ on:
       - renderer/src/App.tsx
       - renderer/src/math/complexExplorerLayout.css
       - renderer/src/components/MeshOperationsPanel.tsx
+      - renderer/src/components/ContextualActionStrip.tsx
       - tests/e2e/complex-explorer-layout.spec.ts
       - tests/e2e/mesh-operation-form.spec.ts
       - .github/workflows/workbench-layout-forms.yml

@@ -60,7 +60,8 @@ test('Boolean, implicit and CGAL forms expose the same sections and keyboard out
     const id = 'mesh-workspace-operation-registry';
     for (const operation of ['cgal-validate', 'cgal-repair', 'cgal-repair-validate', 'cgal-remesh', 'boolean-union', 'implicit-preview', 'implicit-mesh']) {
       const row = card.getByTestId(`${id}-row-${operation}`);
-      await row.click();
+      await row.focus();
+      await page.keyboard.press('Enter');
       await expect(row).toHaveAttribute('aria-expanded', 'true');
       for (const section of ['Source', 'Parameters', 'Output', 'Run'])
         await expect(card.getByRole('group', { name: section, exact: true })).toBeVisible();
