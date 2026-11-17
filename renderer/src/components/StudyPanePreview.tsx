@@ -11,13 +11,15 @@ import { projectCurveParameterToGraph } from "../graph2d/graphCurveCursor";
 import { scientificCursorBus } from "./scientificCursor";
 import { StudyQuantumPanePreview } from "./StudyQuantumPanePreview";
 import { StudyHydrogenPanePreview } from "./StudyHydrogenPanePreview";
+import type { FieldSample } from "./QuantumFieldSlice";
 import { StudyVectorFieldPanePreview } from "./StudyVectorFieldPanePreview";
 
 const plotSize = { width: 360, height: 280 };
 
 /** Mounted only for the pane the user opens. Source ownership stays in the Project. */
-export function StudyPanePreview({ project, study, paneId, resources }: {
+export function StudyPanePreview({ project, study, paneId, resources, onHydrogenSample }: {
   project: Math3DProject; study: StudyRecordV1; paneId: string; resources?: VerifiedProjectResources;
+  onHydrogenSample?: (sample: FieldSample) => void;
 }) {
   const [linkedProbe, setLinkedProbe] = useState<Graph2DProbe | null>(null);
   useEffect(() => {
@@ -97,9 +99,10 @@ export function StudyPanePreview({ project, study, paneId, resources }: {
   }, [project, study, paneId, resources]);
   if (preview.kind === "withheld") return <p role="status" data-testid="project-study-preview-withheld">{preview.reason}</p>;
   return <div data-testid="project-study-pane-preview" data-kind={preview.kind}
-    style={{ position: "relative", height: 320, minWidth: 0, overflow: "hidden" }}>
+    style={{ position: "relative", height: preview.kind === "hydrogen" ? 540 : 320,
+      minWidth: 0, overflow: preview.kind === "hydrogen" ? "auto" : "hidden" }}>
     {preview.kind === "hydrogen" ? <StudyHydrogenPanePreview project={project}
-      document={preview.document as QuantumSceneDocument} role={preview.role} /> :
+      document={preview.document as QuantumSceneDocument} role={preview.role} onSelectGrid={onHydrogenSample} /> :
     preview.kind === "volume" ? <div data-testid="project-study-volume-source" style={{ padding: 16 }}>
       <strong>{preview.document.metadata.title}</strong>
       <p>Saved Volume source · revision {preview.document.identity.revision}</p>

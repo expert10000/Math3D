@@ -77,6 +77,7 @@ import { createProjectSavedMeshComparisonNote, inspectProjectSavedMeshComparison
 import { buildSavedMeshComparisonReview } from "../projects/projectSavedMeshComparisonReview";
 import { createSavedMeshComparisonReviewSnapshot, savedMeshComparisonReviewHtml } from "../projects/projectSavedMeshComparisonReviewReport";
 import { downloadStudyBlob } from "../projects/studyComparisonExport";
+import { pinQuantumStudySample } from "../projects/quantumStudySelection";
 import { ProjectSavedMeshComparisonReviewIndex } from "./ProjectSavedMeshComparisonReviewIndex";
 import { ProjectCoordinateObservationReviewIndex } from "./ProjectCoordinateObservationReviewIndex";
 import { buildProjectCoordinateObservationReview } from "../projects/projectCoordinateObservationReview";
@@ -2525,6 +2526,11 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               onCreateQwz={id => { void stageQwzQuadStudy(id); }}
               onPinQwz={(id, sampleIndex) => stageStudy(source => pinProjectQwzSample(source, id, sampleIndex),
                 "QWZ k selection pinned in Study.")}
+              onPinQuantumSample={(id, role, index, objectId) => stageStudy(source => {
+                const study = source.workspace.studies?.find(item => item.id === id);
+                if (!study) throw new TypeError("Saved Study is unavailable.");
+                return pinQuantumStudySample(source, study, role, index, objectId);
+              }, "Quantum sample pinned in Study.")}
               onUnpinQwz={id => stageStudy(source => unpinProjectQwzSample(source, id),
                 "QWZ k selection removed from Study.")}
               onDeriveQwzProfile={stageQwzBandProfile}

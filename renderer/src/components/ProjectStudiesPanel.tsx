@@ -18,6 +18,9 @@ import { SurfaceRidgePublicationPanel } from "./SurfaceRidgePublicationPanel";
 import { StudyQwzCursorControl } from "./StudyQwzCursorControl";
 import { qualifyStudyScientificSelectionPin } from "../projects/projectStudyNoteAnchor";
 import { volumeMeshJourneyOptions } from "../projects/volumeMeshStudy";
+import { hydrogenGridIndex, pinQuantumStudySample, quantumStudyRecord,
+  quantumStudySelectionEvidence } from "../projects/quantumStudySelection";
+import { StudyQuantumSelectionPanel } from "./StudyQuantumSelectionPanel";
 
 const StudyPanePreview = lazy(() => import("./StudyPanePreview").then(module => ({ default: module.StudyPanePreview })));
 
@@ -32,6 +35,8 @@ type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoi
   onConfigure: (id: string, description: string, mode: StudyRecordV1["layout"]["mode"], paneIds: readonly string[]) => void;
   onCreateQwz: (quantumStudyId: string) => void;
   onPinQwz: (studyId: string, sampleIndex: number) => void;
+  onPinQuantumSample: (studyId: string, role: "density" | "phase" | "chain" | "bands", index: number,
+    objectId: string | null) => void;
   onUnpinQwz: (studyId: string) => void;
   onDeriveQwzProfile?: (studyId: string) => Promise<{ graphId: string; resultId: string }>;
   onPublishSurfaceRidge?: (surfaceId: string, meshId: string, ridgeIndex: number) => Promise<void>;
@@ -48,6 +53,7 @@ type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoi
 /** A Study is a saved layout of references; opening a pane delegates to its owning document. */
 export function ProjectStudiesPanel({ project, documents, editable, resources, focusStudy, onCreate, onRename, onFork, onConfigure,
   onLink, onLinkCurveSurface, onLinkSurfaceMesh, onCreateQwz, onPinQwz, onUnpinQwz, onDeriveQwzProfile,
+  onPinQuantumSample,
   onPublishSurfaceRidge,
   onPublishVolumeMesh,
   onPinScientificSelection, workbookBytes, onOpenWorkbookBlock,
@@ -61,11 +67,15 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
   const [layoutMode, setLayoutMode] = useState<StudyRecordV1["layout"]["mode"]>("single");
   const [paneOrder, setPaneOrder] = useState<string[]>([]);
   const [visiblePaneId, setVisiblePaneId] = useState<string | null>(null);
+  const [quantumSelectionMessage, setQuantumSelectionMessage] = useState("");
+  const quantumSelectionSerial = useRef(0);
   const viewRef = useRef<HTMLDivElement>(null);
   const studies = project.workspace.studies ?? [];
   useEffect(() => {
     const study = studies.find(item => item.id === focusStudy?.id);
     if (!study) return;
+    quantumSelectionSerial.current++;
+    setQuantumSelectionMessage("");
     setOpenId(study.id); setEditTitle(study.title); setDescription(study.description ?? "");
     setLayoutMode(study.layout.mode); setPaneOrder(study.layout.panes.map(pane => pane.paneId));
     setVisiblePaneId(null);
@@ -143,6 +153,8 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
     </div>}
     <ul>{studies.map(study => <li key={study.id}>
       <button type="button" data-testid={`project-study-open-${study.id}`} onClick={() => {
+        quantumSelectionSerial.current++;
+        setQuantumSelectionMessage("");
         setOpenId(study.id); setEditTitle(study.title); setDescription(study.description ?? "");
         setLayoutMode(study.layout.mode); setPaneOrder(study.layout.panes.map(pane => pane.paneId));
         setVisiblePaneId(null);
@@ -150,6 +162,8 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
     </li>)}</ul>
     {open && <div ref={viewRef} className="project-study-view" data-testid="project-study-view" data-study-id={open.id}>
       <button type="button" data-testid="project-study-back" onClick={() => {
+        quantumSelectionSerial.current++;
+        setQuantumSelectionMessage("");
         const id = open.id;
         setOpenId(null); setVisiblePaneId(null);
         window.requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-testid="project-study-open-${CSS.escape(id)}"]`)?.focus());
@@ -221,6 +235,10 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
         editable={editable} onPin={onPinQwz} onUnpin={onUnpinQwz}
         onDeriveProfile={onDeriveQwzProfile}
         onOpenGraphProfile={id => { setVisiblePaneId(null); onOpenDocument(id, "graph2d"); }} />}
+      {quantumStudyRecord(project, open) && <StudyQuantumSelectionPanel project={project} study={open}
+        editable={editable} onPin={onPinQuantumSample} />}
+      {quantumSelectionMessage && quantumStudyRecord(project, open) &&
+        <p role="status" data-testid="project-study-quantum-selection-message">{quantumSelectionMessage}</p>}
       {project.metadata.tags?.includes("catenoid-evidence") && open.members.some(member =>
         project.workspace.entries.find(entry => entry.expected.id === member.documentId)?.module === "surface") &&
         <CatenoidWaistEvidencePanel project={project} resources={resources} />}
@@ -305,7 +323,25 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
               onClick={() => setVisiblePaneId(current => current === pane.paneId ? null : pane.paneId)}>
               {visiblePaneId === pane.paneId ? "Hide preview" : "Show preview"}</button>
             {visiblePaneId === pane.paneId && <Suspense fallback={<p role="status">Loading Study pane…</p>}>
-              <StudyPanePreview project={project} study={open} paneId={pane.paneId} resources={resources} />
+              <StudyPanePreview project={project} study={open} paneId={pane.paneId} resources={resources}
+                onHydrogenSample={sample => {
+                  if (!editable) return;
+                  const fingerprint = quantumStudyRecord(project, open)?.panels[0]?.sceneFingerprint;
+                  if (!fingerprint) return;
+                  const serial = ++quantumSelectionSerial.current;
+                  setQuantumSelectionMessage("Checking the exact hydrogen bundle before pinning…");
+                  try {
+                    const index = hydrogenGridIndex(project, sample.grid, fingerprint);
+                    const candidate = pinQuantumStudySample(project, open, "density", index, null);
+                    void quantumStudySelectionEvidence(candidate, open).then(checked => {
+                      if (serial !== quantumSelectionSerial.current) return;
+                      if (!("density" in checked.values)) throw new TypeError(checked.omissions.join(" "));
+                      onPinQuantumSample(open.id, "density", index, null);
+                      setQuantumSelectionMessage("Hydrogen grid point staged. Save Project to retain it.");
+                    }).catch(error => { if (serial === quantumSelectionSerial.current)
+                      setQuantumSelectionMessage(`Selection withheld: ${String((error as Error).message)}`); });
+                  } catch (error) { setQuantumSelectionMessage(`Selection withheld: ${String((error as Error).message)}`); }
+                }} />
             </Suspense>}
           </div>;
         })}
