@@ -158,7 +158,7 @@ export function ContextualActionStrip<T extends string>({
         onUndoLast();
         return;
       }
-      if (event.key === "Enter" && canRunPrimaryAction && onPrimaryAction) {
+      if (event.key === "Enter" && !target?.closest('button, a, [role="button"], [role="link"]') && canRunPrimaryAction && onPrimaryAction) {
         event.preventDefault();
         applyOperation(false);
       }

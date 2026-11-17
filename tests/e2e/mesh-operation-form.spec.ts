@@ -45,3 +45,45 @@ test('basic Mesh forms keep source and output choices beside Run and preserve Sm
     await closeSurfaceApp(ctx);
   }
 });
+
+test('Boolean, implicit and CGAL forms expose the same sections and keyboard output choice', async () => {
+  test.setTimeout(150_000);
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp({ MATH3D_GPU_MODE: 'software', MATH3D_SKIP_AUTOSAVE_RECOVERY: '1' });
+    const { page } = ctx;
+    await resetSurfaceAppState(page);
+    await page.getByTestId('workspace-nav-mesh').click();
+    for (const button of await page.getByRole('button', { name: 'Mesh tools', exact: true }).all())
+      if (await button.isVisible()) { await button.click(); break; }
+    const card = page.getByTestId('mesh-workspace-operation-registry').first();
+    const id = 'mesh-workspace-operation-registry';
+    for (const operation of ['cgal-validate', 'cgal-repair', 'cgal-repair-validate', 'cgal-remesh', 'boolean-union', 'implicit-preview', 'implicit-mesh']) {
+      const row = card.getByTestId(`${id}-row-${operation}`);
+      await row.focus();
+      await page.keyboard.press('Enter');
+      await expect(row).toHaveAttribute('aria-expanded', 'true');
+      for (const section of ['Source', 'Parameters', 'Output', 'Run'])
+        await expect(card.getByRole('group', { name: section, exact: true })).toBeVisible();
+      const output = card.getByRole('group', { name: 'Output', exact: true });
+      if (operation === 'cgal-validate' || operation === 'implicit-preview') {
+        await expect(output).toContainText('Analysis only');
+      } else if (operation === 'implicit-mesh') {
+        await expect(output).toContainText('New object');
+      } else {
+        const replace = output.getByLabel('Replace', { exact: true });
+        await replace.focus();
+        await page.keyboard.press('Space');
+        await expect(replace).toBeChecked();
+        await expect(card.getByRole('group', { name: 'Run', exact: true })).toContainText('Replace active mesh');
+        await output.getByLabel('New object', { exact: true }).check();
+      }
+    }
+    await card.getByTestId(`${id}-row-implicit-preview`).click();
+    await expect(card.getByRole('group', { name: 'Source', exact: true })
+      .getByTestId(`${id}-open-implicit-sphere`)).toBeVisible();
+    await expect(card.getByTestId(`${id}-run-implicit-preview`)).toBeDisabled();
+  } finally {
+    await closeSurfaceApp(ctx);
+  }
+});
