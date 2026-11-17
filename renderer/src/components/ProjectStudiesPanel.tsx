@@ -6,6 +6,7 @@ import { migrateLegacyStudyPaneResearchReference, inspectResearchReference, insp
 import type { VerifiedProjectResources } from "../projects/projectResources";
 import type { WorkbookStageId } from "@math3d/workbook";
 import { projectStudyWorkbookReferences } from "../projects/projectStudyReferences";
+import { quantumStudySelectionHash } from "../projects/quantumStudyWorkbook";
 import { projectNoteSourceResolver } from "../projects/projectNoteTargets";
 import { qualifyStudyGraphCurveLink, studyHasQualifiedGraphCurveLink } from "../projects/studyGraphCurveLink";
 import { qualifyStudyCurveSurfaceLink, studyHasQualifiedCurveSurfaceLink } from "../projects/studyCurveSurfaceLink";
@@ -27,7 +28,8 @@ const StudyPanePreview = lazy(() => import("./StudyPanePreview").then(module => 
 type DocumentChoice = Readonly<{ id: string; title: string; module: KernelWorkspaceModule }>;
 type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoice[]; editable: boolean;
   resources?: VerifiedProjectResources;
-  focusStudy?: Readonly<{ id: string; token: number; selectionId?: string }> | null;
+  focusStudy?: Readonly<{ id: string; token: number; selectionId?: string;
+    quantumSelectionHash?: string }> | null;
   onCreate: (title: string, ids: readonly string[]) => void; onRename: (id: string, title: string) => void;
   onFork: (id: string, title: string) => void; onLink: (id: string) => void;
   onLinkCurveSurface: (id: string) => void;
@@ -236,7 +238,16 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
         editable={editable} onPin={onPinQwz} onUnpin={onUnpinQwz}
         onDeriveProfile={onDeriveQwzProfile}
         onOpenGraphProfile={id => { setVisiblePaneId(null); onOpenDocument(id, "graph2d"); }} />}
-      {quantumStudyRecord(project, open) && <StudyQuantumSelectionPanel project={project} study={open}
+      {focusStudy?.id === open.id && focusStudy.quantumSelectionHash &&
+        focusStudy.quantumSelectionHash === quantumStudySelectionHash(project, open) &&
+        <p role="status" data-testid="project-study-quantum-return">
+          Returned to cited selection: {quantumStudyRecord(project, open)?.panels.map(panel =>
+            `${panel.role} ${panel.sampleIndex === null ? "unselected" : `index ${panel.sampleIndex}`}`).join(" · ")}.
+          Exact source bundles are being rechecked below.
+        </p>}
+      {quantumStudyRecord(project, open) && <StudyQuantumSelectionPanel
+        key={`${open.id}:${focusStudy?.id === open.id ? focusStudy.token : 0}`}
+        project={project} study={open}
         editable={editable} onPin={onPinQuantumSample} onPublishWorkbook={onPublishQuantumWorkbook} />}
       {quantumSelectionMessage && quantumStudyRecord(project, open) &&
         <p role="status" data-testid="project-study-quantum-selection-message">{quantumSelectionMessage}</p>}

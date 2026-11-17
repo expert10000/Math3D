@@ -88,6 +88,8 @@ export function StudyQuantumSelectionPanel({ project, study, editable, onPin, on
         saved datasets {source.datasets.map(dataset => `${dataset.id}: ${dataset.sha256} (${dataset.unit})`).join("; ")}</p>)}
       {Object.entries(evidence.values).map(([role, value]) => <p key={role} data-testid={`project-study-value-${role}`}>
         <strong>{role}</strong> · {JSON.stringify(value)}</p>)}
+      {Object.keys(evidence.values).length === 0 && <p role="status" data-testid="project-study-quantum-withheld">
+        Values withheld until the saved selection and exact source bundles verify.</p>}
       {evidence.omissions.map((reason, index) => <p key={index} role="status" data-testid="project-study-evidence-omission">
         Omitted: {reason}</p>)}
     </div>}

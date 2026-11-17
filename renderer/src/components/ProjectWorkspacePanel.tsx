@@ -78,7 +78,8 @@ import { buildSavedMeshComparisonReview } from "../projects/projectSavedMeshComp
 import { createSavedMeshComparisonReviewSnapshot, savedMeshComparisonReviewHtml } from "../projects/projectSavedMeshComparisonReviewReport";
 import { downloadStudyBlob } from "../projects/studyComparisonExport";
 import { pinQuantumStudySample, quantumStudySelectionEvidence } from "../projects/quantumStudySelection";
-import { createQuantumStudySelectionWorkbook } from "../projects/quantumStudyWorkbook";
+import { createQuantumStudySelectionWorkbook, quantumStudySelectionHash,
+  type QuantumStudySelectionTarget } from "../projects/quantumStudyWorkbook";
 import { ProjectSavedMeshComparisonReviewIndex } from "./ProjectSavedMeshComparisonReviewIndex";
 import { ProjectCoordinateObservationReviewIndex } from "./ProjectCoordinateObservationReviewIndex";
 import { buildProjectCoordinateObservationReview } from "../projects/projectCoordinateObservationReview";
@@ -171,6 +172,7 @@ type Props = {
   onViewProjectWorkbook?: (workbook: Workbook, stageId?: WorkbookStageId, blockId?: string) => void;
   onViewProjectDetail?: () => void;
   noteRequest?: { id: string; token: number; openTarget?: boolean } | null;
+  studyRequest?: QuantumStudySelectionTarget & { token: number } | null;
   resultRequest?: { id: string; token: number } | null;
   pairRequest?: { id: string; token: number } | null;
   regionResultStatuses?: Readonly<Record<string, SavedRegionSourceStatus>>;
@@ -189,7 +191,7 @@ type Props = {
   activeProjectDocumentId?: string | null;
   onRestoreWorkspace?: (workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources, owner?: Math3DProject) => void;
 };
-export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open, onOpenChange, onCurrentProjectChange, verifiedQuantumScene, onImportQuantumScene, onOpenCasGallery, onImportScientificScene, onOpenQuantumScene, onVerifyQuantumSceneDocument, onRelinkQuantumScene, verifiedScientificScene, onOpenScientificScene, onRelinkScientificScene, captureActiveWorkbook, onOpenWorkbook, onViewProjectWorkbook, onViewProjectDetail, noteRequest, resultRequest, pairRequest, regionResultStatuses = {}, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAlgebra, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeEvidence, activeProjectDocumentId }) => {
+export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open, onOpenChange, onCurrentProjectChange, verifiedQuantumScene, onImportQuantumScene, onOpenCasGallery, onImportScientificScene, onOpenQuantumScene, onVerifyQuantumSceneDocument, onRelinkQuantumScene, verifiedScientificScene, onOpenScientificScene, onRelinkScientificScene, captureActiveWorkbook, onOpenWorkbook, onViewProjectWorkbook, onViewProjectDetail, noteRequest, studyRequest, resultRequest, pairRequest, regionResultStatuses = {}, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAlgebra, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeEvidence, activeProjectDocumentId }) => {
 
   const loadedProject = useRef<Math3DProject | null>(null);
   const resourceSession = useRef<VerifiedProjectResources | undefined>(undefined);
@@ -211,7 +213,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [quick, setQuick] = useState(false), [detailView, setDetailView] = useState(false), [viewerCompanion, setViewerCompanion] = useState(false), [collection, setCollection] = useState("All projects");
   const [detailPage, setDetailPage] = useState<"overview" | "documents" | "relations" | "results" | "history" | "settings" | "transfer">("overview");
   const [resultFocus, setResultFocus] = useState<{ id: string; token: number } | null>(null);
-  const [studyFocus, setStudyFocus] = useState<{ id: string; token: number; selectionId?: string } | null>(null);
+  const [studyFocus, setStudyFocus] = useState<{ id: string; token: number; selectionId?: string;
+    quantumSelectionHash?: string } | null>(null);
   const [viewingDocumentId, setViewingDocumentId] = useState<string | null>(null);
   const [preferences, setPreferences] = useState(() => projectUiPreferences(localStorage.getItem(PROJECT_UI_KEY)));
   const [projectPlacement, setProjectPlacement] = useState<ProjectPlacement>(preferences.placement);
@@ -275,6 +278,18 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [scientificSceneMessage, setScientificSceneMessage] = useState("");
   const [analysisError, setAnalysisError] = useState<{ id: string; message: string } | null>(null);
   const [project, setProject] = useState<Math3DProject | null>(null);
+  useEffect(() => {
+    if (!open || !studyRequest) return;
+    const study = project?.identity.id === studyRequest.projectId ?
+      project.workspace.studies?.find(item => item.id === studyRequest.studyId) : null;
+    if (!study || quantumStudySelectionHash(project!, study) !== studyRequest.selectionHash) {
+      setMessage("The cited Study selection changed or is unavailable in this Project."); return;
+    }
+    setNotesOpen(false); setQuick(false); setViewerCompanion(false); setDetailView(true);
+    setStudyFocus(previous => ({ id: study.id, quantumSelectionHash: studyRequest.selectionHash,
+      token: (previous?.token ?? 0) + 1 }));
+    openDetailPage("overview");
+  }, [open, studyRequest?.token, project?.identity.id]);
   const algebraLoci = useMemo(() => project?.algebraObjects?.flatMap(entry =>
     [...entry.revisions].reverse().filter(record => record.definition.kind === "polynomial-ring" ||
       record.definition.kind === "ideal").map(record => {

@@ -42,6 +42,8 @@ The SSH and hydrogen Study feature track now includes saved sample selections an
 
 A saved hydrogen or SSH Study selection can also create a Project-owned Workbook citation from that verified report. Its reference block stores the exact source hashes, units, values and omissions, then rechecks the Study generation, selection and bundles after restart. The reader withholds values if a bundle or selection changes. This feature-track source test does not satisfy QI-40 direct-launch or installed-candidate qualification.
 
+The citation's **Open cited selection** action returns to the saved Study indices after checking the Project and selection identity. The Study rechecks the exact bundles before showing values, and displays omissions when a source changes. Restart and clean-profile package transfer are exercised on the source checkout; QI-40 direct launch retains its own gate.
+
 [Measured asset baseline](GALLERY_ASSETS.json) records the earlier 11 built-in copies. The candidate Volume source copy measures 4,648 bytes of Project JSON plus 2,917 bytes of guided Workbook sidecar (7,565 bytes total; 8,933 bytes as a serialized package) in the Windows source checkout renderer model. The later extracted Mesh bytes depend on resolution and are not included in that starter measurement. These are fixture measurements, not release budgets. [Desktop Gallery capture](media/desktop-guided-gallery.png) and [browser research preview capture](media/browser-research-preview.png) have adjacent build identity receipts. Both captures come from source builds with working changes; they are not installed release-candidate media.
 
 ## Source and platform rules

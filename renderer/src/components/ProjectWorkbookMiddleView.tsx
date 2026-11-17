@@ -5,6 +5,7 @@ import { WorkbookDocumentView } from "./WorkbookDocumentView";
 import { ProjectMiddlePortal } from "./ProjectMiddlePortal";
 import type { ProjectResourceReader } from "../projects/projectResources";
 import type { SavedMeshTrendTarget } from "../projects/projectSavedMeshTrendPoint";
+import type { QuantumStudySelectionTarget } from "../projects/quantumStudyWorkbook";
 
 type Props = {
   workbook: Workbook;
@@ -15,6 +16,7 @@ type Props = {
   onOpenDocument: (id: string, module: KernelWorkspaceModule) => void;
   onOpenNote: (id: string) => void;
   onOpenProjects: () => void;
+  onOpenStudySelection?: (target: QuantumStudySelectionTarget) => void;
   onOpenSavedMeshResult?: (target: SavedMeshTrendTarget) => void;
   onOpenSavedMeshComparison?: (comparisonId: string) => void;
   focusBlockId?: string;
@@ -22,7 +24,7 @@ type Props = {
 };
 
 /** A presentation layer over the current viewer; its document session stays mounted. */
-export const ProjectWorkbookMiddleView: React.FC<Props> = ({ workbook, project, documentTitle, onReturn, onEdit, onOpenDocument, onOpenNote, onOpenProjects, onOpenSavedMeshResult, onOpenSavedMeshComparison, focusBlockId, readComparisonResource }) => {
+export const ProjectWorkbookMiddleView: React.FC<Props> = ({ workbook, project, documentTitle, onReturn, onEdit, onOpenDocument, onOpenNote, onOpenProjects, onOpenStudySelection, onOpenSavedMeshResult, onOpenSavedMeshComparison, focusBlockId, readComparisonResource }) => {
   useEffect(() => {
     if (!focusBlockId) return;
     const frame = requestAnimationFrame(() => document.querySelector(`[data-testid="workbook-document-block-${CSS.escape(focusBlockId)}"]`)?.scrollIntoView({ block: "start" }));
@@ -37,7 +39,8 @@ export const ProjectWorkbookMiddleView: React.FC<Props> = ({ workbook, project, 
     <WorkbookDocumentView workbook={workbook} project={project} projectLive={!!project} readOnly
       readComparisonResource={readComparisonResource}
       statusFor={() => ({ state: "saved", label: "Saved" })} onUpdateBlock={() => undefined}
-      onEditBlock={onEdit} onOpenDocument={onOpenDocument} onOpenProjects={onOpenProjects} onOpenNote={onOpenNote}
+      onEditBlock={onEdit} onOpenDocument={onOpenDocument} onOpenProjects={onOpenProjects}
+      onOpenStudySelection={onOpenStudySelection} onOpenNote={onOpenNote}
       onOpenSavedMeshResult={onOpenSavedMeshResult} onOpenSavedMeshComparison={onOpenSavedMeshComparison} />
   </ProjectMiddlePortal>;
 };

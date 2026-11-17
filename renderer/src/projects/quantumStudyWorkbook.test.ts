@@ -7,7 +7,7 @@ import type { WorkbookQuantumStudyEvidence } from "@math3d/workbook";
 import { admitVerifiedHydrogenStudy } from "./hydrogenStudyAdmission";
 import { pinQuantumStudySample, quantumStudySelectionEvidence } from "./quantumStudySelection";
 import { createQuantumStudySelectionWorkbook, inspectQuantumStudyWorkbookEvidence,
-  normalizeQuantumStudyWorkbookEvidence } from "./quantumStudyWorkbook";
+  normalizeQuantumStudyWorkbookEvidence, quantumStudyCitationTarget } from "./quantumStudyWorkbook";
 import { prepareProjectWorkbook, readProjectWorkbook } from "./projectWorkbookBinding";
 
 const directory = fileURLToPath(new URL("../../../tests/fixtures/quantum-scene-orbitals/orbital-2p.qscene", import.meta.url));
@@ -52,15 +52,20 @@ describe("saved quantum selection Workbook citation", () => {
       .toEqual(expect.arrayContaining([expect.objectContaining({ id: "psi-real", unit: "a0^-3/2" })]));
     expect(await inspectQuantumStudyWorkbookEvidence(reopened, block.notebookReference, block.quantumStudyEvidence))
       .toMatchObject({ status: "current", report: { values: { density: { value: 0.25 } } } });
+    expect(quantumStudyCitationTarget(reopened, block.notebookReference, block.quantumStudyEvidence))
+      .toMatchObject({ projectId: reopened.identity.id, studyId: study.id });
     const moved = pinQuantumStudySample(reopened, reopened.workspace.studies![0]!, "phase", (5 * 21 + 5) * 21 + 10);
     expect(await inspectQuantumStudyWorkbookEvidence(moved, block.notebookReference, block.quantumStudyEvidence))
       .toMatchObject({ status: "withheld", report: null,
         omissions: [expect.stringMatching(/selection changed/i)] });
+    expect(quantumStudyCitationTarget(moved, block.notebookReference, block.quantumStudyEvidence)).toBeNull();
     api.openReference.mockRejectedValueOnce(new Error("source hash changed"));
     const changed = await inspectQuantumStudyWorkbookEvidence(reopened, block.notebookReference, block.quantumStudyEvidence);
     expect(changed.status).toBe("withheld");
     expect(changed.report).toBeNull();
     expect(changed.omissions.join(" ")).toMatch(/source hash changed|values are withheld/i);
+    expect(quantumStudyCitationTarget(reopened, block.notebookReference, block.quantumStudyEvidence))
+      .toMatchObject({ studyId: study.id });
     api.fieldSample.mockImplementation(async request => ({
       grid: [request.u, request.v, request.index], position: [4, 5, 10],
       value: request.quantity === "density" ? 0 : null,

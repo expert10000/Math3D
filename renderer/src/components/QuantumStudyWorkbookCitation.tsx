@@ -2,16 +2,19 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Math3DProject } from "@math3d/core";
 import type { NotebookReference, WorkbookQuantumStudyEvidence } from "@math3d/workbook";
 import { inspectQuantumStudyWorkbookEvidence,
-  normalizeQuantumStudyWorkbookEvidence } from "../projects/quantumStudyWorkbook";
+  normalizeQuantumStudyWorkbookEvidence, quantumStudyCitationTarget,
+  type QuantumStudySelectionTarget } from "../projects/quantumStudyWorkbook";
 
 type Inspection = Awaited<ReturnType<typeof inspectQuantumStudyWorkbookEvidence>>;
 
 /** This block never renders the historical snapshot's values until exact source read-back succeeds. */
-export function QuantumStudyWorkbookCitation({ project, reference, evidence }: {
+export function QuantumStudyWorkbookCitation({ project, reference, evidence, onOpenSelection }: {
   project: Math3DProject | null; reference: NotebookReference | undefined;
   evidence: WorkbookQuantumStudyEvidence | undefined;
+  onOpenSelection?: (target: QuantumStudySelectionTarget) => void;
 }) {
   const saved = normalizeQuantumStudyWorkbookEvidence(evidence);
+  const target = quantumStudyCitationTarget(project, reference, evidence);
   const [inspection, setInspection] = useState<Inspection | null>(null);
   const [busy, setBusy] = useState(false);
   const epoch = useRef(0);
@@ -45,5 +48,13 @@ export function QuantumStudyWorkbookCitation({ project, reference, evidence }: {
     </div>}
     <button type="button" disabled={busy} data-testid="workbook-quantum-recheck" onClick={() => void check()}>
       Recheck citation</button>
+    {onOpenSelection && <button type="button" disabled={busy || !target}
+      data-testid="workbook-quantum-open-selection" onClick={() => {
+        if (!target) return;
+        const expectedEpoch = epoch.current + 1;
+        void check().then(() => {
+          if (epoch.current === expectedEpoch) onOpenSelection(target);
+        });
+      }}>Open cited selection</button>}
   </section>;
 }

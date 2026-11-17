@@ -4,6 +4,7 @@ import { createNotebookReference, inspectNotebookReference, WORKBOOK_STAGE_ORDER
 import { quantumStudyRecord, quantumStudySelectionEvidence } from "./quantumStudySelection";
 
 type Report = WorkbookQuantumStudyEvidence["snapshot"];
+export type QuantumStudySelectionTarget = Readonly<{ projectId: string; studyId: string; selectionHash: string }>;
 const hash = /^(?:sha256:)?[a-f0-9]{64}$/;
 const object = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
@@ -38,6 +39,18 @@ export function normalizeQuantumStudyWorkbookEvidence(value: unknown): WorkbookQ
   try { if (canonicalJsonStringify(value).length > 65_536) return null; }
   catch { return null; }
   return value as WorkbookQuantumStudyEvidence;
+}
+
+/** Navigation may proceed with changed bundle bytes; the Study reader will reverify and withhold values. */
+export function quantumStudyCitationTarget(project: Math3DProject | null,
+  reference: NotebookReference | undefined, raw: unknown): QuantumStudySelectionTarget | null {
+  const saved = normalizeQuantumStudyWorkbookEvidence(raw);
+  if (!project || !reference || !saved || reference.kind !== "study" ||
+      reference.projectId !== project.identity.id || reference.targetId !== saved.studyId ||
+      inspectNotebookReference(project, reference).status !== "current") return null;
+  const study = project.workspace.studies?.find(item => item.id === saved.studyId);
+  return study && quantumStudySelectionHash(project, study) === saved.selectionHash ?
+    { projectId: project.identity.id, studyId: study.id, selectionHash: saved.selectionHash } : null;
 }
 
 /** A Workbook keeps the exact publication snapshot and a Study reference, never a live source pointer alone. */

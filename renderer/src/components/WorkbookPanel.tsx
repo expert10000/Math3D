@@ -18,6 +18,7 @@ import { WorkbookDependencies } from "./WorkbookDependencies";
 import { WorkbookDocumentView } from "./WorkbookDocumentView";
 import { ScientificSubrectangleWorkbookReport } from "./ScientificSubrectangleWorkbookReport";
 import { QuantumStudyWorkbookCitation } from "./QuantumStudyWorkbookCitation";
+import type { QuantumStudySelectionTarget } from "../projects/quantumStudyWorkbook";
 import { ScientificTrajectoryWorkbookReport } from "./ScientificTrajectoryWorkbookReport";
 import { ScientificEquilibriumWorkbookReport } from "./ScientificEquilibriumWorkbookReport";
 import { WorkbookContentEditor } from "./WorkbookContentEditor";
@@ -78,6 +79,7 @@ type WorkbookPanelProps = {
   getNotebookProject: () => NotebookProjectContext | null;
   onOpenNotebookDocument: (id: string, module: KernelWorkspaceModule) => void;
   onOpenProjects: () => void;
+  onOpenStudySelection?: (target: QuantumStudySelectionTarget) => void;
   onOpenSavedMeshResult?: (target: SavedMeshTrendTarget) => void;
   onOpenSavedMeshComparison?: (comparisonId: string) => void;
   onSaveMeshComparisonObservation?: (comparisonId: string, comparisonHash: string, title: string, body: string) => Promise<boolean>;
@@ -530,6 +532,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   getNotebookProject,
   onOpenNotebookDocument,
   onOpenProjects,
+  onOpenStudySelection,
   onOpenSavedMeshResult,
   onOpenSavedMeshComparison,
   onSaveMeshComparisonObservation,
@@ -1569,7 +1572,8 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
         readComparisonResource={readComparisonResource}
         onSaveMeshComparisonObservation={onSaveMeshComparisonObservation}
         statusFor={getBlockStatus} onUpdateBlock={onUpdateBlock} onOpenDocument={onOpenNotebookDocument}
-        onOpenProjects={onOpenProjects} onOpenNote={onOpenNote} onOpenCoordinateNote={onOpenCoordinateNote} onOpenSavedMeshResult={onOpenSavedMeshResult}
+        onOpenProjects={onOpenProjects} onOpenStudySelection={onOpenStudySelection}
+        onOpenNote={onOpenNote} onOpenCoordinateNote={onOpenCoordinateNote} onOpenSavedMeshResult={onOpenSavedMeshResult}
         onOpenSavedMeshComparison={onOpenSavedMeshComparison} onEditBlock={(stageId, blockId) => {
           onSelectStage(stageId); setSelectedBlockId(blockId); setPendingScrollId(blockId); setViewMode("block");
         }} /> : <>
@@ -1913,7 +1917,8 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                 <ScientificSubrectangleWorkbookReport project={dependencyProject} reference={block.notebookReference}
                   workbookId={activeWorkbook?.id} previousResultId={block.scientificRegionReport.previousResultId} />}
               {block.quantumStudyEvidence && <QuantumStudyWorkbookCitation project={dependencyProject}
-                reference={block.notebookReference} evidence={block.quantumStudyEvidence} />}
+                reference={block.notebookReference} evidence={block.quantumStudyEvidence}
+                onOpenSelection={onOpenStudySelection} />}
               {block.scientificRegionReport?.kind === "scientific-trajectory-report/v1" &&
                 <ScientificTrajectoryWorkbookReport project={dependencyProject}
                   reference={block.notebookReference} />}

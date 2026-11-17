@@ -135,6 +135,7 @@ import { DiskStatsPanel } from "./components/DiskStatsPanel";
 import { WorkbookPanel } from "./components/WorkbookPanel";
 import { ScientificSubrectangleWorkbookReport } from "./components/ScientificSubrectangleWorkbookReport";
 import { QuantumStudyWorkbookCitation } from "./components/QuantumStudyWorkbookCitation";
+import type { QuantumStudySelectionTarget } from "./projects/quantumStudyWorkbook";
 import { GeometryPickReadout } from "./components/GeometryPickReadout";
 import { GeometryAnalysisInspectorPanel } from "./components/GeometryAnalysisInspectorPanel";
 import { KernelWorkspacePanel } from "./components/KernelWorkspacePanel";
@@ -78207,10 +78208,16 @@ case "mobius":
     setWorkspaceDockLayouts(layouts => ({ ...layouts, geometry: previous.layout }));
   }, [projectsOpen]);
   const [projectNoteRequest, setProjectNoteRequest] = useState<{ id: string; token: number; openTarget?: boolean } | null>(null);
+  const [projectStudyRequest, setProjectStudyRequest] = useState<(QuantumStudySelectionTarget & { token: number }) | null>(null);
   const [projectResultRequest, setProjectResultRequest] = useState<{ id: string; token: number } | null>(null);
   const [projectMeshComparisonRequest, setProjectMeshComparisonRequest] = useState<{ id: string; token: number } | null>(null);
   const activeNotebookProjectRef = useRef<Math3DProject | null>(null);
   const activeNotebookProjectResourcesRef = useRef<VerifiedProjectResources | null>(null);
+  const openCitedQuantumSelection = (target: QuantumStudySelectionTarget) => {
+    setProjectMiddleContent(null);
+    setProjectStudyRequest(previous => ({ ...target, token: (previous?.token ?? 0) + 1 }));
+    setProjectsOpen(true);
+  };
   const [notebookProjectVersion, setNotebookProjectVersion] = useState(0);
   const sectionNavEntries: Array<{
     id: "projects" | "surfaces" | "mesh" | "volume" | "curves" | "graphs" | "topology" | "geometry" | "complex_analysis" | "cas" | "number_theory";
@@ -81685,6 +81692,7 @@ case "mobius":
         activeProjectDocumentId={activeProjectDocumentId}
         onProjectsOpenChange={setProjectsOpen}
         noteRequest={projectNoteRequest}
+        studyRequest={projectStudyRequest}
         resultRequest={projectResultRequest}
         pairRequest={projectMeshComparisonRequest}
         regionResultStatuses={vectorField3DRegionStatuses}
@@ -81909,6 +81917,7 @@ case "mobius":
           setProjectNoteRequest((previous) => ({ id, token: (previous?.token ?? 0) + 1 }));
           setProjectsOpen(true);
         }}
+        onOpenStudySelection={openCitedQuantumSelection}
         onOpenSavedMeshResult={target => {
           if (activeNotebookProjectRef.current?.identity.id !== target.projectId) throw new TypeError("The linked Project changed. Reopen the saved Workbook trend.");
           setProjectMiddleContent(null);
@@ -92268,6 +92277,7 @@ case "mobius":
                       getNotebookProject={getNotebookContext}
                       onExportPublication={exportNotebookPublication}
                       onOpenProjects={() => setProjectsOpen(true)}
+                      onOpenStudySelection={openCitedQuantumSelection}
                       onOpenSavedMeshResult={target => {
                         if (activeNotebookProjectRef.current?.identity.id !== target.projectId) throw new TypeError("The linked Project changed. Reopen the saved Workbook trend.");
                         setProjectResultRequest(previous => ({ id: target.resultId, token: (previous?.token ?? 0) + 1 }));
@@ -94039,7 +94049,8 @@ case "mobius":
                       {fullWorkbookSelectedBlockMeta.block.quantumStudyEvidence &&
                         <QuantumStudyWorkbookCitation project={getWorkbookDependencyProjectRef.current()}
                           reference={fullWorkbookSelectedBlockMeta.block.notebookReference}
-                          evidence={fullWorkbookSelectedBlockMeta.block.quantumStudyEvidence} />}
+                          evidence={fullWorkbookSelectedBlockMeta.block.quantumStudyEvidence}
+                          onOpenSelection={openCitedQuantumSelection} />}
                       {fullWorkbookSelectedBlockMeta.block.notebookReference && !IS_REPLAY_MODE && <WorkbookAnalysisRerun context={getNotebookContext()} reference={fullWorkbookSelectedBlockMeta.block.notebookReference} onRelink={notebookReference => handleUpdateWorkbookBlock(fullWorkbookSelectedBlockMeta.stageId, fullWorkbookSelectedBlockMeta.block.id, { notebookReference })} />}
                       {fullWorkbookSelectedBlockMeta.block.type === "assert" && activeWorkbook && (() => {
                         const context = getNotebookContext();
