@@ -1,0 +1,152 @@
+{
+  "schema": "math3d.release20.long-memory-review.v1",
+  "mode": "source",
+  "status": "failed",
+  "plateauQualified": false,
+  "peakSampledRssMiB": 1390,
+  "lateGrowthMiB": 39.8,
+  "peakRendererPrivateMiB": 477.3,
+  "rendererPrivateLateGrowthMiB": 39.6,
+  "peakGpuPrivateMiB": 540.3,
+  "gpuPrivateLateGrowthMiB": -8.4,
+  "peakV8UsedMiB": 89.9,
+  "v8UsedLateGrowthMiB": 1.4,
+  "checks": [
+    {
+      "name": "receipt completed",
+      "pass": true,
+      "observed": "completed"
+    },
+    {
+      "name": "identified clean 2.0 build",
+      "pass": true,
+      "observed": {
+        "version": "2.0.0",
+        "commit": "b667f2f1012b486a1d49cd2a72d7e574ee64387e",
+        "dirty": false,
+        "builtAt": "2026-11-16T12:32:36.936Z",
+        "rendererHash": "e359cca3585257ba1d8fe7330e2b98b3fae1d8610b0bd5f7c7c22de73c1e79de"
+      }
+    },
+    {
+      "name": "two-hour elapsed duration",
+      "pass": true,
+      "observed": {
+        "requestedMinutes": 120,
+        "elapsedMs": 7319074
+      }
+    },
+    {
+      "name": "one app process and completed cycles",
+      "pass": true,
+      "observed": {
+        "pid": 14048,
+        "cycles": 31
+      }
+    },
+    {
+      "name": "no page errors",
+      "pass": true,
+      "observed": []
+    },
+    {
+      "name": "sampled peak agrees",
+      "pass": true,
+      "observed": {
+        "peak": 1390,
+        "reported": 1390
+      }
+    },
+    {
+      "name": "host class",
+      "pass": true,
+      "observed": "source checkout"
+    },
+    {
+      "name": "production runtime",
+      "pass": true,
+      "observed": false
+    },
+    {
+      "name": "CDP V8 heap sample coverage",
+      "pass": true,
+      "observed": {
+        "peakV8UsedMiB": 89.9,
+        "v8UsedLateGrowthMiB": 1.4
+      }
+    },
+    {
+      "name": "GPU process and context health",
+      "pass": true,
+      "observed": {
+        "gpuPids": [
+          4688
+        ],
+        "contextLosses": 0
+      }
+    },
+    {
+      "name": "predeclared source long-run budget",
+      "pass": true,
+      "observed": {
+        "reference": "Windows i9-12900K source build, continuous 100-action cycles for at least two hours",
+        "derivation": "The short-run 1500 MiB ceiling plus 548 MiB headroom, with at most 64 MiB late-window growth; renderer-private and GPU-process ceilings are separate native-memory safeguards. The source GPU-process peak was revised from 512 to 544 MiB after three clean 800-switch runs of the same renderer bundle peaked at 445.5, 520.7, and 524.5 MiB while late GPU growth stayed within 32 MiB. The 544 MiB ceiling leaves 19.5 MiB above the highest measured peak. This source budget does not qualify an installed candidate or replace the two-hour soak.",
+        "peakRssMiB": 2048,
+        "lateGrowthMiB": 64,
+        "peakRendererPrivateMiB": 1024,
+        "rendererPrivateLateGrowthMiB": 32,
+        "peakGpuPrivateMiB": 544,
+        "gpuPrivateLateGrowthMiB": 32,
+        "v8PostGcLateSpanMiB": 16
+      }
+    },
+    {
+      "name": "source peak RSS ceiling",
+      "pass": true,
+      "observed": {
+        "peak": 1390,
+        "limit": 2048
+      }
+    },
+    {
+      "name": "source late RSS plateau",
+      "pass": true,
+      "observed": {
+        "lateGrowthMiB": 39.8,
+        "limit": 64
+      }
+    },
+    {
+      "name": "source renderer private ceiling",
+      "pass": true,
+      "observed": {
+        "peakRendererPrivateMiB": 477.3,
+        "limit": 1024
+      }
+    },
+    {
+      "name": "source renderer private plateau",
+      "pass": false,
+      "observed": {
+        "rendererPrivateLateGrowthMiB": 39.6,
+        "limit": 32
+      }
+    },
+    {
+      "name": "source GPU private ceiling",
+      "pass": true,
+      "observed": {
+        "peakGpuPrivateMiB": 540.3,
+        "limit": 544
+      }
+    },
+    {
+      "name": "source GPU private plateau",
+      "pass": true,
+      "observed": {
+        "gpuPrivateLateGrowthMiB": -8.4,
+        "limit": 32
+      }
+    }
+  ]
+}
