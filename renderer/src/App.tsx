@@ -113353,6 +113353,33 @@ case "mobius":
         )}
       </div></SavedSurfaceModuleFrame></SavedMeshModuleFrame>)}
       {quantumScenePreview && <QuantumScenePreview opened={quantumScenePreview} onClose={() => setQuantumScenePreview(null)}
+        onPromoteQwzCurvature={async () => {
+          if (!window.quantumScenes?.promoteQwzCurvature) throw new TypeError("QWZ Field Explorer promotion requires the desktop verifier.");
+          const promoted = await window.quantumScenes.promoteQwzCurvature(quantumScenePreview.reference);
+          if (promoted.sourceFingerprint !== quantumScenePreview.reference.sceneFingerprint)
+            throw new TypeError("QWZ source changed during Field Explorer promotion.");
+          const { createGraph2DFieldReference, createScientificFieldDocument, parseScientificSceneManifest } = await import("@math3d/core");
+          const checked = parseScientificSceneManifest(promoted.manifestJson);
+          if (!checked.ok) throw new TypeError(checked.errors.join(" "));
+          const quantity = checked.value.datasets.find(item => item.id === "berry-curvature")?.quantity;
+          if (!quantity) throw new TypeError("Supplied QWZ curvature quantity is unavailable.");
+          const reference = createGraph2DFieldReference(promoted.manifestJson, promoted.fingerprint,
+            { kind: "directory", value: promoted.directory }, "berry-curvature", "scalar");
+          const field = createScientificFieldDocument({ reference, quantity,
+            display: { view: "plane", normalAxis: null, fixedIndex: null, transfer: { mode: "symmetric" } } },
+            { stableKey: ["qwz-curvature", promoted.sourceFingerprint], title: "QWZ lower-band Berry curvature" });
+          setScientificFieldDocuments(current => [field, ...current.filter(item => item.identity.id !== field.identity.id)]);
+          setScientificFieldOpenRequest({ document: field, token: ++scientificFieldRequestSerial.current });
+          setQuantumScenePreview(null); setMode("graphs");
+        }}
+        onSaveSshStudy={study => {
+          setQuantumScenePreview(null); setProjectsOpen(true);
+          window.dispatchEvent(new CustomEvent("math3d:ssh-study-request", { detail: study }));
+        }}
+        onSaveHydrogenStudy={request => {
+          setQuantumScenePreview(null); setProjectsOpen(true);
+          window.dispatchEvent(new CustomEvent("math3d:hydrogen-study-request", { detail: request }));
+        }}
         promotedField={quantumFieldOpenDocument}
         onPromoteField={async () => { if (!await window.quantumScenes?.verifyActive(quantumScenePreview.reference.sceneFingerprint))
             throw new TypeError("Quantum field source changed or is missing.");

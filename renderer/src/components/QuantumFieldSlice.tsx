@@ -13,10 +13,11 @@ export type QuantumField = { id: string; label: string; kind: "scalar-field" | "
   grid: { shape: [number, number, number]; origin: [number, number, number]; spacing: [number, number, number]; order: "xyz-z-fastest" } };
 
 export function QuantumFieldSlice({ fingerprint, fields, axes, units, runId, resultSha256, coordinateSystemId,
-  initialView, onViewChange }: {
+  initialView, onViewChange, fixedQuantity }: {
   fingerprint: string; fields: QuantumField[]; axes: [string, string, string]; units: [string, string, string];
   runId: string; resultSha256: string; coordinateSystemId: string;
   initialView?: QuantumFieldDocument["view"]; onViewChange?: (view: QuantumFieldDocument["view"]) => void;
+  fixedQuantity?: FieldQuantity;
 }) {
   const [fieldId, setFieldId] = useState(fields[0]?.id ?? "");
   const field = fields.find(entry => entry.id === fieldId) ?? fields[0];
@@ -34,7 +35,7 @@ export function QuantumFieldSlice({ fingerprint, fields, axes, units, runId, res
   const generation = useRef(0);
   const cursorGeneration = useRef(0);
   const safeIndex = field ? Math.min(index, field.grid.shape[axis] - 1) : 0;
-  const safeQuantity = field?.kind === "scalar-field" ? "real" : quantity;
+  const safeQuantity = field?.kind === "scalar-field" ? "real" : fixedQuantity ?? quantity;
 
   useEffect(() => scientificCursorBus.subscribe(cursor => {
     if (cursor.kind !== "quantum" || !cursor.spatialPoint || !field) return;
@@ -131,12 +132,12 @@ export function QuantumFieldSlice({ fingerprint, fields, axes, units, runId, res
         setFieldId(next.id); setQuantity(next.kind === "scalar-field" ? "real" : "density");
         setIndex(Math.floor(next.grid.shape[axis] / 2));
       }}>{fields.map(entry => <option key={entry.id} value={entry.id}>{entry.label}</option>)}</select></label>
-      <label>Quantity <select aria-label="Quantum field quantity" value={safeQuantity} onChange={event => {
+      {!fixedQuantity && <label>Quantity <select aria-label="Quantum field quantity" value={safeQuantity} onChange={event => {
         const next = event.target.value as FieldQuantity; setQuantity(next);
         onViewChange?.({ normalAxis: axis, fixedIndex: safeIndex, quantity: next });
       }}>
         {(field.kind === "scalar-field" ? ["real"] : ["density", "amplitude", "real", "imaginary", "phase"]).map(value =>
-          <option key={value} value={value}>{value === "density" ? "|ψ|² density (derived)" : value === "amplitude" ? "|ψ| amplitude (derived)" : value === "phase" ? "Phase (derived)" : value === "real" ? "Signed real amplitude" : "Signed imaginary amplitude"}</option>)}</select></label>
+          <option key={value} value={value}>{value === "density" ? "|ψ|² density (derived)" : value === "amplitude" ? "|ψ| amplitude (derived)" : value === "phase" ? "Phase (derived)" : value === "real" ? "Signed real amplitude" : "Signed imaginary amplitude"}</option>)}</select></label>}
       <label>Normal <select aria-label="Quantum slice normal" value={axis} onChange={event => {
         const next = Number(event.target.value) as 0 | 1 | 2;
         const nextIndex = Math.floor(field.grid.shape[next] / 2);
