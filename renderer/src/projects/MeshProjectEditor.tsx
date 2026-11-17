@@ -1,8 +1,10 @@
 import React, { useState } from "react";
 import { MeshDocumentAdapter } from "../mesh/meshDocumentAdapter";
+import { computeMeshTopologyInspector } from "../mesh/topologyInspector";
 import { subdivideWithRetainedMeshCheckpoint, transformWithRetainedMeshSnapshot } from "./retainedMeshGeneration";
 
 export const MeshProjectEditor: React.FC<{ adapter: MeshDocumentAdapter; onRestore: () => void }> = ({ adapter, onRestore }) => {
+  const topology = computeMeshTopologyInspector(adapter.mesh());
   const [translation, setTranslation] = useState(["0", "0", "0"]), [scale, setScale] = useState("1");
   const [selection, setSelection] = useState(JSON.stringify(adapter.selection()));
   const [error, setError] = useState("");
@@ -13,6 +15,12 @@ export const MeshProjectEditor: React.FC<{ adapter: MeshDocumentAdapter; onResto
   };
   return <div data-testid="project-mesh-editor" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, padding: "6px 14px", overflowWrap: "anywhere" }}>
     <span>Saved Mesh · {adapter.document().metadata.label} · revision {adapter.document().identity.revision}</span>
+    {topology && <span data-testid="project-mesh-topology-status">
+      Raw indexed topology · {topology.connectedComponentCount} components · {topology.boundaryEdgeCount} boundary edges · {topology.topologyTypeLabel}
+      {topology.watertight && topology.orientationConsistent
+        ? " · solid volume not measured in Project editor"
+        : " · solid volume n/a: requires a qualified closed, consistently oriented solid"}
+    </span>}
     {translation.map((value, index) => <label key={index}>{["dx", "dy", "dz"][index]} <input data-testid={`project-mesh-translate-${index}`} type="number" value={value} onChange={(event) => setTranslation((values) => values.map((entry, axis) => axis === index ? event.target.value : entry))} style={{ width: 65 }} /></label>)}
     <label>Scale <input data-testid="project-mesh-scale" type="number" value={scale} onChange={(event) => setScale(event.target.value)} style={{ width: 65 }} /></label>
     <button type="button" data-testid="project-mesh-apply" onClick={() => run(() => {

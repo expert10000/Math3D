@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createQuantumSceneDocument, createQuantumStudyFromTemplate, normalizeQuantumStudyDocument, deleteProjectDocument, instantiateMath3DProjectTemplate, parseMath3DProject,
   serializeMath3DProject, type ProjectQuantumSceneReference } from "@math3d/core";
-import { admitVerifiedQwzStudy } from "./quantumStudyAdmission";
+import { admitVerifiedQwzStudy, admitVerifiedQuantumStudy, prepareSshProjectStudyEvidence } from "./quantumStudyAdmission";
 
 const runId = "run-study";
 const resultSha256 = "9".repeat(64);
@@ -96,5 +96,37 @@ describe("exact QWZ study admission", () => {
         found.location.directory, found.metadata.title) : found;
     })).rejects.toThrow(/declared run/);
     expect(serializeMath3DProject(base)).toBe(original);
+  });
+
+  it("saves an SSH chain/bands Study and exact source Notes, and refuses a changed pair", async () => {
+    const refs = references.map((item, index) => ({ ...item, title: index ? "SSH bands" : "SSH chain",
+      sceneFingerprint: String(index + 3).repeat(64) }));
+    const docs = refs.map((item, index) => createQuantumSceneDocument({ ...documents[index].source,
+      sceneId: index ? "ssh-bands" : "ssh-chain", sceneFingerprint: item.sceneFingerprint,
+      provenance: { ...documents[index].source.provenance, model: "ssh" },
+      objects: [{ id: index ? "band-0" : "edge-density", kind: "mesh", label: item.title }],
+    }, item.directory, item.title));
+    const base = instantiateMath3DProjectTemplate("geometry-note-pins", "ssh-project-study");
+    const handoff = { model: "ssh" as const, roles: ["chain", "bands"], title: "SSH source Study",
+      runId, resultSha256, references: refs };
+    const verify = async (reference: ProjectQuantumSceneReference) => docs.find(item =>
+      item.source.sceneFingerprint === reference.sceneFingerprint)!;
+    const admitted = await admitVerifiedQuantumStudy(base, handoff, verify);
+    const saved = parseMath3DProject(serializeMath3DProject(prepareSshProjectStudyEvidence(admitted, handoff)));
+    expect(saved.workspace.quantumStudies?.[0]?.templateId).toBe("ssh");
+    expect(saved.workspace.quantumStudies?.[0]?.panels.map(item => item.role)).toEqual(["chain", "bands"]);
+    expect(saved.workspace.studies?.[0]?.members.map(item => item.documentId)).toEqual(docs.map(item => item.identity.id));
+    const notes = saved.notes?.filter(item => item.title.startsWith("SSH ")) ?? [];
+    expect(notes.map(item => item.anchor?.kind)).toEqual(["document", "document"]);
+    for (const [index, role] of ["chain", "bands"].entries()) {
+      const note = notes.find(item => item.title === `SSH ${role} source evidence`);
+      expect(note?.anchor?.researchReference?.source.documentId).toBe(docs[index]!.identity.id);
+      expect(note?.body).toContain(refs[index]!.sceneFingerprint);
+    }
+    await expect(admitVerifiedQuantumStudy(base, handoff, async reference => {
+      const source = await verify(reference);
+      return reference === refs[1] ? createQuantumSceneDocument({ ...source.source,
+        sceneFingerprint: "f".repeat(64) }, source.location.directory, source.metadata.title) : source;
+    })).rejects.toThrow(/declared run/);
   });
 });

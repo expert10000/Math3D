@@ -25,6 +25,7 @@ import { projectVerifiedHofstadterStudySample } from "../quantumScene/studySelec
 import { resolveLatestSceneFromLab } from "../quantumScene/integrationBus";
 import { SharedArtifactStore } from "../quantumScene/artifactStore";
 import { boundedRead } from "../quantumScene/bundle";
+import { writeQwzCurvatureScientificField } from "../quantumScene/qwzCurvatureField";
 
 export function quantumSceneLaunchDirectory(argv: readonly string[]): string | null {
   const flags = argv.flatMap((arg, index) => arg === "--quantum-scene" ? [index] : []);
@@ -309,6 +310,11 @@ export function registerQuantumSceneIpc(initialDirectory: string | null = null, 
       const { directory, imported } = await reopenQuantumSceneReference(args[0]);
       return openedFor(event, directory, imported, false);
     } catch (error) { return failed(error); }
+  });
+  ipcMain.handle("quantumScenes:promoteQwzCurvature", async (event, ...args: unknown[]) => {
+    if (!trustedSender(event) || args.length !== 1) throw new TypeError("Invalid QWZ Field Explorer request.");
+    const { imported } = await reopenQuantumSceneReference(args[0]);
+    return writeQwzCurvatureScientificField(imported, join(app.getPath("userData"), "derived-qwz-fields"));
   });
   ipcMain.handle("quantumScenes:verifyActive", async (event, ...args: unknown[]) => {
     if (args.length !== 1 || typeof args[0] !== "string") throw new TypeError("Active scene verification requires one fingerprint");

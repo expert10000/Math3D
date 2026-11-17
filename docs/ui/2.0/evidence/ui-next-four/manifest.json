@@ -1,0 +1,40 @@
+{
+  "evidenceType": "Windows Electron source build",
+  "sourceCommit": "84a5b860289354ebfd9005f7c1e6b4592ffce89a",
+  "cleanBuild": true,
+  "rendererHash": "1680f6091019a219aa79405e374227b3694843a7810c3aad81333d25b484bc4e",
+  "tests": "npx playwright test tests/e2e/graph-overlay-navigation.spec.ts tests/e2e/graph-entry-points.spec.ts tests/e2e/surface-navigation.spec.ts tests/e2e/complex-function-status.spec.ts --reporter=line",
+  "result": "4 passed, 0 skipped (43.7s)",
+  "files": [
+    {
+      "name": "build-identity.json",
+      "sha256": "4aa0915245436c1e6f698b7b1f76019924dc447a22f1b5483808faf27deee568",
+      "bytes": 226
+    },
+    {
+      "name": "complex-function-status-source-build.png",
+      "sha256": "177e012fa2fbc6073db286d9360fedcdc642db223bfbc54ecb6f518cd36f7064",
+      "bytes": 36266
+    },
+    {
+      "name": "graph-hidden-source-build.png",
+      "sha256": "d254e3691b4e069e7b1693a3dbeca07c456b552b5cae93857f0d0ccfb752186a",
+      "bytes": 27938
+    },
+    {
+      "name": "graph-visible-return-source-build.png",
+      "sha256": "9aba619a54c39b026b6b059e414e897b6c0e5328e30f08b671caf9d75cf6f60e",
+      "bytes": 36551
+    },
+    {
+      "name": "surface-nav-compact-source-build.png",
+      "sha256": "69cafb6a5691bb142113a38f1cfe2589c3bfc003c74c3ed1e1799b773c66e989",
+      "bytes": 172300
+    },
+    {
+      "name": "surface-nav-expanded-source-build.png",
+      "sha256": "6d7c62c6a70a8996da6672fe744a58b6ceed6b77f3ba2773913b94ac66b06358",
+      "bytes": 201225
+    }
+  ]
+}

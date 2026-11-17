@@ -38,12 +38,12 @@ The word **connected** must name its evidence. The screenshot's box is made with
 - Box measurements now state their definition method and source revision. The Geometry object card withholds solid volume for other display meshes; a desktop torus case checks the unavailable claim. Analytic-to-discrete comparison withholds discrete volume unless the indexed Mesh is watertight, manifold, and consistently oriented. Unit cases cover an open plane, inconsistent winding, a non-manifold fan, and a closed tetrahedron.
 - Unit topology checks keep coincident disconnected patches separate. The existing desktop Box topology test still distinguishes raw indexed, exact-position, and definition counts. The desktop face-region run checks source/result navigation and missing-source status; Project restore keeps its native mesh representation and rejects invalid saved transforms/lineage.
 - The desktop selection run pages past the first 100 components at 600 px height, filters a face by ID, cancels a preview without adding history, and commits a Mesh operation with the keyboard. Project compatibility tests cover legacy selection migration, missing Mesh buffers, stale source generations, and mismatched physical frames.
+- The connected [disconnected-patch desktop run](../../../tests/e2e/project-disconnected-mesh-transfer.spec.ts) imports a verified Project package with two coincident but separately indexed open quads, saves and cold-reopens it, exports the checked resource bytes, imports those bytes into a clean profile, and cold-reopens the destination Project. The Project Mesh status reports two raw indexed components, eight boundary edges, and no qualified solid volume at each stage; the exported positions and indices match the original fixture.
 
 These are source-build checks. They do not establish a signed installed-candidate pass or expand the 2.0 GA claim.
 
 ## Remaining acceptance work
 
 - Extend definition-based boundary reports only to primitives whose topology is justified by their definitions. The Box result does not imply the same method works for arbitrary surfaces or edited meshes.
-- Add a connected desktop import/reopen case for disconnected patches; the current disconnected-patch qualification is a unit gate.
 - Repeat the Geometry–Mesh journey and compatibility failures on the exact signed installed candidate when that release gate is available.
 - Reconcile any newly required release claims with the existing 2.0 acceptance matrix and supported project format before calling them blockers.

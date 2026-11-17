@@ -9,6 +9,8 @@
 
 **QI-04–06 QWZ implementation note (2026-11-04):** Theory Lab now has versioned QWZ scene recipes with byte-stable golden manifests. Math3D persists reciprocal same-result links for two scene documents and opens a relocated content-addressed `.qpack` through the Project panel. See [`qwz-scene-recipes.md`](https://github.com/expert10000/theory-lab/blob/main/docs/qwz-scene-recipes.md) and [`quantum-qi05-06-project-portability.md`](quantum-qi05-06-project-portability.md). Model-wide recipe admission, scientific-scene pack members and general artifact lifecycle remain later work.
 
+**Feature sequence (2026-11-16):** The SSH chain/band pair now saves as a source-pinned Project Study with Notes and refuses changed bundles on reopen. The supplied QWZ Berry-curvature grid maps into native Field Explorer with its declared `kx`/`ky` coordinates and units. A verified complex hydrogen scene now creates a guided Project Study with scene and complex Field source documents, density and phase roles, and source-linked Notes; its amplitude, density and phase remain distinct quantities. These consumer workflows require external producer bundles and do not expand the four bounded 2.0 GA journeys or change their release gates.
+
 ---
 
 ## 0. Executive direction
