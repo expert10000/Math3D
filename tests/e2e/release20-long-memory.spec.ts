@@ -6,6 +6,10 @@ import path from "node:path";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
 import { bytesToMiB, sampleProcessTreeSafely } from "./helpers/processMemory";
 
+type ViewerPoolCanvasSample = { serial: number; role: string; width: number; height: number; idle: boolean;
+  sizeChanges: number; pixelRatioChanges: number; geometriesAtRelease: number | null;
+  texturesAtRelease: number | null; programsAtRelease: number | null };
+
 const minutesText = process.env.MATH3D_MEMORY_SOAK_MINUTES;
 const minutes = Number(minutesText);
 const smoke = process.env.MATH3D_MEMORY_SOAK_SMOKE === "1";
@@ -50,7 +54,7 @@ test("one Electron process retains responsive navigation and records long-run me
         byRoleMiB: Record<string, number>; electronPrivateMiB: number; rendererPrivateMiB: number;
         gpuPrivateMiB: number; gpuPid: number | null; contextLosses: number;
         jsHeapMiB: number | null; v8UsedMiB: number; v8TotalMiB: number; domNodes: number;
-        viewerPoolCanvases: Array<{ serial: number; role: string; width: number; height: number; idle: boolean }> }> }>, pageErrors: [] as string[],
+        viewerPoolCanvases: Array<ViewerPoolCanvasSample> }> }>, pageErrors: [] as string[],
     lifecycleEvents: [] as Array<{ event: string; elapsedMs: number; status: string; code?: number | null; signal?: string | null }>,
     peakSampledRssMiB: 0, failure: null as string | null,
   };
@@ -95,7 +99,12 @@ test("one Electron process retains responsive navigation and records long-run me
         viewerPoolCanvases: Array.from(document.querySelectorAll<HTMLCanvasElement>("canvas[data-viewer-pool-serial]"))
           .map(canvas => ({ serial: Number(canvas.dataset.viewerPoolSerial), role: canvas.dataset.viewerPoolRole ?? "",
             width: canvas.width, height: canvas.height,
-            idle: Boolean(canvas.closest('[data-viewer-renderer-pool="idle"]')) })),
+            idle: Boolean(canvas.closest('[data-viewer-renderer-pool="idle"]')),
+            sizeChanges: Number(canvas.dataset.viewerPoolSizeChanges ?? 0),
+            pixelRatioChanges: Number(canvas.dataset.viewerPoolPixelRatioChanges ?? 0),
+            geometriesAtRelease: canvas.dataset.viewerPoolGeometries == null ? null : Number(canvas.dataset.viewerPoolGeometries),
+            texturesAtRelease: canvas.dataset.viewerPoolTextures == null ? null : Number(canvas.dataset.viewerPoolTextures),
+            programsAtRelease: canvas.dataset.viewerPoolPrograms == null ? null : Number(canvas.dataset.viewerPoolPrograms) })),
       }));
       report.peakSampledRssMiB = Math.max(report.peakSampledRssMiB, rssMiB);
       return { action, elapsedMs: Date.now() - started, rssMiB, processCount: value.processCount,
@@ -116,7 +125,7 @@ test("one Electron process retains responsive navigation and records long-run me
           byRoleMiB: Record<string, number>; electronPrivateMiB: number; rendererPrivateMiB: number;
           gpuPrivateMiB: number; gpuPid: number | null; contextLosses: number;
           jsHeapMiB: number | null; v8UsedMiB: number; v8TotalMiB: number; domNodes: number;
-          viewerPoolCanvases: Array<{ serial: number; role: string; width: number; height: number; idle: boolean }> }>,
+          viewerPoolCanvases: Array<ViewerPoolCanvasSample> }>,
         finishedAtMs: undefined as number | undefined };
       report.cycles.push(cycle);
       cycle.samples.push(await sample(0)); save();
