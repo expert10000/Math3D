@@ -44,3 +44,34 @@ reports independently matched the fresh run and result hashes. The check does
 not qualify a signed stable 2.0 installer, repeated installation reliability,
 the four complete installed flagship journeys, or the longer mixed-route
 memory plateau. Those release gates remain open.
+
+## Fresh-scene source journey follow-up
+
+The [QWZ Study handoff desktop test](../../../tests/e2e/quantum-qi08-study-handoff.spec.ts)
+now accepts a downloaded installed-pair artifact only when the caller supplies
+the exact `installed-pair.json` SHA-256. It checks the fresh study and both
+scene-description hashes against that report before copying their exact bytes
+into the source Electron test handoff. The normal fixture path remains the
+default. To repeat the fresh-scene run from the repository root in PowerShell:
+
+```powershell
+$env:MATH3D_QI40_PAIR_ARTIFACT_ROOT = '<downloaded-artifact-root>'
+$env:MATH3D_QI40_PAIR_REPORT_SHA256 = 'f4c2c74ab1c87f398454bf9297d641e329550df04d583427125f661355d00a42'
+npx playwright test tests/e2e/quantum-qi08-study-handoff.spec.ts --reporter=list
+```
+
+After `npm run build:main` and `npm run build:renderer` on application source
+`5caba31a`, the test committed at `9c2193c9` passed from a clean checkout on
+2026-11-18 (`1 passed`, 1.3 minutes). That commit changes only this test, so
+the built application source is unchanged. The test stages the four-view QWZ
+Study, pins a reciprocal selection, publishes saved band samples and an authored
+path to Graph, writes a source-linked Note, and checks the saved evidence. It
+then reopens the Project, verifies source return, withholds changed and missing
+scene evidence, transfers the quantum package to an independent profile,
+checks offline readback, and refuses changed or missing package blobs. The
+same test also passed with its default fixture path (`1 passed`, 1.3 minutes).
+
+This is a **source Electron** journey using fresh scenes produced by the
+installed Theory Lab in the archived pair run. It does not run the complete
+journey inside the installed Math3D Dev executable or qualify a signed stable
+candidate.
