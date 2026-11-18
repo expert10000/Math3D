@@ -1098,6 +1098,7 @@ import {
 import {
   createLocalMeshHealthResult,
   getMeshHealthBlockers,
+  meshSurfaceSuitabilityLabel,
   mergeCgalMeshHealthResult,
 } from "./mesh/meshHealth";
 import {
@@ -66855,6 +66856,7 @@ case "mobius":
       ? cachedMeshDiagnosticsResult.payload
       : computedSurfaceMeshAnalyzeDiagnostics;
   const surfaceMeshAnalyzeDiagnostics = rawSurfaceMeshAnalyzeDiagnostics;
+  const surfaceMeshSuitabilityPresentation = meshSurfaceSuitabilityLabel(surfaceMeshAnalyzeDiagnostics);
   useEffect(() => {
     if (!activeMeshAnalysisIdentity || !computedSurfaceMeshAnalyzeDiagnostics) return;
     setMeshAnalysisResultStore((previous) =>
@@ -76162,7 +76164,7 @@ case "mobius":
   const meshAnalysisWorkflowValidationLabel = surfaceMeshAnalyzeDiagnostics
     ? surfaceMeshAnalyzeDiagnostics.state === "Healthy"
       ? "Validated"
-      : surfaceMeshAnalyzeDiagnostics.state
+      : surfaceMeshSuitabilityPresentation ?? surfaceMeshAnalyzeDiagnostics.state
     : "Unverified";
   const meshAnalysisWorkflowValidationTone =
     meshAnalysisWorkflowValidationLabel === "Validated"
@@ -86578,10 +86580,10 @@ case "mobius":
                           alignItems: "center",
                           justifyContent: "space-between",
                           gap: 8,
-                          border: `1px solid ${surfaceMeshAnalyzeDiagnostics?.state === "Healthy" ? "#bbf7d0" : surfaceMeshAnalyzeDiagnostics?.state === "Invalid" ? "#fca5a5" : "#fed7aa"}`,
+                          border: `1px solid ${surfaceMeshAnalyzeDiagnostics?.state === "Healthy" ? "#bbf7d0" : surfaceMeshAnalyzeDiagnostics?.state === "Invalid" && !surfaceMeshSuitabilityPresentation ? "#fca5a5" : "#fed7aa"}`,
                           borderRadius: 7,
-                          background: surfaceMeshAnalyzeDiagnostics?.state === "Healthy" ? "#f0fdf4" : surfaceMeshAnalyzeDiagnostics?.state === "Invalid" ? "#fef2f2" : "#fffaf0",
-                          color: surfaceMeshAnalyzeDiagnostics?.state === "Healthy" ? "#166534" : surfaceMeshAnalyzeDiagnostics?.state === "Invalid" ? "#b42318" : "#9a3412",
+                          background: surfaceMeshAnalyzeDiagnostics?.state === "Healthy" ? "#f0fdf4" : surfaceMeshAnalyzeDiagnostics?.state === "Invalid" && !surfaceMeshSuitabilityPresentation ? "#fef2f2" : "#fffaf0",
+                          color: surfaceMeshAnalyzeDiagnostics?.state === "Healthy" ? "#166534" : surfaceMeshAnalyzeDiagnostics?.state === "Invalid" && !surfaceMeshSuitabilityPresentation ? "#b42318" : "#9a3412",
                           padding: "6px 8px",
                           fontSize: 10.5,
                           fontWeight: 800,
@@ -86589,7 +86591,7 @@ case "mobius":
                       >
                         <span>
                           State check: {surfaceMeshAnalyzeDiagnostics
-                            ? `${surfaceMeshAnalyzeDiagnostics.state}${surfaceMeshAnalyzeDiagnostics.selfIntersectionPairs > 0 ? ` · ${surfaceMeshAnalyzeDiagnostics.selfIntersectionPairs} suspected intersections` : ""}`
+                            ? `${surfaceMeshSuitabilityPresentation ?? surfaceMeshAnalyzeDiagnostics.state}${surfaceMeshAnalyzeDiagnostics.selfIntersectionPairs > 0 ? ` · ${surfaceMeshAnalyzeDiagnostics.selfIntersectionPairs} suspected intersections` : ""}`
                             : "Unverified"}
                         </span>
                         <button
@@ -86667,7 +86669,7 @@ case "mobius":
                             ["chart-analysis", "Charts & statistics", showChartGrid ? "active" : "available"],
                             ["mesh-quality", "Mesh quality", meshQualityBusy ? `${Math.round(meshQualityProgress * 100)}%` : meshQualityReport ? "ready" : "waiting"],
                             ["geodesics", "Distances & geodesics", geodesicPathLength != null ? "ready" : geodesicPathEnabled ? "picking" : "available"],
-                            ["diagnostics", "Topology & integrity", surfaceMeshAnalyzeDiagnostics ? (surfaceMeshAnalyzeDiagnostics.state === "Healthy" ? "clean" : surfaceMeshAnalyzeDiagnostics.state.toLowerCase()) : "waiting"],
+                            ["diagnostics", "Topology & integrity", surfaceMeshAnalyzeDiagnostics ? (surfaceMeshAnalyzeDiagnostics.state === "Healthy" ? "clean" : (surfaceMeshSuitabilityPresentation ?? surfaceMeshAnalyzeDiagnostics.state).toLowerCase()) : "waiting"],
                           ] as const).map(([section, label, status]) => {
                             const active = analysisFocusedSection === section;
                             return (
