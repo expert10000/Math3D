@@ -28,14 +28,18 @@ vi.mock("three", () => ({
 import { acquireViewerRenderer, releaseViewerRenderer, setViewerRendererPixelRatio, setViewerRendererSize } from "./viewerRendererPool";
 
 describe("viewer renderer pool", () => {
-  it("reuses separate Volume and Surface/Mesh contexts without resizing their idle buffers", () => {
+  it("reuses separate Volume, Surface, and Mesh contexts without resizing their idle buffers", () => {
     const slices = Array.from({ length: 3 }, () => acquireViewerRenderer(false, "volume-slice"));
     const spatial = acquireViewerRenderer(true, "volume-spatial");
     const general = acquireViewerRenderer(true);
+    const mesh = acquireViewerRenderer(true, "mesh");
     expect(general).not.toBe(spatial);
+    expect(mesh).not.toBe(general);
     (spatial as unknown as { setSize: (width: number, height: number) => void }).setSize(640, 480);
     (spatial as unknown as { setPixelRatio: (ratio: number) => void }).setPixelRatio(1.25);
-    for (const renderer of [...slices, spatial, general]) releaseViewerRenderer(renderer);
+    setViewerRendererSize(general, 706, 346);
+    setViewerRendererSize(mesh, 363, 164);
+    for (const renderer of [...slices, spatial, general, mesh]) releaseViewerRenderer(renderer);
     expect((spatial as unknown as { size: [number, number] }).size).toEqual([640, 480]);
     expect((spatial as unknown as { pixelRatio: number }).pixelRatio).toBe(1.25);
     expect(slices.every(renderer => (renderer as unknown as { bufferResizes: number }).bufferResizes === 0)).toBe(true);
@@ -43,15 +47,20 @@ describe("viewer renderer pool", () => {
     const reusedSlices = Array.from({ length: 3 }, () => acquireViewerRenderer(false, "volume-slice"));
     const reusedSpatial = acquireViewerRenderer(true, "volume-spatial");
     const reusedGeneral = acquireViewerRenderer(true);
+    const reusedMesh = acquireViewerRenderer(true, "mesh");
     expect(reusedSlices).toEqual(slices);
     expect(reusedSpatial).toBe(spatial);
     expect(reusedGeneral).toBe(general);
+    expect(reusedMesh).toBe(mesh);
     expect((reusedGeneral.domElement.dataset as Record<string, string>).viewerPoolSerial).toMatch(/^\d+$/);
     expect((reusedGeneral.domElement.dataset as Record<string, string>).viewerPoolRole).toBe("general");
-    expect([...slices, spatial, general].every(renderer => !(renderer as unknown as { disposed: boolean }).disposed)).toBe(true);
+    expect((reusedMesh.domElement.dataset as Record<string, string>).viewerPoolRole).toBe("mesh");
+    expect((general as unknown as { size: [number, number] }).size).toEqual([706, 346]);
+    expect((mesh as unknown as { size: [number, number] }).size).toEqual([363, 164]);
+    expect([...slices, spatial, general, mesh].every(renderer => !(renderer as unknown as { disposed: boolean }).disposed)).toBe(true);
 
     const overflow = acquireViewerRenderer(false);
-    for (const renderer of [...reusedSlices, reusedSpatial, reusedGeneral]) releaseViewerRenderer(renderer);
+    for (const renderer of [...reusedSlices, reusedSpatial, reusedGeneral, reusedMesh]) releaseViewerRenderer(renderer);
     releaseViewerRenderer(overflow);
     expect((overflow as unknown as { disposed: boolean }).disposed).toBe(true);
   });

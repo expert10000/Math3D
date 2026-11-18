@@ -3937,7 +3937,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     const { width, height } = getSize();
 
-    const renderer = acquireViewerRenderer();
+    const renderer = acquireViewerRenderer(true, surfaceId === "surface_mesh" ? "mesh" : "general");
     const heavySurface = surfaceId === "surface_mesh" || surfaceId === "torus_implicit";
     const maxPixelRatio =
       renderQuality === "performance"
