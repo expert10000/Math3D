@@ -1,0 +1,34 @@
+{
+  "schema": "math3d/qi40-fresh-installed-pair-review/v1",
+  "status": "passed",
+  "scope": "unsigned Dev installed pair; exact fresh QWZ result and two views",
+  "installedPairReportSha256": "f4c2c74ab1c87f398454bf9297d641e329550df04d583427125f661355d00a42",
+  "math3dCommit": "f53b14614f5f5598b949347af52ef133b2e04fdb",
+  "math3dInstallerSha256": "76fee0efde77174a55f151753ce450fa0f2add17d1d98a772fa541cd11d281ee",
+  "theoryLabCommit": "34654af10ae070dd0cc02e5fb58a9f2197f49a4a",
+  "theoryLabInstallerSha256": "1f5e9a1f9944980c446b77edc7a320ac02f94f364fb3e41b9900a9e1b7135e2b",
+  "runId": "run-ff37cdc374234d62bd1e78c20e7b1384",
+  "resultSha256": "352a397b0caadc3d83d83938341afd671afd8e37c347814e6a6a7b50ef324c2b",
+  "studySha256": "b9e2c9a4d4f5088c1a58ca4998a24ac0fc581b4fb7e357f13189bff092f8da61",
+  "chern": -1,
+  "bulkGap": 2,
+  "maximumAbsoluteDifference": 5.551115123125783e-16,
+  "views": [
+    {
+      "role": "curvature",
+      "sceneSha256": "1fb9bdbe2fcfa5c9b787b51ae836112bc3b785a5525524110116b2ce50fd6854",
+      "screenshotSha256": "95650f7ede51f4f81333aa6d66d673e8eb2e5852aadef56011e62a32265e03f3",
+      "screenshotWidth": 1008,
+      "screenshotHeight": 655,
+      "samples": 441
+    },
+    {
+      "role": "bands",
+      "sceneSha256": "3e7fae8a24e3b14e5954a96af8de24c838bb4594de8ce058780bdd9cec1e7962",
+      "screenshotSha256": "c80336d2e9fe156d306b72d52f2f506b489141c0e8a9dbc5ccde898f9aa3e78a",
+      "screenshotWidth": 1008,
+      "screenshotHeight": 655,
+      "samples": 441
+    }
+  ]
+}
