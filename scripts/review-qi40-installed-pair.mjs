@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createRequire } from "node:module";
 
@@ -17,6 +17,16 @@ const pairDirectory = join(artifact, "test-results", "qi40-unsigned-dev-pair");
 const sha = bytes => createHash("sha256").update(bytes).digest("hex");
 const fileSha = async path => sha(await readFile(path));
 const readJson = async path => JSON.parse(await readFile(path, "utf8"));
+const listFiles = async (directory, prefix = "") => {
+  const files = [];
+  for (const entry of await readdir(join(directory, prefix), { withFileTypes: true })) {
+    const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) files.push(...await listFiles(directory, relativePath));
+    else if (entry.isFile()) files.push(relativePath);
+    else throw new Error(`Unexpected retained study entry: ${relativePath}`);
+  }
+  return files.sort();
+};
 const near = (actual, expected, label) => {
   assert.ok(Number.isFinite(actual) && Number.isFinite(expected), `${label}: non-finite value`);
   const difference = Math.abs(actual - expected);
@@ -42,7 +52,16 @@ assert.equal(pair.schema, "math3d/qi40-installed-pair/v1");
 assert.equal(pair.status, "passed");
 for (const check of ["candidate", "install", "freshProducer", "directLaunch", "twoViews"])
   assert.equal(pair.checks[check], "passed", check);
-assert.equal(await fileSha(join(artifact, "candidate", "candidate-manifest.json")), pair.candidateManifestSha256);
+const candidatePath = join(artifact, "candidate", "candidate-manifest.json");
+assert.equal(await fileSha(candidatePath), pair.candidateManifestSha256);
+const candidate = await readJson(candidatePath);
+assert.equal(candidate.schema, "math3d/two-app-candidate/v1");
+assert.equal(candidate.buildRunId, pair.candidateBuildRunId);
+for (const app of ["math3d", "theoryLab"]) {
+  assert.equal(candidate[app].commit, pair[app].commit, `${app} candidate commit`);
+  assert.equal(candidate[app].installerSha256, pair[app].installerSha256, `${app} candidate setup`);
+}
+assert.equal(candidate.math3d.channel, "dev");
 assert.equal(await fileSha(join(pairDirectory, "consumer", "acceptance.json")), pair.consumerAcceptanceSha256);
 assert.equal(await fileSha(join(pairDirectory, "direct", "acceptance.json")), pair.directAcceptanceSha256);
 
@@ -97,12 +116,20 @@ for (let index = 0; index < grid; index++)
 
 const direct = await readJson(join(pairDirectory, "direct", "acceptance.json"));
 const consumer = await readJson(join(pairDirectory, "consumer", "acceptance.json"));
+assert.deepEqual(consumer.candidate, { buildRunId: candidate.buildRunId,
+  math3d: candidate.math3d, theoryLab: candidate.theoryLab });
+assert.equal(consumer.executableSha256, pair.math3d.installedExecutableSha256);
+assert.equal(direct.math3dExecutableSha256, pair.math3d.installedExecutableSha256);
+assert.equal(direct.labExecutableSha256, pair.theoryLab.installedExecutableSha256);
 for (const acceptance of [direct, consumer]) {
   assert.equal(acceptance.runId, runId);
   assert.equal(acceptance.resultSha256, resultSha256);
 }
 assert.equal(direct.sourceStudySha256, manifestSha256);
 assert.equal(direct.launchedStudySha256, manifestSha256);
+assert.deepEqual(direct.files.map(file => file.path).sort(), await listFiles(freshStudyDirectory));
+for (const file of direct.files)
+  assert.equal(await fileSha(join(freshStudyDirectory, file.path)), file.sha256, `direct launch ${file.path}`);
 assert.equal(consumer.stagedViews, 2);
 assert.deepEqual(consumer.viewed.slice().sort(), ["bands", "curvature"]);
 
@@ -166,6 +193,7 @@ console.log(JSON.stringify({
   runId, resultSha256, studySha256: manifestSha256,
   grid, chern, bulkGap: result.analysis.bulkGap, sampledGap,
   independentlyIntegratedChern: integratedChern,
+  directLaunchFilesVerified: direct.files.length,
   maximumAbsoluteDifference,
   views: viewReview,
 }, null, 2));
