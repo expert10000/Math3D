@@ -1327,6 +1327,8 @@ The complete [800-switch source receipt](evidence/m3d20-memory-800-1e0726b9.json
 
 **Bounded reuse trial:** Clean `cd0371bd` [20-cycle receipt](evidence/m3d20-recycle-20-cd0371bd.json) retired the shared Surface/Mesh context after 250 visits. Four replacement context IDs appeared, but post-GC renderer private bytes still rose **203.1 → 251.8 MiB** (**+48.7 MiB**) in **21.4 minutes** and GPU-process peak reached **598.7 MiB**. This does not improve on the unsplit 20-cycle trend, so the retirement change was reverted. The remaining native renderer growth is not explained by context ID churn, canvas resize count, Three.js resource counts, or V8 backing storage in these source diagnostics. The two-hour source plateau and installed-candidate memory gates remain open.
 
+**Native sampling availability:** A one-cycle `Memory.startSampling` diagnostic on `c2cad5bc` completed, but its [CDP native profile](evidence/m3d20-native-profile-empty-c2cad5bc.json) contained **zero samples and zero modules**. The optional sampling experiment was reverted; it cannot attribute allocations in this Electron runtime. The measured renderer-private growth and the failed two-hour receipt remain the controlling evidence.
+
 **17d release rehearsal:** The [exact-candidate rehearsal gate](RC2_REHEARSAL_GATE.md) checks that the source freeze, signed Windows install and upgrade receipts, source soak, verified assets, three gallery captures, public license metadata, and locally staged site all refer to one 2.0 commit and installer hash. It remains pending real candidate artifacts and installed evidence.
 
 - Fresh-machine installer and upgrade pass.

@@ -1,0 +1,27 @@
+{
+  "schema": "math3d.release20.native-memory-profile.v1",
+  "build": {
+    "version": "2.0.0",
+    "commit": "c2cad5bcdf9026574bd7ee5fb42ca7c33f756a28",
+    "dirty": false,
+    "builtAt": "2026-11-18T13:49:33.179Z",
+    "rendererHash": "2f40e18434963a8a0035aac36dc111c94cf6e95414f4e162e0e542361d25deff"
+  },
+  "routes": [
+    "graphs",
+    "surfaces",
+    "mesh",
+    "volume"
+  ],
+  "samplingIntervalBytes": 65536,
+  "snapshots": [
+    {
+      "cycles": 1,
+      "elapsedMs": 33347,
+      "profile": {
+        "samples": [],
+        "modules": []
+      }
+    }
+  ]
+}
