@@ -54,12 +54,18 @@ try {
   foreach ($entry in @(@($mathInstaller, $manifest.math3d.installerSha256), @($labInstaller, $manifest.theoryLab.installerSha256))) {
     $actual = (Get-FileHash -LiteralPath $entry[0] -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($actual -ne $entry[1]) { throw "Candidate installer hash mismatch: $($entry[0])" }
-    $component = & (Join-Path $labRepo 'scripts/verify-qi40-installer-nsis.ps1') -Installer $entry[0] | ConvertFrom-Json
-    if ($component.installerSha256 -ne $actual) { throw 'NSIS component report installer identity mismatch' }
+    if ($Math3DChannel -eq 'stable' -or $entry[0] -eq $labInstaller) {
+      $component = & (Join-Path $labRepo 'scripts/verify-qi40-installer-nsis.ps1') -Installer $entry[0] | ConvertFrom-Json
+      if ($component.installerSha256 -ne $actual) { throw 'NSIS component report installer identity mismatch' }
+    }
   }
+  & (Join-Path $PSScriptRoot 'inspect-quantum-installer-components.ps1') -CandidateDirectory $candidate `
+    -EvidencePath (Join-Path $output 'installer-components.json')
+  $components = Get-Content -LiteralPath (Join-Path $output 'installer-components.json') -Raw | ConvertFrom-Json
   $record.math3d = [ordered]@{ commit = $manifest.math3d.commit; channel = $Math3DChannel;
-    installerSha256 = $manifest.math3d.installerSha256 }
-  $record.theoryLab = [ordered]@{ commit = $manifest.theoryLab.commit; installerSha256 = $manifest.theoryLab.installerSha256 }
+    installerSha256 = $manifest.math3d.installerSha256; nsisSystemDllSha256 = $components.components[0].systemDllSha256 }
+  $record.theoryLab = [ordered]@{ commit = $manifest.theoryLab.commit;
+    installerSha256 = $manifest.theoryLab.installerSha256; nsisSystemDllSha256 = $components.components[1].systemDllSha256 }
   $record.checks.candidate = 'passed'
   if ($Math3DChannel -eq 'stable') {
     Push-Location $labRepo
@@ -135,12 +141,12 @@ try {
     node scripts/verify-qi40-retained.mjs $retained | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'Retained QWZ study verification failed' }
     $record.checks.freshProducer = 'passed'
-    node scripts/accept-qi40-direct-launch.mjs $labExe $record.theoryLab.installedExecutableSha256 $mathExe $record.math3d.installedExecutableSha256 $retained (Join-Path $output 'direct') | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw 'Installed direct Theory Lab-to-Math3D launch failed' }
-    $record.checks.directLaunch = 'passed'
-    node scripts/accept-qi40-math3d.mjs $mathExe $record.math3d.installedExecutableSha256 $retained --candidate $manifestPath --evidence (Join-Path $output 'consumer') | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw 'Installed Math3D QWZ two-view acceptance failed' }
+    node scripts/accept-qi40-math3d.mjs $mathExe $record.math3d.installedExecutableSha256 $retained --candidate $manifestPath --evidence (Join-Path $output 'consumer') *> (Join-Path $output 'consumer-process.log')
+    if ($LASTEXITCODE -ne 0) { throw "Installed Math3D QWZ two-view acceptance failed: $((Get-Content -LiteralPath (Join-Path $output 'consumer-process.log') -Tail 18) | Out-String)" }
     $record.checks.twoViews = 'passed'
+    node scripts/accept-qi40-direct-launch.mjs $labExe $record.theoryLab.installedExecutableSha256 $mathExe $record.math3d.installedExecutableSha256 $retained (Join-Path $output 'direct') *> (Join-Path $output 'direct-process.log')
+    if ($LASTEXITCODE -ne 0) { throw "Installed direct Theory Lab-to-Math3D launch failed: $((Get-Content -LiteralPath (Join-Path $output 'direct-process.log') -Tail 18) | Out-String)" }
+    $record.checks.directLaunch = 'passed'
   } finally { Pop-Location }
   $producer = Get-Content -LiteralPath (Join-Path $retained 'acceptance.json') -Raw | ConvertFrom-Json
   $direct = Get-Content -LiteralPath (Join-Path $output 'direct/acceptance.json') -Raw | ConvertFrom-Json
