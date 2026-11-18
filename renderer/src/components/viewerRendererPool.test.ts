@@ -80,4 +80,19 @@ describe("viewer renderer pool", () => {
     expect(Number(reused.domElement.dataset.viewerPoolSizeChanges)).toBe(sizeChanges + 1);
     releaseViewerRenderer(reused);
   });
+  it("retires the general context after bounded reuse while retaining Volume contexts", () => {
+    const slices = Array.from({ length: 3 }, () => acquireViewerRenderer(false, "volume-slice"));
+    const spatial = acquireViewerRenderer(true, "volume-spatial");
+    const general = acquireViewerRenderer(true);
+    const target = acquireViewerRenderer(false);
+    for (let visit = 1; visit < 250; visit++) {
+      releaseViewerRenderer(target);
+      expect((target as unknown as { disposed: boolean }).disposed).toBe(false);
+      expect(acquireViewerRenderer(false)).toBe(target);
+    }
+    releaseViewerRenderer(target);
+    expect((target as unknown as { disposed: boolean }).disposed).toBe(true);
+    for (const renderer of [...slices, spatial, general]) releaseViewerRenderer(renderer);
+    expect((spatial as unknown as { disposed: boolean }).disposed).toBe(false);
+  });
 });
