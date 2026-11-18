@@ -1,0 +1,43 @@
+{
+  "schema": "theory-lab/qi40-math3d-consumer/v1",
+  "executableSha256": "4081af0e1aa0cf2960cc7f2c65cc4cd5a280e62426843622dfc73a5be72632fd",
+  "runId": "run-ff37cdc374234d62bd1e78c20e7b1384",
+  "resultSha256": "352a397b0caadc3d83d83938341afd671afd8e37c347814e6a6a7b50ef324c2b",
+  "stagedViews": 2,
+  "viewed": [
+    "curvature",
+    "bands"
+  ],
+  "candidate": {
+    "buildRunId": "44097555120",
+    "math3d": {
+      "version": "2.0.0",
+      "commit": "f53b14614f5f5598b949347af52ef133b2e04fdb",
+      "channel": "dev",
+      "installerName": "Math3D Dev Setup 2.0.0.exe",
+      "installerSha256": "76fee0efde77174a55f151753ce450fa0f2add17d1d98a772fa541cd11d281ee"
+    },
+    "theoryLab": {
+      "version": "0.1.0",
+      "commit": "34654af10ae070dd0cc02e5fb58a9f2197f49a4a",
+      "installerName": "Quantum-Hamiltonian-Lab-Setup-0.1.0.exe",
+      "installerSha256": "1f5e9a1f9944980c446b77edc7a320ac02f94f364fb3e41b9900a9e1b7135e2b"
+    }
+  },
+  "retained": {
+    "acceptanceSha256": "2a2c8a9e81e111da8924311c7e597915d44c0ee8200aaa02f71ff04d5ec3bc9e",
+    "ledgerSha256": "6170e1a4cd91dc43e341d1bd6f6c2ca0bb9ad1554274afc3196a57002f706557"
+  },
+  "screenshots": [
+    {
+      "role": "curvature",
+      "file": "curvature.png",
+      "sha256": "95650f7ede51f4f81333aa6d66d673e8eb2e5852aadef56011e62a32265e03f3"
+    },
+    {
+      "role": "bands",
+      "file": "bands.png",
+      "sha256": "c80336d2e9fe156d306b72d52f2f506b489141c0e8a9dbc5ccde898f9aa3e78a"
+    }
+  ]
+}

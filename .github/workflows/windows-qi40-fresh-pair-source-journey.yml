@@ -3,17 +3,22 @@ name: Windows QI-40 Fresh Pair Source Journey
 on:
   workflow_dispatch:
     inputs:
+      use_retained_fixture:
+        description: Replay the checked-in byte-exact QWZ subset after the Actions artifact expires
+        required: false
+        default: false
+        type: boolean
       pair_run_id:
         description: Successful unsigned Dev pair run containing the fresh QWZ artifact
-        required: true
+        required: false
         type: string
       pair_artifact_name:
         description: Exact artifact name from that run
-        required: true
+        required: false
         type: string
       pair_report_sha256:
         description: SHA-256 of the archived installed-pair.json
-        required: true
+        required: false
         type: string
 
 permissions:
@@ -33,6 +38,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Check pair run and receipt identity
+        if: ${{ !inputs.use_retained_fixture }}
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -48,6 +54,7 @@ jobs:
           $run = gh run view $env:PAIR_RUN_ID -R expert10000/Math3D --json conclusion | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0 -or $run.conclusion -ne 'success') { throw 'Pair run has not passed' }
       - uses: actions/download-artifact@v7
+        if: ${{ !inputs.use_retained_fixture }}
         with:
           name: ${{ inputs.pair_artifact_name }}
           repository: expert10000/Math3D
@@ -76,17 +83,18 @@ jobs:
       - name: Recheck exact fresh result and two views
         shell: pwsh
         env:
-          PAIR_REPORT_SHA256: ${{ inputs.pair_report_sha256 }}
+          PAIR_ROOT: ${{ inputs.use_retained_fixture && 'tests/fixtures/quantum-qi40-fresh-pair-artifact' || 'pair-artifact' }}
+          PAIR_REPORT_SHA256: ${{ inputs.use_retained_fixture && 'f4c2c74ab1c87f398454bf9297d641e329550df04d583427125f661355d00a42' || inputs.pair_report_sha256 }}
         run: |
           New-Item -ItemType Directory -Force -Path qi40-source-evidence | Out-Null
-          $review = node scripts/review-qi40-installed-pair.mjs pair-artifact $env:PAIR_REPORT_SHA256
+          $review = node scripts/review-qi40-installed-pair.mjs $env:PAIR_ROOT $env:PAIR_REPORT_SHA256
           if ($LASTEXITCODE -ne 0) { throw 'Fresh QWZ pair review failed' }
           $review | Set-Content -LiteralPath qi40-source-evidence/fresh-pair-review.json -Encoding utf8
       - name: Run complete QWZ Study and Graph source journey
         shell: pwsh
         env:
-          MATH3D_QI40_PAIR_ARTIFACT_ROOT: ${{ github.workspace }}\pair-artifact
-          MATH3D_QI40_PAIR_REPORT_SHA256: ${{ inputs.pair_report_sha256 }}
+          MATH3D_QI40_PAIR_ARTIFACT_ROOT: ${{ inputs.use_retained_fixture && 'tests/fixtures/quantum-qi40-fresh-pair-artifact' || 'pair-artifact' }}
+          MATH3D_QI40_PAIR_REPORT_SHA256: ${{ inputs.use_retained_fixture && 'f4c2c74ab1c87f398454bf9297d641e329550df04d583427125f661355d00a42' || inputs.pair_report_sha256 }}
           PLAYWRIGHT_JSON_OUTPUT_NAME: qi40-source-evidence/playwright.json
         run: |
           npx playwright test tests/e2e/quantum-qi08-study-handoff.spec.ts --workers=1 --retries=0 --reporter=list,json
