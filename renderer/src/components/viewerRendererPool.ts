@@ -11,6 +11,11 @@ const idleRenderers: Array<{ renderer: THREE.WebGLRenderer; antialias: boolean; 
 const rendererIdentity = new WeakMap<THREE.WebGLRenderer, { antialias: boolean; role: ViewerRendererRole }>();
 let pageUnloading = false;
 let parkingHost: HTMLDivElement | null = null;
+let rendererSerial = 0;
+
+const countCanvasChange = (canvas: HTMLCanvasElement, key: "viewerPoolSizeChanges" | "viewerPoolPixelRatioChanges"): void => {
+  canvas.dataset[key] = String(Number(canvas.dataset[key] ?? 0) + 1);
+};
 
 const parkCanvas = (canvas: HTMLCanvasElement): void => {
   if (typeof document === "undefined") {
@@ -51,6 +56,8 @@ export const acquireViewerRenderer = (antialias = true, role: ViewerRendererRole
     : new THREE.WebGLRenderer({ antialias, alpha: true });
   if (index < 0) {
     rendererIdentity.set(renderer, { antialias, role });
+    renderer.domElement.dataset.viewerPoolSerial = String(++rendererSerial);
+    renderer.domElement.dataset.viewerPoolRole = role;
     if (idleRenderers.length >= MAX_IDLE_RENDERERS) destroyRenderer(idleRenderers.shift()!.renderer);
   }
   renderer.resetState();
@@ -63,6 +70,9 @@ export const releaseViewerRenderer = (renderer: THREE.WebGLRenderer): void => {
   renderer.setRenderTarget(null);
   renderer.renderLists.dispose();
   renderer.resetState();
+  renderer.domElement.dataset.viewerPoolGeometries = String(renderer.info.memory.geometries);
+  renderer.domElement.dataset.viewerPoolTextures = String(renderer.info.memory.textures);
+  renderer.domElement.dataset.viewerPoolPrograms = String(renderer.info.programs?.length ?? 0);
   if (pageUnloading || idleRenderers.length >= MAX_IDLE_RENDERERS) {
     destroyRenderer(renderer);
   } else {
@@ -78,12 +88,18 @@ export const releaseViewerRenderer = (renderer: THREE.WebGLRenderer): void => {
 // dimensions are unchanged. That discards the drawing buffer and makes ANGLE
 // allocate it again on each resize notification or pooled-viewer mount.
 export const setViewerRendererPixelRatio = (renderer: THREE.WebGLRenderer, ratio: number): void => {
-  if (renderer.getPixelRatio() !== ratio) renderer.setPixelRatio(ratio);
+  if (renderer.getPixelRatio() !== ratio) {
+    countCanvasChange(renderer.domElement, "viewerPoolPixelRatioChanges");
+    renderer.setPixelRatio(ratio);
+  }
 };
 
 export const setViewerRendererSize = (
   renderer: THREE.WebGLRenderer, width: number, height: number, updateStyle = true,
 ): void => {
   const current = renderer.getSize(new THREE.Vector2());
-  if (current.x !== width || current.y !== height) renderer.setSize(width, height, updateStyle);
+  if (current.x !== width || current.y !== height) {
+    countCanvasChange(renderer.domElement, "viewerPoolSizeChanges");
+    renderer.setSize(width, height, updateStyle);
+  }
 };

@@ -25,6 +25,11 @@ the lower-band Berry curvature and both energy bands against that formula and
 against the fresh worker result. Maximum absolute difference was
 `5.551115123125783e-16`, below the script's `1e-12` tolerance. The fresh run
 reports Chern `-1` and bulk gap `2` at mass `-1` on a 21 × 21 grid.
+The retained-fixture reviewer also checks the periodic reciprocal grid and
+surface heights, recomputes the sampled band gap from both energy arrays, and
+integrates the verified curvature samples over the grid. The sampled gap is
+`2.0002494853248947`; the independent curvature integral is approximately
+`-1.0000019282277401`, consistent with Chern `-1` at this resolution.
 
 ## Screenshot inspection
 
@@ -112,3 +117,30 @@ as the earlier downloaded-artifact run. Playwright recorded one expected pass
 and zero unexpected or flaky results. The [fixture CI summary](evidence/qi40-retained-fixture-source-ci-96ed243c.json)
 pins the source and archived report hashes. This remains source-app evidence;
 the signed installed candidate and memory gates remain open.
+
+## Production-runtime source replay
+
+The workflow now accepts `production_runtime: true`, which launches the source
+app with `MATH3D_E2E=0` and its normal hardware GPU mode default. The first
+launch Settings dialog in a clean independent profile is closed through its
+visible button before the portable Project transfer. This still uses source
+Electron and a test-isolated profile; it does not measure which GPU device the
+Windows runner ultimately uses.
+
+The [clean Windows production-runtime replay](https://github.com/expert10000/Math3D/actions/runs/44298131950)
+passed on commit `b66c1b46` after the earlier [production-runtime pass](https://github.com/expert10000/Math3D/actions/runs/44297139415)
+on `3295ffdc`. Its enhanced review checks both scene coordinate grids,
+curvature surface heights, sampled band gap, and the curvature integral as
+well as all 441 QWZ samples. Playwright reported one expected pass, zero
+unexpected or flaky results. The [production-runtime CI receipt](evidence/qi40-production-runtime-source-ci-b66c1b46.json)
+pins the clean source build and archived review and Playwright hashes. The
+signed installed Math3D journey and mixed-route memory gate remain open.
+
+A [follow-up clean Windows run](https://github.com/expert10000/Math3D/actions/runs/44301353947)
+passed on `f939c266` after the viewer diagnostics reached main. Its reviewer
+matched the candidate manifest and both installed executable identities, then
+checked all 32 direct-launch file hashes against the retained source study.
+The full production-runtime desktop journey again passed with one expected
+result. The [follow-up receipt](evidence/qi40-production-runtime-source-ci-f939c266.json)
+pins this newer renderer build and the archived check hashes. This remains a
+source-app replay; signed installed and mixed-route memory gates stay open.

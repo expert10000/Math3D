@@ -1098,6 +1098,7 @@ import {
 import {
   createLocalMeshHealthResult,
   getMeshHealthBlockers,
+  meshSurfaceSuitabilityLabel,
   mergeCgalMeshHealthResult,
 } from "./mesh/meshHealth";
 import {
@@ -62109,13 +62110,21 @@ case "mobius":
       setSurfaceMeshWeldError("Surface mesh not ready yet.");
       return;
     }
+    const sourceDocument = meshDocumentAdapterRef.current?.document();
+    if (!sourceDocument) {
+      setSurfaceMeshWeldError("Active Mesh document not ready yet.");
+      return;
+    }
     setSurfaceMeshWeldBusy(true);
     setSurfaceMeshWeldError(null);
     try {
       const tol = Math.max(1e-6, Number(surfaceMeshWeldTolerance) || 1e-6);
       const label = `${surfaceMeshData.label ?? "Surface mesh"} (welded)`;
       const welded = weldSurfaceMeshVertices(surfaceMeshData, tol, label);
-      setMeshDataset(applySurfaceMeshOps(welded), "mesh-op:weld");
+      setMeshDataset(applySurfaceMeshOps(welded), "mesh-op:weld", {
+        method: "seam-preserving-vertex-weld",
+        tolerance: tol,
+      });
       const weldedIdentity = meshDocumentAdapterRef.current?.document().identity;
       setWeldUndoTarget(weldedIdentity ? { id: weldedIdentity.id, revision: weldedIdentity.revision, structuralHash: weldedIdentity.structuralHash } : null);
       appendMeshPromotionOperation(`welded vertices (tol ${fmt(tol)})`);
@@ -63369,15 +63378,12 @@ case "mobius":
 
   const handleMeshOperationSmooth = useCallback(async () => {
     if (meshOperationBusy) return;
-    if (cgalHealthState?.ok === false) {
-      setMeshOperationError(cgalHealthState.error ?? "Python worker unavailable.");
-      return;
-    }
     const mesh = getMeshForMeshOperation();
     if (!mesh) {
       setMeshOperationError("Surface mesh not ready yet.");
       return;
     }
+    const sourceGeneration = meshDocumentAdapterRef.current?.sourceGeneration() ?? null;
     setMeshOperationBusy(true);
     setMeshOperationError(null);
     try {
@@ -63394,6 +63400,11 @@ case "mobius":
         quality: "balanced",
       };
       const res = await runMeshOperation(request, { primaryMesh: mesh });
+      if (sourceGeneration && (!meshDocumentAdapterRef.current ||
+        !matchesScientificSourceGeneration(sourceGeneration, meshDocumentAdapterRef.current.sourceGeneration()))) {
+        setMeshOperationError("Mesh source changed while Smooth was running. The late result was discarded; run Smooth again on the current source.");
+        return;
+      }
       const resultSummary = summarizeMeshOperationResult(res, meshOperationOutputModeForRequest);
       if (res.status === "error" || !res.resultMesh) {
         publishMeshOperationResult(resultSummary, request);
@@ -63419,7 +63430,6 @@ case "mobius":
     }
   }, [
     meshOperationBusy,
-    cgalHealthState,
     getMeshForMeshOperation,
     meshOperationSmoothIterations,
     meshOperationSmoothPassband,
@@ -66855,6 +66865,7 @@ case "mobius":
       ? cachedMeshDiagnosticsResult.payload
       : computedSurfaceMeshAnalyzeDiagnostics;
   const surfaceMeshAnalyzeDiagnostics = rawSurfaceMeshAnalyzeDiagnostics;
+  const surfaceMeshSuitabilityPresentation = meshSurfaceSuitabilityLabel(surfaceMeshAnalyzeDiagnostics);
   useEffect(() => {
     if (!activeMeshAnalysisIdentity || !computedSurfaceMeshAnalyzeDiagnostics) return;
     setMeshAnalysisResultStore((previous) =>
@@ -76162,7 +76173,7 @@ case "mobius":
   const meshAnalysisWorkflowValidationLabel = surfaceMeshAnalyzeDiagnostics
     ? surfaceMeshAnalyzeDiagnostics.state === "Healthy"
       ? "Validated"
-      : surfaceMeshAnalyzeDiagnostics.state
+      : surfaceMeshSuitabilityPresentation ?? surfaceMeshAnalyzeDiagnostics.state
     : "Unverified";
   const meshAnalysisWorkflowValidationTone =
     meshAnalysisWorkflowValidationLabel === "Validated"
@@ -79011,7 +79022,12 @@ case "mobius":
       }
     }
     const surfaceAdapter = (restoredSurfaceAdapter && surfaceViewerKind === "param" && paramSurfaceId === "custom" ? restoredSurfaceAdapter : surfaceDocumentAdapters.get(activeCanonicalSurfaceDefinition.identity.surfaceId));
-    if (surfaceAdapter) { const replay = surfaceAdapter.replayBundle(); add("surface", surfaceAdapter.document(), replay.checkpoint, MIXED_REPLAY_FORMATS.surface, replay as unknown as CanonicalJsonValue); }
+    // The active Mesh already has its own document and replay. Its mesh-backed Surface
+    // wrapper is a viewer projection with an internal meshId, not a restorable Surface study.
+    if (surfaceAdapter && !(surfaceViewerKind === "mesh" && surfaceAdapter.document().source.representation === "mesh-backed")) {
+      const replay = surfaceAdapter.replayBundle();
+      add("surface", surfaceAdapter.document(), replay.checkpoint, MIXED_REPLAY_FORMATS.surface, replay as unknown as CanonicalJsonValue);
+    }
     const curveReplay = activeCurveKernelAdapter.replayBundle();
     add("curve", activeCurveKernelAdapter.document(), curveReplay.checkpoint, MIXED_REPLAY_FORMATS.curve, curveReplay as unknown as CanonicalJsonValue);
     const volumeReplay = activeVolumeKernelAdapter.replayBundle();
@@ -85309,6 +85325,7 @@ case "mobius":
                           onRestoreOperationHistoryEntry={restoreMeshOperationHistoryEntry}
                           onUndoLastOperation={undoLatestMeshOperation}
                           canUndoLastOperation={canUndoLatestMeshOperation}
+                          onCompareLastOperation={(entryId) => previewSurfaceMeshTopologyHistoryEntry(entryId, "after")}
                           onApplyOperationPreset={handleApplyMeshOperationPreset}
                           onApplySavedOperationPreset={handleApplyGeometryOperationPreset}
                           onSaveOperationPreset={handleSaveMeshOperationPreset}
@@ -86578,10 +86595,10 @@ case "mobius":
                           alignItems: "center",
                           justifyContent: "space-between",
                           gap: 8,
-                          border: `1px solid ${surfaceMeshAnalyzeDiagnostics?.state === "Healthy" ? "#bbf7d0" : surfaceMeshAnalyzeDiagnostics?.state === "Invalid" ? "#fca5a5" : "#fed7aa"}`,
+                          border: `1px solid ${surfaceMeshAnalyzeDiagnostics?.state === "Healthy" ? "#bbf7d0" : surfaceMeshAnalyzeDiagnostics?.state === "Invalid" && !surfaceMeshSuitabilityPresentation ? "#fca5a5" : "#fed7aa"}`,
                           borderRadius: 7,
-                          background: surfaceMeshAnalyzeDiagnostics?.state === "Healthy" ? "#f0fdf4" : surfaceMeshAnalyzeDiagnostics?.state === "Invalid" ? "#fef2f2" : "#fffaf0",
-                          color: surfaceMeshAnalyzeDiagnostics?.state === "Healthy" ? "#166534" : surfaceMeshAnalyzeDiagnostics?.state === "Invalid" ? "#b42318" : "#9a3412",
+                          background: surfaceMeshAnalyzeDiagnostics?.state === "Healthy" ? "#f0fdf4" : surfaceMeshAnalyzeDiagnostics?.state === "Invalid" && !surfaceMeshSuitabilityPresentation ? "#fef2f2" : "#fffaf0",
+                          color: surfaceMeshAnalyzeDiagnostics?.state === "Healthy" ? "#166534" : surfaceMeshAnalyzeDiagnostics?.state === "Invalid" && !surfaceMeshSuitabilityPresentation ? "#b42318" : "#9a3412",
                           padding: "6px 8px",
                           fontSize: 10.5,
                           fontWeight: 800,
@@ -86589,7 +86606,7 @@ case "mobius":
                       >
                         <span>
                           State check: {surfaceMeshAnalyzeDiagnostics
-                            ? `${surfaceMeshAnalyzeDiagnostics.state}${surfaceMeshAnalyzeDiagnostics.selfIntersectionPairs > 0 ? ` · ${surfaceMeshAnalyzeDiagnostics.selfIntersectionPairs} suspected intersections` : ""}`
+                            ? `${surfaceMeshSuitabilityPresentation ?? surfaceMeshAnalyzeDiagnostics.state}${surfaceMeshAnalyzeDiagnostics.selfIntersectionPairs > 0 ? ` · ${surfaceMeshAnalyzeDiagnostics.selfIntersectionPairs} suspected intersections` : ""}`
                             : "Unverified"}
                         </span>
                         <button
@@ -86667,7 +86684,7 @@ case "mobius":
                             ["chart-analysis", "Charts & statistics", showChartGrid ? "active" : "available"],
                             ["mesh-quality", "Mesh quality", meshQualityBusy ? `${Math.round(meshQualityProgress * 100)}%` : meshQualityReport ? "ready" : "waiting"],
                             ["geodesics", "Distances & geodesics", geodesicPathLength != null ? "ready" : geodesicPathEnabled ? "picking" : "available"],
-                            ["diagnostics", "Topology & integrity", surfaceMeshAnalyzeDiagnostics ? (surfaceMeshAnalyzeDiagnostics.state === "Healthy" ? "clean" : surfaceMeshAnalyzeDiagnostics.state.toLowerCase()) : "waiting"],
+                            ["diagnostics", "Topology & integrity", surfaceMeshAnalyzeDiagnostics ? (surfaceMeshAnalyzeDiagnostics.state === "Healthy" ? "clean" : (surfaceMeshSuitabilityPresentation ?? surfaceMeshAnalyzeDiagnostics.state).toLowerCase()) : "waiting"],
                           ] as const).map(([section, label, status]) => {
                             const active = analysisFocusedSection === section;
                             return (

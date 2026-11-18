@@ -5,6 +5,7 @@ import { subdivideWithRetainedMeshCheckpoint, transformWithRetainedMeshSnapshot 
 
 export const MeshProjectEditor: React.FC<{ adapter: MeshDocumentAdapter; onRestore: () => void }> = ({ adapter, onRestore }) => {
   const topology = computeMeshTopologyInspector(adapter.mesh());
+  const weldLineage = adapter.weldLineage();
   const [translation, setTranslation] = useState(["0", "0", "0"]), [scale, setScale] = useState("1");
   const [selection, setSelection] = useState(JSON.stringify(adapter.selection()));
   const [error, setError] = useState("");
@@ -21,6 +22,11 @@ export const MeshProjectEditor: React.FC<{ adapter: MeshDocumentAdapter; onResto
         ? " · solid volume not measured in Project editor"
         : " · solid volume n/a: requires a qualified closed, consistently oriented solid"}
     </span>}
+    {weldLineage.map((entry) => <span key={entry.transactionId} data-testid="project-mesh-weld-lineage" style={{ width: "100%" }}>
+      Weld · {entry.status === "current" ? "Current result" : "Historical result"} · Destination: Replace Mesh document · {entry.method} · tolerance {entry.tolerance} ·
+      {" "}source {entry.source.documentId} r{entry.source.revision} ({entry.source.structuralHash}, {entry.source.resourceChecksum}) →
+      {" "}result {entry.result.documentId} r{entry.result.revision} ({entry.result.structuralHash}, {entry.result.resourceChecksum})
+    </span>)}
     {translation.map((value, index) => <label key={index}>{["dx", "dy", "dz"][index]} <input data-testid={`project-mesh-translate-${index}`} type="number" value={value} onChange={(event) => setTranslation((values) => values.map((entry, axis) => axis === index ? event.target.value : entry))} style={{ width: 65 }} /></label>)}
     <label>Scale <input data-testid="project-mesh-scale" type="number" value={scale} onChange={(event) => setScale(event.target.value)} style={{ width: 65 }} /></label>
     <button type="button" data-testid="project-mesh-apply" onClick={() => run(() => {

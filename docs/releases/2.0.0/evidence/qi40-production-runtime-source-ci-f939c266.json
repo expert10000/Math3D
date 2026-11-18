@@ -1,0 +1,40 @@
+{
+  "schema": "math3d/qi40-production-runtime-source-ci-review/v1",
+  "status": "passed",
+  "scope": "Clean Windows source Electron QWZ Study and Graph journey using retained bytes from the unsigned Dev installed Theory Lab and Math3D pair",
+  "workflowRun": "https://github.com/expert10000/Math3D/actions/runs/44301353947",
+  "sourceCommit": "f939c2662d5386296f07390056c7ece091d74e3d",
+  "runtime": {
+    "MATH3D_E2E": "0",
+    "useRetainedFixture": true,
+    "gpuModeDefault": "hardware",
+    "physicalGpuVerified": false
+  },
+  "sourceBuild": {
+    "version": "2.0.0",
+    "dirty": false,
+    "rendererHash": "45a7b7687def64d454d53219e3662bc86a80e49ec3f235dc061151776db6a66a"
+  },
+  "retainedFixture": {
+    "installedPairReportSha256": "f4c2c74ab1c87f398454bf9297d641e329550df04d583427125f661355d00a42",
+    "originalPairRun": "https://github.com/expert10000/Math3D/actions/runs/44282845421"
+  },
+  "archivedChecks": {
+    "freshPairReviewSha256": "af626570043da399ce6870afc309f11343b1e8bfec84bda257206d6191528392",
+    "directLaunchFilesVerified": 32,
+    "grid": 21,
+    "chern": -1,
+    "sampledGap": 2.0002494853248947,
+    "independentlyIntegratedChern": -1.0000019282277401,
+    "playwrightJsonSha256": "8774cf87319271fe3f472334654b5a23b6a7360dbe0b498ca05c26f912c90115",
+    "expected": 1,
+    "unexpected": 0,
+    "flaky": 0,
+    "durationMs": 78356.22899999999
+  },
+  "openGates": [
+    "Two-hour mixed-route retained-memory plateau",
+    "Complete QWZ journey in the signed installed Math3D candidate",
+    "Exact signed Theory Lab and Math3D candidate pair"
+  ]
+}

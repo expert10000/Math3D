@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createRequire } from "node:module";
 
@@ -17,6 +17,16 @@ const pairDirectory = join(artifact, "test-results", "qi40-unsigned-dev-pair");
 const sha = bytes => createHash("sha256").update(bytes).digest("hex");
 const fileSha = async path => sha(await readFile(path));
 const readJson = async path => JSON.parse(await readFile(path, "utf8"));
+const listFiles = async (directory, prefix = "") => {
+  const files = [];
+  for (const entry of await readdir(join(directory, prefix), { withFileTypes: true })) {
+    const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) files.push(...await listFiles(directory, relativePath));
+    else if (entry.isFile()) files.push(relativePath);
+    else throw new Error(`Unexpected retained study entry: ${relativePath}`);
+  }
+  return files.sort();
+};
 const near = (actual, expected, label) => {
   assert.ok(Number.isFinite(actual) && Number.isFinite(expected), `${label}: non-finite value`);
   const difference = Math.abs(actual - expected);
@@ -42,7 +52,16 @@ assert.equal(pair.schema, "math3d/qi40-installed-pair/v1");
 assert.equal(pair.status, "passed");
 for (const check of ["candidate", "install", "freshProducer", "directLaunch", "twoViews"])
   assert.equal(pair.checks[check], "passed", check);
-assert.equal(await fileSha(join(artifact, "candidate", "candidate-manifest.json")), pair.candidateManifestSha256);
+const candidatePath = join(artifact, "candidate", "candidate-manifest.json");
+assert.equal(await fileSha(candidatePath), pair.candidateManifestSha256);
+const candidate = await readJson(candidatePath);
+assert.equal(candidate.schema, "math3d/two-app-candidate/v1");
+assert.equal(candidate.buildRunId, pair.candidateBuildRunId);
+for (const app of ["math3d", "theoryLab"]) {
+  assert.equal(candidate[app].commit, pair[app].commit, `${app} candidate commit`);
+  assert.equal(candidate[app].installerSha256, pair[app].installerSha256, `${app} candidate setup`);
+}
+assert.equal(candidate.math3d.channel, "dev");
 assert.equal(await fileSha(join(pairDirectory, "consumer", "acceptance.json")), pair.consumerAcceptanceSha256);
 assert.equal(await fileSha(join(pairDirectory, "direct", "acceptance.json")), pair.directAcceptanceSha256);
 
@@ -80,15 +99,37 @@ assert.equal(result.runId, runId);
 assert.equal(result.jobId, job.jobId);
 assert.equal(result.status, "completed");
 assert.equal(result.analysis.chern, chern);
+assert.equal(result.analysis.latticeChern, chern);
+assert.equal(result.analysis.analyticChern, chern);
+assert.equal(result.analysis.meshResolved, true);
+assert.equal(result.analysis.gapClosed, false);
+near(result.analysis.bulkGap, 2, "analytic bulk gap");
+const sampledGap = Math.min(...result.analysis.upperBand.map((upper, index) => upper - result.analysis.lowerBand[index]));
+near(result.analysis.sampledGap, sampledGap, "sampled band gap");
+const cellArea = (2 * Math.PI / grid) ** 2;
+const integratedChern = result.analysis.berryCurvature.reduce((sum, curvature) => sum + curvature * cellArea, 0) / (2 * Math.PI);
+near(result.analysis.chernIntegral, integratedChern, "curvature Chern integral");
+assert.ok(Math.abs(integratedChern - chern) < 1e-3, "curvature integral must resolve the declared Chern number");
+assert.equal(result.analysis.bandKValues.length, grid);
+for (let index = 0; index < grid; index++)
+  near(result.analysis.bandKValues[index], -Math.PI + index * 2 * Math.PI / grid, `band k ${index}`);
 
 const direct = await readJson(join(pairDirectory, "direct", "acceptance.json"));
 const consumer = await readJson(join(pairDirectory, "consumer", "acceptance.json"));
+assert.deepEqual(consumer.candidate, { buildRunId: candidate.buildRunId,
+  math3d: candidate.math3d, theoryLab: candidate.theoryLab });
+assert.equal(consumer.executableSha256, pair.math3d.installedExecutableSha256);
+assert.equal(direct.math3dExecutableSha256, pair.math3d.installedExecutableSha256);
+assert.equal(direct.labExecutableSha256, pair.theoryLab.installedExecutableSha256);
 for (const acceptance of [direct, consumer]) {
   assert.equal(acceptance.runId, runId);
   assert.equal(acceptance.resultSha256, resultSha256);
 }
 assert.equal(direct.sourceStudySha256, manifestSha256);
 assert.equal(direct.launchedStudySha256, manifestSha256);
+assert.deepEqual(direct.files.map(file => file.path).sort(), await listFiles(freshStudyDirectory));
+for (const file of direct.files)
+  assert.equal(await fileSha(join(freshStudyDirectory, file.path)), file.sha256, `direct launch ${file.path}`);
 assert.equal(consumer.stagedViews, 2);
 assert.deepEqual(consumer.viewed.slice().sort(), ["bands", "curvature"]);
 
@@ -116,6 +157,11 @@ for (const role of ["curvature", "bands"]) {
   assert.equal(lower.length, grid * grid);
   if (upper) assert.equal(upper.length, grid * grid);
   for (let index = 0; index < grid * grid; index++) {
+    const row = Math.floor(index / grid), column = index % grid;
+    const centerOffset = role === "curvature" ? Math.PI / grid : 0;
+    near(coordinates[index * 3], result.analysis.bandKValues[row] + centerOffset, `${role} kx ${index}`);
+    near(coordinates[index * 3 + 1], result.analysis.bandKValues[column] + centerOffset, `${role} ky ${index}`);
+    near(coordinates[index * 3 + 2], role === "curvature" ? lower[index] : 0, `${role} height ${index}`);
     const expected = qwz(coordinates[index * 3], coordinates[index * 3 + 1], mass);
     const resultValue = role === "curvature" ? result.analysis.berryCurvature[index] : result.analysis.lowerBand[index];
     const target = role === "curvature" ? expected.curvature : expected.lower;
@@ -145,7 +191,9 @@ console.log(JSON.stringify({
   theoryLabCommit: pair.theoryLab.commit,
   theoryLabInstallerSha256: pair.theoryLab.installerSha256,
   runId, resultSha256, studySha256: manifestSha256,
-  chern, bulkGap: result.analysis.bulkGap,
+  grid, chern, bulkGap: result.analysis.bulkGap, sampledGap,
+  independentlyIntegratedChern: integratedChern,
+  directLaunchFilesVerified: direct.files.length,
   maximumAbsoluteDifference,
   views: viewReview,
 }, null, 2));

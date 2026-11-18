@@ -140,7 +140,7 @@ test("v1 problem-mesh workflow exposes open boundaries through canonical diagnos
   test.setTimeout(120_000);
   await withApp(async (page) => {
     await loadBenchmark(page, "open-boundary");
-    await expect(page.getByTestId("mesh-analyze-health-badge")).toContainText(/State check:\s*Invalid/i);
+    await expect(page.getByTestId("mesh-analyze-health-badge")).toContainText(/State check:\s*Open sheet \(not closed solid\)/i);
     await page.getByTestId("shared-inspector-tab-diagnostics").click();
     const boundary = page.getByTestId("mesh-analyze-diagnostics-boundary-count");
     await expect(boundary).toContainText(/Boundary:\s*4/i);
