@@ -78,9 +78,6 @@ test("one Electron process retains responsive navigation and records long-run me
     if (await page.evaluate(() => (window as Window & { appRuntime?: { e2e?: boolean } }).appRuntime?.e2e ?? false))
       throw new Error("Memory soak must run without E2E runtime hooks.");
     const heapSession = await page.context().newCDPSession(page);
-    const nativeProfilePath = smoke ? process.env.MATH3D_MEMORY_NATIVE_PROFILE_PATH : undefined;
-    const nativeProfiles: Array<{ cycles: number; elapsedMs: number; profile: unknown }> = [];
-    if (nativeProfilePath) await heapSession.send("Memory.startSampling", { samplingInterval: 65_536 });
     report.pid = pid;
     page.on("pageerror", error => { report.pageErrors.push(error.message); save(); });
     await page.evaluate(() => {
@@ -164,18 +161,7 @@ test("one Electron process retains responsive navigation and records long-run me
       if (report.pageErrors.length) throw new Error(`Page error: ${report.pageErrors[0]}`);
       cycle.finishedAtMs = Date.now() - started;
       report.elapsedMs = cycle.finishedAtMs; save();
-      if (nativeProfilePath && (report.cycles.length === 1 || report.cycles.length === smokeCycles)) {
-        const { profile } = await heapSession.send("Memory.getSamplingProfile");
-        nativeProfiles.push({ cycles: report.cycles.length, elapsedMs: report.elapsedMs, profile });
-      }
     } while (smoke ? report.cycles.length < smokeCycles : Date.now() < deadline);
-    if (nativeProfilePath) {
-      await heapSession.send("Memory.stopSampling");
-      const destination = path.resolve(nativeProfilePath);
-      mkdirSync(path.dirname(destination), { recursive: true });
-      writeFileSync(destination, JSON.stringify({ schema: "math3d.release20.native-memory-profile.v1",
-        build, routes, samplingIntervalBytes: 65_536, snapshots: nativeProfiles }, null, 2) + "\n");
-    }
     if (smoke && process.env.MATH3D_MEMORY_SOAK_HEAP_SNAPSHOT_PATH) {
       const snapshotPath = path.resolve(process.env.MATH3D_MEMORY_SOAK_HEAP_SNAPSHOT_PATH);
       mkdirSync(path.dirname(snapshotPath), { recursive: true });
