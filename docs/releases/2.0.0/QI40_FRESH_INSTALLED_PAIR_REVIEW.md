@@ -25,6 +25,11 @@ the lower-band Berry curvature and both energy bands against that formula and
 against the fresh worker result. Maximum absolute difference was
 `5.551115123125783e-16`, below the script's `1e-12` tolerance. The fresh run
 reports Chern `-1` and bulk gap `2` at mass `-1` on a 21 × 21 grid.
+The retained-fixture reviewer also checks the periodic reciprocal grid and
+surface heights, recomputes the sampled band gap from both energy arrays, and
+integrates the verified curvature samples over the grid. The sampled gap is
+`2.0002494853248947`; the independent curvature integral is approximately
+`-1.0000019282277401`, consistent with Chern `-1` at this resolution.
 
 ## Screenshot inspection
 

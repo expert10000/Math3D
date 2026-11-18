@@ -80,6 +80,20 @@ assert.equal(result.runId, runId);
 assert.equal(result.jobId, job.jobId);
 assert.equal(result.status, "completed");
 assert.equal(result.analysis.chern, chern);
+assert.equal(result.analysis.latticeChern, chern);
+assert.equal(result.analysis.analyticChern, chern);
+assert.equal(result.analysis.meshResolved, true);
+assert.equal(result.analysis.gapClosed, false);
+near(result.analysis.bulkGap, 2, "analytic bulk gap");
+const sampledGap = Math.min(...result.analysis.upperBand.map((upper, index) => upper - result.analysis.lowerBand[index]));
+near(result.analysis.sampledGap, sampledGap, "sampled band gap");
+const cellArea = (2 * Math.PI / grid) ** 2;
+const integratedChern = result.analysis.berryCurvature.reduce((sum, curvature) => sum + curvature * cellArea, 0) / (2 * Math.PI);
+near(result.analysis.chernIntegral, integratedChern, "curvature Chern integral");
+assert.ok(Math.abs(integratedChern - chern) < 1e-3, "curvature integral must resolve the declared Chern number");
+assert.equal(result.analysis.bandKValues.length, grid);
+for (let index = 0; index < grid; index++)
+  near(result.analysis.bandKValues[index], -Math.PI + index * 2 * Math.PI / grid, `band k ${index}`);
 
 const direct = await readJson(join(pairDirectory, "direct", "acceptance.json"));
 const consumer = await readJson(join(pairDirectory, "consumer", "acceptance.json"));
@@ -116,6 +130,11 @@ for (const role of ["curvature", "bands"]) {
   assert.equal(lower.length, grid * grid);
   if (upper) assert.equal(upper.length, grid * grid);
   for (let index = 0; index < grid * grid; index++) {
+    const row = Math.floor(index / grid), column = index % grid;
+    const centerOffset = role === "curvature" ? Math.PI / grid : 0;
+    near(coordinates[index * 3], result.analysis.bandKValues[row] + centerOffset, `${role} kx ${index}`);
+    near(coordinates[index * 3 + 1], result.analysis.bandKValues[column] + centerOffset, `${role} ky ${index}`);
+    near(coordinates[index * 3 + 2], role === "curvature" ? lower[index] : 0, `${role} height ${index}`);
     const expected = qwz(coordinates[index * 3], coordinates[index * 3 + 1], mass);
     const resultValue = role === "curvature" ? result.analysis.berryCurvature[index] : result.analysis.lowerBand[index];
     const target = role === "curvature" ? expected.curvature : expected.lower;
@@ -145,7 +164,8 @@ console.log(JSON.stringify({
   theoryLabCommit: pair.theoryLab.commit,
   theoryLabInstallerSha256: pair.theoryLab.installerSha256,
   runId, resultSha256, studySha256: manifestSha256,
-  chern, bulkGap: result.analysis.bulkGap,
+  grid, chern, bulkGap: result.analysis.bulkGap, sampledGap,
+  independentlyIntegratedChern: integratedChern,
   maximumAbsoluteDifference,
   views: viewReview,
 }, null, 2));

@@ -19,7 +19,13 @@ node scripts/review-qi40-installed-pair.mjs tests/fixtures/quantum-qi40-fresh-pa
 $env:MATH3D_QI40_PAIR_ARTIFACT_ROOT = 'tests/fixtures/quantum-qi40-fresh-pair-artifact'
 $env:MATH3D_QI40_PAIR_REPORT_SHA256 = 'f4c2c74ab1c87f398454bf9297d641e329550df04d583427125f661355d00a42'
 npx playwright test tests/e2e/quantum-qi08-study-handoff.spec.ts --reporter=list
+$env:MATH3D_E2E = '0'
+npx playwright test tests/e2e/quantum-qi08-study-handoff.spec.ts --reporter=list
 ```
+
+The second journey uses production runtime flags and GPU defaults. Its fresh
+independent profile presents the first-launch Settings dialog, which the test
+closes through the visible UI before opening Projects.
 
 This fixture does not contain the installers, installed executables, complete
 installation logs, duplicate direct-launch study, or 80-cycle memory trace.
