@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { createHash } from "node:crypto";
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
@@ -8,20 +9,46 @@ test("Lab QWZ study handoff stages both exact scenes in a new Math3D Project", a
   test.setTimeout(360_000);
   const root = await mkdtemp(join(tmpdir(), "m3d-qi08-ui-"));
   const handoff = join(root, "study");
-  const runId = "run-05ce1036d70c466eb4f900944a85c474";
+  const artifactRoot = process.env.MATH3D_QI40_PAIR_ARTIFACT_ROOT;
+  const pairPath = artifactRoot ? resolve(artifactRoot, "test-results", "qi40-unsigned-dev-pair", "installed-pair.json") : null;
+  const pairBytes = pairPath ? await readFile(pairPath) : null;
+  if (pairBytes) {
+    expect(process.env.MATH3D_QI40_PAIR_REPORT_SHA256).toMatch(/^[a-f0-9]{64}$/);
+    expect(createHash("sha256").update(pairBytes).digest("hex")).toBe(process.env.MATH3D_QI40_PAIR_REPORT_SHA256);
+  }
+  const pair = pairBytes ? JSON.parse(pairBytes.toString("utf8")) : null;
+  if (pair) {
+    expect(pair.status).toBe("passed");
+    expect(pair.checks).toMatchObject({ install: "passed", freshProducer: "passed", directLaunch: "passed", twoViews: "passed" });
+  }
+  const runId = pair?.freshRun.runId ?? "run-05ce1036d70c466eb4f900944a85c474";
   const names = [`${runId}.qscene`, `${runId}-bands.qscene`];
-  const fixtures = resolve(__dirname, "..", "fixtures", "quantum-qi01");
+  const producerRoot = artifactRoot
+    ? resolve(artifactRoot, "test-results", "qi40-unsigned-dev-pair", "retained", "freshStudy")
+    : resolve(__dirname, "..", "fixtures", "quantum-qi01");
+  if (pair) {
+    const sourceStudyBytes = await readFile(join(producerRoot, "study.json"));
+    expect(createHash("sha256").update(sourceStudyBytes).digest("hex")).toBe(pair.freshRun.manifestSha256);
+    expect(JSON.parse(sourceStudyBytes.toString("utf8"))).toMatchObject({ runId, resultSha256: pair.freshRun.resultSha256 });
+  }
   await mkdir(handoff);
-  await Promise.all(names.map(name => cp(join(fixtures, name), join(handoff, name), { recursive: true })));
+  await Promise.all(names.map(name => cp(join(producerRoot, name), join(handoff, name), { recursive: true })));
   const scenes = await Promise.all(names.map(async (name, index) => {
-    const scene = JSON.parse(await readFile(join(handoff, name, "scene.json"), "utf8"));
+    const sceneBytes = await readFile(join(handoff, name, "scene.json"));
+    if (pair) expect(createHash("sha256").update(sceneBytes).digest("hex"))
+      .toBe(pair.freshRun.scenes.find((item: { role: string }) => item.role === (index ? "bands" : "curvature"))?.sceneSha256);
+    const scene = JSON.parse(sceneBytes.toString("utf8"));
     return { role: index ? "bands" : "curvature", folder: name, sceneId: scene.id,
       resultSha256: scene.provenance.resultSha256 };
   }));
   expect(scenes[0].resultSha256).toBe(scenes[1].resultSha256);
+  if (pair) expect(scenes[0].resultSha256).toBe(pair.freshRun.resultSha256);
   const manifest = { schema: "quantum-study-handoff/v1", model: "qwz", runId,
     resultSha256: scenes[0].resultSha256, scenes: scenes.map(({ role, folder, sceneId }) => ({ role, folder, sceneId })) };
-  await writeFile(join(handoff, "study.json"), JSON.stringify(manifest));
+  if (pair) {
+    expect(manifest).toEqual(JSON.parse(await readFile(join(producerRoot, "study.json"), "utf8")));
+    await cp(join(producerRoot, "study.json"), join(handoff, "study.json"));
+  } else await writeFile(join(handoff, "study.json"), JSON.stringify(manifest));
   let app = await launchRepoElectron({ args: [".", "--quantum-study", handoff, "new"],
     cwd: resolve(__dirname, "..", ".."), env: { ...process.env, MATH3D_E2E_PROFILE_ROOT: join(root, "profile") } });
   try {
@@ -121,7 +148,7 @@ test("Lab QWZ study handoff stages both exact scenes in a new Math3D Project", a
       Object.keys(localStorage).filter(key => key.startsWith("math3d.graph2d.table."))
         .map(key => [key.slice("math3d.graph2d.table.".length), localStorage.getItem(key)])));
     expect(tableContents[tableId]).toBeTruthy();
-    const producer = join(fixtures, names[1]);
+    const producer = join(producerRoot, names[1]);
     const kBytes = await readFile(join(producer, "band-k.f64"));
     const energyBytes = await readFile(join(producer, "band-energy-0.f64"));
     const rows = JSON.parse(tableContents[tableId]!);
