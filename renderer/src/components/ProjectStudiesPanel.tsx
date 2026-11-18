@@ -122,7 +122,7 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
   const focusStudySection = (testId: string) => {
     const section = [...viewRef.current?.querySelectorAll<HTMLElement>("[data-testid]") ?? []]
       .find(element => element.dataset.testid === testId);
-    section?.scrollIntoView({ block: "nearest" }); section?.focus({ preventScroll: true });
+    section?.scrollIntoView({ block: "start" }); section?.focus({ preventScroll: true });
   };
   return <section className="project-dashboard-card" data-testid="project-studies-panel" aria-label="Project Studies">
     <div className="project-dashboard-card-heading"><h4>Studies</h4><span>{studies.length}</span></div>
