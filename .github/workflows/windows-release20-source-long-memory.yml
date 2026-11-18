@@ -1,0 +1,62 @@
+name: Windows 2.0 Source Long Memory
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  two-hour-source:
+    runs-on: windows-2025
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+          cache: npm
+      - name: Install exact source dependencies
+        shell: pwsh
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw 'Root npm ci failed' }
+          npm --prefix renderer ci
+          if ($LASTEXITCODE -ne 0) { throw 'Renderer npm ci failed' }
+      - name: Build identified source app
+        shell: pwsh
+        run: |
+          npm run build:core
+          if ($LASTEXITCODE -ne 0) { throw 'Source build failed' }
+          $identity = Get-Content dist/build-identity.json -Raw | ConvertFrom-Json
+          if ($identity.dirty -or $identity.commit -ne $env:GITHUB_SHA) { throw 'Source build identity differs from checkout' }
+      - name: Measure 120-minute mixed-route memory
+        id: soak
+        shell: pwsh
+        env:
+          MATH3D_MEMORY_SOAK_MINUTES: '120'
+          MATH3D_MEMORY_SOAK_REPORT: test-results/release20-long-memory.json
+          MATH3D_RELEASE20_EXPECTED_COMMIT: ${{ github.sha }}
+        run: |
+          npx playwright test tests/e2e/release20-long-memory.spec.ts --reporter=list
+          if ($LASTEXITCODE -ne 0) { throw 'Two-hour source navigation failed' }
+      - name: Review source memory budget
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path test-results/release20-long-memory.json) {
+            node scripts/check-release20-long-memory.mjs `
+              test-results/release20-long-memory.json source test-results/release20-long-memory-review.json
+            if ($LASTEXITCODE -ne 0) { throw 'Source long-memory budget failed' }
+          } else { throw 'Source long-memory receipt is missing' }
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: release20-source-long-memory-${{ github.sha }}
+          if-no-files-found: ignore
+          compression-level: 0
+          path: |
+            dist/build-identity.json
+            test-results/release20-long-memory.json
+            test-results/release20-long-memory-review.json
+            test-results/playwright/
