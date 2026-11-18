@@ -141,12 +141,12 @@ try {
     node scripts/verify-qi40-retained.mjs $retained | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'Retained QWZ study verification failed' }
     $record.checks.freshProducer = 'passed'
-    node scripts/accept-qi40-direct-launch.mjs $labExe $record.theoryLab.installedExecutableSha256 $mathExe $record.math3d.installedExecutableSha256 $retained (Join-Path $output 'direct') | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw 'Installed direct Theory Lab-to-Math3D launch failed' }
-    $record.checks.directLaunch = 'passed'
-    node scripts/accept-qi40-math3d.mjs $mathExe $record.math3d.installedExecutableSha256 $retained --candidate $manifestPath --evidence (Join-Path $output 'consumer') | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw 'Installed Math3D QWZ two-view acceptance failed' }
+    node scripts/accept-qi40-math3d.mjs $mathExe $record.math3d.installedExecutableSha256 $retained --candidate $manifestPath --evidence (Join-Path $output 'consumer') *> (Join-Path $output 'consumer-process.log')
+    if ($LASTEXITCODE -ne 0) { throw "Installed Math3D QWZ two-view acceptance failed: $((Get-Content -LiteralPath (Join-Path $output 'consumer-process.log') -Tail 18) | Out-String)" }
     $record.checks.twoViews = 'passed'
+    node scripts/accept-qi40-direct-launch.mjs $labExe $record.theoryLab.installedExecutableSha256 $mathExe $record.math3d.installedExecutableSha256 $retained (Join-Path $output 'direct') *> (Join-Path $output 'direct-process.log')
+    if ($LASTEXITCODE -ne 0) { throw "Installed direct Theory Lab-to-Math3D launch failed: $((Get-Content -LiteralPath (Join-Path $output 'direct-process.log') -Tail 18) | Out-String)" }
+    $record.checks.directLaunch = 'passed'
   } finally { Pop-Location }
   $producer = Get-Content -LiteralPath (Join-Path $retained 'acceptance.json') -Raw | ConvertFrom-Json
   $direct = Get-Content -LiteralPath (Join-Path $output 'direct/acceptance.json') -Raw | ConvertFrom-Json
