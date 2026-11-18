@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
+import { freezeControls } from "./helpers/projectFreeze";
 
 type SourceSnapshot = {
   id: string;
@@ -62,6 +63,19 @@ test("split-vertex STL comparison is explicit, read-only, and remains historical
     expect(welded.revision).toBeGreaterThan(before.revision);
     expect(welded.checksum).not.toBe(before.checksum);
 
+    const controls = freezeControls(page);
+    const savedWeld = await controls.save();
+    const weldedEntry = savedWeld.workspace.entries.find((entry: any) => entry.module === "mesh" && entry.expected.id === before.id);
+    expect(weldedEntry?.expected.revision).toBe(welded.revision);
+    const weldCommand = weldedEntry?.replay?.payload?.transactions?.flatMap((transaction: any) => transaction.commands)
+      .find((command: any) => command.command.type === "mesh.resource.commit" && command.command.payload.parameters.traceOperation === "mesh-op:weld");
+    expect(weldCommand?.command.payload.parameters).toMatchObject({
+      destination: "replace", method: "seam-preserving-vertex-weld", tolerance: 1e-4,
+      source: { documentId: before.id, revision: before.revision, structuralHash: before.structuralHash, resourceChecksum: before.checksum },
+      result: { documentId: welded.id, revision: welded.revision, structuralHash: welded.structuralHash, resourceChecksum: welded.checksum },
+    });
+    await controls.hide();
+
     await page.getByTestId("mesh-undo-weld").click();
     await expect(source).toContainText(/Vertices 36 · Faces 12/);
     await expect(source).toContainText("Boundary edges 36");
@@ -73,6 +87,13 @@ test("split-vertex STL comparison is explicit, read-only, and remains historical
     expect(undone.positions).toEqual(before.positions);
     expect(undone.indices).toEqual(before.indices);
     await expect(interpreted).toContainText("Historical interpretation");
+
+    const savedUndo = await controls.save();
+    const undoneEntry = savedUndo.workspace.entries.find((entry: any) => entry.module === "mesh" && entry.expected.id === before.id);
+    expect(undoneEntry?.replay?.payload?.cursor).toBe(0);
+    const undoneWeldCommand = undoneEntry?.replay?.payload?.transactions?.flatMap((transaction: any) => transaction.commands)
+      .find((command: any) => command.command.type === "mesh.resource.commit" && command.command.payload.parameters.traceOperation === "mesh-op:weld");
+    expect(undoneWeldCommand?.command.payload.parameters).toEqual(weldCommand.command.payload.parameters);
   } finally {
     await closeSurfaceApp(app);
   }

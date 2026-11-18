@@ -62110,13 +62110,21 @@ case "mobius":
       setSurfaceMeshWeldError("Surface mesh not ready yet.");
       return;
     }
+    const sourceDocument = meshDocumentAdapterRef.current?.document();
+    if (!sourceDocument) {
+      setSurfaceMeshWeldError("Active Mesh document not ready yet.");
+      return;
+    }
     setSurfaceMeshWeldBusy(true);
     setSurfaceMeshWeldError(null);
     try {
       const tol = Math.max(1e-6, Number(surfaceMeshWeldTolerance) || 1e-6);
       const label = `${surfaceMeshData.label ?? "Surface mesh"} (welded)`;
       const welded = weldSurfaceMeshVertices(surfaceMeshData, tol, label);
-      setMeshDataset(applySurfaceMeshOps(welded), "mesh-op:weld");
+      setMeshDataset(applySurfaceMeshOps(welded), "mesh-op:weld", {
+        method: "seam-preserving-vertex-weld",
+        tolerance: tol,
+      });
       const weldedIdentity = meshDocumentAdapterRef.current?.document().identity;
       setWeldUndoTarget(weldedIdentity ? { id: weldedIdentity.id, revision: weldedIdentity.revision, structuralHash: weldedIdentity.structuralHash } : null);
       appendMeshPromotionOperation(`welded vertices (tol ${fmt(tol)})`);
@@ -63370,15 +63378,12 @@ case "mobius":
 
   const handleMeshOperationSmooth = useCallback(async () => {
     if (meshOperationBusy) return;
-    if (cgalHealthState?.ok === false) {
-      setMeshOperationError(cgalHealthState.error ?? "Python worker unavailable.");
-      return;
-    }
     const mesh = getMeshForMeshOperation();
     if (!mesh) {
       setMeshOperationError("Surface mesh not ready yet.");
       return;
     }
+    const sourceGeneration = meshDocumentAdapterRef.current?.sourceGeneration() ?? null;
     setMeshOperationBusy(true);
     setMeshOperationError(null);
     try {
@@ -63395,6 +63400,11 @@ case "mobius":
         quality: "balanced",
       };
       const res = await runMeshOperation(request, { primaryMesh: mesh });
+      if (sourceGeneration && (!meshDocumentAdapterRef.current ||
+        !matchesScientificSourceGeneration(sourceGeneration, meshDocumentAdapterRef.current.sourceGeneration()))) {
+        setMeshOperationError("Mesh source changed while Smooth was running. The late result was discarded; run Smooth again on the current source.");
+        return;
+      }
       const resultSummary = summarizeMeshOperationResult(res, meshOperationOutputModeForRequest);
       if (res.status === "error" || !res.resultMesh) {
         publishMeshOperationResult(resultSummary, request);
@@ -63420,7 +63430,6 @@ case "mobius":
     }
   }, [
     meshOperationBusy,
-    cgalHealthState,
     getMeshForMeshOperation,
     meshOperationSmoothIterations,
     meshOperationSmoothPassband,
@@ -79013,7 +79022,12 @@ case "mobius":
       }
     }
     const surfaceAdapter = (restoredSurfaceAdapter && surfaceViewerKind === "param" && paramSurfaceId === "custom" ? restoredSurfaceAdapter : surfaceDocumentAdapters.get(activeCanonicalSurfaceDefinition.identity.surfaceId));
-    if (surfaceAdapter) { const replay = surfaceAdapter.replayBundle(); add("surface", surfaceAdapter.document(), replay.checkpoint, MIXED_REPLAY_FORMATS.surface, replay as unknown as CanonicalJsonValue); }
+    // The active Mesh already has its own document and replay. Its mesh-backed Surface
+    // wrapper is a viewer projection with an internal meshId, not a restorable Surface study.
+    if (surfaceAdapter && !(surfaceViewerKind === "mesh" && surfaceAdapter.document().source.representation === "mesh-backed")) {
+      const replay = surfaceAdapter.replayBundle();
+      add("surface", surfaceAdapter.document(), replay.checkpoint, MIXED_REPLAY_FORMATS.surface, replay as unknown as CanonicalJsonValue);
+    }
     const curveReplay = activeCurveKernelAdapter.replayBundle();
     add("curve", activeCurveKernelAdapter.document(), curveReplay.checkpoint, MIXED_REPLAY_FORMATS.curve, curveReplay as unknown as CanonicalJsonValue);
     const volumeReplay = activeVolumeKernelAdapter.replayBundle();
@@ -85311,6 +85325,7 @@ case "mobius":
                           onRestoreOperationHistoryEntry={restoreMeshOperationHistoryEntry}
                           onUndoLastOperation={undoLatestMeshOperation}
                           canUndoLastOperation={canUndoLatestMeshOperation}
+                          onCompareLastOperation={(entryId) => previewSurfaceMeshTopologyHistoryEntry(entryId, "after")}
                           onApplyOperationPreset={handleApplyMeshOperationPreset}
                           onApplySavedOperationPreset={handleApplyGeometryOperationPreset}
                           onSaveOperationPreset={handleSaveMeshOperationPreset}
