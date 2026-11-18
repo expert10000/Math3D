@@ -7,12 +7,8 @@ import * as THREE from "three";
 // can remain stable across route changes.
 type ViewerRendererRole = "general" | "volume-spatial" | "volume-slice";
 const MAX_IDLE_RENDERERS = 5;
-// Five mixed-route cycles exercise about 250 Surface/Mesh visits. Retire that
-// context at the boundary while keeping the four stable Volume contexts.
-const MAX_GENERAL_VISITS = 250;
 const idleRenderers: Array<{ renderer: THREE.WebGLRenderer; antialias: boolean; role: ViewerRendererRole }> = [];
 const rendererIdentity = new WeakMap<THREE.WebGLRenderer, { antialias: boolean; role: ViewerRendererRole }>();
-const rendererVisits = new WeakMap<THREE.WebGLRenderer, number>();
 let pageUnloading = false;
 let parkingHost: HTMLDivElement | null = null;
 let rendererSerial = 0;
@@ -77,17 +73,14 @@ export const releaseViewerRenderer = (renderer: THREE.WebGLRenderer): void => {
   renderer.domElement.dataset.viewerPoolGeometries = String(renderer.info.memory.geometries);
   renderer.domElement.dataset.viewerPoolTextures = String(renderer.info.memory.textures);
   renderer.domElement.dataset.viewerPoolPrograms = String(renderer.info.programs?.length ?? 0);
-  const identity = rendererIdentity.get(renderer) ?? { antialias: true, role: "general" };
-  const visits = (rendererVisits.get(renderer) ?? 0) + 1;
-  rendererVisits.set(renderer, visits);
-  if (pageUnloading || idleRenderers.length >= MAX_IDLE_RENDERERS ||
-      identity.role === "general" && visits >= MAX_GENERAL_VISITS) {
+  if (pageUnloading || idleRenderers.length >= MAX_IDLE_RENDERERS) {
     destroyRenderer(renderer);
   } else {
+    const { antialias, role } = rendererIdentity.get(renderer) ?? { antialias: true, role: "general" };
     // Keep the bounded canvas attached while idle. Detaching or shrinking it
     // can make ANGLE allocate a new backing buffer on the next viewer visit.
     parkCanvas(renderer.domElement);
-    idleRenderers.push({ renderer, ...identity });
+    idleRenderers.push({ renderer, antialias, role });
   }
 };
 
