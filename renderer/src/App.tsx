@@ -62110,13 +62110,21 @@ case "mobius":
       setSurfaceMeshWeldError("Surface mesh not ready yet.");
       return;
     }
+    const sourceDocument = meshDocumentAdapterRef.current?.document();
+    if (!sourceDocument) {
+      setSurfaceMeshWeldError("Active Mesh document not ready yet.");
+      return;
+    }
     setSurfaceMeshWeldBusy(true);
     setSurfaceMeshWeldError(null);
     try {
       const tol = Math.max(1e-6, Number(surfaceMeshWeldTolerance) || 1e-6);
       const label = `${surfaceMeshData.label ?? "Surface mesh"} (welded)`;
       const welded = weldSurfaceMeshVertices(surfaceMeshData, tol, label);
-      setMeshDataset(applySurfaceMeshOps(welded), "mesh-op:weld");
+      setMeshDataset(applySurfaceMeshOps(welded), "mesh-op:weld", {
+        method: "seam-preserving-vertex-weld",
+        tolerance: tol,
+      });
       const weldedIdentity = meshDocumentAdapterRef.current?.document().identity;
       setWeldUndoTarget(weldedIdentity ? { id: weldedIdentity.id, revision: weldedIdentity.revision, structuralHash: weldedIdentity.structuralHash } : null);
       appendMeshPromotionOperation(`welded vertices (tol ${fmt(tol)})`);

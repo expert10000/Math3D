@@ -88,4 +88,36 @@ describe("GK07 MeshDocument adapter", () => {
     expect(restored.redo()).not.toBeNull();
     expect(Array.from(restored.mesh().positions)).toEqual(Array.from(edited.positions));
   });
+
+  it("retains Weld replacement lineage after replay, Undo, and Redo", () => {
+    const adapter = MeshDocumentAdapter.fromMesh(triangle());
+    const before = adapter.document();
+    const welded = triangle();
+    welded.positions[3] = 2;
+    adapter.replaceMesh(welded, "repair", {
+      traceOperation: "mesh-op:weld", method: "seam-preserving-vertex-weld", tolerance: 1e-6,
+    });
+    const after = adapter.document();
+    expect(adapter.weldLineage()).toEqual([{
+      transactionId: "mesh/edit/1", destination: "replace", method: "seam-preserving-vertex-weld",
+      tolerance: 1e-6, source: {
+        documentId: before.identity.id, revision: before.identity.revision,
+        structuralHash: before.identity.structuralHash, resourceChecksum: before.source.resource.checksum,
+      }, result: {
+        documentId: after.identity.id, revision: after.identity.revision,
+        structuralHash: after.identity.structuralHash, resourceChecksum: after.source.resource.checksum,
+      }, status: "current",
+    }]);
+    const reopened = MeshDocumentAdapter.restoreReplay(adapter.exportReplay());
+    expect(reopened.weldLineage()).toEqual(adapter.weldLineage());
+    reopened.undo();
+    expect(reopened.document().source.resource.checksum).toBe(before.source.resource.checksum);
+    expect(reopened.weldLineage()[0]).toMatchObject({ status: "historical", source: { revision: before.identity.revision },
+      result: { revision: after.identity.revision } });
+    const reopenedUndone = MeshDocumentAdapter.restoreReplay(reopened.exportReplay());
+    expect(reopenedUndone.weldLineage()[0]?.status).toBe("historical");
+    reopenedUndone.redo();
+    expect(reopenedUndone.weldLineage()[0]?.status).toBe("historical");
+    expect(reopenedUndone.document().source.resource.checksum).toBe(after.source.resource.checksum);
+  });
 });
