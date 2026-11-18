@@ -11,7 +11,7 @@ vi.mock("three", () => ({
     pixelRatio = 1;
     bufferResizes = 0;
     renderLists = { dispose() {} };
-    domElement = { remove() {} };
+    domElement = { dataset: {} as Record<string, string>, remove() {} };
     constructor(readonly options: { antialias: boolean }) {}
     resetState() {}
     setAnimationLoop() {}
@@ -46,6 +46,8 @@ describe("viewer renderer pool", () => {
     expect(reusedSlices).toEqual(slices);
     expect(reusedSpatial).toBe(spatial);
     expect(reusedGeneral).toBe(general);
+    expect((reusedGeneral.domElement.dataset as Record<string, string>).viewerPoolSerial).toMatch(/^\d+$/);
+    expect((reusedGeneral.domElement.dataset as Record<string, string>).viewerPoolRole).toBe("general");
     expect([...slices, spatial, general].every(renderer => !(renderer as unknown as { disposed: boolean }).disposed)).toBe(true);
 
     const overflow = acquireViewerRenderer(false);

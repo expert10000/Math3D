@@ -11,6 +11,7 @@ const idleRenderers: Array<{ renderer: THREE.WebGLRenderer; antialias: boolean; 
 const rendererIdentity = new WeakMap<THREE.WebGLRenderer, { antialias: boolean; role: ViewerRendererRole }>();
 let pageUnloading = false;
 let parkingHost: HTMLDivElement | null = null;
+let rendererSerial = 0;
 
 const parkCanvas = (canvas: HTMLCanvasElement): void => {
   if (typeof document === "undefined") {
@@ -51,6 +52,8 @@ export const acquireViewerRenderer = (antialias = true, role: ViewerRendererRole
     : new THREE.WebGLRenderer({ antialias, alpha: true });
   if (index < 0) {
     rendererIdentity.set(renderer, { antialias, role });
+    renderer.domElement.dataset.viewerPoolSerial = String(++rendererSerial);
+    renderer.domElement.dataset.viewerPoolRole = role;
     if (idleRenderers.length >= MAX_IDLE_RENDERERS) destroyRenderer(idleRenderers.shift()!.renderer);
   }
   renderer.resetState();

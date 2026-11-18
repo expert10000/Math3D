@@ -27,7 +27,7 @@ test("one Electron process retains responsive navigation and records long-run me
   const collectAfterCycle = !smoke || process.env.MATH3D_MEMORY_SOAK_FORCE_GC === "1";
   // A clean 800-switch Windows run can exceed 29 minutes even when all
   // navigation actions succeed; memory budgets, not this wall clock, qualify it.
-  test.setTimeout(smoke ? (smokeCycles * 5 + 10) * 60_000 : (minutes + 45) * 60_000);
+  test.setTimeout(smoke ? (smokeCycles * 10 + 10) * 60_000 : (minutes + 45) * 60_000);
   const reportPath = path.resolve(process.env.MATH3D_MEMORY_SOAK_REPORT || testInfo.outputPath("release20-long-memory.json"));
   const build = JSON.parse(readFileSync("dist/build-identity.json", "utf8"));
   if (!build.commit || !build.rendererHash || !smoke && build.dirty) throw new Error("Memory soak requires a clean, identified source build.");
@@ -49,7 +49,8 @@ test("one Electron process retains responsive navigation and records long-run me
       samples: Array<{ action: number; elapsedMs: number; rssMiB: number; processCount: number;
         byRoleMiB: Record<string, number>; electronPrivateMiB: number; rendererPrivateMiB: number;
         gpuPrivateMiB: number; gpuPid: number | null; contextLosses: number;
-        jsHeapMiB: number | null; v8UsedMiB: number; v8TotalMiB: number; domNodes: number }> }>, pageErrors: [] as string[],
+        jsHeapMiB: number | null; v8UsedMiB: number; v8TotalMiB: number; domNodes: number;
+        viewerPoolCanvases: Array<{ serial: number; role: string; width: number; height: number; idle: boolean }> }> }>, pageErrors: [] as string[],
     lifecycleEvents: [] as Array<{ event: string; elapsedMs: number; status: string; code?: number | null; signal?: string | null }>,
     peakSampledRssMiB: 0, failure: null as string | null,
   };
@@ -91,6 +92,10 @@ test("one Electron process retains responsive navigation and records long-run me
         jsHeapBytes: (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize ?? null,
         domNodes: document.getElementsByTagName("*").length,
         contextLosses: (window as Window & { __release20ContextLosses?: number }).__release20ContextLosses ?? 0,
+        viewerPoolCanvases: Array.from(document.querySelectorAll<HTMLCanvasElement>("canvas[data-viewer-pool-serial]"))
+          .map(canvas => ({ serial: Number(canvas.dataset.viewerPoolSerial), role: canvas.dataset.viewerPoolRole ?? "",
+            width: canvas.width, height: canvas.height,
+            idle: Boolean(canvas.closest('[data-viewer-renderer-pool="idle"]')) })),
       }));
       report.peakSampledRssMiB = Math.max(report.peakSampledRssMiB, rssMiB);
       return { action, elapsedMs: Date.now() - started, rssMiB, processCount: value.processCount,
@@ -103,14 +108,16 @@ test("one Electron process retains responsive navigation and records long-run me
         jsHeapMiB: renderer.jsHeapBytes === null ? null : Number(bytesToMiB(renderer.jsHeapBytes).toFixed(1)),
         v8UsedMiB: Number(bytesToMiB(heap.usedSize).toFixed(1)),
         v8TotalMiB: Number(bytesToMiB(heap.totalSize).toFixed(1)),
-        domNodes: renderer.domNodes };
+        domNodes: renderer.domNodes, viewerPoolCanvases: renderer.viewerPoolCanvases };
     };
     do {
       const cycle = { startedAtMs: Date.now() - started, actions: 0,
         samples: [] as Array<{ action: number; elapsedMs: number; rssMiB: number; processCount: number;
           byRoleMiB: Record<string, number>; electronPrivateMiB: number; rendererPrivateMiB: number;
           gpuPrivateMiB: number; gpuPid: number | null; contextLosses: number;
-          jsHeapMiB: number | null; v8UsedMiB: number; v8TotalMiB: number; domNodes: number }>, finishedAtMs: undefined as number | undefined };
+          jsHeapMiB: number | null; v8UsedMiB: number; v8TotalMiB: number; domNodes: number;
+          viewerPoolCanvases: Array<{ serial: number; role: string; width: number; height: number; idle: boolean }> }>,
+        finishedAtMs: undefined as number | undefined };
       report.cycles.push(cycle);
       cycle.samples.push(await sample(0)); save();
       for (let action = 1; action <= 100; action++) {
