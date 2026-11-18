@@ -99,13 +99,19 @@ try {
       const role = String(item.type ?? "unknown");
       roleWorkingSetKiB[role] = (roleWorkingSetKiB[role] ?? 0) + item.workingSetKiB;
     }
+    const canvasCounts = await page.locator("canvas").evaluateAll(nodes => {
+      const idle = (node) => Boolean(node.closest('[data-viewer-renderer-pool="idle"]')) ||
+        (node.parentElement?.style.position === "fixed" && node.parentElement.style.left === "-100000px" &&
+          node.parentElement.style.visibility === "hidden");
+      return { active: nodes.filter(node => !idle(node)).length, idle: nodes.filter(idle).length };
+    });
     return { heapBytes: heap.usedSize,
       workingSetKiB: processes.reduce((sum, item) => sum + item.workingSetKiB, 0),
       roleWorkingSetKiB,
       privateKiB: processes.every(item => item.privateKiB !== null) ?
         processes.reduce((sum, item) => sum + item.privateKiB, 0) : null,
       processes,
-      canvasCount: await page.locator("canvas").count() };
+      canvasCount: canvasCounts.active, idleCanvasCount: canvasCounts.idle };
   };
   const baseline = await snapshot();
   const baselineHeapComposition = diagnoseHeap ? await heapComposition() : null;
@@ -144,7 +150,8 @@ try {
     await page.getByTestId("quantum-scene-close").click();
     await dialog.waitFor({ state: "hidden" });
     const closed = await snapshot();
-    assert.equal(closed.canvasCount, baseline.canvasCount, `${id} left a canvas after close`);
+    assert.equal(closed.canvasCount, baseline.canvasCount, `${id} left an active canvas after close`);
+    assert(closed.idleCanvasCount <= 5, `${id} exceeded the bounded renderer pool`);
     cycles.push({ model: id, opened, closed, simulatedContextLoss });
   }
   const final = await snapshot();

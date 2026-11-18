@@ -24,6 +24,15 @@ test("guided hydrogen Study saves its exact complex field, cold-reopens, and ref
     await projects.getByTestId("project-study-preview-toggle-pane-1").click();
     await expect(projects.getByTestId("project-study-hydrogen-view")).toHaveAttribute("data-role", "density");
     await expect(projects.getByTestId("quantum-field-legend")).toContainText("a0^-3", { timeout: 60_000 });
+    const canvas = projects.getByTestId("quantum-field-canvas");
+    const bounds = await canvas.boundingBox();
+    expect(bounds).not.toBeNull();
+    await canvas.click({ position: { x: bounds!.width / 2, y: bounds!.height / 2 } });
+    await expect(projects.getByTestId("project-study-evidence-omission"))
+      .toContainText("Phase is undefined", { timeout: 60_000 });
+    await projects.getByTestId("quantum-field-canvas").click({ position: { x: 150, y: 150 } });
+    await expect(projects.getByTestId("project-study-value-density")).toContainText("a0^-3", { timeout: 60_000 });
+    await expect(projects.getByTestId("project-study-value-phase")).toContainText("rad", { timeout: 60_000 });
     await projects.getByTestId("project-study-preview-toggle-pane-1").click();
     await projects.getByTestId("project-study-preview-toggle-pane-2").click();
     await expect(projects.getByTestId("project-study-hydrogen-view")).toHaveAttribute("data-role", "phase");
@@ -33,6 +42,8 @@ test("guided hydrogen Study saves its exact complex field, cold-reopens, and ref
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     expect(saved.workspace.quantumStudies[0].templateId).toBe("hydrogen");
     expect(saved.workspace.quantumStudies[0].panels.map((item: { role: string }) => item.role)).toEqual(["density", "phase"]);
+    expect(saved.workspace.quantumStudies[0].panels[0].sampleIndex).toEqual(saved.workspace.quantumStudies[0].panels[1].sampleIndex);
+    expect(saved.workspace.quantumStudies[0].panels[0].sampleIndex).not.toBeNull();
     expect(saved.workspace.studies[0].members).toHaveLength(2);
     expect(saved.workspace.entries.map((item: { module: string }) => item.module).slice(-2)).toEqual(["quantum", "field"]);
     expect(saved.notes.filter((item: { title: string }) => item.title.startsWith("Hydrogen "))).toHaveLength(2);
@@ -52,18 +63,48 @@ test("guided hydrogen Study saves its exact complex field, cold-reopens, and ref
     await reopenedProjects.getByTestId("project-gallery-layout-toggle").click();
     await reopenedProjects.getByTestId("project-research-nav-studies").click();
     await reopenedProjects.getByTestId(`project-study-open-${saved.workspace.studies[0].id}`).click();
+    await expect(reopenedProjects.getByTestId("project-study-value-density")).toContainText("a0^-3", { timeout: 60_000 });
+    await expect(reopenedProjects.getByTestId("project-study-value-phase")).toContainText("rad", { timeout: 60_000 });
     await reopenedProjects.getByTestId("project-study-preview-toggle-pane-1").click();
     await expect(reopenedProjects.getByTestId("project-study-hydrogen-view"))
       .toHaveAttribute("data-role", "density", { timeout: 60_000 });
     await expect(reopenedProjects.getByTestId("quantum-field-legend")).toContainText("a0^-3", { timeout: 60_000 });
+    await expect(reopenedProjects.getByTestId("quantum-field-sample")).toContainText("density =", { timeout: 60_000 });
     await reopenedProjects.getByTestId("project-study-preview-toggle-pane-1").click();
     await reopenedProjects.getByTestId("project-study-preview-toggle-pane-2").click();
     await expect(reopenedProjects.getByTestId("project-study-hydrogen-view"))
       .toHaveAttribute("data-role", "phase", { timeout: 60_000 });
     await expect(reopenedProjects.getByTestId("quantum-field-legend")).toContainText("rad", { timeout: 60_000 });
+    await expect(reopenedProjects.getByTestId("quantum-field-sample")).toContainText("phase =", { timeout: 60_000 });
     await reopenedProjects.getByTestId("project-study-preview-toggle-pane-2").click();
+    await reopened.evaluate(() => {
+      const original = URL.createObjectURL.bind(URL);
+      URL.createObjectURL = blob => {
+        if (blob instanceof Blob)
+          (window as Window & { __studyEvidence?: Promise<string> }).__studyEvidence = blob.text();
+        return original(blob);
+      };
+    });
+    await reopenedProjects.getByTestId("project-study-export-quantum-evidence").click();
+    await expect.poll(() => reopened.evaluate(() =>
+      Boolean((window as Window & { __studyEvidence?: Promise<string> }).__studyEvidence))).toBe(true);
+    const validEvidence = JSON.parse(await reopened.evaluate(async () =>
+      (window as Window & { __studyEvidence?: Promise<string> }).__studyEvidence!));
+    expect(validEvidence.values.density.unit).toBe("a0^-3");
+    expect(validEvidence.values.phase.unit).toBe("rad");
+    expect(validEvidence.sources[0].datasets).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "psi-real", unit: "a0^-3/2", sha256: expect.stringMatching(/^[a-f0-9]{64}$/) }),
+    ]));
+    await reopened.evaluate(() => { (window as Window & { __studyEvidence?: Promise<string> }).__studyEvidence = undefined; });
     const binary = join(source, "psi-real.f64"), bytes = await readFile(binary);
     bytes[0] ^= 1; await writeFile(binary, bytes);
+    await reopenedProjects.getByTestId("project-study-export-quantum-evidence").click();
+    await expect.poll(() => reopened.evaluate(() =>
+      Boolean((window as Window & { __studyEvidence?: Promise<string> }).__studyEvidence))).toBe(true);
+    const evidence = JSON.parse(await reopened.evaluate(async () =>
+      (window as Window & { __studyEvidence?: Promise<string> }).__studyEvidence!));
+    expect(evidence.values).toEqual({});
+    expect(evidence.omissions.join(" ")).toMatch(/verification|integrity|hash|changed/i);
     await reopenedProjects.getByTestId("project-study-preview-toggle-pane-2").click();
     await expect(reopenedProjects.getByTestId("project-study-hydrogen-withheld"))
       .toContainText(/integrity|hash|changed/i, { timeout: 60_000 });

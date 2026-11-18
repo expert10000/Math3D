@@ -54,6 +54,8 @@ SHARED-01 is reserved by the current cleanup thread: remove unrelated retained m
 
 ## Important complete acceptance journey
 
+The four-family recipe, analysis, derived-representation and reopen gates for SURF-05 are in [Workbench acceptance criteria](WORKBENCH_ACCEPTANCE_CRITERIA.md#surf-05--recipe-analysis-and-derived-representation). They are design requirements; no execution PASS is implied.
+
 > Choose a surface recipe → inspect/edit its parameters and domain → preview → run an existing analysis with explicit method and precision → inspect saved result/provenance → Bake or Promote to a derived Mesh with explicit destination → edit the source and observe staleness → save/cold-reopen with recipe, selections, source/derived identities and resource references intact.
 
 Qualify the complete journey; passing isolated toolbar clicks is insufficient. Preserve the distinction between exact mathematics, sampled approximation, display geometry and cached/historical output. Report unsupported operations explicitly rather than changing the scientific claim to fit a badge.

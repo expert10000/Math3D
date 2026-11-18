@@ -331,6 +331,7 @@ export type WorkbookBlock = {
   scientificRegionReport?: { schemaVersion: 1; kind: "scientific-subrectangle-report/v1" |
     "scientific-trajectory-report/v1" | "scientific-equilibrium-report/v1";
     previousResultId?: string };
+  quantumStudyEvidence?: WorkbookQuantumStudyEvidence;
   params?: WorkbookParamState;
   visualize?: {
     live: boolean;
@@ -364,6 +365,25 @@ export type WorkbookBlock = {
     status?: "pending" | "pass" | "fail";
   };
 };
+
+/** Historical bytes stay in the Workbook; its reader must reverify before presenting values as current. */
+export type WorkbookQuantumStudyEvidence = Readonly<{
+  schemaVersion: 1;
+  kind: "quantum-study-selection/v1";
+  studyId: string;
+  selectionHash: string;
+  snapshot: Readonly<{
+    schema: "math3d.quantum-study-selection-evidence/v1";
+    studyId: string;
+    templateId: "hydrogen" | "ssh";
+    runId: string;
+    resultSha256: string;
+    sources: readonly Readonly<{ role: string; sceneFingerprint: string;
+      datasets: readonly Readonly<{ id: string; sha256: string; unit: string }>[] }>[];
+    values: Readonly<Record<string, unknown>>;
+    omissions: readonly string[];
+  }>;
+}>;
 
 export type WorkbookStage = {
   id: WorkbookStageId;

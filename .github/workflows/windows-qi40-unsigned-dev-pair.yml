@@ -1,0 +1,147 @@
+name: Windows QI-40 Unsigned Dev Pair Diagnostic
+
+on:
+  workflow_dispatch:
+    inputs:
+      dev_run_id:
+        description: Successful Windows Unsigned Installer Smoke run with the pinned Math3D Dev setup
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  installed-pair-and-memory:
+    runs-on: windows-2025
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+      - name: Identify Math3D Dev producer run
+        id: math
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEV_RUN_ID: ${{ inputs.dev_run_id }}
+        run: |
+          if ($env:DEV_RUN_ID -notmatch '^[0-9]+$') { throw 'A numeric dev_run_id is required' }
+          $run = gh run view $env:DEV_RUN_ID -R expert10000/Math3D --json headSha,jobs | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $run.headSha -notmatch '^[a-f0-9]{40}$' -or
+              @($run.jobs | Where-Object { $_.name -eq 'release-smoke' -and $_.conclusion -eq 'success' }).Count -ne 1) {
+            throw 'Math3D Dev installer run has not passed'
+          }
+          "sha=$($run.headSha)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+      - uses: actions/download-artifact@v7
+        with:
+          name: windows-source-installer-smoke-artifacts
+          run-id: ${{ inputs.dev_run_id }}
+          repository: expert10000/Math3D
+          github-token: ${{ github.token }}
+          path: dev-artifacts
+      - name: Check out Theory Lab producer
+        uses: actions/checkout@v7
+        with:
+          repository: expert10000/theory-lab
+          ref: main
+          path: theory-lab
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+          cache: npm
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Prepare pinned NSIS for Theory Lab
+        shell: pwsh
+        run: |
+          & scripts/prepare-qi40-nsis313.ps1 -OutputRoot (Join-Path $env:RUNNER_TEMP 'qi40-nsis313')
+      - name: Build pinned Theory Lab setup
+        working-directory: theory-lab
+        shell: pwsh
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw 'Theory Lab npm ci failed' }
+          python -m venv .venv
+          if ($LASTEXITCODE -ne 0) { throw 'Theory Lab venv creation failed' }
+          & .\.venv\Scripts\python.exe -m pip install -c workers/quantum-python/requirements.lock -e workers/quantum-python
+          if ($LASTEXITCODE -ne 0) { throw 'Theory Lab pinned worker install failed' }
+          & .\.venv\Scripts\python.exe -m pip install -r workers/quantum-python/requirements-packaging.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Theory Lab frozen worker dependencies failed' }
+          $env:CI = 'false'
+          npm run package:win:installer
+          if ($LASTEXITCODE -ne 0) { throw 'Theory Lab NSIS build failed' }
+      - name: Pin both exact unsigned diagnostic setups
+        shell: pwsh
+        env:
+          DEV_RUN_ID: ${{ inputs.dev_run_id }}
+          MATH_SHA: ${{ steps.math.outputs.sha }}
+        run: |
+          $math = @(Get-ChildItem -LiteralPath dev-artifacts -Filter 'Math3D Dev Setup 2.0.0.exe' -File -Recurse)
+          $lab = @(Get-ChildItem -LiteralPath theory-lab/release -Filter 'Quantum-Hamiltonian-Lab-Setup-*.exe' -File)
+          if ($math.Count -ne 1 -or $lab.Count -ne 1) { throw 'Expected one setup for each app' }
+          New-Item -ItemType Directory -Path candidate | Out-Null
+          Copy-Item -LiteralPath $math[0].FullName -Destination (Join-Path candidate $math[0].Name)
+          Copy-Item -LiteralPath $lab[0].FullName -Destination (Join-Path candidate $lab[0].Name)
+          [ordered]@{
+            schema = 'math3d/two-app-candidate/v1'
+            diagnostic = 'unsigned Dev compatibility and memory; not a signed release candidate'
+            buildRunId = $env:DEV_RUN_ID
+            math3d = [ordered]@{
+              version = '2.0.0'; commit = $env:MATH_SHA; channel = 'dev'
+              installerName = $math[0].Name
+              installerSha256 = (Get-FileHash -LiteralPath $math[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            }
+            theoryLab = [ordered]@{
+              version = (Get-Content theory-lab/package.json -Raw | ConvertFrom-Json).version
+              commit = (& git -C theory-lab rev-parse HEAD).Trim()
+              installerName = $lab[0].Name
+              installerSha256 = (Get-FileHash -LiteralPath $lab[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            }
+          } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath candidate/candidate-manifest.json -Encoding utf8
+      - name: Install Math3D acceptance harness
+        shell: pwsh
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw 'Math3D harness npm ci failed' }
+      - name: Accept exact installed Dev pair
+        id: pair
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'qi40-unsigned-dev-pair'
+          & ./scripts/accept-qi40-installed-pair.ps1 -CandidateDirectory candidate -TheoryLabRepo theory-lab `
+            -InstallRoot $root -OutputRoot test-results/qi40-unsigned-dev-pair -Math3DChannel dev
+      - name: Measure installed 80-cycle retained memory
+        if: always()
+        shell: pwsh
+        env:
+          MATH3D_HEAP_DIAGNOSTIC: '1'
+        run: |
+          $env:MATH3D_INSTALLED_STRESS_EXE = Join-Path $env:RUNNER_TEMP 'qi40-unsigned-dev-pair/Math3D/Math3D Dev.exe'
+          if (-not (Test-Path -LiteralPath $env:MATH3D_INSTALLED_STRESS_EXE -PathType Leaf)) {
+            throw 'Installed Dev executable is missing; cannot run memory diagnostic'
+          }
+          node scripts/measure-quantum-scene-stress.mjs test-results/qi40-unsigned-dev-memory-80.json 80 | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Installed 80-cycle scene stress failed' }
+          node scripts/evaluate-quantum-scene-memory-budget.mjs `
+            test-results/qi40-unsigned-dev-memory-80.json test-results/qi40-unsigned-dev-memory-review.json
+          if ($LASTEXITCODE -ne 0) { throw 'Installed memory review failed' }
+          $review = Get-Content test-results/qi40-unsigned-dev-memory-review.json -Raw | ConvertFrom-Json
+          if (-not $review.targetMet) { throw 'Provisional installed 80-cycle memory target failed' }
+      - name: Require installed pair acceptance
+        if: always()
+        shell: pwsh
+        run: |
+          if ('${{ steps.pair.outcome }}' -ne 'success') { throw 'Installed pair QWZ acceptance failed' }
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: qi40-unsigned-dev-pair-${{ inputs.dev_run_id }}
+          if-no-files-found: ignore
+          compression-level: 0
+          path: |
+            candidate/candidate-manifest.json
+            test-results/qi40-unsigned-dev-pair/
+            test-results/qi40-unsigned-dev-memory-80.json
+            test-results/qi40-unsigned-dev-memory-review.json

@@ -84,6 +84,12 @@ test("SSH pair saves as a source-linked Project Study, reopens, and refuses a ch
     await projects.getByTestId("project-open-ssh-study-new").click();
     await expect(projects.getByTestId("project-quantum-scene-message")).toContainText("Both exact SSH views staged", { timeout: 60_000 });
     await expect(projects.getByTestId("project-study-view")).toContainText("SSH chain and bands");
+    await projects.getByTestId("project-study-chain-index").fill("1");
+    await projects.getByTestId("project-study-pin-chain").click();
+    await expect(projects.getByTestId("project-study-value-chain")).toContainText('"sampleIndex":1', { timeout: 60_000 });
+    await projects.getByTestId("project-study-bands-index").fill("2");
+    await projects.getByTestId("project-study-pin-bands").click();
+    await expect(projects.getByTestId("project-study-value-bands")).toContainText('"sampleIndex":2', { timeout: 60_000 });
     await projects.getByTestId("project-study-preview-toggle-pane-1").click();
     await expect(projects.getByTestId("project-study-quantum-view")).toHaveAttribute("data-role", "chain");
     await expect(projects.getByTestId("project-study-ssh-units")).toContainText("Supplied axes");
@@ -97,6 +103,7 @@ test("SSH pair saves as a source-linked Project Study, reopens, and refuses a ch
     expect(saved.workspace.quantumStudies[0]).toMatchObject({ templateId: "ssh",
       source: { runId: "run-145ac3f06cb940c28d457937345b0243" } });
     expect(saved.workspace.quantumStudies[0].panels.map((item: { role: string }) => item.role)).toEqual(["chain", "bands"]);
+    expect(saved.workspace.quantumStudies[0].panels.map((item: { sampleIndex: number }) => item.sampleIndex)).toEqual([1, 2]);
     expect(saved.workspace.studies[0].members).toHaveLength(2);
     expect(saved.notes.filter((item: { title: string }) => item.title.startsWith("SSH "))).toHaveLength(2);
     const id = saved.identity.id as string;
@@ -112,9 +119,43 @@ test("SSH pair saves as a source-linked Project Study, reopens, and refuses a ch
     const reopenedSource = await reopened.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!)
       .workspace.quantumStudies[0].source);
     expect(reopenedSource).toEqual(saved.workspace.quantumStudies[0].source);
-    await app.close();
+    await reopenedProjects.getByTestId("project-gallery-layout-toggle").click();
+    await reopenedProjects.getByTestId("project-research-nav-studies").click();
+    await reopenedProjects.getByTestId(`project-study-open-${saved.workspace.studies[0].id}`).click();
+    await expect(reopenedProjects.getByTestId("project-study-value-chain")).toContainText('"sampleIndex":1', { timeout: 60_000 });
+    await expect(reopenedProjects.getByTestId("project-study-value-bands")).toContainText('"sampleIndex":2', { timeout: 60_000 });
+    await reopened.evaluate(() => {
+      const original = URL.createObjectURL.bind(URL);
+      URL.createObjectURL = blob => {
+        if (blob instanceof Blob)
+          (window as Window & { __studyEvidence?: Promise<string> }).__studyEvidence = blob.text();
+        return original(blob);
+      };
+    });
+    await reopenedProjects.getByTestId("project-study-export-quantum-evidence").click();
+    await expect.poll(() => reopened.evaluate(() =>
+      Boolean((window as Window & { __studyEvidence?: Promise<string> }).__studyEvidence))).toBe(true);
+    const validEvidence = JSON.parse(await reopened.evaluate(async () =>
+      (window as Window & { __studyEvidence?: Promise<string> }).__studyEvidence!));
+    expect(validEvidence.values.chain.sampleIndex).toBe(1);
+    expect(validEvidence.values.bands.sampleIndex).toBe(2);
+    expect(validEvidence.sources).toEqual(expect.arrayContaining([
+      expect.objectContaining({ datasets: expect.arrayContaining([
+        expect.objectContaining({ sha256: expect.stringMatching(/^[a-f0-9]{64}$/), unit: expect.any(String) }),
+      ]) }),
+    ]));
+    expect(validEvidence.omissions.join(" ")).toContain("edge/bulk classification is not inferred");
+    await reopened.evaluate(() => { (window as Window & { __studyEvidence?: Promise<string> }).__studyEvidence = undefined; });
     const binary = join(source, "density.f64"), bytes = await readFile(binary);
     bytes[0] ^= 1; await writeFile(binary, bytes);
+    await reopenedProjects.getByTestId("project-study-export-quantum-evidence").click();
+    await expect.poll(() => reopened.evaluate(() =>
+      Boolean((window as Window & { __studyEvidence?: Promise<string> }).__studyEvidence))).toBe(true);
+    const evidence = JSON.parse(await reopened.evaluate(async () =>
+      (window as Window & { __studyEvidence?: Promise<string> }).__studyEvidence!));
+    expect(evidence.values).toEqual({});
+    expect(evidence.omissions.join(" ")).toMatch(/verification|integrity|hash|changed/i);
+    await app.close();
     app = await launchRepoElectron({ args: ["."], cwd: resolve(__dirname, "..", ".."),
       env: { ...process.env, MATH3D_E2E_PROFILE_ROOT: profile } });
     const changed = await app.firstWindow();

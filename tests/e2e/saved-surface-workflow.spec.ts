@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { resolve } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
-import { launchSurfaceApp, closeSurfaceApp, resetSurfaceAppState, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
+import { launchSurfaceApp, closeSurfaceApp, openLastSavedProject, resetSurfaceAppState, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
 const core = require(resolve("packages/core/src/index.ts"));
 
 test("PRJ31–33 saved surface formulas, linked mesh and analysis survive package transfer and restart", async () => {
@@ -18,7 +18,14 @@ test("PRJ31–33 saved surface formulas, linked mesh and analysis survive packag
     let page = ctx.page, panel = page.getByTestId("project-explorer-panel"), editor = page.getByTestId("project-source-editor");
     const show = async () => { if (!await panel.isVisible()) await page.getByTestId("projects-toggle").click(); };
     const close = async () => { if (await panel.isVisible()) await page.getByRole("button", { name: "Close project explorer" }).click(); };
-    const openSurface = async () => { await show(); await panel.getByTestId(`project-open-${surface.identity.id}`).click(); await close(); await expect(editor).toBeVisible(); };
+    const openSurface = async () => {
+      await show();
+      if (await editor.getAttribute("data-document-id") !== surface.identity.id) {
+        await panel.getByTestId(`project-tree-document-${surface.identity.id}`).click();
+      }
+      await close();
+      await expect(editor).toHaveAttribute("data-document-id", surface.identity.id);
+    };
     const save = async () => { await show(); await panel.getByTestId("project-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Saved"); return page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!)); };
     await show(); await panel.getByTestId("project-import-file").setInputFiles({ name: "enneper.json", mimeType: "application/json", buffer: Buffer.from(core.serializeMath3DProject(project)) });
     await panel.getByTestId("project-import-open").click(); await openSurface();
@@ -44,10 +51,17 @@ test("PRJ31–33 saved surface formulas, linked mesh and analysis survive packag
     await editor.getByTestId("project-surface-create-mesh").click();
     const secondId = await editor.getByTestId("project-saved-mesh-choice").inputValue(); expect(secondId).not.toBe(firstId);
     await editor.getByTestId("project-saved-mesh-quality").click();
-    await editor.getByTestId("project-saved-mesh-open").click(); await expect(editor).toBeHidden(); await expect(page.getByTestId("project-mesh-editor")).toBeVisible();
+    await editor.getByTestId("project-saved-mesh-open").click();
+    await expect(editor).toHaveAttribute("data-document-module", "mesh");
+    await page.getByRole("button", { name: "Saved studies", exact: true }).click();
+    await expect(page.getByTestId("project-mesh-editor")).toBeVisible();
     await page.getByTestId("project-mesh-scale").fill("2"); await page.getByTestId("project-mesh-apply").click();
+    await page.getByRole("button", { name: "Saved studies", exact: true }).click();
     await expect(page.getByTestId("project-saved-mesh-results")).toContainText("historical");
     await page.getByTestId("project-saved-mesh-quality").click();
+    await page.getByTestId("project-source-back-to-surface").click();
+    await expect(editor).toHaveAttribute("data-document-id", surface.identity.id);
+    await expect(editor.getByTestId("project-surface-field-phi")).toHaveValue("3");
     const saved = await save(); expect(saved.workspace.entries).toHaveLength(3); expect(saved.workspace.results.filter((result: any) => result.provenance.operation.type.startsWith("mesh.saved."))).toHaveLength(5);
     expect(saved.workspace.results.slice(0, 3)).toEqual(first.workspace.results);
     const exportPath = resolve(ctx.profileDir, "enneper-with-mesh.json");
@@ -60,8 +74,9 @@ test("PRJ31–33 saved surface formulas, linked mesh and analysis survive packag
     ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page); page = ctx.page; panel = page.getByTestId("project-explorer-panel"); editor = page.getByTestId("project-source-editor");
     await show(); await panel.getByTestId("project-import-file").setInputFiles({ name: "transferred.json", mimeType: "application/json", buffer: Buffer.from(raw) });
     await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
-    await save(); const profile = ctx.profileDir; await ctx.app.close(); ctx = await launchSurfaceApp({}, profile); page = ctx.page; panel = page.getByTestId("project-explorer-panel"); editor = page.getByTestId("project-source-editor");
-    await show(); await panel.getByTestId("project-view-saved").click(); await panel.getByTestId("project-restore-saved").click(); await panel.getByTestId("project-import-open").click();
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).identity.id)).toBe(saved.identity.id);
+    const profile = ctx.profileDir; await ctx.app.close(); ctx = await launchSurfaceApp({}, profile); page = ctx.page; panel = page.getByTestId("project-explorer-panel"); editor = page.getByTestId("project-source-editor");
+    await openLastSavedProject(page);
     await openSurface(); await expect(editor.getByTestId("project-surface-field-phi")).toHaveValue("3");
     await expect(editor.getByTestId("project-saved-mesh-choice").locator("option")).toHaveCount(2);
     await editor.getByTestId("project-saved-mesh-choice").selectOption(firstId); await expect(editor.getByTestId("project-saved-mesh-results")).toContainText("Saved analysis (3)");

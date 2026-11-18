@@ -19,6 +19,7 @@ const parkCanvas = (canvas: HTMLCanvasElement): void => {
   }
   if (!parkingHost) {
     parkingHost = document.createElement("div");
+    parkingHost.dataset.viewerRendererPool = "idle";
     parkingHost.style.cssText = "position:fixed;left:-100000px;top:0;width:0;height:0;overflow:hidden;visibility:hidden;pointer-events:none";
     document.body.appendChild(parkingHost);
   }
