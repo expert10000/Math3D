@@ -135,3 +135,12 @@ well as all 441 QWZ samples. Playwright reported one expected pass, zero
 unexpected or flaky results. The [production-runtime CI receipt](evidence/qi40-production-runtime-source-ci-b66c1b46.json)
 pins the clean source build and archived review and Playwright hashes. The
 signed installed Math3D journey and mixed-route memory gate remain open.
+
+A [follow-up clean Windows run](https://github.com/expert10000/Math3D/actions/runs/44301353947)
+passed on `f939c266` after the viewer diagnostics reached main. Its reviewer
+matched the candidate manifest and both installed executable identities, then
+checked all 32 direct-launch file hashes against the retained source study.
+The full production-runtime desktop journey again passed with one expected
+result. The [follow-up receipt](evidence/qi40-production-runtime-source-ci-f939c266.json)
+pins this newer renderer build and the archived check hashes. This remains a
+source-app replay; signed installed and mixed-route memory gates stay open.
