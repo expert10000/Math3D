@@ -54,12 +54,18 @@ try {
   foreach ($entry in @(@($mathInstaller, $manifest.math3d.installerSha256), @($labInstaller, $manifest.theoryLab.installerSha256))) {
     $actual = (Get-FileHash -LiteralPath $entry[0] -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($actual -ne $entry[1]) { throw "Candidate installer hash mismatch: $($entry[0])" }
-    $component = & (Join-Path $labRepo 'scripts/verify-qi40-installer-nsis.ps1') -Installer $entry[0] | ConvertFrom-Json
-    if ($component.installerSha256 -ne $actual) { throw 'NSIS component report installer identity mismatch' }
+    if ($Math3DChannel -eq 'stable' -or $entry[0] -eq $labInstaller) {
+      $component = & (Join-Path $labRepo 'scripts/verify-qi40-installer-nsis.ps1') -Installer $entry[0] | ConvertFrom-Json
+      if ($component.installerSha256 -ne $actual) { throw 'NSIS component report installer identity mismatch' }
+    }
   }
+  & (Join-Path $PSScriptRoot 'inspect-quantum-installer-components.ps1') -CandidateDirectory $candidate `
+    -EvidencePath (Join-Path $output 'installer-components.json')
+  $components = Get-Content -LiteralPath (Join-Path $output 'installer-components.json') -Raw | ConvertFrom-Json
   $record.math3d = [ordered]@{ commit = $manifest.math3d.commit; channel = $Math3DChannel;
-    installerSha256 = $manifest.math3d.installerSha256 }
-  $record.theoryLab = [ordered]@{ commit = $manifest.theoryLab.commit; installerSha256 = $manifest.theoryLab.installerSha256 }
+    installerSha256 = $manifest.math3d.installerSha256; nsisSystemDllSha256 = $components.components[0].systemDllSha256 }
+  $record.theoryLab = [ordered]@{ commit = $manifest.theoryLab.commit;
+    installerSha256 = $manifest.theoryLab.installerSha256; nsisSystemDllSha256 = $components.components[1].systemDllSha256 }
   $record.checks.candidate = 'passed'
   if ($Math3DChannel -eq 'stable') {
     Push-Location $labRepo
