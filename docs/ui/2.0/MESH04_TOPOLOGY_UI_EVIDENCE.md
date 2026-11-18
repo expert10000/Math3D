@@ -18,4 +18,4 @@ The M4.3 follow-up records Weld's `Replace` destination, tolerance, seam-preserv
 
 No calculation-only or same-process test closes the cold-reopen and sidecar gates.
 
-The M4.3 development journey exposed an M5.3 blocker: a saved Project with automatic Mesh analysis results lists 14 analysis artifacts, but `Download with resources` packed only the Mesh and Volume source resources. A fresh profile correctly withheld opening because those analysis sidecars were missing. Repair the transfer path before claiming cold-reopen acceptance.
+The M4.3 development journey exposed a separate Project capture blocker for imported STL Mesh: `Download with resources` packed both Mesh replay buffers and the Volume payload, while the Project also captured two preview-only Surface documents whose `meshId` values were import labels with no matching saved Mesh document or resource. Fresh-profile opening was withheld. The 14 analysis artifacts in that Project are optional caches and are intentionally omitted from the source-resource archive. Resolve the Surface capture/restore path before claiming cold-reopen acceptance for this imported Mesh journey.
