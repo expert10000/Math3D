@@ -75,3 +75,20 @@ This is a **source Electron** journey using fresh scenes produced by the
 installed Theory Lab in the archived pair run. It does not run the complete
 journey inside the installed Math3D Dev executable or qualify a signed stable
 candidate.
+
+## Clean Windows source repeat
+
+The [manual Windows workflow](https://github.com/expert10000/Math3D/actions/runs/44292652841)
+repeated that fresh-scene journey on clean source commit `5104f491` and passed
+all jobs. Its archived build identity says version `2.0.0`, clean commit
+`5104f491b1d12dcfdb5a648037f0b69f639355a0`, and renderer hash
+`085430a822e8002469c798f755198f526e783187175946a10623aadde5dfa75c`.
+The artifact's independent fresh-pair review passed again at a maximum
+`5.551115123125783e-16` QWZ sample difference. Playwright reported one
+expected pass, zero unexpected or flaky results, in 78.4 seconds. The
+[CI review summary](evidence/qi40-fresh-pair-source-ci-5104f491.json) pins
+the archived review and Playwright JSON hashes.
+
+This clean-runner result strengthens the source-app journey evidence. It does
+not use an installed Math3D executable. The signed stable installed journey
+and longer memory release gates remain open.
