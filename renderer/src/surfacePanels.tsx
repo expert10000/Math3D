@@ -33,7 +33,7 @@ import { type MeshEdgeSelectionResult, type MeshEdgeSelectionTool } from "./mesh
 import { type MeshTopologyInspectorDetails, type MeshTopologyListRow } from "./mesh/topologyInspector";
 import { type MeshAnalysisComputationRecord, type MeshDiagnosticsAnalysisPayload } from "./mesh/analysisResultStore";
 import { type MeshEntityScientificFields } from "./mesh/meshEntityScientificFields";
-import { getMeshHealthBlockers } from "./mesh/meshHealth";
+import { getMeshHealthBlockers, meshSurfaceSuitabilityLabel } from "./mesh/meshHealth";
 import { type MeshDifferentialGeometrySummary } from "./mesh/meshDifferentialGeometry";
 import { SURFACE_FEATURE_CLASSES, SURFACE_FEATURE_LABELS, type SurfaceFeatureClass, type SurfaceFeatureExtractionResult } from "./mesh/surfaceFeatureExtraction";
 import { type MeshActiveAnalysisResultSummary } from "./mesh/activeAnalysisResult";
@@ -11541,9 +11541,13 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
     (meshHealthBoundaryEdgeCount ?? 0) > 0 && meshHealthNonManifoldEdgeCount === 0 &&
     meshHealthDegenerateFaceCount === 0 && meshHealthDuplicateFaceCount === 0 &&
     meshHealthSuspectedSelfIntersectionCount === 0;
+  const meshSurfaceSuitability = viewerKind === "mesh" ? meshSurfaceSuitabilityLabel(meshAnalyzeDiagnostics) : null;
+  const meshHealthPresentationLabel = meshSurfaceSuitability ?? meshHealthStatusLabel;
   const meshHealthStatusDisplay =
     complexMapOpenSheetOnly
       ? "Open sampled sheet"
+      : meshSurfaceSuitability
+      ? meshSurfaceSuitability
       : meshHealthStatusLabel === "Healthy"
       ? "✓ Clean"
       : meshHealthStatusLabel === "Invalid"
@@ -11562,7 +11566,7 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         ? { border: "#fca5a5", background: "#fef2f2", color: "#b42318" }
         : { border: "#fcd34d", background: "#fffbeb", color: "#92400e" };
   const meshHealthTone =
-    complexMapOpenSheetOnly
+    complexMapOpenSheetOnly || meshSurfaceSuitability
       ? { border: "#fcd34d", background: "#fffbeb", color: "#92400e" }
       : meshHealthStatusLabel === "Healthy"
       ? { border: "#86efac", background: "#f0fdf4", color: "#166534" }
@@ -11805,7 +11809,7 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                       }}
                     >
                       <strong style={{ color: meshHealthTone.color }}>
-                        {viewerKind === "complex" ? "Display Mesh: " : ""}{complexMapOpenSheetOnly ? "Open sampled sheet" : meshHealthStatusLabel === "Healthy" ? "Clean" : meshHealthStatusLabel} · {meshHealthIssueCategoryCount} issue categor{meshHealthIssueCategoryCount === 1 ? "y" : "ies"}
+                        {viewerKind === "complex" ? "Display Mesh: " : ""}{complexMapOpenSheetOnly ? "Open sampled sheet" : meshHealthPresentationLabel === "Healthy" ? "Clean" : meshHealthPresentationLabel} · {meshHealthIssueCategoryCount} issue categor{meshHealthIssueCategoryCount === 1 ? "y" : "ies"}
                       </strong>
                       {renderHealthCountRow("Boundary edges", meshHealthBoundaryEdgeCount)}
                       {renderHealthCountRow("Non-manifold edges", meshHealthNonManifoldEdgeCount)}
@@ -12565,22 +12569,22 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
               <div style={inspectorSectionTitle}>Diagnostics</div>
               <span
                 style={{
-                  border: `1px solid ${meshAnalyzeDiagnostics?.state === "Healthy" ? "#bbf7d0" : meshAnalyzeDiagnostics?.state === "Invalid" ? "#fca5a5" : "#fed7aa"}`,
+                  border: `1px solid ${meshAnalyzeDiagnostics?.state === "Healthy" ? "#bbf7d0" : meshAnalyzeDiagnostics?.state === "Invalid" && !meshSurfaceSuitability ? "#fca5a5" : "#fed7aa"}`,
                   borderRadius: 999,
-                  background: meshAnalyzeDiagnostics?.state === "Healthy" ? "#f0fdf4" : meshAnalyzeDiagnostics?.state === "Invalid" ? "#fef2f2" : "#fff7ed",
-                  color: meshAnalyzeDiagnostics?.state === "Healthy" ? "#166534" : meshAnalyzeDiagnostics?.state === "Invalid" ? "#b42318" : "#9a3412",
+                  background: meshAnalyzeDiagnostics?.state === "Healthy" ? "#f0fdf4" : meshAnalyzeDiagnostics?.state === "Invalid" && !meshSurfaceSuitability ? "#fef2f2" : "#fff7ed",
+                  color: meshAnalyzeDiagnostics?.state === "Healthy" ? "#166534" : meshAnalyzeDiagnostics?.state === "Invalid" && !meshSurfaceSuitability ? "#b42318" : "#9a3412",
                   padding: "2px 8px",
                   fontSize: 10,
                   fontWeight: 850,
                 }}
               >
-                {meshAnalyzeDiagnostics ? meshAnalyzeDiagnostics.state : "not ready"}
+                {meshAnalyzeDiagnostics ? meshHealthPresentationLabel : "not ready"}
               </span>
             </div>
             <div data-testid="mesh-inspector-canonical-health" style={{ border: "1px solid #dbe4ee", borderRadius: 7, background: "#f8fafc", padding: "7px", marginBottom: 9, display: "grid", gap: 4, fontSize: 10 }}>
               <strong>Canonical mesh state</strong>
               <div><strong>Backend:</strong> {meshAnalyzeDiagnostics?.backend === "hybrid" ? "Math3D + CGAL" : meshAnalyzeDiagnostics?.backend === "cgal" ? "CGAL" : "Math3D"}</div>
-              <div><strong>Status:</strong> {meshAnalyzeDiagnostics?.state ?? "not ready"}</div>
+              <div><strong>Status:</strong> {meshAnalyzeDiagnostics ? meshHealthPresentationLabel : "not ready"}</div>
               <div><strong>Warnings:</strong> {meshAnalyzeDiagnostics?.warnings.length ? meshAnalyzeDiagnostics.warnings.join("; ") : "none"}</div>
             </div>
             {renderDiagnosticsSeveritySummary()}
@@ -12870,7 +12874,7 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
               </summary>
               <div style={{ marginTop: 8 }}>{renderTopologyDetails("mesh-inspector-diagnostics-topology")}</div>
             </details>
-            <MeshTopologyInterpretationPanel mesh={meshTopologySourceMesh} document={meshKernelDocument} indexed={meshTopologyDetails} />
+            <MeshTopologyInterpretationPanel mesh={meshTopologySourceMesh} document={meshKernelDocument} indexed={meshTopologyDetails} diagnostics={meshAnalyzeDiagnostics} />
             {isDevMode && (
               <details style={{ borderTop: "1px solid #e2e8f0", marginTop: 10, paddingTop: 10 }}>
                 <summary style={{ cursor: "pointer", fontWeight: 850, fontSize: 12 }}>Runtime performance and debug</summary>
@@ -14035,7 +14039,7 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
             </summary>
             <div style={{ marginTop: 8 }}>{renderTopologyDetails("mesh-inspector-diagnostics-topology")}</div>
           </details>
-          <MeshTopologyInterpretationPanel mesh={meshTopologySourceMesh} document={meshKernelDocument} indexed={meshTopologyDetails} />
+          <MeshTopologyInterpretationPanel mesh={meshTopologySourceMesh} document={meshKernelDocument} indexed={meshTopologyDetails} diagnostics={meshAnalyzeDiagnostics} />
         </div>
       )}
 

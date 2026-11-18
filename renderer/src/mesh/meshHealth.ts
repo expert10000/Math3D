@@ -43,6 +43,15 @@ export type MeshHealthResult = {
   sphereSeamWarning: boolean;
 };
 
+/** UI wording for valid triangle surfaces that fail a closed-solid topology requirement. */
+export const meshSurfaceSuitabilityLabel = (health: MeshHealthResult | null): string | null => {
+  if (!health || !health.trianglesValid || health.faceCount === 0 ||
+      health.invalidVertexCount > 0 || health.invalidFaceCount > 0 || health.degenerateTriangleCount > 0) return null;
+  if (health.nonManifoldEdgeCount > 0 || health.manifold === false) return "Non-manifold mesh (not closed solid)";
+  if (health.boundaryEdgeCount > 0) return "Open sheet (not closed solid)";
+  return null;
+};
+
 export type MeshHealthValidation = {
   vertexCount: number;
   faceCount: number;
