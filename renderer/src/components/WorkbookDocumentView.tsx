@@ -19,6 +19,8 @@ import { WorkbookSavedMeshReviewBlock } from "./WorkbookSavedMeshReviewBlock";
 import { WorkbookCoordinateReviewBlock } from "./WorkbookCoordinateReviewBlock";
 import type { SavedMeshTrendTarget } from "../projects/projectSavedMeshTrendPoint";
 import { ScientificSubrectangleWorkbookReport } from "./ScientificSubrectangleWorkbookReport";
+import { QuantumStudyWorkbookCitation } from "./QuantumStudyWorkbookCitation";
+import type { QuantumStudySelectionTarget } from "../projects/quantumStudyWorkbook";
 import { WorkbookAlgebraResultCell } from "./WorkbookAlgebraResultCell";
 
 type Props = {
@@ -33,6 +35,7 @@ type Props = {
   onEditBlock: (stageId: WorkbookStageId, blockId: string) => void;
   onOpenDocument: (id: string, module: KernelWorkspaceModule) => void;
   onOpenProjects: () => void;
+  onOpenStudySelection?: (target: QuantumStudySelectionTarget) => void;
   onOpenSavedMeshResult?: (target: SavedMeshTrendTarget) => void;
   onOpenSavedMeshComparison?: (comparisonId: string) => void;
   onSaveMeshComparisonObservation?: (comparisonId: string, comparisonHash: string, title: string, body: string) => Promise<boolean>;
@@ -50,7 +53,7 @@ const blockKinds: Record<WorkbookBlock["type"], string> = {
 
 /** A reading surface over the live Workbook model. Project targets are resolved by ID, never copied. */
 export const WorkbookDocumentView: React.FC<Props> = ({
-  workbook, context, project, projectLive, readArtifact, readOnly, statusFor, onUpdateBlock, onEditBlock, onOpenDocument, onOpenProjects, onOpenNote, onOpenCoordinateNote, readComparisonResource, onOpenSavedMeshResult, onOpenSavedMeshComparison, onSaveMeshComparisonObservation,
+  workbook, context, project, projectLive, readArtifact, readOnly, statusFor, onUpdateBlock, onEditBlock, onOpenDocument, onOpenProjects, onOpenStudySelection, onOpenNote, onOpenCoordinateNote, readComparisonResource, onOpenSavedMeshResult, onOpenSavedMeshComparison, onSaveMeshComparisonObservation,
 }) => {
   const projectWorkbook = project?.workbooks?.find((item) => item.id === workbook.id);
   return <article data-testid="workbook-document-view" style={{ display: "grid", gap: 16, fontSize: 12, minWidth: 0 }}>
@@ -135,6 +138,8 @@ export const WorkbookDocumentView: React.FC<Props> = ({
           {block.scientificRegionReport?.kind === "scientific-subrectangle-report/v1" &&
             <ScientificSubrectangleWorkbookReport project={project} reference={reference} workbookId={workbook.id}
               previousResultId={block.scientificRegionReport.previousResultId} />}
+          {block.quantumStudyEvidence && <QuantumStudyWorkbookCitation project={project}
+            reference={reference} evidence={block.quantumStudyEvidence} onOpenSelection={onOpenStudySelection} />}
           {block.type === "compute" && <div style={{ display: "grid", gap: 4 }}>
             <div>{block.compute?.summary || latestRun?.summary || "No saved result summary."}</div>
             {latestRun && <small>Saved run: {latestRun.status} · {new Date(latestRun.savedAt).toLocaleString()} · input {latestRun.inputHash.slice(0, 12)}</small>}

@@ -13,11 +13,13 @@ export type QuantumField = { id: string; label: string; kind: "scalar-field" | "
   grid: { shape: [number, number, number]; origin: [number, number, number]; spacing: [number, number, number]; order: "xyz-z-fastest" } };
 
 export function QuantumFieldSlice({ fingerprint, fields, axes, units, runId, resultSha256, coordinateSystemId,
-  initialView, onViewChange, fixedQuantity }: {
+  initialView, onViewChange, fixedQuantity, onSample, pinnedGrid }: {
   fingerprint: string; fields: QuantumField[]; axes: [string, string, string]; units: [string, string, string];
   runId: string; resultSha256: string; coordinateSystemId: string;
   initialView?: QuantumFieldDocument["view"]; onViewChange?: (view: QuantumFieldDocument["view"]) => void;
   fixedQuantity?: FieldQuantity;
+  onSample?: (sample: FieldSample) => void;
+  pinnedGrid?: readonly [number, number, number] | null;
 }) {
   const [fieldId, setFieldId] = useState(fields[0]?.id ?? "");
   const field = fields.find(entry => entry.id === fieldId) ?? fields[0];
@@ -36,6 +38,14 @@ export function QuantumFieldSlice({ fingerprint, fields, axes, units, runId, res
   const cursorGeneration = useRef(0);
   const safeIndex = field ? Math.min(index, field.grid.shape[axis] - 1) : 0;
   const safeQuantity = field?.kind === "scalar-field" ? "real" : fixedQuantity ?? quantity;
+
+  useEffect(() => {
+    if (!pinnedGrid) return;
+    cursorGeneration.current++;
+    setCursorGrid([pinnedGrid[0], pinnedGrid[1], pinnedGrid[2]]);
+    setIndex(pinnedGrid[axis]);
+    setCursorStatus("Saved Study grid point; reopening its verified sample.");
+  }, [pinnedGrid?.[0], pinnedGrid?.[1], pinnedGrid?.[2], axis]);
 
   useEffect(() => scientificCursorBus.subscribe(cursor => {
     if (cursor.kind !== "quantum" || !cursor.spatialPoint || !field) return;
@@ -119,6 +129,7 @@ export function QuantumFieldSlice({ fingerprint, fields, axes, units, runId, res
     void window.quantumScenes.fieldSample(request).then(result => {
       if (generation.current === current) {
         setSample(result);
+        onSample?.(result);
         scientificCursorBus.publish({ runId, resultSha256, datasetId: field.id,
           spatialPoint: { xyz: result.position, coordinateSystemId }, originViewId: `${fingerprint}:${field.id}:slice` });
       }
@@ -152,7 +163,8 @@ export function QuantumFieldSlice({ fingerprint, fields, axes, units, runId, res
       <button type="button" aria-label="Show full grid" aria-pressed={!viewport} onClick={() => { setFitToField(false); setSample(null); }}>Full grid</button>
     </div>
     <canvas ref={canvas} data-testid="quantum-field-canvas" aria-label="Verified quantum field slice" onClick={selectPixel}
-      style={{ width: "min(58vh, 70vw, 480px)", height: "min(58vh, 70vw, 480px)", maxHeight: "70%", objectFit: "contain",
+      style={{ width: "min(58vh, 70vw, 480px)", maxWidth: "100%", height: "min(58vh, 70vw, 480px)",
+        maxHeight: "70%", flexShrink: 0, objectFit: "contain",
         imageRendering: "pixelated", background: "#0b1728", border: "1px solid #587080", cursor: "crosshair" }} />
     {error ? <p role="alert">{error}</p> : slice ? <div style={{ fontSize: 12, textAlign: "center" }}>
       <span data-testid="quantum-field-legend">{axes[plane[0]]} → · {axes[plane[1]]} ↑ · {slice.range[0].toPrecision(5)} to {slice.range[1].toPrecision(5)} {slice.unit}</span>
