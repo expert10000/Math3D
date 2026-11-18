@@ -1,0 +1,49 @@
+fa885766090dcfc2d662f2ab64d458bae0cf87c4a5e5a6d9c3045f4cbe809021  ./user-data/Crashpad/client_id
+5166e51100b26f9616360037d6d9f69b5a6a06ba41acdf609e02e1d15921bb21  ./user-data/logs/python-worker-diagnostics.log
+75f8c7bb3156607156319952e5c283556bd6b5b3ad7b1e1478b24cfb77c68bd8  ./user-data/session/Cache/Cache_Data/5283edf90cf4ab50_0
+4f342b363d529242cc69e7cb2fd743911a9790d81b350806fa3196b991388c6a  ./user-data/session/Cache/Cache_Data/7d3be745399208ee_0
+fbcfe23a2ecb82b7100c50811691dde0a33aa3da8d176be9882a9db485dc0f2d  ./user-data/session/Cache/Cache_Data/index
+e5252334ade9903d817df91ac7dc3a3a8e0858f9bd90f0f7b149f35904ffa1a7  ./user-data/session/Cache/Cache_Data/index-dir/the-real-index
+c23b40bda5db2dadc7bce1a94b93df0e505b93aec1088b413127044408071445  ./user-data/session/Cache/No_Vary_Search/journal.baj
+4ffecbc8f7fe9e1719035fdca2af7fd1e8c4cc66dc501e4dfecff0e81a81e686  ./user-data/session/Cache/No_Vary_Search/snapshot.baf
+fbcfe23a2ecb82b7100c50811691dde0a33aa3da8d176be9882a9db485dc0f2d  ./user-data/session/Code Cache/js/index
+312f937bfd15235bfc2a685bcf5fe424b9905608f42e348a34d7e7127f1698dc  ./user-data/session/Code Cache/js/index-dir/the-real-index
+fbcfe23a2ecb82b7100c50811691dde0a33aa3da8d176be9882a9db485dc0f2d  ./user-data/session/Code Cache/wasm/index
+312f937bfd15235bfc2a685bcf5fe424b9905608f42e348a34d7e7127f1698dc  ./user-data/session/Code Cache/wasm/index-dir/the-real-index
+23825f6d61d4d1370448ec5b4e0e602cd57ffe37309fe0b83e56d5da78a0a360  ./user-data/session/DIPS
+d6a5fe39cd672781b256e0e3102f7022635f1d4bb7cfcc90a80fffe4d0f3877e  ./user-data/session/DawnGraphiteCache/data_0
+b1e963d702392fb7224786e7d56d43973e9b9efd1b89c17814d7c558ffc0cdec  ./user-data/session/DawnGraphiteCache/data_1
+ec1702806f4cc7c42a82fc2b38e89835fde7c64bb32060e0823c9077ca92efb7  ./user-data/session/DawnGraphiteCache/data_2
+e09f42c398d688dce168570291f1f92d079987deda3099a34adb9e8c0522b30c  ./user-data/session/DawnGraphiteCache/data_3
+439662e6f1b66ae8fa68430d5c12bb2a98fcb67135b38b086ef593aa6a895dd2  ./user-data/session/DawnGraphiteCache/index
+d6a5fe39cd672781b256e0e3102f7022635f1d4bb7cfcc90a80fffe4d0f3877e  ./user-data/session/DawnWebGPUCache/data_0
+b1e963d702392fb7224786e7d56d43973e9b9efd1b89c17814d7c558ffc0cdec  ./user-data/session/DawnWebGPUCache/data_1
+ec1702806f4cc7c42a82fc2b38e89835fde7c64bb32060e0823c9077ca92efb7  ./user-data/session/DawnWebGPUCache/data_2
+e09f42c398d688dce168570291f1f92d079987deda3099a34adb9e8c0522b30c  ./user-data/session/DawnWebGPUCache/data_3
+ec2eaf9ce293d9f8ce7777c069b7876126ccde800f518345f9f8117cb16242a0  ./user-data/session/DawnWebGPUCache/index
+7a6ca4c5c26f88bcad29fc8603240e6bf9f29fb9957a71baf9eda925ddc721e5  ./user-data/session/DevToolsActivePort
+a075b01d9b015c616511a9e87da77da3d9881621db32f584e4606ddabf1c1100  ./user-data/session/Dictionaries/en-US-10-1.bdic
+ab2c50b1ac00afdb0ae565a3b61211e86df6e1171347b94e30cc6a3841e8aeb7  ./user-data/session/GPUCache/data_0
+2b10f0bdc32f0dc78b3a5499a9f428827cca9546a3826110d1d4245c51cb8569  ./user-data/session/GPUCache/data_1
+98d2b7419faca1ea0a1a678eb0af9c04fa43c4f752c1c45e007b5e9febafeee9  ./user-data/session/GPUCache/data_2
+c54e3be1c10d53a24c0e090b44a5e2ff2f95c4a2ebbb9ca9302666bc94a0bf50  ./user-data/session/GPUCache/data_3
+f0e2496d9b2d95622089223c33c97a4169af0b5fe7c82a4eade9a4c37e30abb4  ./user-data/session/GPUCache/index
+91d04dce559336f79a29ff25b42415a5e40ed678dea51b2689d218a3078282f0  ./user-data/session/Local Storage/leveldb/000003.log
+0f1bad70c7bd1e0a69562853ec529355462fcd0423263a3d39d6d0d70b780443  ./user-data/session/Local Storage/leveldb/CURRENT
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./user-data/session/Local Storage/leveldb/LOCK
+1d25d50367ee0eb61e137fa32565193e70385608671269c8378694202c278487  ./user-data/session/Local Storage/leveldb/LOG
+f9d31b278e215eb0d0e9cd709edfa037e828f36214ab7906f612160fead4b2b4  ./user-data/session/Local Storage/leveldb/MANIFEST-000001
+54fd0aa5bdbee1999c065a0d514a7868397f564fded5b205bac97968c246c686  ./user-data/session/Network Persistent State
+529b6595a4727a6b2d6cc154ae51f426216c01fc7fda02de2460abfb3de118a4  ./user-data/session/Preferences
+9ec42278ed151e7b88fe09fa3cdd3915390fd9d197126b49e6020ddb2d5ffffa  ./user-data/session/Session Storage/000003.log
+0f1bad70c7bd1e0a69562853ec529355462fcd0423263a3d39d6d0d70b780443  ./user-data/session/Session Storage/CURRENT
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./user-data/session/Session Storage/LOCK
+b8e67505f8531349cc61992677854489ef7917f13c1b9c1c538ecedf5278d916  ./user-data/session/Session Storage/LOG
+f9d31b278e215eb0d0e9cd709edfa037e828f36214ab7906f612160fead4b2b4  ./user-data/session/Session Storage/MANIFEST-000001
+fbcfe23a2ecb82b7100c50811691dde0a33aa3da8d176be9882a9db485dc0f2d  ./user-data/session/Shared Dictionary/cache/index
+cc4cf51347fed672ee593368f0285ada2139f85473bb4b78f325573acb459e1a  ./user-data/session/Shared Dictionary/cache/index-dir/the-real-index
+9dfba1d139c9933668e58e9c7777804c8ae01b2942dcc2dfaaa65ac139853a59  ./user-data/session/Shared Dictionary/db
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./user-data/session/Shared Dictionary/db-journal
+fe03fb82cfe74a64c7094c810f9e8167c3b61c254c27569cc6b7db5ed84b0b18  ./user-data/session/Trust Tokens
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./user-data/session/Trust Tokens-journal
+e24bc11791ec0809789146cbccaea452a2f58a0e33b439f43ea908fb8ea8ecd8  ./user-data/surface_presets.db
