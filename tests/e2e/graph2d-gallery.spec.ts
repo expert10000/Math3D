@@ -2,12 +2,27 @@ import { expect, test } from "@playwright/test";
 import { launchSurfaceApp,closeSurfaceApp,resetSurfaceAppState } from "./helpers/surfaceAppHarness";
 import { editGraph, graphEditor, openGraphType, saveGraphEditor } from "./helpers/graphAuthoring";
 import { resolve } from "node:path";
-import { existsSync,readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 const {createGraph2DWorkspaceProject,createMixedWorkspaceDocument,getGraph2DPresetCatalog,instantiateGraph2DPreset,
   promoteGraph2DToCurve,analyzeGraph2DDerivative,createWorkspaceProjectHandoff,serializeWorkspaceProjectHandoff,parseWorkspaceProjectHandoff}=require(resolve("packages/core/src/index.ts"));
 const {importMobileGraph,readMobileGraph,updateStoredMobileGraph}=require(resolve("apps/mobile/src/models/mobileGraphProject.ts"));
 const {serializeMobileProjectHandoff}=require(resolve("apps/mobile/src/models/mobileProjectTransfer.ts"));
 const {Graph2DCommandAdapter}=require(resolve("packages/kernel/src/graph2dCommandAdapter.ts"));
+
+const readDownloadedHandoff = async (path: string): Promise<string> => {
+  let contents = "";
+  await expect.poll(() => {
+    try {
+      const candidate = readFileSync(path, "utf8");
+      parseWorkspaceProjectHandoff(candidate);
+      contents = candidate;
+      return true;
+    } catch {
+      return false;
+    }
+  }, { message: `handoff download is readable and complete: ${path}`, timeout: 15_000 }).toBe(true);
+  return contents;
+};
 
 test("GRA-11.8 authored and Gallery time-dependent ODEs expose two stop reasons", async () => {
   const app = await launchSurfaceApp();
@@ -128,9 +143,10 @@ test("GGL06 preserves imported results/companions, recovers storage failure, and
     await page.getByTestId("kernel-workspace-toggle").click();await page.getByTestId("main-viewer").focus();await page.keyboard.press("Control+y");
     await page.getByTestId("kernel-workspace-toggle").click();
     const path=resolve(`output/ggl06-gallery-${Date.now()}.handoff.json`);await app.app.evaluate(({session},savePath)=>session.defaultSession.once("will-download",(_event,item)=>item.setSavePath(savePath)),path);
-    await page.getByTestId("graph2d-handoff-export").click();await expect.poll(()=>existsSync(path)).toBe(true);
-    const outbound=parseWorkspaceProjectHandoff(readFileSync(path,"utf8"));expect(outbound.baseRevision).toBeNull();expect(outbound.project.entries[0].checkpoint.source.objects[0].expression.source).toBe("4*x");
-    let mobile=importMobileGraph(readFileSync(path,"utf8"),[],"gallery.handoff.json",1,"desktop"),commands=new Graph2DCommandAdapter(readMobileGraph(mobile));
+    await page.getByTestId("graph2d-handoff-export").click();
+    const outboundBytes=await readDownloadedHandoff(path);
+    const outbound=parseWorkspaceProjectHandoff(outboundBytes);expect(outbound.baseRevision).toBeNull();expect(outbound.project.entries[0].checkpoint.source.objects[0].expression.source).toBe("4*x");
+    let mobile=importMobileGraph(outboundBytes,[],"gallery.handoff.json",1,"desktop"),commands=new Graph2DCommandAdapter(readMobileGraph(mobile));
     commands.commitViewport({...commands.document().display.viewport,xMin:-2.5});mobile=updateStoredMobileGraph(mobile,commands.document(),2);
     await page.getByTestId("graph2d-handoff-import").setInputFiles({name:"mobile-return.json",mimeType:"application/json",buffer:Buffer.from(serializeMobileProjectHandoff(mobile))});
     await expect(page.getByTestId("kernel-workspace-message")).toContainText("Opened Graph handoff");await page.getByTestId("kernel-workspace-save").click();
@@ -174,10 +190,10 @@ test("GGL12 exports a personal Graph and previews, cancels, then imports an inde
     const path=resolve(`output/ggl12-personal-${Date.now()}.handoff.json`);
     await app.app.evaluate(({session},savePath)=>session.defaultSession.once("will-download",(_event,item)=>item.setSavePath(savePath)),path);
     await gallery.getByRole("button",{name:"Export preset Two slopes",exact:true}).click();
-    await expect.poll(()=>existsSync(path)).toBe(true);
-    const outbound=parseWorkspaceProjectHandoff(readFileSync(path,"utf8"));expect(outbound.projectId).toBe(original);
+    const outboundBytes=await readDownloadedHandoff(path);
+    const outbound=parseWorkspaceProjectHandoff(outboundBytes);expect(outbound.projectId).toBe(original);
     const input=gallery.getByTestId("graph-personal-import-file");
-    await input.setInputFiles({name:"my-graph.json",mimeType:"application/json",buffer:Buffer.from(readFileSync(path))});
+    await input.setInputFiles({name:"my-graph.json",mimeType:"application/json",buffer:Buffer.from(outboundBytes)});
     await expect(gallery.getByTestId("graph-personal-import-preview")).toBeVisible();
     await expect(gallery.getByAltText("Two slopes graph import preview")).toBeVisible();
     await gallery.getByRole("button",{name:"Cancel import",exact:true}).click();
