@@ -53,7 +53,8 @@ test("one Electron process retains responsive navigation and records long-run me
       samples: Array<{ action: number; elapsedMs: number; rssMiB: number; processCount: number;
         byRoleMiB: Record<string, number>; electronPrivateMiB: number; rendererPrivateMiB: number;
         gpuPrivateMiB: number; gpuPid: number | null; contextLosses: number;
-        jsHeapMiB: number | null; v8UsedMiB: number; v8TotalMiB: number; domNodes: number;
+        jsHeapMiB: number | null; v8UsedMiB: number; v8TotalMiB: number;
+        v8EmbedderMiB: number | null; v8BackingStorageMiB: number | null; domNodes: number;
         viewerPoolCanvases: Array<ViewerPoolCanvasSample> }> }>, pageErrors: [] as string[],
     lifecycleEvents: [] as Array<{ event: string; elapsedMs: number; status: string; code?: number | null; signal?: string | null }>,
     peakSampledRssMiB: 0, failure: null as string | null,
@@ -90,6 +91,7 @@ test("one Electron process retains responsive navigation and records long-run me
       const rssMiB = Number(bytesToMiB(value.rssBytes).toFixed(1));
       const appMetrics = await ctx!.app.evaluate(({ app }) => app.getAppMetrics());
       const heap = await heapSession.send("Runtime.getHeapUsage");
+      const heapExtra = heap as typeof heap & { embedderHeapUsedSize?: number; backingStorageSize?: number };
       const privateMiB = (type: string) => Number((appMetrics.filter(metric => metric.type === type)
         .reduce((sum, metric) => sum + Number(metric.memory?.privateBytes ?? 0), 0) / 1024).toFixed(1));
       const renderer = await page.evaluate(() => ({
@@ -117,6 +119,10 @@ test("one Electron process retains responsive navigation and records long-run me
         jsHeapMiB: renderer.jsHeapBytes === null ? null : Number(bytesToMiB(renderer.jsHeapBytes).toFixed(1)),
         v8UsedMiB: Number(bytesToMiB(heap.usedSize).toFixed(1)),
         v8TotalMiB: Number(bytesToMiB(heap.totalSize).toFixed(1)),
+        v8EmbedderMiB: typeof heapExtra.embedderHeapUsedSize === "number"
+          ? Number(bytesToMiB(heapExtra.embedderHeapUsedSize).toFixed(1)) : null,
+        v8BackingStorageMiB: typeof heapExtra.backingStorageSize === "number"
+          ? Number(bytesToMiB(heapExtra.backingStorageSize).toFixed(1)) : null,
         domNodes: renderer.domNodes, viewerPoolCanvases: renderer.viewerPoolCanvases };
     };
     do {
@@ -124,7 +130,8 @@ test("one Electron process retains responsive navigation and records long-run me
         samples: [] as Array<{ action: number; elapsedMs: number; rssMiB: number; processCount: number;
           byRoleMiB: Record<string, number>; electronPrivateMiB: number; rendererPrivateMiB: number;
           gpuPrivateMiB: number; gpuPid: number | null; contextLosses: number;
-          jsHeapMiB: number | null; v8UsedMiB: number; v8TotalMiB: number; domNodes: number;
+          jsHeapMiB: number | null; v8UsedMiB: number; v8TotalMiB: number;
+          v8EmbedderMiB: number | null; v8BackingStorageMiB: number | null; domNodes: number;
           viewerPoolCanvases: Array<ViewerPoolCanvasSample> }>,
         finishedAtMs: undefined as number | undefined };
       report.cycles.push(cycle);
