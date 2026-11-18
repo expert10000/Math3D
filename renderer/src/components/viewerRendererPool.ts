@@ -3,10 +3,10 @@ import * as THREE from "three";
 // Module navigation used to allocate a new WebGL context for every Mesh and
 // Volume visit. Chromium can retain the native allocations of lost contexts
 // long after their JavaScript owners are collected. Keep the four Volume
-// contexts and the parametric and implicit/Mesh viewers separate so each
-// drawing buffer can keep its own dimensions across route changes.
-type ViewerRendererRole = "general" | "parametric" | "volume-spatial" | "volume-slice";
-const MAX_IDLE_RENDERERS = 6;
+// contexts separate from the Surface/Mesh context so their drawing buffers
+// can remain stable across route changes.
+type ViewerRendererRole = "general" | "volume-spatial" | "volume-slice";
+const MAX_IDLE_RENDERERS = 5;
 const idleRenderers: Array<{ renderer: THREE.WebGLRenderer; antialias: boolean; role: ViewerRendererRole }> = [];
 const rendererIdentity = new WeakMap<THREE.WebGLRenderer, { antialias: boolean; role: ViewerRendererRole }>();
 let pageUnloading = false;

@@ -2574,7 +2574,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     camera.position.set(4, 3, 5);
     camera.lookAt(0, 0, 0);
 
-    const renderer = acquireViewerRenderer(renderQuality !== "performance", "parametric");
+    const renderer = acquireViewerRenderer(renderQuality !== "performance");
     const heavySurface = surfaceId === "torus";
     const maxPixelRatio =
       renderQuality === "performance"
