@@ -271,6 +271,11 @@ test("Lab QWZ study handoff stages both exact scenes in a new Math3D Project", a
       env: { ...process.env, MATH3D_E2E_PROFILE_ROOT: join(root, "independent-profile"),
         QLAB_PYTHON: join(root, "missing-worker") } });
     const transferPage = await app.firstWindow();
+    if (process.env.MATH3D_E2E === "0") {
+      const transferSettings = transferPage.getByTestId("settings-preferences-panel");
+      await expect(transferSettings).toBeVisible({ timeout: 30_000 });
+      await transferSettings.locator("..").getByRole("button", { name: "Close" }).click();
+    }
     await transferPage.getByTestId("projects-toggle").click();
     const transferProjects = transferPage.getByTestId("project-explorer-panel");
     await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () =>

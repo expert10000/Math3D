@@ -8,6 +8,11 @@ on:
         required: false
         default: false
         type: boolean
+      production_runtime:
+        description: Run the source journey with production runtime flags and GPU defaults
+        required: false
+        default: false
+        type: boolean
       pair_run_id:
         description: Successful unsigned Dev pair run containing the fresh QWZ artifact
         required: false
@@ -93,6 +98,7 @@ jobs:
       - name: Run complete QWZ Study and Graph source journey
         shell: pwsh
         env:
+          MATH3D_E2E: ${{ inputs.production_runtime && '0' || '1' }}
           MATH3D_QI40_PAIR_ARTIFACT_ROOT: ${{ inputs.use_retained_fixture && 'tests/fixtures/quantum-qi40-fresh-pair-artifact' || 'pair-artifact' }}
           MATH3D_QI40_PAIR_REPORT_SHA256: ${{ inputs.use_retained_fixture && 'f4c2c74ab1c87f398454bf9297d641e329550df04d583427125f661355d00a42' || inputs.pair_report_sha256 }}
           PLAYWRIGHT_JSON_OUTPUT_NAME: qi40-source-evidence/playwright.json
