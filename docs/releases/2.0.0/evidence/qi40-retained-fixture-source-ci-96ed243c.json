@@ -1,0 +1,30 @@
+{
+  "schema": "math3d/qi40-retained-fixture-source-ci-review/v1",
+  "status": "passed",
+  "scope": "Clean Windows source Electron journey with selected byte-exact fresh Theory Lab Dev files retained in the repository",
+  "workflowRun": "https://github.com/expert10000/Math3D/actions/runs/44294789205",
+  "sourceCommit": "96ed243cd6c1ee377298f9ccab46ca5a5ab9639d",
+  "sourceBuild": {
+    "dirty": false,
+    "rendererHash": "085430a822e8002469c798f755198f526e783187175946a10623aadde5dfa75c"
+  },
+  "retainedFixture": {
+    "selectedFiles": 41,
+    "installedPairReportSha256": "f4c2c74ab1c87f398454bf9297d641e329550df04d583427125f661355d00a42",
+    "originalPairRun": "https://github.com/expert10000/Math3D/actions/runs/44282845421"
+  },
+  "archivedChecks": {
+    "freshPairReviewSha256": "c13c6624ba99b8911a4367c168a00b235c523a74d07f9da93f233d6b09d35358",
+    "maximumQwzSampleDifference": 5.551115123125783e-16,
+    "playwrightJsonSha256": "424cf361ea30ae709d86269b9138685c97bb9a31c3e8e1110c0e7a410a845970",
+    "expected": 1,
+    "unexpected": 0,
+    "flaky": 0,
+    "durationMs": 132322.651
+  },
+  "openGates": [
+    "Two-hour mixed-route memory plateau",
+    "Signed stable installed Math3D QWZ journey",
+    "Exact signed candidate pair and installation repeatability"
+  ]
+}

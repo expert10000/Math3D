@@ -92,3 +92,23 @@ the archived review and Playwright JSON hashes.
 This clean-runner result strengthens the source-app journey evidence. It does
 not use an installed Math3D executable. The signed stable installed journey
 and longer memory release gates remain open.
+
+## Retained byte-exact replay
+
+The [selected fixture](../../../tests/fixtures/quantum-qi40-fresh-pair-artifact/README.md)
+keeps 41 original artifact files in the repository, including the fresh worker
+run, both complete scenes, study, acceptance reports, and two screenshots. All
+41 selected files matched the downloaded artifact byte for byte before commit;
+Git attributes preserve the original line endings and binary bytes. The
+reviewer also checks the fresh worker job and manifest hashes. This enables
+science and source-app replay after the Actions artifact expires, while the
+original workflow remains the installation evidence.
+
+The [clean Windows fixture replay](https://github.com/expert10000/Math3D/actions/runs/44294789205)
+passed on source commit `96ed243c`. Its build identity was clean, and its
+fresh-pair review JSON has the **same SHA-256**
+`c13c6624ba99b8911a4367c168a00b235c523a74d07f9da93f233d6b09d35358`
+as the earlier downloaded-artifact run. Playwright recorded one expected pass
+and zero unexpected or flaky results. The [fixture CI summary](evidence/qi40-retained-fixture-source-ci-96ed243c.json)
+pins the source and archived report hashes. This remains source-app evidence;
+the signed installed candidate and memory gates remain open.
