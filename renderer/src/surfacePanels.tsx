@@ -8,6 +8,7 @@ import { SelectionStatsPanel } from "./components/SelectionStatsPanel";
 import { DiskStatsPanel } from "./components/DiskStatsPanel";
 import { UnifiedSelectionInspector } from "./components/UnifiedSelectionInspector";
 import { SharedInspectorShell } from "./components/SharedInspectorShell";
+import { MeshTopologyInterpretationPanel } from "./components/MeshTopologyInterpretationPanel";
 import { MeshOperationsPanel, type MeshBooleanOperation, type MeshBooleanStrategy, type MeshOperationHistoryEntry, type MeshOperationPresetId, type MeshOperationSavedPresetSummary, type MeshOperationUiId, type MeshOperationResultSummary } from "./components/MeshOperationsPanel";
 import { ActiveSelectionCard, type ActiveSelectionCardAction, type ActiveSelectionCardProps } from "./components/ActiveSelectionCard";
 import { formatContextEntityLabel } from "./selection/contextualSelectionModel";
@@ -26,7 +27,7 @@ import { type CurvatureData } from "./math/surfaceInvariants";
 import type { PrincipalCurvatureScalars } from "./math/principalCurvature";
 import { type WeierstrassDriftResult } from "./math/weierstrass";
 import { type SurfaceQueryChartCoord } from "./math/surfaceQuery";
-import { formatSurfaceMeshSource, type SurfaceMeshSource, type SurfaceMeshPreset } from "./mesh/surfaceMesh";
+import { formatSurfaceMeshSource, type SurfaceMeshData, type SurfaceMeshSource, type SurfaceMeshPreset } from "./mesh/surfaceMesh";
 import { bevelEdge, collapseEdge, splitEdge, type EdgeCollapseMode, type FaceSubdivideMode } from "./mesh/meshEditOps";
 import { type MeshEdgeSelectionResult, type MeshEdgeSelectionTool } from "./mesh/edgeSelection";
 import { type MeshTopologyInspectorDetails, type MeshTopologyListRow } from "./mesh/topologyInspector";
@@ -688,6 +689,8 @@ export type SurfacesLeftPanelProps = {
   onExportSurfaceMeshGlb: () => void;
   onChangeSurfaceMeshWeldTolerance: (v: number) => void;
   onWeldSurfaceMesh: () => void;
+  onUndoWeldSurfaceMesh: () => void;
+  canUndoWeldSurfaceMesh: boolean;
   onTriangulateSurfaceMesh: () => void;
   onRecomputeSurfaceMeshNormals: () => void;
   onChangeSurfaceMeshSubdivideIterations: (v: number) => void;
@@ -1493,6 +1496,8 @@ export const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onExportSurfaceMeshGlb,
   onChangeSurfaceMeshWeldTolerance,
   onWeldSurfaceMesh,
+  onUndoWeldSurfaceMesh,
+  canUndoWeldSurfaceMesh,
   onTriangulateSurfaceMesh,
   onRecomputeSurfaceMeshNormals,
   onChangeSurfaceMeshSubdivideIterations,
@@ -5518,9 +5523,11 @@ onChangeImplicitExpr,
                 />
               </label>
               <button type="button" onClick={onWeldSurfaceMesh} disabled={surfaceMeshWeldBusy || !meshReady}>
-                {surfaceMeshWeldBusy ? "Welding..." : "Weld"}
+                {surfaceMeshWeldBusy ? "Welding..." : "Weld and replace active mesh"}
               </button>
+              <button data-testid="mesh-undo-weld" type="button" onClick={onUndoWeldSurfaceMesh} disabled={!canUndoWeldSurfaceMesh}>Undo weld</button>
             </div>
+            <div style={{ fontSize: 11, color: "#475467", marginTop: 4 }}>Weld creates a revision of the active Mesh document and preserves normal/UV seams. Undo weld restores the indexed source.</div>
             {surfaceMeshWeldError && (
               <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>{surfaceMeshWeldError}</div>
             )}
@@ -9840,6 +9847,7 @@ export type SurfacesRightPanelProps = {
   deferredSurfaceSampleSetInfo: DeferredSurfaceSampleSetInfo | null;
   onPrepareDeferredSurfaceAnalysisData: () => void;
   meshTopologyDetails: MeshTopologyInspectorDetails | null;
+  meshTopologySourceMesh: SurfaceMeshData | null;
   meshAnalyzeDiagnostics: MeshAnalyzeDiagnosticsSummary | null;
   meshBenchmarkVerification: MeshBenchmarkVerificationContext | null;
   onHighlightMeshAnalyzeBoundary: () => void;
@@ -10122,6 +10130,7 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   deferredSurfaceSampleSetInfo,
   onPrepareDeferredSurfaceAnalysisData,
   meshTopologyDetails,
+  meshTopologySourceMesh,
   meshAnalyzeDiagnostics,
   meshBenchmarkVerification,
   onHighlightMeshAnalyzeBoundary,
@@ -12861,6 +12870,7 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
               </summary>
               <div style={{ marginTop: 8 }}>{renderTopologyDetails("mesh-inspector-diagnostics-topology")}</div>
             </details>
+            <MeshTopologyInterpretationPanel mesh={meshTopologySourceMesh} document={meshKernelDocument} indexed={meshTopologyDetails} />
             {isDevMode && (
               <details style={{ borderTop: "1px solid #e2e8f0", marginTop: 10, paddingTop: 10 }}>
                 <summary style={{ cursor: "pointer", fontWeight: 850, fontSize: 12 }}>Runtime performance and debug</summary>
@@ -14025,6 +14035,7 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
             </summary>
             <div style={{ marginTop: 8 }}>{renderTopologyDetails("mesh-inspector-diagnostics-topology")}</div>
           </details>
+          <MeshTopologyInterpretationPanel mesh={meshTopologySourceMesh} document={meshKernelDocument} indexed={meshTopologyDetails} />
         </div>
       )}
 
