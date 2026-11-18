@@ -1,0 +1,48 @@
+{
+  "schema": "math3d/qi40-installed-pair/v1",
+  "status": "passed",
+  "candidateManifestSha256": "7d5cb17a2a14553015b29faf38c89b97d5a71cad307f68bfee1471e6f8354dc8",
+  "candidateBuildRunId": "44097555120",
+  "math3d": {
+    "commit": "f53b14614f5f5598b949347af52ef133b2e04fdb",
+    "channel": "dev",
+    "installerSha256": "76fee0efde77174a55f151753ce450fa0f2add17d1d98a772fa541cd11d281ee",
+    "nsisSystemDllSha256": "3eb38ae99653a7dbc724132ee240f6e5c4af4bfe7c01d31d23faf373f9f2eaca",
+    "installedExecutableSha256": "4081af0e1aa0cf2960cc7f2c65cc4cd5a280e62426843622dfc73a5be72632fd"
+  },
+  "theoryLab": {
+    "commit": "34654af10ae070dd0cc02e5fb58a9f2197f49a4a",
+    "installerSha256": "1f5e9a1f9944980c446b77edc7a320ac02f94f364fb3e41b9900a9e1b7135e2b",
+    "nsisSystemDllSha256": "1556ee1bf1cb477124e1269b534ed81653ba71994dab7903ee3782b75acc2810",
+    "installedExecutableSha256": "11a9744bda5a65229ec0e7b8e4e4f60ba9933fabeebb7daa11a11f79a5b0f1fb"
+  },
+  "checks": {
+    "candidate": "passed",
+    "install": "passed",
+    "freshProducer": "passed",
+    "directLaunch": "passed",
+    "twoViews": "passed"
+  },
+  "failure": null,
+  "freshRun": {
+    "runId": "run-ff37cdc374234d62bd1e78c20e7b1384",
+    "resultSha256": "352a397b0caadc3d83d83938341afd671afd8e37c347814e6a6a7b50ef324c2b",
+    "mass": -1,
+    "grid": 21,
+    "chern": -1,
+    "bulkGap": 2,
+    "manifestSha256": "b9e2c9a4d4f5088c1a58ca4998a24ac0fc581b4fb7e357f13189bff092f8da61",
+    "scenes": [
+      {
+        "role": "curvature",
+        "sceneSha256": "1fb9bdbe2fcfa5c9b787b51ae836112bc3b785a5525524110116b2ce50fd6854"
+      },
+      {
+        "role": "bands",
+        "sceneSha256": "3e7fae8a24e3b14e5954a96af8de24c838bb4594de8ce058780bdd9cec1e7962"
+      }
+    ]
+  },
+  "directAcceptanceSha256": "85b6890a75d43f087e67184554ec70a87657833df480f051317f78ae555a4004",
+  "consumerAcceptanceSha256": "a1f93d536c43332a9a680278b05718cc6d620def214c847f721b473b3143e262"
+}

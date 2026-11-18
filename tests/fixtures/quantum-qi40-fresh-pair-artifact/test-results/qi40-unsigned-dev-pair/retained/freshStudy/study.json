@@ -1,0 +1,18 @@
+{
+  "schema": "quantum-study-handoff/v1",
+  "model": "qwz",
+  "runId": "run-ff37cdc374234d62bd1e78c20e7b1384",
+  "resultSha256": "352a397b0caadc3d83d83938341afd671afd8e37c347814e6a6a7b50ef324c2b",
+  "scenes": [
+    {
+      "role": "curvature",
+      "folder": "run-ff37cdc374234d62bd1e78c20e7b1384.qscene",
+      "sceneId": "run-ff37cdc374234d62bd1e78c20e7b1384"
+    },
+    {
+      "role": "bands",
+      "folder": "run-ff37cdc374234d62bd1e78c20e7b1384-bands.qscene",
+      "sceneId": "run-ff37cdc374234d62bd1e78c20e7b1384-bands"
+    }
+  ]
+}

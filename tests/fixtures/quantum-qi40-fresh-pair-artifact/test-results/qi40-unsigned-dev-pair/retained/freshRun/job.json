@@ -1,0 +1,19 @@
+{
+  "schema": "quantum-job/v1",
+  "jobId": "job-2c0e8285-633e-4946-bfe3-d9745f8c2264",
+  "operation": "topology",
+  "engine": "native",
+  "model": {
+    "type": "qwz",
+    "parameters": {
+      "mass": -1,
+      "grid": 21
+    },
+    "source": {
+      "sourceRepository": "https://github.com/expert10000/theory/tree/48e2036ba7c7dd5c79d54749341a79d41770cbb7",
+      "sourceModule": "data/hamiltonian_atlas/registry/lattice_topological.yaml",
+      "volume": "VIII",
+      "exampleId": "Atlas qwz"
+    }
+  }
+}

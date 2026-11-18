@@ -136,8 +136,8 @@ try {
   $retained = Join-Path $output 'retained'
   Push-Location $labRepo
   try {
-    node scripts/accept-packaged-qwz.mjs $labExe $record.theoryLab.installedExecutableSha256 --retain $retained | Set-Content -LiteralPath (Join-Path $output 'producer.json') -Encoding utf8
-    if ($LASTEXITCODE -ne 0) { throw 'Installed Theory Lab producer acceptance failed' }
+    node scripts/accept-packaged-qwz.mjs $labExe $record.theoryLab.installedExecutableSha256 --retain $retained *> (Join-Path $output 'producer-process.log')
+    if ($LASTEXITCODE -ne 0) { throw "Installed Theory Lab producer acceptance failed: $((Get-Content -LiteralPath (Join-Path $output 'producer-process.log') -Tail 18) | Out-String)" }
     node scripts/verify-qi40-retained.mjs $retained | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'Retained QWZ study verification failed' }
     $record.checks.freshProducer = 'passed'

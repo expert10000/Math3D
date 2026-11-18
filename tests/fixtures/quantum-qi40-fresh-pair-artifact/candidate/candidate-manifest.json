@@ -1,0 +1,18 @@
+{
+  "schema": "math3d/two-app-candidate/v1",
+  "diagnostic": "unsigned Dev compatibility and memory; not a signed release candidate",
+  "buildRunId": "44097555120",
+  "math3d": {
+    "version": "2.0.0",
+    "commit": "f53b14614f5f5598b949347af52ef133b2e04fdb",
+    "channel": "dev",
+    "installerName": "Math3D Dev Setup 2.0.0.exe",
+    "installerSha256": "76fee0efde77174a55f151753ce450fa0f2add17d1d98a772fa541cd11d281ee"
+  },
+  "theoryLab": {
+    "version": "0.1.0",
+    "commit": "34654af10ae070dd0cc02e5fb58a9f2197f49a4a",
+    "installerName": "Quantum-Hamiltonian-Lab-Setup-0.1.0.exe",
+    "installerSha256": "1f5e9a1f9944980c446b77edc7a320ac02f94f364fb3e41b9900a9e1b7135e2b"
+  }
+}

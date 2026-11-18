@@ -1,0 +1,33 @@
+{
+  "schema": "math3d/qi40-fresh-pair-source-ci-review/v1",
+  "status": "passed",
+  "scope": "Clean Windows source Electron journey using archived installed Theory Lab Dev producer scenes; no installed Math3D journey",
+  "workflowRun": "https://github.com/expert10000/Math3D/actions/runs/44292652841",
+  "sourceCommit": "5104f491b1d12dcfdb5a648037f0b69f639355a0",
+  "sourceBuild": {
+    "version": "2.0.0",
+    "dirty": false,
+    "rendererHash": "085430a822e8002469c798f755198f526e783187175946a10623aadde5dfa75c"
+  },
+  "producerArtifact": {
+    "pairRun": "https://github.com/expert10000/Math3D/actions/runs/44282845421",
+    "name": "qi40-unsigned-dev-pair-44097555120",
+    "installedPairReportSha256": "f4c2c74ab1c87f398454bf9297d641e329550df04d583427125f661355d00a42",
+    "runId": "run-ff37cdc374234d62bd1e78c20e7b1384",
+    "resultSha256": "352a397b0caadc3d83d83938341afd671afd8e37c347814e6a6a7b50ef324c2b"
+  },
+  "archivedChecks": {
+    "freshPairReviewSha256": "c13c6624ba99b8911a4367c168a00b235c523a74d07f9da93f233d6b09d35358",
+    "maximumQwzSampleDifference": 5.551115123125783e-16,
+    "playwrightJsonSha256": "eaeb0bb0187da27f68ba9ca8536c04fd02c60d44a4ef7a91c8ee869a052f3d90",
+    "expected": 1,
+    "unexpected": 0,
+    "flaky": 0,
+    "durationMs": 78391.504
+  },
+  "openGates": [
+    "Two-hour mixed-route memory plateau",
+    "Signed stable installed Math3D QWZ journey",
+    "Exact signed candidate pair and installation repeatability"
+  ]
+}
