@@ -1,6 +1,6 @@
 # Math3D Mobile: Android build, signing, and tester install
 
-Last verified: September 19, 2026
+Current identity and build commands updated: November 18, 2026. Historical 1.x release records below remain as dated evidence.
 
 This is the build and installation guide for the Expo/React Native companion app.
 The authoritative Android project is `apps/mobile/android`. The root `android/`
@@ -37,8 +37,8 @@ version, and build number. At this verification point it contains:
 | Field | Value | Consumers |
 | --- | --- | --- |
 | Application ID | `com.math3d.mobile` | Expo Android/iOS config and Android Gradle |
-| Version | `1.5.1` | Mobile npm package, Expo, Android `versionName`, iOS `CFBundleShortVersionString` on prebuild |
-| Build | `150007` | Android `versionCode`, iOS `CFBundleVersion` on prebuild |
+| Version | `2.0.0` | Mobile npm package, Expo, Android `versionName`, iOS `CFBundleShortVersionString` on prebuild |
+| Build | `200001` | Android `versionCode`, iOS `CFBundleVersion` on prebuild |
 
 `apps/mobile/app.config.js` supplies the Expo values. Gradle reads
 `version.json` directly. Expo autolinking also needs a literal namespace in
@@ -82,9 +82,9 @@ npm run mobile:version:check
 
 | Command | Gradle task | Output | Signing |
 | --- | --- | --- | --- |
-| `npm run mobile:android:debug` | `:app:assembleDebug` | `artifacts/mobile/Math3D-mobile-1.5.1-debug.apk` | Checked-in debug key; development only |
-| `npm run mobile:android:internal` | `:app:assembleInternal` | `artifacts/mobile/Math3D-mobile-1.5.1-internal.apk` | Separate internal key |
-| `npm run mobile:android:release` | `:app:bundleRelease` | `artifacts/mobile/Math3D-mobile-1.5.1-release.aab` | Release-owner production key |
+| `npm run mobile:android:debug` | `:app:assembleDebug` | `artifacts/mobile/Math3D-mobile-2.0.0-debug.apk` | Checked-in debug key; development only |
+| `npm run mobile:android:internal` | `:app:assembleInternal` | `artifacts/mobile/Math3D-mobile-2.0.0-internal.apk` | Separate internal key |
+| `npm run mobile:android:release` | `:app:bundleRelease` | `artifacts/mobile/Math3D-mobile-2.0.0-release.aab` | Release-owner production key |
 
 Each successful command also updates `artifacts/mobile/SHA256SUMS` and
 `artifacts/mobile/build-info.json`. The metadata records the app ID, version,
@@ -172,7 +172,7 @@ production signing identity.
 From PowerShell, after `npm run mobile:android:internal`:
 
 ```powershell
-$apk = 'artifacts/mobile/Math3D-mobile-1.5.1-internal.apk'
+$apk = 'artifacts/mobile/Math3D-mobile-2.0.0-internal.apk'
 $env:ANDROID_HOME = if ($env:ANDROID_HOME) { $env:ANDROID_HOME } else { Join-Path $env:LOCALAPPDATA 'Android\Sdk' }
 Get-FileHash -Algorithm SHA256 -LiteralPath $apk
 & "$env:ANDROID_HOME/build-tools/36.0.0/apksigner.bat" verify --verbose --print-certs $apk
@@ -181,7 +181,7 @@ adb install -r $apk
 ```
 
 `apksigner` should report one signer, and `aapt` should report
-`com.math3d.mobile.internal`, version `1.5.0-internal`, build `150006`.
+`com.math3d.mobile.internal`, version `2.0.0-internal`, build `200001`.
 Testers can also transfer the APK to a phone and open it from a file manager;
 Android may ask them to allow installation from that source. For updates,
 distribute an APK signed by the **same** internal key with a higher build number.

@@ -20,6 +20,7 @@ export function assertRelease20GaSignoff({ signoff, candidate, rc2, notes, sourc
     /^[0-9a-f]{64}$/.test(rc2.freezeManifestSha256 ?? '') &&
     rc2.memoryQualification === 'deferred-to-2.5-or-later' &&
     /^[0-9a-f]{64}$/.test(rc2.evidenceSha256?.sourceRecovery ?? '') &&
+    /^[0-9a-f]{64}$/.test(rc2.evidenceSha256?.memoryDeferral ?? '') &&
     rc2.galleryCaptures >= 3 && rc2.assetCount >= 6 && rc2.unpackedFileCount > 0 &&
     rc2.stagedDownloadUrl === 'https://github.com/expert10000/Math3D/releases/download/v2.0.0/Math3D-Setup-2.0.0.exe',
   'RC2 rehearsal does not identify the same exact candidate.');
@@ -45,6 +46,10 @@ export function assertRelease20GaSignoff({ signoff, candidate, rc2, notes, sourc
     /installed.*memory|memory.*installed/i.test(notesLimitations) &&
     /deferred to 2\.5 or later/i.test(notesLimitations),
   'Deferred reference-host and installed memory qualification must be disclosed in sign-off and release notes.');
+  insist(rc2.memoryGate?.status === 'deferred' && rc2.memoryGate.earliestVersion === '2.5.0' &&
+    signoff.knownLimitations.includes(rc2.memoryGate.knownLimitation) &&
+    notesLimitations.includes(rc2.memoryGate.knownLimitation),
+  'Exact RC2 memory limitation is missing from GA sign-off or release notes.');
   insist(notes.startsWith('# Math3D 2.0.0\n') &&
     ['## Changes', '## Compatibility', '## Known limitations', '## Migration', '## Release evidence']
       .every(heading => notes.includes(heading)) &&

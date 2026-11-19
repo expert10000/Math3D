@@ -8,7 +8,7 @@ Run the 2.0 recovery gate on the clean, built, frozen checkout:
 node scripts/release20-source-recovery.mjs --run <freeze-manifest> <evidence-json>
 ```
 
-The `math3d/release20-source-recovery/v1` receipt binds Project contracts, scientific goldens, the quantum baseline, build identity, first-use Study, and hard-exit Project recovery to the same source commit and freeze SHA-256. A failed or missing hard-exit check blocks 2.0 sign-off. The receipt explicitly records `memoryQualification: "deferred-to-2.5-or-later"`; it is not a memory pass. The [RC2 rehearsal verifier](../../../scripts/verify-release20-rc2-rehearsal.mjs) requires this exact recovery receipt and keeps the signed installer, clean install, four journeys, 1.7 upgrade, asset integrity, Gallery, site, and GA review gates intact.
+The `math3d/release20-source-recovery/v1` receipt binds Project contracts, scientific goldens, the quantum baseline, build identity, first-use Study, and hard-exit Project recovery to the same source commit and freeze SHA-256. A failed or missing hard-exit check blocks 2.0 sign-off. The receipt explicitly records `memoryQualification: "deferred-to-2.5-or-later"`; it is not a memory pass. The [RC2 rehearsal verifier](../../../scripts/verify-release20-rc2-rehearsal.mjs) also requires the separate `math3d/release20-memory-deferral/v1` receipt from the [scope decision](RELEASE_SCOPE.md), tied to that same commit and freeze. The signed installer, clean install, four journeys, 1.7 upgrade, asset integrity, Gallery, site, and GA review gates remain intact.
 
 ## Later-release two-hour memory qualification
 

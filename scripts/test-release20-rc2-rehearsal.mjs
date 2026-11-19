@@ -28,6 +28,11 @@ const inputs = {
     finishedAtUtc: '2026-11-07T12:00:00Z', checks:
       ['project-contracts', 'scientific-results', 'quantum-baseline', 'build-core',
         'first-use-study', 'hard-exit-project'].map(id => ({ id, status: 'passed' })) },
+  memory: { schema: 'math3d/release20-memory-deferral/v1', status: 'deferred',
+    releaseVersion: '2.0.0', earliestVersion: '2.5.0', sourceCommit: commit, freezeManifestSha256,
+    unpassedChecks: ['800-switch', 'two-hour-source-memory', 'installed-memory'],
+    knownLimitation: 'Long-running mixed Mesh and Volume use has not passed the memory budget.',
+    failedEvidence: ['docs/releases/2.0.0/evidence/m3d20-long-memory-review-v2-79325f2d.json'] },
   gallery: { version: '2.0.0', sourceCommit: commit, installerSha256, scenarios: ['algebra', 'quantum', 'surface'] },
 };
 assert.equal(assertRelease20RehearsalIdentities(inputs).installerSha256, installerSha256);
@@ -43,6 +48,12 @@ assert.throws(() => assertRelease20RehearsalIdentities({ ...inputs,
   recovery: { ...inputs.recovery, memoryQualification: 'passed' } }), /Source recovery evidence/);
 assert.throws(() => assertRelease20RehearsalIdentities({ ...inputs,
   recovery: { ...inputs.recovery, schema: 'math3d/release20-rc2-source-soak/v1' } }), /Source recovery evidence/);
+assert.deepEqual(assertRelease20RehearsalIdentities(inputs).memoryGate,
+  { status: 'deferred', earliestVersion: '2.5.0', knownLimitation: inputs.memory.knownLimitation });
+assert.throws(() => assertRelease20RehearsalIdentities({ ...inputs,
+  memory: { ...inputs.memory, earliestVersion: '2.0.0' } }), /memory deferral/);
+assert.throws(() => assertRelease20RehearsalIdentities({ ...inputs,
+  memory: { ...inputs.memory, sourceCommit: 'f'.repeat(40) } }), /memory deferral/);
 assert.throws(() => assertRelease20RehearsalIdentities({ ...inputs,
   assets: { ...inputs.assets, installerSha256: 'f'.repeat(64) } }), /asset integrity/);
 const plan = spawnSync(process.execPath, ['scripts/verify-release20-rc2-rehearsal.mjs', '--plan'], { encoding: 'utf8' });

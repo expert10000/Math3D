@@ -6,6 +6,8 @@
 
 **Memory disposition (2026-11-19):** The unresolved reference-host mixed-route plateau and installed-candidate memory checks move to [the 2.5-or-later track](../2.5.0/MEMORY_QUALIFICATION.md). Keep the 32 MiB renderer retention budget and the failed local receipt visible; the passing hosted source run is not a local or installed pass. The 2.0 release must not advertise those memory gates as qualified. Nonmemory candidate, scientific-integrity, installer, and exact-artifact gates remain in force.
 
+The [RC2 verifier](../../../scripts/verify-release20-rc2-rehearsal.mjs) now records either a passing two-hour soak or an explicit deferral receipt tied to the exact freeze. GA sign-off and release notes must repeat the deferral's memory limitation. The deferral does not pass the soak's separate Project, scientific, or recovery checks.
+
 ## What counts as a journey
 
 The roadmap originally defines **three flagship end-to-end journeys**: Surface, QWZ, and Algebra. The 2.0 scope adds **Field Explorer → Graph → Field** as a fourth required bounded journey. The [Guided Study Gallery](CURATED_STUDY_GALLERY.md) has **17 entry cards**, of which 13 create built-in Project copies, three require external scientific scene bundles, and one opens CAS examples. The added Volume → Mesh card is a candidate entry. The [cross-module acceptance matrix](ROADMAP.md#19-cross-module-acceptance-matrix) has **16 cases**, including Field → Graph → Field as ACC-03. These counts describe a release promise, a catalogue, and an acceptance inventory respectively; one card or passing source test is not a complete end-to-end journey.

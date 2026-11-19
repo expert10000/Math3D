@@ -14,18 +14,20 @@ try {
   const candidateBytes = Buffer.from(JSON.stringify({ schema: 'math3d/release20-candidate/v1',
     math3d: { version: '2.0.0', channel: 'stable', commit: sourceCommit,
       installerName: 'Math3D-Setup-2.0.0.exe', installerSha256 } }));
+  const memoryLimitation = 'Long-running mixed Mesh and Volume use has not passed the memory budget.';
   const rc2Bytes = Buffer.from(JSON.stringify({ schema: 'math3d/release20-rc2-rehearsal/v2', status: 'passed',
     sourceCommit, installerSha256, freezeManifestSha256: 'c'.repeat(64), galleryCaptures: 3,
     assetCount: 6, unpackedFileCount: 4, memoryQualification: 'deferred-to-2.5-or-later',
-    evidenceSha256: { sourceRecovery: 'e'.repeat(64) },
+    evidenceSha256: { sourceRecovery: 'e'.repeat(64), memoryDeferral: 'f'.repeat(64) },
+    memoryGate: { status: 'deferred', earliestVersion: '2.5.0', knownLimitation: memoryLimitation },
     stagedDownloadUrl: 'https://github.com/expert10000/Math3D/releases/download/v2.0.0/Math3D-Setup-2.0.0.exe' }));
-  const notesBytes = Buffer.from('# Math3D 2.0.0\n\n## Changes\nA\n## Compatibility\nB\n## Known limitations\nReference-host mixed-route memory plateau and installed memory qualification are deferred to 2.5 or later.\n## Migration\nD\n## Release evidence\nE\n');
+  const notesBytes = Buffer.from(`# Math3D 2.0.0\n\n## Changes\nA\n## Compatibility\nB\n## Known limitations\nReference-host mixed-route memory plateau and installed memory qualification are deferred to 2.5 or later. ${memoryLimitation}\n## Migration\nD\n## Release evidence\nE\n`);
   const signoff = { schema: 'math3d/release20-ga-signoff/v1', status: 'approved', tag: 'v2.0.0',
     sourceCommit, installerSha256, candidateManifestSha256: sha(candidateBytes),
     rc2ReportSha256: sha(rc2Bytes), releaseNotesSha256: sha(notesBytes),
     reviewer: 'reviewer@example.invalid', reviewedAtUtc: '2026-11-07T13:00:00Z',
     blockers: [], knownLimitations: ['Reference-host mixed-route memory plateau and installed memory qualification are deferred to 2.5 or later',
-      'Hosted browser remains unqualified'], publishedPlatforms: ['windows'] };
+      memoryLimitation, 'Hosted browser remains unqualified'], publishedPlatforms: ['windows'] };
   await writeFile(candidatePath, candidateBytes); await writeFile(rc2Path, rc2Bytes);
   await writeFile(notesPath, notesBytes); await writeFile(signoffPath, JSON.stringify(signoff));
   const args = { root, signoffPath, candidatePath, rc2Path, notesPath, expectedCommit: sourceCommit };
@@ -34,7 +36,7 @@ try {
   await writeFile(signoffPath, JSON.stringify(signoff));
   await assert.rejects(verifyRelease20GaSignoff(args), /Deferred reference-host/);
   signoff.knownLimitations = ['Reference-host mixed-route memory plateau and installed memory qualification are deferred to 2.5 or later',
-    'Hosted browser remains unqualified'];
+    memoryLimitation, 'Hosted browser remains unqualified'];
   await writeFile(signoffPath, JSON.stringify(signoff));
   const notesWithoutMemory = Buffer.from(notesBytes.toString('utf8').replace(
     'Reference-host mixed-route memory plateau and installed memory qualification are deferred to 2.5 or later.',

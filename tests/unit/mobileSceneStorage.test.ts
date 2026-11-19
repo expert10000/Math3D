@@ -351,14 +351,15 @@ describe("mobile scene storage recovery", () => {
     const before = new Map(fileContents);
     const prepared = await prepareMobileStorageRecoveryCheck();
     expect(prepared.phase).toBe("restart-pending");
-    expect(prepared.checks).toHaveLength(10);
+    expect(prepared.checks).toHaveLength(11);
+    expect(prepared.checks.find(check => check.name === "edited-project-package-round-trip")?.passed).toBe(true);
     expect(prepared.checks.every(check => check.passed)).toBe(true);
     const finished = await finishMobileStorageRecoveryCheck();
     expect(finished.phase).toBe("complete");
-    expect(finished.checks).toHaveLength(11);
+    expect(finished.checks).toHaveLength(12);
     expect(finished.checks.filter(check => !check.passed)).toEqual([]);
     expect(finished.libraryUnchanged).toBe(true);
     for (const [path, raw] of before) expect(fileContents.get(path)).toBe(raw);
     await expect(finishMobileStorageRecoveryCheck()).rejects.toThrow("Prepare a new recovery check first");
-  }, 15_000); // Full fixture and 11 checks exceed Vitest's 5 s default on shared CI runners.
+  }, 15_000); // Full fixture and 12 checks exceed Vitest's 5 s default on shared CI runners.
 });

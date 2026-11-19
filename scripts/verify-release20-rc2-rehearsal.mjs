@@ -15,8 +15,10 @@ const requiredUpgrade = ['exactBytes', 'signature', 'oldInstall', 'seed', 'profi
 const requiredRecovery = ['project-contracts', 'scientific-results', 'quantum-baseline',
   'build-core', 'first-use-study', 'hard-exit-project'];
 const releaseUrl = 'https://github.com/expert10000/Math3D/releases/download/v2.0.0/Math3D-Setup-2.0.0.exe';
+const memoryLimitation = 'Long-running mixed Mesh and Volume use has not passed the memory budget.';
+const failedMemoryReview = 'docs/releases/2.0.0/evidence/m3d20-long-memory-review-v2-79325f2d.json';
 
-export function assertRelease20RehearsalIdentities({ candidate, freeze, freezeManifestSha256, fresh, upgrade, recovery, assets, gallery, sourceCommit }) {
+export function assertRelease20RehearsalIdentities({ candidate, freeze, freezeManifestSha256, fresh, upgrade, recovery, memory, assets, gallery, sourceCommit }) {
   const app = candidate.math3d;
   insist(['math3d/two-app-candidate/v1', 'math3d/release20-candidate/v1'].includes(candidate.schema) &&
     app?.version === '2.0.0' && app.channel === 'stable' && app.commit === sourceCommit &&
@@ -53,11 +55,19 @@ export function assertRelease20RehearsalIdentities({ candidate, freeze, freezeMa
     Array.isArray(recovery.checks) && recovery.checks.length === requiredRecovery.length &&
     recovery.checks.every((check, index) => check.id === requiredRecovery[index] && check.status === 'passed'),
   'Source recovery evidence is incomplete or differs from the exact freeze.');
+  insist(memory?.schema === 'math3d/release20-memory-deferral/v1' && memory.status === 'deferred' &&
+    memory.sourceCommit === sourceCommit && memory.freezeManifestSha256 === freezeManifestSha256 &&
+    memory.releaseVersion === '2.0.0' && memory.earliestVersion === '2.5.0' &&
+    JSON.stringify(memory.unpassedChecks) === JSON.stringify(['800-switch', 'two-hour-source-memory', 'installed-memory']) &&
+    memory.knownLimitation === memoryLimitation && Array.isArray(memory.failedEvidence) &&
+    memory.failedEvidence.includes(failedMemoryReview),
+  'RC2 memory deferral is incomplete or differs from the exact freeze.');
   insist(gallery.version === '2.0.0' && gallery.sourceCommit === sourceCommit &&
     gallery.installerSha256 === app.installerSha256 &&
     ['algebra', 'quantum', 'surface'].every(scenario => gallery.scenarios.includes(scenario)),
   'Gallery evidence differs from the exact candidate.');
-  return { sourceCommit, installerSha256: app.installerSha256, releaseUrl };
+  return { sourceCommit, installerSha256: app.installerSha256, releaseUrl,
+    memoryGate: { status: 'deferred', earliestVersion: memory.earliestVersion, knownLimitation: memory.knownLimitation } };
 }
 
 export async function verifyRelease20SiteBundle({ siteDir, galleryDir }) {
@@ -79,15 +89,15 @@ export async function verifyRelease20SiteBundle({ siteDir, galleryDir }) {
 }
 
 async function main() {
-  const [mode, candidatePath, freezePath, freshPath, upgradePath, recoveryPath, galleryDir, siteDir, reportPath] = process.argv.slice(2);
+  const [mode, candidatePath, freezePath, freshPath, upgradePath, recoveryPath, memoryPath, galleryDir, siteDir, reportPath] = process.argv.slice(2);
   if (mode === '--plan') {
     console.log(JSON.stringify({ releaseUrl, requiredFresh, requiredUpgrade,
-      inputs: ['candidate', 'freeze', 'fresh install', 'upgrade', 'source recovery', 'gallery', 'built site', 'release-assets'],
+      inputs: ['candidate', 'freeze', 'fresh install', 'upgrade', 'source recovery', 'memory deferral', 'gallery', 'built site', 'release-assets'],
       memoryQualification: 'deferred-to-2.5-or-later' }, null, 2));
     return;
   }
-  if (mode !== '--run' || ![candidatePath, freezePath, freshPath, upgradePath, recoveryPath, galleryDir, siteDir, reportPath].every(Boolean))
-    throw new Error('Usage: node scripts/verify-release20-rc2-rehearsal.mjs --plan | --run <candidate> <freeze> <fresh> <upgrade> <source-recovery> <gallery-dir> <site-dir> <report-json>');
+  if (mode !== '--run' || ![candidatePath, freezePath, freshPath, upgradePath, recoveryPath, memoryPath, galleryDir, siteDir, reportPath].every(Boolean))
+    throw new Error('Usage: node scripts/verify-release20-rc2-rehearsal.mjs --plan | --run <candidate> <freeze> <fresh> <upgrade> <source-recovery> <memory-deferral> <gallery-dir> <site-dir> <report-json>');
   const root = process.cwd(), sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
   const freezeBytes = await readFile(resolve(freezePath));
   await verifyRelease20Freeze({ root, manifestPath: resolve(freezePath), expectedCommit: sourceCommit });
@@ -95,13 +105,14 @@ async function main() {
   const fresh = JSON.parse(await readFile(resolve(freshPath), 'utf8'));
   const upgrade = JSON.parse(await readFile(resolve(upgradePath), 'utf8'));
   const recovery = JSON.parse(await readFile(resolve(recoveryPath), 'utf8'));
+  const memory = JSON.parse(await readFile(resolve(memoryPath), 'utf8'));
   const assets = await verifyRelease20Assets(root);
   const installerPath = join(root, 'release-assets', candidate.math3d?.installerName ?? 'missing');
   insist(basename(installerPath) === 'Math3D-Setup-2.0.0.exe', 'Candidate installer filename is unexpected.');
   const gallery = await verifyRelease20Gallery({ candidatePath: resolve(candidatePath), installerPath,
     installEvidencePath: resolve(freshPath), galleryDir: resolve(galleryDir) });
   const result = assertRelease20RehearsalIdentities({ candidate, freeze: JSON.parse(freezeBytes),
-    freezeManifestSha256: sha(freezeBytes), fresh, upgrade, recovery, assets, gallery, sourceCommit });
+    freezeManifestSha256: sha(freezeBytes), fresh, upgrade, recovery, memory, assets, gallery, sourceCommit });
   const site = await verifyRelease20SiteBundle({ siteDir: resolve(siteDir), galleryDir: resolve(galleryDir) });
   execFileSync(process.execPath, ['scripts/verify-public-license-compliance.mjs'], { cwd: root, stdio: 'inherit' });
   const report = { schema: 'math3d/release20-rc2-rehearsal/v2', status: 'passed',
@@ -111,7 +122,7 @@ async function main() {
     assetCount: assets.assetCount, unpackedFileCount: assets.unpackedFileCount,
     galleryCaptures: site.galleryCaptures, stagedDownloadUrl: site.releaseUrl,
     evidenceSha256: Object.fromEntries(await Promise.all([
-      ['candidate', candidatePath], ['freshInstall', freshPath], ['upgrade', upgradePath], ['sourceRecovery', recoveryPath],
+      ['candidate', candidatePath], ['freshInstall', freshPath], ['upgrade', upgradePath], ['sourceRecovery', recoveryPath], ['memoryDeferral', memoryPath],
       ['assetChecksums', join(root, 'release-assets/SHA256SUMS.txt')], ['galleryManifest', join(galleryDir, 'manifest.json')],
     ].map(async ([name, path]) => [name, sha(await readFile(resolve(path)))]))) };
   const destination = resolve(reportPath);
