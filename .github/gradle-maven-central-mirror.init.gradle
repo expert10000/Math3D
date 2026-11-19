@@ -1,0 +1,7 @@
+// Cover plugin resolution in included builds without changing vendored settings.
+gradle.beforeSettings { settings ->
+  settings.pluginManagement.repositories.maven {
+    name = "GoogleMavenCentralMirror"
+    url = "https://maven-central.storage-download.googleapis.com/maven2/"
+  }
+}

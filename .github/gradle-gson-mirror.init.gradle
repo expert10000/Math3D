@@ -1,8 +1,0 @@
-// Cover plugin resolution in the React Native included build without changing its vendored settings.
-gradle.beforeSettings { settings ->
-  settings.pluginManagement.repositories.maven {
-    name = "GoogleMavenCentralGsonMirror"
-    url = "https://maven-central.storage-download.googleapis.com/maven2/"
-    content { includeModule("com.google.code.gson", "gson") }
-  }
-}
