@@ -15,4 +15,6 @@
 2. Repair a measured retention path, then pass the unchanged 800-switch and two-hour post-GC source budgets on a clean, identified reference build. Record raw peaks, GPU-process behavior, errors and context loss.
 3. Run the exact installed candidate on the declared host with its package hash, upgrade and rollback evidence. A source run cannot replace this gate.
 
+The original `scripts/release20-rc2-soak.mjs --run` and `scripts/check-release20-long-memory.mjs` remain strict tools for this later memory qualification. The 2.0 `scripts/release20-source-recovery.mjs --run` is a separate exact-freeze hard-exit and scientific recovery gate; its passing receipt cannot be used as a memory pass.
+
 The 2.0 [roadmap evidence](../2.0.0/ROADMAP.md) remains the historical measurement record. These open results are a known release limit, not evidence of a passing local plateau.

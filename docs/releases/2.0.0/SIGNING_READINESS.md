@@ -2,6 +2,8 @@
 
 **Audit:** 2026-11-14, `main` at `d15c694e`. **Disposition:** release closure TODO #7 remains open. This is an input inventory and handoff, not an approved certificate, freeze, candidate, or installed receipt.
 
+**Update (2026-11-19):** Draft [PR #114](https://github.com/expert10000/Math3D/pull/114) records a locally self-signed, timestamped 2.0 prerelease package at `300493c9`, with matching installer/worker signatures, pinned NSIS component, SBOM, and source bundle. The certificate is untrusted by default and its key remains outside the repository. This does not supply the publicly trusted signer or complete exact installed GA qualification. The table below is the earlier audit of the trusted GitHub candidate route.
+
 ## Observed state
 
 | Check | Observation |
