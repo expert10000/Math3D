@@ -1,0 +1,941 @@
+{
+  "schema": "math3d/qi40-new-retainer-probe/v1",
+  "runId": "42269400056",
+  "candidate": {
+    "buildRunId": "42263292904",
+    "manifestSha256": "8bbaec0a121975bd08a7d0ca3fae74c47e21f96e17eed9763d42ad07edf75b6b",
+    "math3dCommit": "bd66f7243498f924fac8bb7849231e5f000f65a3",
+    "theoryLabCommit": "38842c8ca927720e9a0f39bd6a04f0e366073996",
+    "math3dInstallerSha256": "e3f5b81318373271a11308fc1a4df67175ab40549cf81b5e0dc2db5329425fd2",
+    "theoryLabInstallerSha256": "caa7e2fbe3350382753003782b37c358b59629b2ca29759fe414ceb842ca1c2c"
+  },
+  "cycles": 80,
+  "e2eHookAblation": true,
+  "lateHeapGrowthBytes": 2229472,
+  "maxLateHeapGrowthBytes": 2097152,
+  "stringSelfBytesGrowth": 1609836,
+  "targetMet": false,
+  "trackedConstructors": {
+    "native:WebGL2RenderingContext": {
+      "baseline": 1,
+      "final": 1
+    },
+    "native:WebGLTexture": {
+      "baseline": 5,
+      "final": 5
+    }
+  },
+  "topConstructorGrowth": [
+    {
+      "name": "array:[other]",
+      "baseline": {
+        "count": 120819,
+        "selfBytes": 4515192
+      },
+      "final": {
+        "count": 122317,
+        "selfBytes": 5358936
+      },
+      "deltaCount": 1498,
+      "deltaSelfBytes": 843744
+    },
+    {
+      "name": "object:[other]",
+      "baseline": {
+        "count": 1091,
+        "selfBytes": 205796
+      },
+      "final": {
+        "count": 1234,
+        "selfBytes": 663888
+      },
+      "deltaCount": 143,
+      "deltaSelfBytes": 458092
+    },
+    {
+      "name": "object:Object",
+      "baseline": {
+        "count": 35706,
+        "selfBytes": 999392
+      },
+      "final": {
+        "count": 44364,
+        "selfBytes": 1255908
+      },
+      "deltaCount": 8658,
+      "deltaSelfBytes": 256516
+    },
+    {
+      "name": "native:[other]",
+      "baseline": {
+        "count": 1445,
+        "selfBytes": 21859972
+      },
+      "final": {
+        "count": 2334,
+        "selfBytes": 21915689
+      },
+      "deltaCount": 889,
+      "deltaSelfBytes": 55717
+    },
+    {
+      "name": "native:DOMRectReadOnly",
+      "baseline": {
+        "count": 8,
+        "selfBytes": 448
+      },
+      "final": {
+        "count": 770,
+        "selfBytes": 43120
+      },
+      "deltaCount": 762,
+      "deltaSelfBytes": 42672
+    },
+    {
+      "name": "native:PerformanceEventTiming",
+      "baseline": {
+        "count": 0,
+        "selfBytes": 0
+      },
+      "final": {
+        "count": 151,
+        "selfBytes": 37448
+      },
+      "deltaCount": 151,
+      "deltaSelfBytes": 37448
+    },
+    {
+      "name": "object:Array",
+      "baseline": {
+        "count": 119293,
+        "selfBytes": 1908688
+      },
+      "final": {
+        "count": 121614,
+        "selfBytes": 1945824
+      },
+      "deltaCount": 2321,
+      "deltaSelfBytes": 37136
+    },
+    {
+      "name": "native:PerformanceLongAnimationFrameTiming",
+      "baseline": {
+        "count": 7,
+        "selfBytes": 952
+      },
+      "final": {
+        "count": 200,
+        "selfBytes": 27200
+      },
+      "deltaCount": 193,
+      "deltaSelfBytes": 26248
+    },
+    {
+      "name": "native:LayoutShift",
+      "baseline": {
+        "count": 2,
+        "selfBytes": 304
+      },
+      "final": {
+        "count": 150,
+        "selfBytes": 22800
+      },
+      "deltaCount": 148,
+      "deltaSelfBytes": 22496
+    },
+    {
+      "name": "native:TaskAttributionTiming",
+      "baseline": {
+        "count": 6,
+        "selfBytes": 720
+      },
+      "final": {
+        "count": 184,
+        "selfBytes": 22080
+      },
+      "deltaCount": 178,
+      "deltaSelfBytes": 21360
+    },
+    {
+      "name": "native:Text",
+      "baseline": {
+        "count": 248,
+        "selfBytes": 22560
+      },
+      "final": {
+        "count": 444,
+        "selfBytes": 41552
+      },
+      "deltaCount": 196,
+      "deltaSelfBytes": 18992
+    },
+    {
+      "name": "native:PerformanceLongTaskTiming",
+      "baseline": {
+        "count": 6,
+        "selfBytes": 624
+      },
+      "final": {
+        "count": 184,
+        "selfBytes": 19136
+      },
+      "deltaCount": 178,
+      "deltaSelfBytes": 18512
+    }
+  ],
+  "newLargeObjectCount": 76,
+  "newLargeObjectSelfBytes": 1296992,
+  "newLargeObjectPaths": [
+    {
+      "kind": "new array",
+      "selfBytes": 24608,
+      "status": "root path found",
+      "searchedNodes": 5129,
+      "path": [
+        {
+          "node": "synthetic:[redacted]",
+          "edgeType": "element",
+          "edgeName": "6"
+        },
+        {
+          "node": "synthetic:[redacted]",
+          "edgeType": "element",
+          "edgeName": "4"
+        },
+        {
+          "node": "native:InternalNode",
+          "edgeType": "element",
+          "edgeName": "1"
+        },
+        {
+          "node": "native:InternalNode",
+          "edgeType": "element",
+          "edgeName": "6"
+        },
+        {
+          "node": "native:InternalNode",
+          "edgeType": "element",
+          "edgeName": "5"
+        },
+        {
+          "node": "native:InternalNode",
+          "edgeType": "element",
+          "edgeName": "1"
+        },
+        {
+          "node": "native:InternalNode",
+          "edgeType": "element",
+          "edgeName": "2"
+        },
+        {
+          "node": "native:InternalNode",
+          "edgeType": "element",
+          "edgeName": "4"
+        },
+        {
+          "node": "native:[redacted]",
+          "edgeType": "property",
+          "edgeName": "__reactFiber$bxe7copkex6"
+        },
+        {
+          "node": "object:H1{div}",
+          "edgeType": "property",
+          "edgeName": "alternate"
+        },
+        {
+          "node": "object:H1{div}",
+          "edgeType": "property",
+          "edgeName": "child"
+        },
+        {
+          "node": "object:H1",
+          "edgeType": "property",
+          "edgeName": "memoizedProps"
+        },
+        {
+          "node": "object:Object",
+          "edgeType": "internal",
+          "edgeName": "properties"
+        },
+        {
+          "node": "array:[redacted]",
+          "edgeType": null,
+          "edgeName": null
+        }
+      ]
+    },
+    {
+      "kind": "new array",
+      "selfBytes": 24608,
+      "status": "root path found",
+      "searchedNodes": 4943,
+      "path": [
+        {
+          "node": "synthetic:[redacted]",
+          "edgeType": "element",
+          "edgeName": "6"
+        },
+        {
+          "node": "synthetic:[redacted]",
+          "edgeType": "element",
+          "edgeName": "4"
+        },
+        {
+          "node": "native:InternalNode",
+          "edgeType": "element",
+          "edgeName": "1"
+        },
+        {
+          "node": "native:InternalNode",
+          "edgeType": "element",
+          "edgeName": "6"
+        },
+        {
+          "node": "native:InternalNode",
+          "edgeType": "element",
+          "edgeName": "5"
+        },
+        {
+          "node": "native:InternalNode",
+          "edgeType": "element",
+          "edgeName": "1"
+        },
+        {
+          "node": "native:InternalNode",
+          "edgeType": "element",
+          "edgeName": "2"
+        },
+        {
+          "node": "native:InternalNode",
+          "edgeType": "element",
+          "edgeName": "4"
+        },
+        {
+          "node": "native:[redacted]",
+          "edgeType": "property",
+          "edgeName": "__reactProps$bxe7copkex6"
+        },
+        {
+          "node": "object:Object",
+          "edgeType": "property",
+          "edgeName": "children"
+        },
+        {
+          "node": "object:Object",
+          "edgeType": "property",
+          "edgeName": "props"
+        },
+        {
+          "node": "object:Object",
+          "edgeType": "internal",
+          "edgeName": "properties"
+        },
+        {
+          "node": "array:[redacted]",
+          "edgeType": null,
+          "edgeName": null
+        }
+      ]
+    },
+    {
+      "kind": "new array",
+      "selfBytes": 19800,
+      "status": "root path found",
+      "searchedNodes": 28142,
+      "path": [
+        {
+          "node": "synthetic:[redacted]",
+          "edgeType": "element",
+          "edgeName": "6"
+        },
+        {
+          "node": "synthetic:[redacted]",
+          "edgeType": "element",
+          "edgeName": "8"
+        },
+        {
+          "node": "native:InternalNode",
+          "edgeType": "element",
+          "edgeName": "1"
+        },
+        {
+          "node": "native:InternalNode",
+          "edgeType": "element",
+          "edgeName": "1"
+        },
+        {
+          "node": "native:InternalNode",
+          "edgeType": "element",
+          "edgeName": "3"
+        },
+        {
+          "node": "native:[redacted]",
+          "edgeType": "property",
+          "edgeName": "__reactProps$bxe7copkex6"
+        },
+        {
+          "node": "object:Object",
+          "edgeType": "property",
+          "edgeName": "onDoubleClick"
+        },
+        {
+          "node": "closure:onDoubleClick",
+          "edgeType": "internal",
+          "edgeName": "context"
+        },
+        {
+          "node": "object:[redacted]",
+          "edgeType": "context",
+          "edgeName": "dg"
+        },
+        {
+          "node": "closure:[redacted]",
+          "edgeType": "internal",
+          "edgeName": "context"
+        },
+        {
+          "node": "object:[redacted]",
+          "edgeType": "context",
+          "edgeName": "SG"
+        },
+        {
+          "node": "closure:[redacted]",
+          "edgeType": "internal",
+          "edgeName": "context"
+        },
+        {
+          "node": "object:[redacted]",
+          "edgeType": "context",
+          "edgeName": "ple"
+        },
+        {
+          "node": "object:Object",
+          "edgeType": "property",
+          "edgeName": "workspace"
+        },
+        {
+          "node": "object:Object",
+          "edgeType": "property",
+          "edgeName": "datasets"
+        },
+        {
+          "node": "object:Object",
+          "edgeType": "property",
+          "edgeName": "items"
+        },
+        {
+          "node": "object:Array",
+          "edgeType": "element",
+          "edgeName": "4"
+        },
+        {
+          "node": "object:Object",
+          "edgeType": "property",
+          "edgeName": "mesh"
+        },
+        {
+          "node": "object:Object",
+          "edgeType": "property",
+          "edgeName": "indices"
+        },
+        {
+          "node": "object:Array",
+          "edgeType": "internal",
+          "edgeName": "elements"
+        },
+        {
+          "node": "array:[redacted]",
+          "edgeType": null,
+          "edgeName": null
+        }
+      ]
+    },
+    {
+      "kind": "new array",
+      "selfBytes": 19800,
+      "status": "root path found",
+      "searchedNodes": 28142,
+      "path": [
+        {
+          "node": "synthetic:[redacted]",
+          "edgeType": "element",
+          "edgeName": "6"
+        },
+        {
+          "node": "synthetic:[redacted]",
+          "edgeType": "element",
+          "edgeName": "8"
+        },
+        {
+          "node": "native:InternalNode",
+          "edgeType": "element",
+          "edgeName": "1"
+        },
+        {
+          "node": "native:InternalNode",
+          "edgeType": "element",
+          "edgeName": "1"
+        },
+        {
+          "node": "native:InternalNode",
+          "edgeType": "element",
+          "edgeName": "3"
+        },
+        {
+          "node": "native:[redacted]",
+          "edgeType": "property",
+          "edgeName": "__reactProps$bxe7copkex6"
+        },
+        {
+          "node": "object:Object",
+          "edgeType": "property",
+          "edgeName": "onDoubleClick"
+        },
+        {
+          "node": "closure:onDoubleClick",
+          "edgeType": "internal",
+          "edgeName": "context"
+        },
+        {
+          "node": "object:[redacted]",
+          "edgeType": "context",
+          "edgeName": "dg"
+        },
+        {
+          "node": "closure:[redacted]",
+          "edgeType": "internal",
+          "edgeName": "context"
+        },
+        {
+          "node": "object:[redacted]",
+          "edgeType": "context",
+          "edgeName": "SG"
+        },
+        {
+          "node": "closure:[redacted]",
+          "edgeType": "internal",
+          "edgeName": "context"
+        },
+        {
+          "node": "object:[redacted]",
+          "edgeType": "context",
+          "edgeName": "zM"
+        },
+        {
+          "node": "closure:[redacted]",
+          "edgeType": "internal",
+          "edgeName": "context"
+        },
+        {
+          "node": "object:[redacted]",
+          "edgeType": "context",
+          "edgeName": "SG"
+        },
+        {
+          "node": "closure:[redacted]",
+          "edgeType": "internal",
+          "edgeName": "context"
+        },
+        {
+          "node": "object:[redacted]",
+          "edgeType": "context",
+          "edgeName": "DK"
+        },
+        {
+          "node": "closure:[redacted]",
+          "edgeType": "internal",
+          "edgeName": "context"
+        },
+        {
+          "node": "object:[redacted]",
+          "edgeType": "context",
+          "edgeName": "SG"
+        },
+        {
+          "node": "closure:[redacted]",
+          "edgeType": "internal",
+          "edgeName": "context"
+        },
+        {
+          "node": "object:[redacted]",
+          "edgeType": "context",
+          "edgeName": "zM"
+        },
+        {
+          "node": "closure:[redacted]",
+          "edgeType": "internal",
+          "edgeName": "context"
+        },
+        {
+          "node": "object:[redacted]",
+          "edgeType": "context",
+          "edgeName": "nce"
+        },
+        {
+          "node": "closure:[redacted]",
+          "edgeType": "internal",
+          "edgeName": "context"
+        },
+        {
+          "node": "object:[redacted]",
+          "edgeType": "context",
+          "edgeName": "zM"
+        },
+        {
+          "node": "closure:[redacted]",
+          "edgeType": "internal",
+          "edgeName": "context"
+        },
+        {
+          "node": "object:[redacted]",
+          "edgeType": "context",
+          "edgeName": "SG"
+        },
+        {
+          "node": "closure:[redacted]",
+          "edgeType": "internal",
+          "edgeName": "context"
+        },
+        {
+          "node": "object:[redacted]",
+          "edgeType": "context",
+          "edgeName": "BK"
+        },
+        {
+          "node": "closure:[redacted]",
+          "edgeType": "internal",
+          "edgeName": "context"
+        },
+        {
+          "node": "object:[redacted]",
+          "edgeType": "context",
+          "edgeName": "SG"
+        },
+        {
+          "node": "closure:[redacted]",
+          "edgeType": "internal",
+          "edgeName": "context"
+        },
+        {
+          "node": "object:[redacted]",
+          "edgeType": "context",
+          "edgeName": "zM"
+        },
+        {
+          "node": "closure:[redacted]",
+          "edgeType": "internal",
+          "edgeName": "context"
+        },
+        {
+          "node": "object:[redacted]",
+          "edgeType": "context",
+          "edgeName": "SG"
+        },
+        {
+          "node": "closure:[redacted]",
+          "edgeType": "internal",
+          "edgeName": "context"
+        },
+        {
+          "node": "object:[redacted]",
+          "edgeType": "context",
+          "edgeName": "zM"
+        },
+        {
+          "node": "closure:[redacted]",
+          "edgeType": "internal",
+          "edgeName": "context"
+        },
+        {
+          "node": "object:[redacted]",
+          "edgeType": "context",
+          "edgeName": "SG"
+        },
+        {
+          "node": "closure:[redacted]",
+          "edgeType": "internal",
+          "edgeName": "context"
+        },
+        {
+          "node": "object:[redacted]",
+          "edgeType": "context",
+          "edgeName": "ple"
+        },
+        {
+          "node": "object:Object",
+          "edgeType": "property",
+          "edgeName": "workspace"
+        },
+        {
+          "node": "object:Object",
+          "edgeType": "property",
+          "edgeName": "datasets"
+        },
+        {
+          "node": "object:Object",
+          "edgeType": "property",
+          "edgeName": "items"
+        },
+        {
+          "node": "object:Array",
+          "edgeType": "element",
+          "edgeName": "4"
+        },
+        {
+          "node": "object:Object",
+          "edgeType": "property",
+          "edgeName": "mesh"
+        },
+        {
+          "node": "object:Object",
+          "edgeType": "property",
+          "edgeName": "indices"
+        },
+        {
+          "node": "object:Array",
+          "edgeType": "internal",
+          "edgeName": "elements"
+        },
+        {
+          "node": "array:[redacted]",
+          "edgeType": null,
+          "edgeName": null
+        }
+      ]
+    },
+    {
+      "kind": "new array",
+      "selfBytes": 19800,
+      "status": "root path found",
+      "searchedNodes": 28142,
+      "path": [
+        {
+          "node": "synthetic:[redacted]",
+          "edgeType": "element",
+          "edgeName": "6"
+        },
+        {
+          "node": "synthetic:[redacted]",
+          "edgeType": "element",
+          "edgeName": "8"
+        },
+        {
+          "node": "native:InternalNode",
+          "edgeType": "element",
+          "edgeName": "1"
+        },
+        {
+          "node": "native:InternalNode",
+          "edgeType": "element",
+          "edgeName": "1"
+        },
+        {
+          "node": "native:InternalNode",
+          "edgeType": "element",
+          "edgeName": "3"
+        },
+        {
+          "node": "native:[redacted]",
+          "edgeType": "property",
+          "edgeName": "__reactProps$bxe7copkex6"
+        },
+        {
+          "node": "object:Object",
+          "edgeType": "property",
+          "edgeName": "onDoubleClick"
+        },
+        {
+          "node": "closure:onDoubleClick",
+          "edgeType": "internal",
+          "edgeName": "context"
+        },
+        {
+          "node": "object:[redacted]",
+          "edgeType": "context",
+          "edgeName": "dg"
+        },
+        {
+          "node": "closure:[redacted]",
+          "edgeType": "internal",
+          "edgeName": "context"
+        },
+        {
+          "node": "object:[redacted]",
+          "edgeType": "context",
+          "edgeName": "SG"
+        },
+        {
+          "node": "closure:[redacted]",
+          "edgeType": "internal",
+          "edgeName": "context"
+        },
+        {
+          "node": "object:[redacted]",
+          "edgeType": "context",
+          "edgeName": "zM"
+        },
+        {
+          "node": "closure:[redacted]",
+          "edgeType": "internal",
+          "edgeName": "context"
+        },
+        {
+          "node": "object:[redacted]",
+          "edgeType": "context",
+          "edgeName": "SG"
+        },
+        {
+          "node": "closure:[redacted]",
+          "edgeType": "internal",
+          "edgeName": "context"
+        },
+        {
+          "node": "object:[redacted]",
+          "edgeType": "context",
+          "edgeName": "DK"
+        },
+        {
+          "node": "closure:[redacted]",
+          "edgeType": "internal",
+          "edgeName": "context"
+        },
+        {
+          "node": "object:[redacted]",
+          "edgeType": "context",
+          "edgeName": "SG"
+        },
+        {
+          "node": "closure:[redacted]",
+          "edgeType": "internal",
+          "edgeName": "context"
+        },
+        {
+          "node": "object:[redacted]",
+          "edgeType": "context",
+          "edgeName": "zM"
+        },
+        {
+          "node": "closure:[redacted]",
+          "edgeType": "internal",
+          "edgeName": "context"
+        },
+        {
+          "node": "object:[redacted]",
+          "edgeType": "context",
+          "edgeName": "nce"
+        },
+        {
+          "node": "closure:[redacted]",
+          "edgeType": "internal",
+          "edgeName": "context"
+        },
+        {
+          "node": "object:[redacted]",
+          "edgeType": "context",
+          "edgeName": "zM"
+        },
+        {
+          "node": "closure:[redacted]",
+          "edgeType": "internal",
+          "edgeName": "context"
+        },
+        {
+          "node": "object:[redacted]",
+          "edgeType": "context",
+          "edgeName": "SG"
+        },
+        {
+          "node": "closure:[redacted]",
+          "edgeType": "internal",
+          "edgeName": "context"
+        },
+        {
+          "node": "object:[redacted]",
+          "edgeType": "context",
+          "edgeName": "BK"
+        },
+        {
+          "node": "closure:[redacted]",
+          "edgeType": "internal",
+          "edgeName": "context"
+        },
+        {
+          "node": "object:[redacted]",
+          "edgeType": "context",
+          "edgeName": "SG"
+        },
+        {
+          "node": "closure:[redacted]",
+          "edgeType": "internal",
+          "edgeName": "context"
+        },
+        {
+          "node": "object:[redacted]",
+          "edgeType": "context",
+          "edgeName": "zM"
+        },
+        {
+          "node": "closure:[redacted]",
+          "edgeType": "internal",
+          "edgeName": "context"
+        },
+        {
+          "node": "object:[redacted]",
+          "edgeType": "context",
+          "edgeName": "SG"
+        },
+        {
+          "node": "closure:[redacted]",
+          "edgeType": "internal",
+          "edgeName": "context"
+        },
+        {
+          "node": "object:[redacted]",
+          "edgeType": "context",
+          "edgeName": "ple"
+        },
+        {
+          "node": "object:Object",
+          "edgeType": "property",
+          "edgeName": "workspace"
+        },
+        {
+          "node": "object:Object",
+          "edgeType": "property",
+          "edgeName": "datasets"
+        },
+        {
+          "node": "object:Object",
+          "edgeType": "property",
+          "edgeName": "items"
+        },
+        {
+          "node": "object:Array",
+          "edgeType": "element",
+          "edgeName": "4"
+        },
+        {
+          "node": "object:Object",
+          "edgeType": "property",
+          "edgeName": "mesh"
+        },
+        {
+          "node": "object:Object",
+          "edgeType": "property",
+          "edgeName": "indices"
+        },
+        {
+          "node": "object:Array",
+          "edgeType": "internal",
+          "edgeName": "elements"
+        },
+        {
+          "node": "array:[redacted]",
+          "edgeType": null,
+          "edgeName": null
+        }
+      ]
+    }
+  ],
+  "limitation": "New object IDs compare pre-cycle and final snapshots; shortest root paths identify possible owners, not retained-size attribution or cycle-20-to-80 causality."
+}

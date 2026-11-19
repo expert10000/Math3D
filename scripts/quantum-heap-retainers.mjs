@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 const safeName = value => /^[A-Za-z_$][A-Za-z0-9_$ .<>-]{0,79}$/.test(value)
   ? value : "[redacted]";
 
-export function summarizeQuantumHeapRetainers(snapshot) {
+export function summarizeQuantumHeapRetainers(snapshot, baselineNodeIds = null) {
   const { nodes, edges, strings } = snapshot;
   const nodeFields = snapshot.snapshot.meta.node_fields;
   const edgeFields = snapshot.snapshot.meta.edge_fields;
@@ -46,6 +46,7 @@ export function summarizeQuantumHeapRetainers(snapshot) {
   if (edgeNumber !== edgeCount) throw new Error("V8 heap snapshot edge count mismatch");
   const contextTargets = [];
   const stringTargets = [];
+  const newObjectTargets = [];
   for (let node = 0; node < nodeCount; node++) {
     const at = node * nodeStride;
     const type = nodeTypes[nodes[at + nodeTypeAt]];
@@ -55,9 +56,13 @@ export function summarizeQuantumHeapRetainers(snapshot) {
       contextTargets.push({ node, bytes, id: nodes[at + nodeIdAt] });
     if (type === "string" && bytes >= 100_000)
       stringTargets.push({ node, bytes, id: nodes[at + nodeIdAt] });
+    if (baselineNodeIds && ["array", "object"].includes(type) && bytes >= 4096 &&
+        !baselineNodeIds.has(nodes[at + nodeIdAt]))
+      newObjectTargets.push({ node, bytes, id: nodes[at + nodeIdAt], kind: `new ${type}` });
   }
   contextTargets.sort((a, b) => b.id - a.id);
   stringTargets.sort((a, b) => b.bytes - a.bytes);
+  newObjectTargets.sort((a, b) => b.bytes - a.bytes);
   const stringGroups = new Map();
   for (const target of stringTargets) {
     const value = strings[nodes[target.node * nodeStride + nodeNameAt]];
@@ -75,7 +80,8 @@ export function summarizeQuantumHeapRetainers(snapshot) {
     stringGroups.set(prefixSha256, group);
   }
   const targets = [...contextTargets.slice(0, 3).map(row => ({ ...row, kind: "WebGL2RenderingContext" })),
-    ...stringTargets.slice(0, 3).map(row => ({ ...row, kind: "large string" }))];
+    ...stringTargets.slice(0, 3).map(row => ({ ...row, kind: "large string" })),
+    ...newObjectTargets.slice(0, 5)];
   const label = node => {
     const at = node * nodeStride;
     const type = nodeTypes[nodes[at + nodeTypeAt]];
@@ -99,6 +105,8 @@ export function summarizeQuantumHeapRetainers(snapshot) {
     return `${type}:${name}${materialType || marker ? `{${materialType ?? marker}}` : ""}`;
   };
   return { nodeCount, edgeCount, totalWebGLContexts: contextTargets.length,
+    newLargeObjectCount: newObjectTargets.length,
+    newLargeObjectSelfBytes: newObjectTargets.reduce((sum, item) => sum + item.bytes, 0),
     largeStringCount: stringTargets.length,
     largeStrings: { totalSelfBytes: stringTargets.reduce((sum, item) => sum + item.bytes, 0),
       groups: [...stringGroups.values()].sort((a, b) => b.selfBytes - a.selfBytes).slice(0, 20) },

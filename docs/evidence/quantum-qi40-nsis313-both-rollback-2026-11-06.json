@@ -1,0 +1,142 @@
+{
+  "schema": "math3d/stable-quantum-installed-rollback/v1",
+  "checkedAtUtc": "2026-11-06T17:56:42.7518653Z",
+  "environment": "fresh Windows rollback VM",
+  "status": "passed",
+  "candidate": {
+    "commit": "bd66f7243498f924fac8bb7849231e5f000f65a3",
+    "version": "1.7.0",
+    "installerSha256": "e3f5b81318373271a11308fc1a4df67175ab40549cf81b5e0dc2db5329425fd2",
+    "manifestSha256": "8bbaec0a121975bd08a7d0ca3fae74c47e21f96e17eed9763d42ad07edf75b6b"
+  },
+  "rollback": {
+    "commit": "55a0196fe63ca16f49c97ff1aead7e41105e0ede",
+    "version": "1.7.0",
+    "installerSha256": "b515f926f0794679f19b4cbe3adb5133b3d15b95f2b31e3856ff14ee5a4b46ac",
+    "manifestSha256": "dd96dd7b01d2ed9dc803fe65edd0b71c37cdfab0883dc8e28fa6a68439b193ae"
+  },
+  "checks": {
+    "exactBytes": "passed",
+    "candidateInstall": "passed",
+    "candidateProfileSeed": "passed",
+    "candidateQec": "passed",
+    "candidateUninstall": "passed",
+    "rollbackInstall": "passed",
+    "rollbackProfileRetained": "passed",
+    "v1v2Readers": "passed"
+  },
+  "failure": null,
+  "profileSeed": {
+    "schema": "math3d/installed-rollback-profile-phase/v1",
+    "phase": "seed",
+    "version": "1.7.0",
+    "projectTitle": "QI40 rollback Graph",
+    "savedProjectVisible": true,
+    "commandPreviewOverlaysOff": true,
+    "quantumProjectId": "math3d:project:e2dc09597117c77a9268840a112dc3f2",
+    "promotedGraphId": "math3d:graph2d:c603a2534acb9342d8f2f27d9e4fcecb",
+    "promotedGraphReopenedAfterRollback": false,
+    "sceneChecks": [
+      {
+        "id": "qwz-curvature",
+        "fingerprint": "a0c0e7947516f2f4132b15155096b9711b3c7eae207f805e9a066371035570b3",
+        "reopenedAfterRollback": false
+      },
+      {
+        "id": "rice-mele-bands",
+        "fingerprint": "bddb5db99912697430c34d77518d2703153a4e5d04f6d478402cb27362b3225c",
+        "reopenedAfterRollback": false
+      },
+      {
+        "id": "saved-ideal-qec",
+        "fingerprint": "e879c0f3e5033429ef0b89fdf59536099d51d61bd346e44ea29651c9a01a2391",
+        "reopenedAfterRollback": false
+      },
+      {
+        "id": "hydrogen-2p",
+        "fingerprint": "55379e422fa98bcb6f29ed1ac6380a34b6586face6070a37e1ca2436823526b5",
+        "reopenedAfterRollback": false
+      },
+      {
+        "id": "rice-mele-pump",
+        "fingerprint": "610caa74bea640225e23459542ac442a828dff3471e0fff08d35b446a8907020",
+        "reopenedAfterRollback": false
+      },
+      {
+        "id": "kitaev-bands",
+        "fingerprint": "470c081952dc2f574d2166469e32e801db4b3c1b4269f0d2434c468ca4776a4f",
+        "reopenedAfterRollback": false
+      }
+    ]
+  },
+  "candidateScene": {
+    "schema": "math3d/installed-quantum-rollback-phase/v1",
+    "phase": "candidate",
+    "opened": [
+      {
+        "id": "saved-ideal-qec",
+        "schema": "quantum-scene/v1",
+        "fingerprint": "e879c0f3e5033429ef0b89fdf59536099d51d61bd346e44ea29651c9a01a2391"
+      }
+    ]
+  },
+  "profileVerify": {
+    "schema": "math3d/installed-rollback-profile-phase/v1",
+    "phase": "verify",
+    "version": "1.7.0",
+    "projectTitle": "QI40 rollback Graph",
+    "savedProjectVisible": true,
+    "commandPreviewOverlaysOff": true,
+    "quantumProjectId": "math3d:project:e2dc09597117c77a9268840a112dc3f2",
+    "promotedGraphId": "math3d:graph2d:c603a2534acb9342d8f2f27d9e4fcecb",
+    "promotedGraphReopenedAfterRollback": true,
+    "sceneChecks": [
+      {
+        "id": "qwz-curvature",
+        "fingerprint": "a0c0e7947516f2f4132b15155096b9711b3c7eae207f805e9a066371035570b3",
+        "reopenedAfterRollback": true
+      },
+      {
+        "id": "rice-mele-bands",
+        "fingerprint": "bddb5db99912697430c34d77518d2703153a4e5d04f6d478402cb27362b3225c",
+        "reopenedAfterRollback": true
+      },
+      {
+        "id": "saved-ideal-qec",
+        "fingerprint": "e879c0f3e5033429ef0b89fdf59536099d51d61bd346e44ea29651c9a01a2391",
+        "reopenedAfterRollback": true
+      },
+      {
+        "id": "hydrogen-2p",
+        "fingerprint": "55379e422fa98bcb6f29ed1ac6380a34b6586face6070a37e1ca2436823526b5",
+        "reopenedAfterRollback": true
+      },
+      {
+        "id": "rice-mele-pump",
+        "fingerprint": "610caa74bea640225e23459542ac442a828dff3471e0fff08d35b446a8907020",
+        "reopenedAfterRollback": true
+      },
+      {
+        "id": "kitaev-bands",
+        "fingerprint": "470c081952dc2f574d2166469e32e801db4b3c1b4269f0d2434c468ca4776a4f",
+        "reopenedAfterRollback": true
+      }
+    ]
+  },
+  "rollbackScenes": {
+    "schema": "math3d/installed-quantum-rollback-phase/v1",
+    "phase": "rolled-back",
+    "opened": [
+      {
+        "id": "qwz-curvature",
+        "schema": "quantum-scene/v1",
+        "fingerprint": "a0c0e7947516f2f4132b15155096b9711b3c7eae207f805e9a066371035570b3"
+      },
+      {
+        "id": "rice-mele-bands",
+        "schema": "quantum-scene/v2",
+        "fingerprint": "bddb5db99912697430c34d77518d2703153a4e5d04f6d478402cb27362b3225c"
+      }
+    ]
+  }
+}

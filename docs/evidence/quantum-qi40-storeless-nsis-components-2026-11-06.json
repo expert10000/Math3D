@@ -1,0 +1,26 @@
+{
+  "schema": "math3d/qi40-installer-components/v1",
+  "manifestCommit": "f18bf74a86114f4f8b7f6f398bcf889b74d8cb12",
+  "components": [
+    {
+      "app": "math3d",
+      "installerName": "Math3D Setup 1.7.0.exe",
+      "installerSha256": "3dc117566f27c217fa6d4067bfbdb9d1f3ebd767daa7ae2c48fc56985f87efbc",
+      "archivePath": "$PLUGINSDIR\\System.dll",
+      "systemDllSha256": "3eb38ae99653a7dbc724132ee240f6e5c4af4bfe7c01d31d23faf373f9f2eaca",
+      "systemDllBytes": 12288,
+      "systemDllVersion": null
+    },
+    {
+      "app": "theoryLab",
+      "installerName": "Quantum-Hamiltonian-Lab-Setup-0.1.0.exe",
+      "installerSha256": "cd258057fadb0009dbcbaa225663553a2cff86dd090b6cdad239c0d41bebea79",
+      "archivePath": "$PLUGINSDIR\\System.dll",
+      "systemDllSha256": "3eb38ae99653a7dbc724132ee240f6e5c4af4bfe7c01d31d23faf373f9f2eaca",
+      "systemDllBytes": 12288,
+      "systemDllVersion": null
+    }
+  ],
+  "sameSystemDllBytes": true,
+  "limitation": "Archive component identity does not identify the access-violation root cause; no crash dump was inspected."
+}
