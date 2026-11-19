@@ -140,6 +140,10 @@ jobs:
           MATH3D_PROJECT_RECOVERY_CHECKS: "1"
         run: |
           set -o pipefail
+          init_script="$GITHUB_WORKSPACE/.github/gradle-gson-mirror.init.gradle"
+          gradle_home="${GRADLE_USER_HOME:-$HOME/.gradle}"
+          mkdir -p "$gradle_home/init.d"
+          cp "$init_script" "$gradle_home/init.d/gson-mirror.init.gradle"
           for attempt in 1 2 3; do
             log="$RUNNER_TEMP/mobile-android-build-$attempt.log"
             if npm run mobile:android:internal 2>&1 | tee "$log"; then
@@ -152,6 +156,8 @@ jobs:
             fi
             echo "Gradle Gson resolution failed; retrying build after a delay (attempt $((attempt + 1)) of 3)."
             export GRADLE_USER_HOME="$RUNNER_TEMP/mobile-gradle-retry-$((attempt + 1))"
+            mkdir -p "$GRADLE_USER_HOME/init.d"
+            cp "$init_script" "$GRADLE_USER_HOME/init.d/gson-mirror.init.gradle"
             sleep $((attempt * 30))
           done
 
