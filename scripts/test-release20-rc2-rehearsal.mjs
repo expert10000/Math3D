@@ -22,17 +22,27 @@ const inputs = {
     oldInstallerSha256: 'eacffc903e988a15636f556b36d12621b9918f4cec69e5c8b19e7daa512222db',
     candidateCommit: commit, candidateInstallerSha256: installerSha256, signerThumbprint: 'd'.repeat(40),
     checkpointSha256: 'e'.repeat(64), checks: passed(['exactBytes', 'signature', 'oldInstall', 'seed', 'profileBackup', 'inPlaceUpgrade', 'retainedBytesAndSetting']) },
-  soak: { schema: 'math3d/release20-rc2-source-soak/v1', status: 'passed', sourceCommit: commit,
-    freezeManifestSha256, requestedMinutes: 120, elapsedMs: 7_200_000,
-    cycles: [{ finishedAtUtc: '2026-11-07T12:00:00Z', checks:
-      ['project-contracts', 'scientific-results', 'quantum-baseline', 'first-use-study'].map(id => ({ id, status: 'passed' })) }] },
+  recovery: { schema: 'math3d/release20-source-recovery/v1', status: 'passed', sourceCommit: commit,
+    freezeManifestSha256, memoryQualification: 'deferred-to-2.5-or-later',
+    build: { version: '2.0.0', commit, dirty: false, rendererHash: 'e'.repeat(64) },
+    finishedAtUtc: '2026-11-07T12:00:00Z', checks:
+      ['project-contracts', 'scientific-results', 'quantum-baseline', 'build-core',
+        'first-use-study', 'hard-exit-project'].map(id => ({ id, status: 'passed' })) },
   gallery: { version: '2.0.0', sourceCommit: commit, installerSha256, scenarios: ['algebra', 'quantum', 'surface'] },
 };
 assert.equal(assertRelease20RehearsalIdentities(inputs).installerSha256, installerSha256);
 assert.throws(() => assertRelease20RehearsalIdentities({ ...inputs,
   upgrade: { ...inputs.upgrade, candidateInstallerSha256: 'f'.repeat(64) } }), /Upgrade evidence/);
 assert.throws(() => assertRelease20RehearsalIdentities({ ...inputs,
-  soak: { ...inputs.soak, elapsedMs: 7_199_999 } }), /requested duration/);
+  recovery: { ...inputs.recovery, checks: inputs.recovery.checks.slice(0, -1) } }), /Source recovery evidence/);
+assert.throws(() => assertRelease20RehearsalIdentities({ ...inputs,
+  recovery: { ...inputs.recovery, freezeManifestSha256: 'f'.repeat(64) } }), /Source recovery evidence/);
+assert.throws(() => assertRelease20RehearsalIdentities({ ...inputs,
+  recovery: { ...inputs.recovery, build: { ...inputs.recovery.build, commit: 'f'.repeat(40) } } }), /Source recovery evidence/);
+assert.throws(() => assertRelease20RehearsalIdentities({ ...inputs,
+  recovery: { ...inputs.recovery, memoryQualification: 'passed' } }), /Source recovery evidence/);
+assert.throws(() => assertRelease20RehearsalIdentities({ ...inputs,
+  recovery: { ...inputs.recovery, schema: 'math3d/release20-rc2-source-soak/v1' } }), /Source recovery evidence/);
 assert.throws(() => assertRelease20RehearsalIdentities({ ...inputs,
   assets: { ...inputs.assets, installerSha256: 'f'.repeat(64) } }), /asset integrity/);
 const plan = spawnSync(process.execPath, ['scripts/verify-release20-rc2-rehearsal.mjs', '--plan'], { encoding: 'utf8' });
@@ -57,4 +67,4 @@ try {
   await writeFile(join(siteDir, 'index.html'), '<a href="/releases">Download</a>');
   await assert.rejects(verifyRelease20SiteBundle({ siteDir, galleryDir }), /exact 2.0 installer download link/);
 } finally { await rm(root, { recursive: true, force: true }); }
-console.log('RC2 rehearsal rejects mixed candidate receipts, short soaks, altered staged images, and missing download links.');
+console.log('RC2 rehearsal rejects mixed candidate receipts, incomplete recovery, false memory claims, altered staged images, and missing download links.');

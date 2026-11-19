@@ -15,9 +15,11 @@ export function assertRelease20GaSignoff({ signoff, candidate, rc2, notes, sourc
     app?.version === '2.0.0' && app.channel === 'stable' && app.commit === sourceCommit &&
     app.installerName === 'Math3D-Setup-2.0.0.exe' && /^[0-9a-f]{64}$/.test(app.installerSha256 ?? ''),
   'Candidate does not identify the exact stable 2.0 source.');
-  insist(rc2.schema === 'math3d/release20-rc2-rehearsal/v1' && rc2.status === 'passed' &&
+  insist(rc2.schema === 'math3d/release20-rc2-rehearsal/v2' && rc2.status === 'passed' &&
     rc2.sourceCommit === sourceCommit && rc2.installerSha256 === app.installerSha256 &&
     /^[0-9a-f]{64}$/.test(rc2.freezeManifestSha256 ?? '') &&
+    rc2.memoryQualification === 'deferred-to-2.5-or-later' &&
+    /^[0-9a-f]{64}$/.test(rc2.evidenceSha256?.sourceRecovery ?? '') &&
     rc2.galleryCaptures >= 3 && rc2.assetCount >= 6 && rc2.unpackedFileCount > 0 &&
     rc2.stagedDownloadUrl === 'https://github.com/expert10000/Math3D/releases/download/v2.0.0/Math3D-Setup-2.0.0.exe',
   'RC2 rehearsal does not identify the same exact candidate.');
@@ -34,6 +36,15 @@ export function assertRelease20GaSignoff({ signoff, candidate, rc2, notes, sourc
     typeof signoff.reviewer === 'string' && signoff.reviewer.trim().length > 0 &&
     !Number.isNaN(Date.parse(signoff.reviewedAtUtc)),
   'GA sign-off is missing review, has blockers, or differs from the candidate and RC2 evidence.');
+  const limitations = signoff.knownLimitations.join('\n');
+  const notesLimitations = notes.split('## Known limitations')[1]?.split(/^## /m)[0] ?? '';
+  insist(/reference[- ]host.*memory|memory.*reference[- ]host/i.test(limitations) &&
+    /installed.*memory|memory.*installed/i.test(limitations) &&
+    /deferred to 2\.5 or later/i.test(limitations) &&
+    /reference[- ]host.*memory|memory.*reference[- ]host/i.test(notesLimitations) &&
+    /installed.*memory|memory.*installed/i.test(notesLimitations) &&
+    /deferred to 2\.5 or later/i.test(notesLimitations),
+  'Deferred reference-host and installed memory qualification must be disclosed in sign-off and release notes.');
   insist(notes.startsWith('# Math3D 2.0.0\n') &&
     ['## Changes', '## Compatibility', '## Known limitations', '## Migration', '## Release evidence']
       .every(heading => notes.includes(heading)) &&

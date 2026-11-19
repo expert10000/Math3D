@@ -14,20 +14,36 @@ try {
   const candidateBytes = Buffer.from(JSON.stringify({ schema: 'math3d/release20-candidate/v1',
     math3d: { version: '2.0.0', channel: 'stable', commit: sourceCommit,
       installerName: 'Math3D-Setup-2.0.0.exe', installerSha256 } }));
-  const rc2Bytes = Buffer.from(JSON.stringify({ schema: 'math3d/release20-rc2-rehearsal/v1', status: 'passed',
+  const rc2Bytes = Buffer.from(JSON.stringify({ schema: 'math3d/release20-rc2-rehearsal/v2', status: 'passed',
     sourceCommit, installerSha256, freezeManifestSha256: 'c'.repeat(64), galleryCaptures: 3,
-    assetCount: 6, unpackedFileCount: 4,
+    assetCount: 6, unpackedFileCount: 4, memoryQualification: 'deferred-to-2.5-or-later',
+    evidenceSha256: { sourceRecovery: 'e'.repeat(64) },
     stagedDownloadUrl: 'https://github.com/expert10000/Math3D/releases/download/v2.0.0/Math3D-Setup-2.0.0.exe' }));
-  const notesBytes = Buffer.from('# Math3D 2.0.0\n\n## Changes\nA\n## Compatibility\nB\n## Known limitations\nC\n## Migration\nD\n## Release evidence\nE\n');
+  const notesBytes = Buffer.from('# Math3D 2.0.0\n\n## Changes\nA\n## Compatibility\nB\n## Known limitations\nReference-host mixed-route memory plateau and installed memory qualification are deferred to 2.5 or later.\n## Migration\nD\n## Release evidence\nE\n');
   const signoff = { schema: 'math3d/release20-ga-signoff/v1', status: 'approved', tag: 'v2.0.0',
     sourceCommit, installerSha256, candidateManifestSha256: sha(candidateBytes),
     rc2ReportSha256: sha(rc2Bytes), releaseNotesSha256: sha(notesBytes),
     reviewer: 'reviewer@example.invalid', reviewedAtUtc: '2026-11-07T13:00:00Z',
-    blockers: [], knownLimitations: ['Hosted browser remains unqualified'], publishedPlatforms: ['windows'] };
+    blockers: [], knownLimitations: ['Reference-host mixed-route memory plateau and installed memory qualification are deferred to 2.5 or later',
+      'Hosted browser remains unqualified'], publishedPlatforms: ['windows'] };
   await writeFile(candidatePath, candidateBytes); await writeFile(rc2Path, rc2Bytes);
   await writeFile(notesPath, notesBytes); await writeFile(signoffPath, JSON.stringify(signoff));
   const args = { root, signoffPath, candidatePath, rc2Path, notesPath, expectedCommit: sourceCommit };
   assert.equal((await verifyRelease20GaSignoff(args)).signoffStatus, 'approved');
+  signoff.knownLimitations = ['Hosted browser remains unqualified'];
+  await writeFile(signoffPath, JSON.stringify(signoff));
+  await assert.rejects(verifyRelease20GaSignoff(args), /Deferred reference-host/);
+  signoff.knownLimitations = ['Reference-host mixed-route memory plateau and installed memory qualification are deferred to 2.5 or later',
+    'Hosted browser remains unqualified'];
+  await writeFile(signoffPath, JSON.stringify(signoff));
+  const notesWithoutMemory = Buffer.from(notesBytes.toString('utf8').replace(
+    'Reference-host mixed-route memory plateau and installed memory qualification are deferred to 2.5 or later.',
+    'A separate limitation remains under review.'));
+  signoff.releaseNotesSha256 = sha(notesWithoutMemory);
+  await writeFile(notesPath, notesWithoutMemory); await writeFile(signoffPath, JSON.stringify(signoff));
+  await assert.rejects(verifyRelease20GaSignoff(args), /Deferred reference-host/);
+  signoff.releaseNotesSha256 = sha(notesBytes);
+  await writeFile(notesPath, notesBytes); await writeFile(signoffPath, JSON.stringify(signoff));
   await writeFile(notesPath, Buffer.concat([notesBytes, Buffer.from('changed\n')]));
   await assert.rejects(verifyRelease20GaSignoff(args), /GA sign-off/);
   await writeFile(notesPath, notesBytes);
