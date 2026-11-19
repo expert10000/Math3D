@@ -1,0 +1,21 @@
+{
+  "schema": "math3d/release20-linux-upgrade-phase/v1",
+  "phase": "upgrade",
+  "format": "AppImage",
+  "package": "Math3D-2.0.0-linux-x86_64.AppImage",
+  "packageSha256": "1f506c1c60d38e5b5308e6070ade941e0adbc1f7aee75d5621570d735792a2f4",
+  "packageBytes": 415521932,
+  "expectedVersion": "2.0.0",
+  "checks": {
+    "launch": "passed",
+    "profileSetting": "passed",
+    "graphProject": "passed"
+  },
+  "project": {
+    "title": "Linux upgrade Graph from v1.7.0",
+    "checkpointSha256": "d3d22ea7b2c3d2afa27b25d1424719ea2a630df785435899c509605e110ee3f5",
+    "checkpointBytes": 2669,
+    "graphObjects": 1
+  },
+  "status": "passed"
+}

@@ -1,0 +1,36 @@
+{
+  "schema": "math3d/release20-linux-upgrade-phase/v1",
+  "phase": "journey",
+  "format": "AppImage",
+  "package": "Math3D-2.0.0-linux-x86_64.AppImage",
+  "packageSha256": "1f506c1c60d38e5b5308e6070ade941e0adbc1f7aee75d5621570d735792a2f4",
+  "packageBytes": 415521932,
+  "expectedVersion": "2.0.0",
+  "checks": {
+    "bundledWorker": "passed",
+    "launch": "passed",
+    "installedMeshOperation": "passed",
+    "meshProjectSave": "passed",
+    "meshProjectColdReopen": "passed"
+  },
+  "worker": {
+    "backend": "bundled-exe",
+    "version": "1.0.0",
+    "artifactSha256": "1ade3d6c91352541e0ec56d8776eb50e6de0e9ff33078597c00c3ca73cc3e9e7"
+  },
+  "project": {
+    "id": "math3d:project:4ecabe968dcaf4e9c549686e20db6ff6",
+    "title": "Linux installed VTK Mesh study",
+    "checkpointSha256": "b23dc6e7ff36f6eecbfb65a784e5590109392144e15a2acea2873f0fe4855069",
+    "checkpointBytes": 26867,
+    "modules": [
+      "geometry",
+      "mesh",
+      "curve",
+      "volume",
+      "complex",
+      "graph2d"
+    ]
+  },
+  "status": "passed"
+}
