@@ -80,10 +80,26 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Root test install failed.' }
           npm --prefix renderer ci
           if ($LASTEXITCODE -ne 0) { throw 'Renderer test install failed.' }
+      - name: Attest that live Sage serves the candidate source
+        shell: pwsh
+        env:
+          SAGE_SERVICE_URL: ${{ secrets.MATH3D_RELEASE20_SAGE_SERVICE_URL }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          if (-not $env:SAGE_SERVICE_URL) { throw 'The live Sage URL secret is absent.' }
+          try {
+            $health = Invoke-RestMethod -Uri ($env:SAGE_SERVICE_URL.TrimEnd('/') + '/health') -TimeoutSec 30
+          } catch {
+            throw 'The live Sage route is unreachable from the Windows runner.'
+          }
+          if ($health.math3dSourceCommit -ne $env:SOURCE_COMMIT) {
+            throw 'Live Sage worker source differs from the exact candidate.'
+          }
       - name: Install exact candidate and run first-use plus four journeys
         shell: pwsh
         env:
           MATH3D_RELEASE20_SAGE_SERVICE_URL: ${{ secrets.MATH3D_RELEASE20_SAGE_SERVICE_URL }}
+          MATH3D_RELEASE20_SAGE_EXPECTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
         run: |
           node scripts/verify-release20-uploaded-assets.mjs `
             (Join-Path $env:RUNNER_TEMP 'candidate') `

@@ -4,6 +4,9 @@ import { createServer } from 'node:http';
 const token = process.env.MATH3D_RELEASE20_SAGE_BRIDGE_TOKEN;
 if (!/^[0-9a-f]{64}$/.test(token ?? ''))
   throw new Error('MATH3D_RELEASE20_SAGE_BRIDGE_TOKEN must be 64 lowercase hex characters.');
+const sourceCommit = process.env.MATH3D_RELEASE20_SAGE_SOURCE_COMMIT;
+if (sourceCommit && !/^[0-9a-f]{40}$/.test(sourceCommit))
+  throw new Error('MATH3D_RELEASE20_SAGE_SOURCE_COMMIT must be a full lowercase commit hash.');
 const prefix = `/${token}`;
 const routes = new Map([['/health', 'GET'], ['/run', 'POST'], ['/cancel', 'POST']]);
 const port = Number(process.env.MATH3D_RELEASE20_SAGE_BRIDGE_PORT || 8768);
@@ -28,10 +31,14 @@ createServer(async (request, reply) => {
       ...(request.method === 'POST' ? { body: Buffer.concat(chunks) } : {}),
       headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(60_000),
     });
-    const payload = await upstream.arrayBuffer();
+    let payload = Buffer.from(await upstream.arrayBuffer());
+    if (route === '/health' && upstream.ok && sourceCommit) {
+      const health = JSON.parse(payload.toString('utf8'));
+      payload = Buffer.from(JSON.stringify({ ...health, math3dSourceCommit: sourceCommit }));
+    }
     if (payload.byteLength > 1_048_576) throw new Error('Response too large.');
     reply.writeHead(upstream.status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-    reply.end(Buffer.from(payload));
+    reply.end(payload);
   } catch {
     reply.writeHead(502, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
     reply.end('{"error":"Sage bridge unavailable"}');

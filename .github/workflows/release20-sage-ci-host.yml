@@ -1,0 +1,63 @@
+name: Host SageMath 10.10 for Windows acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Full reviewed source commit used by the installed candidate
+        required: true
+        type: string
+      hold_minutes:
+        description: Keep the Sage route available for 15–180 minutes
+        required: true
+        default: '120'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release20-sage-ci-host
+  cancel-in-progress: false
+
+jobs:
+  sage_host:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 210
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      MATH3D_RELEASE20_SAGE_TUNNEL_TOKEN: ${{ secrets.MATH3D_RELEASE20_SAGE_TUNNEL_TOKEN }}
+      MATH3D_RELEASE20_SAGE_BRIDGE_TOKEN: ${{ secrets.MATH3D_RELEASE20_SAGE_BRIDGE_TOKEN }}
+      MATH3D_RELEASE20_SAGE_SERVICE_URL: ${{ secrets.MATH3D_RELEASE20_SAGE_SERVICE_URL }}
+    steps:
+      - name: Require a reviewed source commit
+        shell: bash
+        env:
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || exit 1
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Check out exact candidate Sage source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_commit }}
+          path: sage-source
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.19.0'
+      - name: Serve the exact Sage worker through the guarded named Tunnel
+        shell: bash
+        env:
+          HOLD_MINUTES: ${{ inputs.hold_minutes }}
+        run: bash scripts/release20-ci-sage-host.sh "$RUNNER_TEMP/release20-sage-ci-host.json" "$HOLD_MINUTES" sage-source
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: release20-sage-ci-host-receipt
+          path: ${{ runner.temp }}/release20-sage-ci-host.json
+          if-no-files-found: warn

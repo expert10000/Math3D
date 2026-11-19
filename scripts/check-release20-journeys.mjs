@@ -26,6 +26,8 @@ try {
   if (sage.schema !== 'math3d/release20-sage-oracle/v1' || sage.status !== 'passed' ||
     sage.engine !== 'sagemath' || !/^10\.10(?:\.|$)/.test(sage.engineVersion ?? ''))
     throw new Error('Live Sage oracle receipt is missing or invalid.');
+  if (!dev && sage.sourceCommit !== commit)
+    throw new Error('Live Sage oracle was not served from the installed candidate source commit.');
   receipt.sage = 'passed';
   receipt.sageVersion = sage.engineVersion;
   const specs = [];
