@@ -16,7 +16,7 @@ try {
       installerName: 'Math3D-Setup-2.0.0.exe', installerSha256 } }));
   const rc2Bytes = Buffer.from(JSON.stringify({ schema: 'math3d/release20-rc2-rehearsal/v1', status: 'passed',
     sourceCommit, installerSha256, freezeManifestSha256: 'c'.repeat(64), galleryCaptures: 3,
-    assetCount: 6, unpackedFileCount: 4,
+    assetCount: 6, unpackedFileCount: 4, memoryGate: { status: 'passed' },
     stagedDownloadUrl: 'https://github.com/expert10000/Math3D/releases/download/v2.0.0/Math3D-Setup-2.0.0.exe' }));
   const notesBytes = Buffer.from('# Math3D 2.0.0\n\n## Changes\nA\n## Compatibility\nB\n## Known limitations\nC\n## Migration\nD\n## Release evidence\nE\n');
   const signoff = { schema: 'math3d/release20-ga-signoff/v1', status: 'approved', tag: 'v2.0.0',
@@ -28,6 +28,33 @@ try {
   await writeFile(notesPath, notesBytes); await writeFile(signoffPath, JSON.stringify(signoff));
   const args = { root, signoffPath, candidatePath, rc2Path, notesPath, expectedCommit: sourceCommit };
   assert.equal((await verifyRelease20GaSignoff(args)).signoffStatus, 'approved');
+  const missingMemoryRc2Bytes = Buffer.from(JSON.stringify({ ...JSON.parse(rc2Bytes), memoryGate: undefined }));
+  await writeFile(rc2Path, missingMemoryRc2Bytes);
+  signoff.rc2ReportSha256 = sha(missingMemoryRc2Bytes);
+  await writeFile(signoffPath, JSON.stringify(signoff));
+  await assert.rejects(verifyRelease20GaSignoff(args), /memory disposition/);
+  signoff.rc2ReportSha256 = sha(rc2Bytes);
+  await writeFile(rc2Path, rc2Bytes);
+  const memoryLimitation = 'Long-running mixed Mesh and Volume use has not passed the memory budget.';
+  const deferredRc2Bytes = Buffer.from(JSON.stringify({ ...JSON.parse(rc2Bytes),
+    memoryGate: { status: 'deferred', earliestVersion: '2.5.0', knownLimitation: memoryLimitation } }));
+  await writeFile(rc2Path, deferredRc2Bytes);
+  signoff.rc2ReportSha256 = sha(deferredRc2Bytes);
+  await writeFile(signoffPath, JSON.stringify(signoff));
+  await assert.rejects(verifyRelease20GaSignoff(args), /Deferred memory limitation/);
+  signoff.knownLimitations.push(memoryLimitation);
+  await writeFile(signoffPath, JSON.stringify(signoff));
+  await assert.rejects(verifyRelease20GaSignoff(args), /Deferred memory limitation/);
+  const deferredNotesBytes = Buffer.concat([notesBytes, Buffer.from(`${memoryLimitation}\n`)]);
+  await writeFile(notesPath, deferredNotesBytes);
+  signoff.releaseNotesSha256 = sha(deferredNotesBytes);
+  await writeFile(signoffPath, JSON.stringify(signoff));
+  assert.equal((await verifyRelease20GaSignoff(args)).memoryGate.status, 'deferred');
+  await writeFile(rc2Path, rc2Bytes);
+  signoff.rc2ReportSha256 = sha(rc2Bytes);
+  signoff.releaseNotesSha256 = sha(notesBytes);
+  signoff.knownLimitations = ['Hosted browser remains unqualified'];
+  await writeFile(signoffPath, JSON.stringify(signoff));
   await writeFile(notesPath, Buffer.concat([notesBytes, Buffer.from('changed\n')]));
   await assert.rejects(verifyRelease20GaSignoff(args), /GA sign-off/);
   await writeFile(notesPath, notesBytes);
