@@ -1,7 +1,20 @@
 name: Windows qualification harness validation only
 on:
   push:
-    branches: [codex/windows-installed-qualification-harness]
+    branches: [main, codex/windows-installed-qualification-harness, codex/windows-qualification-harness-audit]
+    paths:
+      - '.github/workflows/windows-qualification-harness-check.yml'
+      - '.github/workflows/windows-installed-qualification.yml'
+      - 'scripts/windows-qualification/**'
+      - 'tests/windows-qualification/**'
+      - 'docs/windows-qualification/**'
+  pull_request:
+    paths:
+      - '.github/workflows/windows-qualification-harness-check.yml'
+      - '.github/workflows/windows-installed-qualification.yml'
+      - 'scripts/windows-qualification/**'
+      - 'tests/windows-qualification/**'
+      - 'docs/windows-qualification/**'
 permissions:
   contents: read
 jobs:

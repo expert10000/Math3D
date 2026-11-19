@@ -7,9 +7,10 @@ if(mode==='check') {
  const [candidateFile,oldFile,source,oldSource]=args;
  const candidate=validateManifest(JSON.parse(await readFile(candidateFile)),source);
  const old=validateManifest(JSON.parse(await readFile(oldFile)),oldSource);validateUpgrade(old,candidate);
- await verifyFile(confined(path.dirname(candidateFile),candidate.installer.path),candidate.installer);
- await verifyFile(confined(path.dirname(oldFile),old.installer.path),old.installer);
- console.log('Package hashes, exact sources and same-product/channel upgrade boundary verified. No installer executed.');
+ for(const [file,manifest] of [[candidateFile,candidate],[oldFile,old]])
+  for(const asset of ['installer','executable','worker'])
+   await verifyFile(confined(path.dirname(file),manifest[asset].path),manifest[asset]);
+ console.log('Installer, executable and worker artifact hashes, exact sources and same-product/channel upgrade boundary verified. No installer executed.');
 } else if(mode==='complete') {
  const file=args[0],receipt=JSON.parse(await readFile(file));requireComplete(receipt);console.log('All required Windows installed journeys actually passed. Signing remains separate.');
 } else if(mode==='manifest') {

@@ -14,15 +14,9 @@ if ($SourceCommit -ne $MergedPr61Commit) { throw 'Target must be the verified PR
 $RunRoot=[IO.Path]::GetFullPath($RunRoot)
 $tempRoot=[IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\')+'\'
 if (-not $RunRoot.StartsWith($tempRoot,[StringComparison]::OrdinalIgnoreCase) -or (Test-Path -LiteralPath $RunRoot)) { throw 'A fresh RunRoot under RUNNER_TEMP is required.' }
-$CandidateManifest=(Resolve-Path -LiteralPath $CandidateManifest).Path
-$OldManifest=(Resolve-Path -LiteralPath $OldManifest).Path
-node "$PSScriptRoot/preflight.mjs" check $CandidateManifest $OldManifest $SourceCommit $OldSourceCommit
-if ($LASTEXITCODE -ne 0) { throw 'Package provenance preflight failed; no installer may run.' }
-$candidate=Get-Content -Raw -LiteralPath $CandidateManifest | ConvertFrom-Json
-$old=Get-Content -Raw -LiteralPath $OldManifest | ConvertFrom-Json
 New-Item -ItemType Directory -Path $RunRoot | Out-Null
 $receiptPath=Join-Path $RunRoot 'qualification.json'
-$result=[ordered]@{schema='math3d/windows-installed-qualification/v1';platform='win32';repository='expert10000/Math3D';sourceCommit=$SourceCommit;oldSourceCommit=$OldSourceCommit;harnessCommit=$HarnessCommit;mergedPr61Commit=$MergedPr61Commit;runId=$env:GITHUB_RUN_ID;runAttempt=$env:GITHUB_RUN_ATTEMPT;status='incomplete';executedAll=$false;releaseApproved=$false;signingGate='separate; not approved';candidate=$candidate;old=$old;journeys=[ordered]@{'fresh-install'=@{status='missing'};upgrade=@{status='missing'};'runtime-recovery'=@{status='missing'}}}
+$result=[ordered]@{schema='math3d/windows-installed-qualification/v1';platform='win32';repository='expert10000/Math3D';sourceCommit=$SourceCommit;oldSourceCommit=$OldSourceCommit;harnessCommit=$HarnessCommit;mergedPr61Commit=$MergedPr61Commit;runId=$env:GITHUB_RUN_ID;runAttempt=$env:GITHUB_RUN_ATTEMPT;status='incomplete';stage='package-preflight';executedAll=$false;releaseApproved=$false;signingGate='separate; not approved';candidate=$null;old=$null;journeys=[ordered]@{'fresh-install'=@{status='missing'};upgrade=@{status='missing'};'runtime-recovery'=@{status='missing'}}}
 function Save-Receipt { $result | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $receiptPath -Encoding utf8 }
 function Get-Identity([string]$File) { @{path=$File;sha256=(Get-FileHash -LiteralPath $File -Algorithm SHA256).Hash.ToLowerInvariant();bytes=(Get-Item -LiteralPath $File).Length} }
 function Install-Package($Manifest,[string]$ManifestFile,[string]$InstallRoot) {
@@ -51,6 +45,13 @@ function Probe([string]$Phase,$Manifest,[string]$ManifestFile,$Installed,[string
 }
 Save-Receipt
 try {
+  $CandidateManifest=(Resolve-Path -LiteralPath $CandidateManifest).Path
+  $OldManifest=(Resolve-Path -LiteralPath $OldManifest).Path
+  node "$PSScriptRoot/preflight.mjs" check $CandidateManifest $OldManifest $SourceCommit $OldSourceCommit
+  if ($LASTEXITCODE -ne 0) { throw 'Package provenance preflight failed; no installer may run.' }
+  $candidate=Get-Content -Raw -LiteralPath $CandidateManifest | ConvertFrom-Json
+  $old=Get-Content -Raw -LiteralPath $OldManifest | ConvertFrom-Json
+  $result.candidate=$candidate;$result.old=$old;$result.stage='installed-journeys';Save-Receipt
   # Real same-product upgrade: old installed app authors Graph+setting in its own isolated profile.
   $upgradeProfile=Join-Path $RunRoot 'upgrade-profile';$upgradeInstall=Join-Path $RunRoot 'upgrade-install'
   $oldInstalled=Install-Package $old $OldManifest $upgradeInstall
@@ -68,9 +69,9 @@ try {
   $result.journeys['fresh-install']=@{status='passed';seedFixtureStatus='passed';installed=$fresh;phase=$seeded};Save-Receipt
   $runtime=Probe 'journey' $candidate $CandidateManifest $fresh $profile (Join-Path $RunRoot 'runtime-recovery.json') $SourceCommit
   if ((Get-Identity $fresh.app).sha256 -ne $candidate.executable.sha256 -or (Get-Identity $fresh.worker).sha256 -ne $candidate.worker.sha256) { throw 'Installed bytes changed across cold reopen/recovery.' }
-  $result.journeys['runtime-recovery']=@{status='passed';checks=$runtime.checks;phase=$runtime};$result.executedAll=$true;$result.status='passed';Save-Receipt
+  $result.journeys['runtime-recovery']=@{status='passed';checks=$runtime.checks;phase=$runtime};$result.executedAll=$true;$result.status='passed';$result.stage='complete-check';Save-Receipt
   node "$PSScriptRoot/preflight.mjs" complete $receiptPath
   if ($LASTEXITCODE -ne 0) { throw 'Qualification remains incomplete.' }
-  $result.status='passed'
+  $result.status='passed';$result.stage='complete'
 } catch { $result.status='failed';$result.failure=$_.Exception.Message;throw }
 finally { $result.finishedAt=(Get-Date).ToUniversalTime().ToString('o');Save-Receipt }
