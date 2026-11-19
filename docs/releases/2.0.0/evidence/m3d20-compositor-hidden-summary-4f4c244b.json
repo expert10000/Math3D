@@ -1,0 +1,212 @@
+{
+  "schema": "math3d.release20.chromium-memory-trace.v1",
+  "variant": "parked-display-none",
+  "traceSha256": "9387c9ef88c1b9b1fe1c72631bb08fce40a7f28720bbb5bff7b6382559e87186",
+  "build": {
+    "version": "2.0.0",
+    "commit": "4f4c244b8720abddb8943df47d6cc0e386456deb",
+    "dirty": true,
+    "builtAt": "2026-11-18T14:06:30.745Z",
+    "rendererHash": "ba070c7cebd5422267b8258b7e42ff2948c4766871eed808647cbf12b89843ae"
+  },
+  "host": {
+    "os": "win32 10.0.26200",
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900K",
+    "logicalCpus": 24,
+    "totalMemoryGiB": 127.7
+  },
+  "routeSequence": [
+    "graphs",
+    "surfaces",
+    "mesh",
+    "volume"
+  ],
+  "elapsedMinutes": 5.3,
+  "cycles": 10,
+  "note": "Allocator categories can alias memory in other processes; do not sum them or equate their deltas to renderer private bytes.",
+  "rendererPrivateDeltaMiB": 7,
+  "compositorImageDeltaMiB": 35.1,
+  "compositorGpuImageCountDelta": 39,
+  "snapshots": [
+    {
+      "cycle": 1,
+      "rendererPrivateMiB": 215.1,
+      "gpuPrivateMiB": 520.6,
+      "v8UsedMiB": 28.1,
+      "compositorGpuImageCount": 23,
+      "compositorGpuImageMiB": 26,
+      "allocatorsMiB": {
+        "cc/image_memory": 36,
+        "partition_alloc": 40.4,
+        "partition_alloc/partitions/buffer": 31.2,
+        "v8": 41.1,
+        "blink_gc": 71.9,
+        "malloc": 50.5,
+        "shared_memory": 57.5,
+        "discardable": 16
+      }
+    },
+    {
+      "cycle": 2,
+      "rendererPrivateMiB": 201.7,
+      "gpuPrivateMiB": 529.4,
+      "v8UsedMiB": 28.2,
+      "compositorGpuImageCount": 16,
+      "compositorGpuImageMiB": 18.1,
+      "allocatorsMiB": {
+        "cc/image_memory": 19.2,
+        "partition_alloc": 38.4,
+        "partition_alloc/partitions/buffer": 30.7,
+        "v8": 40.7,
+        "blink_gc": 71.6,
+        "malloc": 32,
+        "shared_memory": 58.5,
+        "discardable": 16
+      }
+    },
+    {
+      "cycle": 3,
+      "rendererPrivateMiB": 201,
+      "gpuPrivateMiB": 576.5,
+      "v8UsedMiB": 30.4,
+      "compositorGpuImageCount": 36,
+      "compositorGpuImageMiB": 40.6,
+      "allocatorsMiB": {
+        "cc/image_memory": 48.5,
+        "partition_alloc": 39.4,
+        "partition_alloc/partitions/buffer": 32.7,
+        "v8": 40.8,
+        "blink_gc": 71.6,
+        "malloc": 29.5,
+        "shared_memory": 58.5,
+        "discardable": 16
+      }
+    },
+    {
+      "cycle": 4,
+      "rendererPrivateMiB": 205.8,
+      "gpuPrivateMiB": 692.3,
+      "v8UsedMiB": 30.4,
+      "compositorGpuImageCount": 48,
+      "compositorGpuImageMiB": 54.2,
+      "allocatorsMiB": {
+        "cc/image_memory": 56.4,
+        "partition_alloc": 44,
+        "partition_alloc/partitions/buffer": 36.3,
+        "v8": 41.3,
+        "blink_gc": 71.6,
+        "malloc": 29.4,
+        "shared_memory": 58.5,
+        "discardable": 16
+      }
+    },
+    {
+      "cycle": 5,
+      "rendererPrivateMiB": 205.2,
+      "gpuPrivateMiB": 652.9,
+      "v8UsedMiB": 28.4,
+      "compositorGpuImageCount": 54,
+      "compositorGpuImageMiB": 60.9,
+      "allocatorsMiB": {
+        "cc/image_memory": 60.9,
+        "partition_alloc": 44.2,
+        "partition_alloc/partitions/buffer": 37.5,
+        "v8": 41,
+        "blink_gc": 71.6,
+        "malloc": 29.2,
+        "shared_memory": 58.5,
+        "discardable": 16
+      }
+    },
+    {
+      "cycle": 6,
+      "rendererPrivateMiB": 213.8,
+      "gpuPrivateMiB": 698,
+      "v8UsedMiB": 31.6,
+      "compositorGpuImageCount": 54,
+      "compositorGpuImageMiB": 60.9,
+      "allocatorsMiB": {
+        "cc/image_memory": 62.1,
+        "partition_alloc": 50.2,
+        "partition_alloc/partitions/buffer": 42.6,
+        "v8": 41,
+        "blink_gc": 71.5,
+        "malloc": 31.2,
+        "shared_memory": 46.5,
+        "discardable": 4
+      }
+    },
+    {
+      "cycle": 7,
+      "rendererPrivateMiB": 212.6,
+      "gpuPrivateMiB": 707,
+      "v8UsedMiB": 31.7,
+      "compositorGpuImageCount": 58,
+      "compositorGpuImageMiB": 65.5,
+      "allocatorsMiB": {
+        "cc/image_memory": 65.5,
+        "partition_alloc": 48.5,
+        "partition_alloc/partitions/buffer": 41.9,
+        "v8": 41.3,
+        "blink_gc": 71.6,
+        "malloc": 31.6,
+        "shared_memory": 46.5,
+        "discardable": 4
+      }
+    },
+    {
+      "cycle": 8,
+      "rendererPrivateMiB": 211.9,
+      "gpuPrivateMiB": 650.4,
+      "v8UsedMiB": 30.4,
+      "compositorGpuImageCount": 60,
+      "compositorGpuImageMiB": 67.7,
+      "allocatorsMiB": {
+        "cc/image_memory": 67.7,
+        "partition_alloc": 51.6,
+        "partition_alloc/partitions/buffer": 45,
+        "v8": 41.1,
+        "blink_gc": 71.6,
+        "malloc": 27.6,
+        "shared_memory": 46.5,
+        "discardable": 4
+      }
+    },
+    {
+      "cycle": 9,
+      "rendererPrivateMiB": 219.4,
+      "gpuPrivateMiB": 693.3,
+      "v8UsedMiB": 34,
+      "compositorGpuImageCount": 62,
+      "compositorGpuImageMiB": 70,
+      "allocatorsMiB": {
+        "cc/image_memory": 70,
+        "partition_alloc": 55.8,
+        "partition_alloc/partitions/buffer": 49.1,
+        "v8": 41.8,
+        "blink_gc": 71.6,
+        "malloc": 31.1,
+        "shared_memory": 46.5,
+        "discardable": 4
+      }
+    },
+    {
+      "cycle": 10,
+      "rendererPrivateMiB": 222.1,
+      "gpuPrivateMiB": 677.4,
+      "v8UsedMiB": 31.8,
+      "compositorGpuImageCount": 62,
+      "compositorGpuImageMiB": 70,
+      "allocatorsMiB": {
+        "cc/image_memory": 71.1,
+        "partition_alloc": 57,
+        "partition_alloc/partitions/buffer": 50.4,
+        "v8": 41.3,
+        "blink_gc": 71.6,
+        "malloc": 32.8,
+        "shared_memory": 46.5,
+        "discardable": 4
+      }
+    }
+  ]
+}

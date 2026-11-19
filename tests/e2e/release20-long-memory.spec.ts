@@ -29,6 +29,8 @@ test("one Electron process retains responsive navigation and records long-run me
     throw new Error("Diagnostic route sets require smoke mode, graphs first, and unique supported routes.");
   const routes = diagnosticRoutes ?? (diagnosticRoute ? ["graphs", diagnosticRoute] : ["graphs", "surfaces", "mesh", "volume", "projects"]);
   const collectAfterCycle = !smoke || process.env.MATH3D_MEMORY_SOAK_FORCE_GC === "1";
+  if (process.env.MATH3D_MEMORY_SOAK_TRACE_PATH && (!smoke || !collectAfterCycle))
+    throw new Error("Chromium memory tracing requires smoke mode with MATH3D_MEMORY_SOAK_FORCE_GC=1.");
   // A clean 800-switch Windows run can exceed 29 minutes even when all
   // navigation actions succeed; memory budgets, not this wall clock, qualify it.
   test.setTimeout(smoke ? (smokeCycles * 10 + 10) * 60_000 : (minutes + 45) * 60_000);
@@ -78,6 +80,11 @@ test("one Electron process retains responsive navigation and records long-run me
     if (await page.evaluate(() => (window as Window & { appRuntime?: { e2e?: boolean } }).appRuntime?.e2e ?? false))
       throw new Error("Memory soak must run without E2E runtime hooks.");
     const heapSession = await page.context().newCDPSession(page);
+    const tracePath = smoke ? process.env.MATH3D_MEMORY_SOAK_TRACE_PATH : undefined;
+    if (tracePath) await heapSession.send("Tracing.start", {
+      transferMode: "ReturnAsStream", streamFormat: "json",
+      traceConfig: { includedCategories: ["memory-infra", "disabled-by-default-memory-infra"] },
+    });
     report.pid = pid;
     page.on("pageerror", error => { report.pageErrors.push(error.message); save(); });
     await page.evaluate(() => {
@@ -157,11 +164,31 @@ test("one Electron process retains responsive navigation and records long-run me
         await heapSession.send("HeapProfiler.collectGarbage");
         await page.waitForTimeout(2_000);
         cycle.samples.push(await sample(101));
+        if (tracePath) {
+          const dump = await heapSession.send("Tracing.requestMemoryDump", { levelOfDetail: "detailed" });
+          if (!dump.success) throw new Error("Chromium memory dump failed.");
+        }
       }
       if (report.pageErrors.length) throw new Error(`Page error: ${report.pageErrors[0]}`);
       cycle.finishedAtMs = Date.now() - started;
       report.elapsedMs = cycle.finishedAtMs; save();
     } while (smoke ? report.cycles.length < smokeCycles : Date.now() < deadline);
+    if (tracePath) {
+      const complete = new Promise<{ stream?: string }>(resolve =>
+        heapSession.once("Tracing.tracingComplete", resolve));
+      await heapSession.send("Tracing.end");
+      const { stream } = await complete;
+      if (!stream) throw new Error("Chromium memory trace stream unavailable.");
+      mkdirSync(path.dirname(path.resolve(tracePath)), { recursive: true });
+      const output = createWriteStream(path.resolve(tracePath));
+      try {
+        while (true) {
+          const chunk = await heapSession.send("IO.read", { handle: stream });
+          output.write(chunk.base64Encoded ? Buffer.from(chunk.data, "base64") : chunk.data);
+          if (chunk.eof) break;
+        }
+      } finally { output.end(); await once(output, "finish"); await heapSession.send("IO.close", { handle: stream }); }
+    }
     if (smoke && process.env.MATH3D_MEMORY_SOAK_HEAP_SNAPSHOT_PATH) {
       const snapshotPath = path.resolve(process.env.MATH3D_MEMORY_SOAK_HEAP_SNAPSHOT_PATH);
       mkdirSync(path.dirname(snapshotPath), { recursive: true });
