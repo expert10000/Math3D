@@ -100,7 +100,7 @@ jobs:
       - name: Download and attest exact unpublished signed assets
         shell: pwsh
         env:
-          GH_TOKEN: ${{ secrets.MATH3D_RELEASE20_DRAFT_ASSET_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           RELEASE_ID: ${{ inputs.draft_release_id }}
           SOURCE_COMMIT: ${{ inputs.source_commit }}
           INSTALLER_SHA256: ${{ inputs.installer_sha256 }}
@@ -165,7 +165,7 @@ jobs:
       - name: Download and attest exact unpublished signed assets
         shell: pwsh
         env:
-          GH_TOKEN: ${{ secrets.MATH3D_RELEASE20_DRAFT_ASSET_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           RELEASE_ID: ${{ inputs.draft_release_id }}
           SOURCE_COMMIT: ${{ inputs.source_commit }}
           INSTALLER_SHA256: ${{ inputs.installer_sha256 }}
