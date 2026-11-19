@@ -179,6 +179,7 @@ try {
     }
     if ($sageServiceUrl) {
       $previousSageUrl = [Environment]::GetEnvironmentVariable('MATH3D_RELEASE20_SAGE_SERVICE_URL', 'Process')
+      $previousSageSource = [Environment]::GetEnvironmentVariable('MATH3D_RELEASE20_SAGE_EXPECTED_SOURCE_COMMIT', 'Process')
       $previousReport = [Environment]::GetEnvironmentVariable('MATH3D_RELEASE20_JOURNEY_REPORT', 'Process')
       $previousApp = [Environment]::GetEnvironmentVariable('MATH3D_PACKAGED_APP_EXE', 'Process')
       $previousVersion = [Environment]::GetEnvironmentVariable('MATH3D_RELEASE20_EXPECTED_VERSION', 'Process')
@@ -187,6 +188,7 @@ try {
       $journeys = Join-Path $evidenceRoot 'four-journeys.json'
       try {
         $env:MATH3D_RELEASE20_SAGE_SERVICE_URL = $sageServiceUrl
+        $env:MATH3D_RELEASE20_SAGE_EXPECTED_SOURCE_COMMIT = $sourceCommit
         $env:MATH3D_RELEASE20_JOURNEY_REPORT = $report
         $env:MATH3D_PACKAGED_APP_EXE = $installed.app
         $env:MATH3D_RELEASE20_EXPECTED_VERSION = '2.0.0'
@@ -203,6 +205,7 @@ try {
         throw
       } finally {
         Restore-Env 'MATH3D_RELEASE20_SAGE_SERVICE_URL' $previousSageUrl
+        Restore-Env 'MATH3D_RELEASE20_SAGE_EXPECTED_SOURCE_COMMIT' $previousSageSource
         Restore-Env 'MATH3D_RELEASE20_JOURNEY_REPORT' $previousReport
         Restore-Env 'MATH3D_PACKAGED_APP_EXE' $previousApp
         Restore-Env 'MATH3D_RELEASE20_EXPECTED_VERSION' $previousVersion
