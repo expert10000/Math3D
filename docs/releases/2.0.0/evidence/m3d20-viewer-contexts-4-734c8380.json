@@ -1,0 +1,2933 @@
+{
+  "schema": "math3d.release20.long-memory.v2",
+  "status": "smoke",
+  "build": {
+    "version": "2.0.0",
+    "commit": "734c8380435798aa981b8b81734781b35265165d",
+    "dirty": false,
+    "builtAt": "2026-11-18T11:54:14.060Z",
+    "rendererHash": "e2fd23cac67e5e1c5b37246c15dc4f9667df8177012c84c4b11b4cdd10ffaa75"
+  },
+  "host": {
+    "os": "win32 10.0.26200",
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900K",
+    "logicalCpus": 24,
+    "totalMemoryGiB": 127.7
+  },
+  "method": {
+    "host": "source checkout",
+    "packageSha256": null,
+    "routeSequence": [
+      "graphs",
+      "surfaces",
+      "mesh",
+      "volume"
+    ],
+    "measurement": "same-process process-tree RSS, Electron private bytes, CDP V8 heap, GPU-process RSS and context-loss events; raw peaks and cycle-end post-GC retention are recorded; GPU allocations are not measured",
+    "postCycleGc": "CDP HeapProfiler.collectGarbage",
+    "runtimeE2e": false
+  },
+  "requestedMinutes": 0,
+  "startedAtUtc": "2026-11-18T11:54:21.942Z",
+  "elapsedMs": 132193,
+  "pid": 38200,
+  "cycles": [
+    {
+      "startedAtMs": 2302,
+      "actions": 100,
+      "samples": [
+        {
+          "action": 0,
+          "elapsedMs": 2692,
+          "rssMiB": 876.6,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 110.3,
+            "python.exe": 147.6,
+            "renderer": 266.3,
+            "utility": 51,
+            "gpu-process": 296.6
+          },
+          "electronPrivateMiB": 559.1,
+          "rendererPrivateMiB": 198.2,
+          "gpuPrivateMiB": 268.6,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 40.3,
+          "v8TotalMiB": 107.7,
+          "domNodes": 302,
+          "viewerPoolCanvases": [
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 706,
+              "height": 288,
+              "idle": false
+            }
+          ]
+        },
+        {
+          "action": 10,
+          "elapsedMs": 5766,
+          "rssMiB": 1082.6,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 113.6,
+            "python.exe": 147.6,
+            "renderer": 357.2,
+            "utility": 51.3,
+            "gpu-process": 408.1
+          },
+          "electronPrivateMiB": 753.3,
+          "rendererPrivateMiB": 280.6,
+          "gpuPrivateMiB": 378.6,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 77.1,
+          "v8TotalMiB": 131.6,
+          "domNodes": 308,
+          "viewerPoolCanvases": [
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 706,
+              "height": 346,
+              "idle": false
+            },
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 20,
+          "elapsedMs": 9923,
+          "rssMiB": 1113.1,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 114.4,
+            "python.exe": 147.6,
+            "renderer": 365.3,
+            "utility": 51.4,
+            "gpu-process": 429.5
+          },
+          "electronPrivateMiB": 774.9,
+          "rendererPrivateMiB": 283.7,
+          "gpuPrivateMiB": 395.1,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 48.2,
+          "v8TotalMiB": 102.5,
+          "domNodes": 668,
+          "viewerPoolCanvases": [
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": false
+            },
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 363,
+              "height": 164,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 30,
+          "elapsedMs": 12771,
+          "rssMiB": 1151.8,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 114.1,
+            "python.exe": 147.6,
+            "renderer": 372.4,
+            "utility": 51.4,
+            "gpu-process": 461.5
+          },
+          "electronPrivateMiB": 813.4,
+          "rendererPrivateMiB": 289.8,
+          "gpuPrivateMiB": 427.4,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 60.7,
+          "v8TotalMiB": 111.4,
+          "domNodes": 308,
+          "viewerPoolCanvases": [
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 706,
+              "height": 346,
+              "idle": false
+            },
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 40,
+          "elapsedMs": 15655,
+          "rssMiB": 1164,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 115.1,
+            "python.exe": 147.6,
+            "renderer": 383.7,
+            "utility": 51.4,
+            "gpu-process": 461.4
+          },
+          "electronPrivateMiB": 822.2,
+          "rendererPrivateMiB": 299.8,
+          "gpuPrivateMiB": 425.2,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 60.1,
+          "v8TotalMiB": 116,
+          "domNodes": 668,
+          "viewerPoolCanvases": [
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": false
+            },
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 363,
+              "height": 164,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 50,
+          "elapsedMs": 18460,
+          "rssMiB": 1163.7,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 114.9,
+            "python.exe": 147.6,
+            "renderer": 375.2,
+            "utility": 51.5,
+            "gpu-process": 469.8
+          },
+          "electronPrivateMiB": 816.7,
+          "rendererPrivateMiB": 288.3,
+          "gpuPrivateMiB": 431.6,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 31.8,
+          "v8TotalMiB": 101,
+          "domNodes": 308,
+          "viewerPoolCanvases": [
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 706,
+              "height": 346,
+              "idle": false
+            },
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 60,
+          "elapsedMs": 21433,
+          "rssMiB": 1182.9,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 115.3,
+            "python.exe": 147.6,
+            "renderer": 383.3,
+            "utility": 51.5,
+            "gpu-process": 480.4
+          },
+          "electronPrivateMiB": 835.1,
+          "rendererPrivateMiB": 296.2,
+          "gpuPrivateMiB": 441.7,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 67.4,
+          "v8TotalMiB": 108.5,
+          "domNodes": 668,
+          "viewerPoolCanvases": [
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": false
+            },
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 363,
+              "height": 164,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 70,
+          "elapsedMs": 24227,
+          "rssMiB": 1187.3,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 114.9,
+            "python.exe": 147.6,
+            "renderer": 375.3,
+            "utility": 51.5,
+            "gpu-process": 493.2
+          },
+          "electronPrivateMiB": 837.3,
+          "rendererPrivateMiB": 287.1,
+          "gpuPrivateMiB": 453.4,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 31.6,
+          "v8TotalMiB": 102.7,
+          "domNodes": 308,
+          "viewerPoolCanvases": [
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 706,
+              "height": 346,
+              "idle": false
+            },
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 80,
+          "elapsedMs": 27172,
+          "rssMiB": 1208.2,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 115.5,
+            "python.exe": 147.6,
+            "renderer": 382.4,
+            "utility": 51.5,
+            "gpu-process": 506.3
+          },
+          "electronPrivateMiB": 857.1,
+          "rendererPrivateMiB": 293.2,
+          "gpuPrivateMiB": 466.5,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 50.4,
+          "v8TotalMiB": 101.2,
+          "domNodes": 668,
+          "viewerPoolCanvases": [
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": false
+            },
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 363,
+              "height": 164,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 90,
+          "elapsedMs": 29992,
+          "rssMiB": 1218.8,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 115,
+            "python.exe": 147.6,
+            "renderer": 380.7,
+            "utility": 51.5,
+            "gpu-process": 519.1
+          },
+          "electronPrivateMiB": 865.4,
+          "rendererPrivateMiB": 289.9,
+          "gpuPrivateMiB": 478.7,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 31.9,
+          "v8TotalMiB": 104.7,
+          "domNodes": 308,
+          "viewerPoolCanvases": [
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 706,
+              "height": 346,
+              "idle": false
+            },
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 100,
+          "elapsedMs": 33086,
+          "rssMiB": 1224.4,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 111.2,
+            "python.exe": 147.6,
+            "renderer": 381.6,
+            "utility": 51.4,
+            "gpu-process": 527.7
+          },
+          "electronPrivateMiB": 868.2,
+          "rendererPrivateMiB": 289.3,
+          "gpuPrivateMiB": 487.6,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 35.4,
+          "v8TotalMiB": 101,
+          "domNodes": 668,
+          "viewerPoolCanvases": [
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": false
+            },
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 363,
+              "height": 164,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 101,
+          "elapsedMs": 35497,
+          "rssMiB": 1114.3,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 111.2,
+            "python.exe": 147.6,
+            "renderer": 279,
+            "utility": 51.4,
+            "gpu-process": 520.3
+          },
+          "electronPrivateMiB": 767,
+          "rendererPrivateMiB": 190.7,
+          "gpuPrivateMiB": 484.6,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 30.1,
+          "v8TotalMiB": 38.7,
+          "domNodes": 668,
+          "viewerPoolCanvases": [
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": false
+            },
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 363,
+              "height": 164,
+              "idle": true
+            }
+          ]
+        }
+      ],
+      "finishedAtMs": 35497
+    },
+    {
+      "startedAtMs": 35497,
+      "actions": 100,
+      "samples": [
+        {
+          "action": 0,
+          "elapsedMs": 35846,
+          "rssMiB": 1113.6,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 111.2,
+            "python.exe": 147.6,
+            "renderer": 279.1,
+            "utility": 51.4,
+            "gpu-process": 519.5
+          },
+          "electronPrivateMiB": 766.3,
+          "rendererPrivateMiB": 190.8,
+          "gpuPrivateMiB": 483.8,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 31.5,
+          "v8TotalMiB": 38.7,
+          "domNodes": 668,
+          "viewerPoolCanvases": [
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": false
+            },
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 363,
+              "height": 164,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 10,
+          "elapsedMs": 38667,
+          "rssMiB": 1195.7,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 111.4,
+            "python.exe": 147.6,
+            "renderer": 344.8,
+            "utility": 51.4,
+            "gpu-process": 535.6
+          },
+          "electronPrivateMiB": 846.3,
+          "rendererPrivateMiB": 256.4,
+          "gpuPrivateMiB": 498.2,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 30,
+          "v8TotalMiB": 96.5,
+          "domNodes": 308,
+          "viewerPoolCanvases": [
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 706,
+              "height": 346,
+              "idle": false
+            },
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 20,
+          "elapsedMs": 41652,
+          "rssMiB": 1203.9,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 111.5,
+            "python.exe": 147.6,
+            "renderer": 347.4,
+            "utility": 51.4,
+            "gpu-process": 541.1
+          },
+          "electronPrivateMiB": 848.9,
+          "rendererPrivateMiB": 256.7,
+          "gpuPrivateMiB": 500.4,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 38.2,
+          "v8TotalMiB": 96.7,
+          "domNodes": 668,
+          "viewerPoolCanvases": [
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": false
+            },
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 363,
+              "height": 164,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 30,
+          "elapsedMs": 44415,
+          "rssMiB": 1228.9,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 111.3,
+            "python.exe": 147.6,
+            "renderer": 353.1,
+            "utility": 51.4,
+            "gpu-process": 560.6
+          },
+          "electronPrivateMiB": 874.7,
+          "rendererPrivateMiB": 262.9,
+          "gpuPrivateMiB": 520.3,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 48.7,
+          "v8TotalMiB": 100,
+          "domNodes": 308,
+          "viewerPoolCanvases": [
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 706,
+              "height": 346,
+              "idle": false
+            },
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 40,
+          "elapsedMs": 47313,
+          "rssMiB": 1236.2,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 112,
+            "python.exe": 147.6,
+            "renderer": 348.8,
+            "utility": 51.4,
+            "gpu-process": 571.5
+          },
+          "electronPrivateMiB": 881.2,
+          "rendererPrivateMiB": 257.8,
+          "gpuPrivateMiB": 531.1,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 32.1,
+          "v8TotalMiB": 95.7,
+          "domNodes": 668,
+          "viewerPoolCanvases": [
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": false
+            },
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 363,
+              "height": 164,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 50,
+          "elapsedMs": 50145,
+          "rssMiB": 1260.2,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 111.8,
+            "python.exe": 147.6,
+            "renderer": 350.5,
+            "utility": 51.4,
+            "gpu-process": 594.1
+          },
+          "electronPrivateMiB": 910.9,
+          "rendererPrivateMiB": 264.7,
+          "gpuPrivateMiB": 553.9,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 49,
+          "v8TotalMiB": 99.3,
+          "domNodes": 308,
+          "viewerPoolCanvases": [
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 706,
+              "height": 346,
+              "idle": false
+            },
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 60,
+          "elapsedMs": 53097,
+          "rssMiB": 1276.6,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 112.6,
+            "python.exe": 147.6,
+            "renderer": 349.6,
+            "utility": 51.4,
+            "gpu-process": 610.5
+          },
+          "electronPrivateMiB": 919.7,
+          "rendererPrivateMiB": 258.1,
+          "gpuPrivateMiB": 568.7,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 31.6,
+          "v8TotalMiB": 96.2,
+          "domNodes": 668,
+          "viewerPoolCanvases": [
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": false
+            },
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 363,
+              "height": 164,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 70,
+          "elapsedMs": 55970,
+          "rssMiB": 1303.1,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 112.1,
+            "python.exe": 147.6,
+            "renderer": 352.6,
+            "utility": 51.5,
+            "gpu-process": 634.5
+          },
+          "electronPrivateMiB": 947.4,
+          "rendererPrivateMiB": 261.1,
+          "gpuPrivateMiB": 593.7,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 31.6,
+          "v8TotalMiB": 96,
+          "domNodes": 308,
+          "viewerPoolCanvases": [
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 706,
+              "height": 346,
+              "idle": false
+            },
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 80,
+          "elapsedMs": 59553,
+          "rssMiB": 1318.1,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 112.8,
+            "python.exe": 147.6,
+            "renderer": 350.3,
+            "utility": 51.5,
+            "gpu-process": 651.1
+          },
+          "electronPrivateMiB": 961.8,
+          "rendererPrivateMiB": 258.5,
+          "gpuPrivateMiB": 610.3,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 45.3,
+          "v8TotalMiB": 96.5,
+          "domNodes": 668,
+          "viewerPoolCanvases": [
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": false
+            },
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 363,
+              "height": 164,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 90,
+          "elapsedMs": 62644,
+          "rssMiB": 1306.6,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 112.7,
+            "python.exe": 147.5,
+            "renderer": 333.3,
+            "utility": 51.3,
+            "gpu-process": 657
+          },
+          "electronPrivateMiB": 960.8,
+          "rendererPrivateMiB": 252.3,
+          "gpuPrivateMiB": 616.1,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 29.9,
+          "v8TotalMiB": 97.2,
+          "domNodes": 308,
+          "viewerPoolCanvases": [
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 706,
+              "height": 346,
+              "idle": false
+            },
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 100,
+          "elapsedMs": 65639,
+          "rssMiB": 1302.7,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 113.4,
+            "python.exe": 147.5,
+            "renderer": 331.4,
+            "utility": 51.3,
+            "gpu-process": 654.3
+          },
+          "electronPrivateMiB": 957,
+          "rendererPrivateMiB": 250.4,
+          "gpuPrivateMiB": 613.4,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 35,
+          "v8TotalMiB": 96.5,
+          "domNodes": 668,
+          "viewerPoolCanvases": [
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": false
+            },
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 363,
+              "height": 164,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 101,
+          "elapsedMs": 68081,
+          "rssMiB": 1228.1,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 112.6,
+            "python.exe": 147.5,
+            "renderer": 263.5,
+            "utility": 51.3,
+            "gpu-process": 648.4
+          },
+          "electronPrivateMiB": 889.2,
+          "rendererPrivateMiB": 186.1,
+          "gpuPrivateMiB": 610.7,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 30.4,
+          "v8TotalMiB": 39.2,
+          "domNodes": 668,
+          "viewerPoolCanvases": [
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": false
+            },
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 363,
+              "height": 164,
+              "idle": true
+            }
+          ]
+        }
+      ],
+      "finishedAtMs": 68081
+    },
+    {
+      "startedAtMs": 68081,
+      "actions": 100,
+      "samples": [
+        {
+          "action": 0,
+          "elapsedMs": 68429,
+          "rssMiB": 1228,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 111.4,
+            "python.exe": 147.5,
+            "renderer": 265.3,
+            "utility": 51.3,
+            "gpu-process": 647.6
+          },
+          "electronPrivateMiB": 883.5,
+          "rendererPrivateMiB": 182.2,
+          "gpuPrivateMiB": 610.2,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 31.6,
+          "v8TotalMiB": 39.2,
+          "domNodes": 668,
+          "viewerPoolCanvases": [
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": false
+            },
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 363,
+              "height": 164,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 10,
+          "elapsedMs": 71214,
+          "rssMiB": 1269.2,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 113.2,
+            "python.exe": 147.5,
+            "renderer": 335.8,
+            "utility": 51.3,
+            "gpu-process": 616.5
+          },
+          "electronPrivateMiB": 926.9,
+          "rendererPrivateMiB": 256.5,
+          "gpuPrivateMiB": 577.3,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 31.6,
+          "v8TotalMiB": 97,
+          "domNodes": 308,
+          "viewerPoolCanvases": [
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 706,
+              "height": 346,
+              "idle": false
+            },
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 20,
+          "elapsedMs": 74488,
+          "rssMiB": 1270,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 112.9,
+            "python.exe": 147.5,
+            "renderer": 337.9,
+            "utility": 51.3,
+            "gpu-process": 615.6
+          },
+          "electronPrivateMiB": 923.4,
+          "rendererPrivateMiB": 256.4,
+          "gpuPrivateMiB": 574.3,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 32.1,
+          "v8TotalMiB": 95.7,
+          "domNodes": 668,
+          "viewerPoolCanvases": [
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": false
+            },
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 363,
+              "height": 164,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 30,
+          "elapsedMs": 77501,
+          "rssMiB": 1264.6,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 113.3,
+            "python.exe": 147.5,
+            "renderer": 338.2,
+            "utility": 51.3,
+            "gpu-process": 609.5
+          },
+          "electronPrivateMiB": 917.9,
+          "rendererPrivateMiB": 256.8,
+          "gpuPrivateMiB": 568,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 31.6,
+          "v8TotalMiB": 96.5,
+          "domNodes": 308,
+          "viewerPoolCanvases": [
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 706,
+              "height": 346,
+              "idle": false
+            },
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 40,
+          "elapsedMs": 80639,
+          "rssMiB": 1251.9,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 111.9,
+            "python.exe": 147.5,
+            "renderer": 338.7,
+            "utility": 51.3,
+            "gpu-process": 597.8
+          },
+          "electronPrivateMiB": 905,
+          "rendererPrivateMiB": 257,
+          "gpuPrivateMiB": 556.3,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 48.8,
+          "v8TotalMiB": 96.2,
+          "domNodes": 668,
+          "viewerPoolCanvases": [
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": false
+            },
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 363,
+              "height": 164,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 50,
+          "elapsedMs": 83424,
+          "rssMiB": 1251.9,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 113.4,
+            "python.exe": 147.5,
+            "renderer": 340.4,
+            "utility": 51.3,
+            "gpu-process": 594.4
+          },
+          "electronPrivateMiB": 904.5,
+          "rendererPrivateMiB": 258.9,
+          "gpuPrivateMiB": 552.5,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 31.4,
+          "v8TotalMiB": 96.2,
+          "domNodes": 308,
+          "viewerPoolCanvases": [
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 706,
+              "height": 346,
+              "idle": false
+            },
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 60,
+          "elapsedMs": 86351,
+          "rssMiB": 1258.2,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 113.8,
+            "python.exe": 147.5,
+            "renderer": 338.6,
+            "utility": 51.3,
+            "gpu-process": 602.1
+          },
+          "electronPrivateMiB": 910.7,
+          "rendererPrivateMiB": 256.7,
+          "gpuPrivateMiB": 560.4,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 38.7,
+          "v8TotalMiB": 97,
+          "domNodes": 668,
+          "viewerPoolCanvases": [
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": false
+            },
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 363,
+              "height": 164,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 70,
+          "elapsedMs": 89245,
+          "rssMiB": 1275.9,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 113.3,
+            "python.exe": 147.5,
+            "renderer": 335,
+            "utility": 51.2,
+            "gpu-process": 624.1
+          },
+          "electronPrivateMiB": 928.5,
+          "rendererPrivateMiB": 253.2,
+          "gpuPrivateMiB": 582.3,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 32,
+          "v8TotalMiB": 96,
+          "domNodes": 308,
+          "viewerPoolCanvases": [
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 706,
+              "height": 346,
+              "idle": false
+            },
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 80,
+          "elapsedMs": 92635,
+          "rssMiB": 1294.2,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 111.7,
+            "python.exe": 147.5,
+            "renderer": 344.8,
+            "utility": 51.2,
+            "gpu-process": 634.2
+          },
+          "electronPrivateMiB": 945.2,
+          "rendererPrivateMiB": 261.4,
+          "gpuPrivateMiB": 592.3,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 33.3,
+          "v8TotalMiB": 98,
+          "domNodes": 668,
+          "viewerPoolCanvases": [
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": false
+            },
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 363,
+              "height": 164,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 90,
+          "elapsedMs": 95496,
+          "rssMiB": 1290.8,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 112.8,
+            "python.exe": 147.5,
+            "renderer": 342.7,
+            "utility": 51.2,
+            "gpu-process": 631.8
+          },
+          "electronPrivateMiB": 943.2,
+          "rendererPrivateMiB": 260.9,
+          "gpuPrivateMiB": 589.7,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 31.6,
+          "v8TotalMiB": 97,
+          "domNodes": 308,
+          "viewerPoolCanvases": [
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 706,
+              "height": 346,
+              "idle": false
+            },
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 100,
+          "elapsedMs": 98468,
+          "rssMiB": 1286.6,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 113.9,
+            "python.exe": 147.5,
+            "renderer": 339,
+            "utility": 51.2,
+            "gpu-process": 630.1
+          },
+          "electronPrivateMiB": 938.3,
+          "rendererPrivateMiB": 256.6,
+          "gpuPrivateMiB": 588,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 37.1,
+          "v8TotalMiB": 96.7,
+          "domNodes": 668,
+          "viewerPoolCanvases": [
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": false
+            },
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 363,
+              "height": 164,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 101,
+          "elapsedMs": 100862,
+          "rssMiB": 1193.5,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 111.8,
+            "python.exe": 147.5,
+            "renderer": 268.3,
+            "utility": 51.2,
+            "gpu-process": 609.8
+          },
+          "electronPrivateMiB": 853.5,
+          "rendererPrivateMiB": 190.6,
+          "gpuPrivateMiB": 571.2,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 33.5,
+          "v8TotalMiB": 39,
+          "domNodes": 668,
+          "viewerPoolCanvases": [
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": false
+            },
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 363,
+              "height": 164,
+              "idle": true
+            }
+          ]
+        }
+      ],
+      "finishedAtMs": 100862
+    },
+    {
+      "startedAtMs": 100863,
+      "actions": 100,
+      "samples": [
+        {
+          "action": 0,
+          "elapsedMs": 101213,
+          "rssMiB": 1192.6,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 111.8,
+            "python.exe": 147.5,
+            "renderer": 268.4,
+            "utility": 51.2,
+            "gpu-process": 608.8
+          },
+          "electronPrivateMiB": 853.7,
+          "rendererPrivateMiB": 190.8,
+          "gpuPrivateMiB": 571.2,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 28.3,
+          "v8TotalMiB": 38.7,
+          "domNodes": 668,
+          "viewerPoolCanvases": [
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": false
+            },
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 363,
+              "height": 164,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 10,
+          "elapsedMs": 103960,
+          "rssMiB": 1264.6,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 113.5,
+            "python.exe": 147.5,
+            "renderer": 335.2,
+            "utility": 51.2,
+            "gpu-process": 612.3
+          },
+          "electronPrivateMiB": 921.2,
+          "rendererPrivateMiB": 256.9,
+          "gpuPrivateMiB": 571.1,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 31.3,
+          "v8TotalMiB": 96,
+          "domNodes": 308,
+          "viewerPoolCanvases": [
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 706,
+              "height": 346,
+              "idle": false
+            },
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 20,
+          "elapsedMs": 106869,
+          "rssMiB": 1270.4,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 114.3,
+            "python.exe": 147.5,
+            "renderer": 336.5,
+            "utility": 51.2,
+            "gpu-process": 616
+          },
+          "electronPrivateMiB": 924.6,
+          "rendererPrivateMiB": 255.6,
+          "gpuPrivateMiB": 574.9,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 28.5,
+          "v8TotalMiB": 95.7,
+          "domNodes": 668,
+          "viewerPoolCanvases": [
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": false
+            },
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 363,
+              "height": 164,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 30,
+          "elapsedMs": 109743,
+          "rssMiB": 1295.1,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 113.7,
+            "python.exe": 147.5,
+            "renderer": 338.3,
+            "utility": 51.2,
+            "gpu-process": 639.5
+          },
+          "electronPrivateMiB": 943.3,
+          "rendererPrivateMiB": 251.6,
+          "gpuPrivateMiB": 598.1,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 32.5,
+          "v8TotalMiB": 96.5,
+          "domNodes": 308,
+          "viewerPoolCanvases": [
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 706,
+              "height": 346,
+              "idle": false
+            },
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 40,
+          "elapsedMs": 112746,
+          "rssMiB": 1313.1,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 114.1,
+            "python.exe": 147.5,
+            "renderer": 338.4,
+            "utility": 51.2,
+            "gpu-process": 657
+          },
+          "electronPrivateMiB": 967.3,
+          "rendererPrivateMiB": 257.7,
+          "gpuPrivateMiB": 615.7,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 35.4,
+          "v8TotalMiB": 96,
+          "domNodes": 668,
+          "viewerPoolCanvases": [
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": false
+            },
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 363,
+              "height": 164,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 50,
+          "elapsedMs": 115504,
+          "rssMiB": 1327.5,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 113.8,
+            "python.exe": 147.5,
+            "renderer": 339,
+            "utility": 51.4,
+            "gpu-process": 671
+          },
+          "electronPrivateMiB": 980.9,
+          "rendererPrivateMiB": 258,
+          "gpuPrivateMiB": 629.2,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 31.3,
+          "v8TotalMiB": 96.5,
+          "domNodes": 308,
+          "viewerPoolCanvases": [
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 706,
+              "height": 346,
+              "idle": false
+            },
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 60,
+          "elapsedMs": 118429,
+          "rssMiB": 1336.1,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 114.4,
+            "python.exe": 147.5,
+            "renderer": 332.5,
+            "utility": 51.3,
+            "gpu-process": 685.5
+          },
+          "electronPrivateMiB": 989.5,
+          "rendererPrivateMiB": 251.4,
+          "gpuPrivateMiB": 643.9,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 31.7,
+          "v8TotalMiB": 96.5,
+          "domNodes": 668,
+          "viewerPoolCanvases": [
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": false
+            },
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 363,
+              "height": 164,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 70,
+          "elapsedMs": 121292,
+          "rssMiB": 1368.2,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 114.3,
+            "python.exe": 147.5,
+            "renderer": 340.4,
+            "utility": 51.3,
+            "gpu-process": 709.8
+          },
+          "electronPrivateMiB": 1021.7,
+          "rendererPrivateMiB": 259.2,
+          "gpuPrivateMiB": 668,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 31.5,
+          "v8TotalMiB": 96.2,
+          "domNodes": 308,
+          "viewerPoolCanvases": [
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 706,
+              "height": 346,
+              "idle": false
+            },
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 80,
+          "elapsedMs": 124228,
+          "rssMiB": 1379.9,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 115,
+            "python.exe": 147.5,
+            "renderer": 335.6,
+            "utility": 51.3,
+            "gpu-process": 725.6
+          },
+          "electronPrivateMiB": 1036,
+          "rendererPrivateMiB": 259.6,
+          "gpuPrivateMiB": 683.8,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 56.7,
+          "v8TotalMiB": 96.7,
+          "domNodes": 668,
+          "viewerPoolCanvases": [
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": false
+            },
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 363,
+              "height": 164,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 90,
+          "elapsedMs": 126945,
+          "rssMiB": 1371.4,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 114.6,
+            "python.exe": 147.5,
+            "renderer": 329.3,
+            "utility": 51.3,
+            "gpu-process": 724
+          },
+          "electronPrivateMiB": 1028.9,
+          "rendererPrivateMiB": 252.8,
+          "gpuPrivateMiB": 681.8,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 31,
+          "v8TotalMiB": 95,
+          "domNodes": 308,
+          "viewerPoolCanvases": [
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 706,
+              "height": 346,
+              "idle": false
+            },
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": true
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 100,
+          "elapsedMs": 129813,
+          "rssMiB": 1364.3,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 115,
+            "python.exe": 147.5,
+            "renderer": 335.4,
+            "utility": 51.3,
+            "gpu-process": 710.3
+          },
+          "electronPrivateMiB": 1021.4,
+          "rendererPrivateMiB": 258.6,
+          "gpuPrivateMiB": 668.1,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 51.4,
+          "v8TotalMiB": 96.2,
+          "domNodes": 668,
+          "viewerPoolCanvases": [
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": false
+            },
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 363,
+              "height": 164,
+              "idle": true
+            }
+          ]
+        },
+        {
+          "action": 101,
+          "elapsedMs": 132192,
+          "rssMiB": 1266.1,
+          "processCount": 6,
+          "byRoleMiB": {
+            "launcher": 4.9,
+            "browser": 115.5,
+            "python.exe": 147.5,
+            "renderer": 262.9,
+            "utility": 51.3,
+            "gpu-process": 684.1
+          },
+          "electronPrivateMiB": 933.2,
+          "rendererPrivateMiB": 191.7,
+          "gpuPrivateMiB": 646.3,
+          "gpuPid": 26888,
+          "contextLosses": 0,
+          "jsHeapMiB": 48.1,
+          "v8UsedMiB": 32.2,
+          "v8TotalMiB": 39.5,
+          "domNodes": 668,
+          "viewerPoolCanvases": [
+            {
+              "serial": 2,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 3,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 4,
+              "role": "volume-slice",
+              "width": 123,
+              "height": 179,
+              "idle": false
+            },
+            {
+              "serial": 5,
+              "role": "volume-spatial",
+              "width": 151,
+              "height": 222,
+              "idle": false
+            },
+            {
+              "serial": 1,
+              "role": "general",
+              "width": 363,
+              "height": 164,
+              "idle": true
+            }
+          ]
+        }
+      ],
+      "finishedAtMs": 132192
+    }
+  ],
+  "pageErrors": [],
+  "lifecycleEvents": [
+    {
+      "event": "page-close",
+      "elapsedMs": 132414,
+      "status": "smoke"
+    },
+    {
+      "event": "electron-exit",
+      "elapsedMs": 132637,
+      "status": "smoke",
+      "code": 0,
+      "signal": null
+    }
+  ],
+  "peakSampledRssMiB": 1379.9,
+  "failure": null
+}

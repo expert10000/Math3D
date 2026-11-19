@@ -5,6 +5,7 @@ import {
   createCommandEnvelope,
   meshCommandDefinitions,
   normalizeMeshDocument,
+  replaceMeshDocumentSource,
   type CanonicalJsonValue,
   type CommandEnvelope,
   type CommandOrigin,
@@ -39,6 +40,30 @@ export type MeshReplayPackage = Readonly<{
   cursor: number;
   resources: readonly Readonly<{ reference: MeshDocumentSource["resource"]; bytes: Uint8Array }>[];
 }>;
+
+export type MeshWeldGeneration = Readonly<{
+  documentId: string;
+  revision: number;
+  structuralHash: string;
+  resourceChecksum: string;
+}>;
+
+export type MeshWeldLineage = Readonly<{
+  transactionId: string;
+  destination: "replace";
+  method: string;
+  tolerance: number;
+  source: MeshWeldGeneration;
+  result: MeshWeldGeneration;
+  status: "current" | "historical";
+}>;
+
+const weldGeneration = (document: MeshDocument): MeshWeldGeneration => ({
+  documentId: document.identity.id,
+  revision: document.identity.revision,
+  structuralHash: document.identity.structuralHash,
+  resourceChecksum: document.source.resource.checksum,
+});
 
 const canonicalOrigin = (source: SurfaceMeshSource): CanonicalJsonValue =>
   JSON.parse(JSON.stringify(source)) as CanonicalJsonValue;
@@ -83,6 +108,29 @@ export class MeshDocumentAdapter {
   selection(): readonly string[] { return this.#kernel.query((state) => state.committedSelection.entityIds) as readonly string[]; }
   history() { return this.#kernel.historyStatus(); }
 
+  weldLineage(): readonly MeshWeldLineage[] {
+    const replay = this.replayBundle();
+    const current = this.document().identity;
+    return replay.transactions.flatMap((transaction, index) => transaction.commands.flatMap((envelope) => {
+      if (envelope.command.type !== MESH_COMMAND_TYPES.commitResource) return [];
+      const payload = envelope.command.payload as unknown as { parameters?: Record<string, unknown> };
+      const parameters = payload.parameters;
+      if (parameters?.traceOperation !== "mesh-op:weld" || parameters.destination !== "replace" ||
+          typeof parameters.method !== "string" || typeof parameters.tolerance !== "number") return [];
+      const source = parameters.source as MeshWeldGeneration | undefined;
+      const result = parameters.result as MeshWeldGeneration | undefined;
+      if (!source || !result || typeof source.documentId !== "string" || typeof result.documentId !== "string" ||
+          typeof source.revision !== "number" || typeof result.revision !== "number" ||
+          typeof source.structuralHash !== "string" || typeof result.structuralHash !== "string" ||
+          typeof source.resourceChecksum !== "string" || typeof result.resourceChecksum !== "string") return [];
+      return [{ transactionId: transaction.transactionId, destination: "replace" as const,
+        method: parameters.method, tolerance: parameters.tolerance, source, result,
+        status: replay.cursor > index && current.id === result.documentId &&
+          current.revision === result.revision && current.structuralHash === result.structuralHash
+          ? "current" as const : "historical" as const }];
+    }));
+  }
+
   mesh(): SurfaceMeshData {
     const document = this.document();
     const buffers = this.resources.resolve(document.source.resource);
@@ -99,7 +147,11 @@ export class MeshDocumentAdapter {
       resource,
       origin: canonicalOrigin(mesh.source),
     };
-    const commands: { type: string; payload: CanonicalJsonValue }[] = [{ type: MESH_COMMAND_TYPES.commitResource, payload: { source, operation: kind, parameters } as CanonicalJsonValue }];
+    const committedParameters = parameters.traceOperation === "mesh-op:weld"
+      ? { ...parameters, destination: "replace", source: weldGeneration(before),
+        result: weldGeneration(replaceMeshDocumentSource(before, source)) }
+      : parameters;
+    const commands: { type: string; payload: CanonicalJsonValue }[] = [{ type: MESH_COMMAND_TYPES.commitResource, payload: { source, operation: kind, parameters: committedParameters } as CanonicalJsonValue }];
     if (before.metadata.label !== mesh.label) commands.push({ type: MESH_COMMAND_TYPES.rename, payload: { label: mesh.label } });
     this.#transact(commands, [
       { type: MESH_COMMAND_TYPES.commitResource, payload: { source: before.source, operation: "replace", parameters: {} } },

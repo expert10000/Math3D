@@ -11,7 +11,8 @@ vi.mock("three", () => ({
     pixelRatio = 1;
     bufferResizes = 0;
     renderLists = { dispose() {} };
-    domElement = { remove() {} };
+    info = { memory: { geometries: 0, textures: 0 }, programs: [] };
+    domElement = { dataset: {} as Record<string, string>, remove() {} };
     constructor(readonly options: { antialias: boolean }) {}
     resetState() {}
     setAnimationLoop() {}
@@ -46,6 +47,8 @@ describe("viewer renderer pool", () => {
     expect(reusedSlices).toEqual(slices);
     expect(reusedSpatial).toBe(spatial);
     expect(reusedGeneral).toBe(general);
+    expect((reusedGeneral.domElement.dataset as Record<string, string>).viewerPoolSerial).toMatch(/^\d+$/);
+    expect((reusedGeneral.domElement.dataset as Record<string, string>).viewerPoolRole).toBe("general");
     expect([...slices, spatial, general].every(renderer => !(renderer as unknown as { disposed: boolean }).disposed)).toBe(true);
 
     const overflow = acquireViewerRenderer(false);
@@ -59,17 +62,22 @@ describe("viewer renderer pool", () => {
   });
   it("does not replace a pooled drawing buffer for identical size and pixel ratio", () => {
     const renderer = acquireViewerRenderer(true, "volume-spatial");
-    setViewerRendererPixelRatio(renderer, 1.25);
+    const pixelRatioChanges = Number(renderer.domElement.dataset.viewerPoolPixelRatioChanges ?? 0);
+    setViewerRendererPixelRatio(renderer, 1.75);
     setViewerRendererSize(renderer, 640, 480);
+    const sizeChanges = Number(renderer.domElement.dataset.viewerPoolSizeChanges ?? 0);
+    expect(Number(renderer.domElement.dataset.viewerPoolPixelRatioChanges)).toBe(pixelRatioChanges + 1);
     const resizes = (renderer as unknown as { bufferResizes: number }).bufferResizes;
     releaseViewerRenderer(renderer);
     const reused = acquireViewerRenderer(true, "volume-spatial");
     expect(reused).toBe(renderer);
-    setViewerRendererPixelRatio(reused, 1.25);
+    setViewerRendererPixelRatio(reused, 1.75);
     setViewerRendererSize(reused, 640, 480);
     expect((reused as unknown as { bufferResizes: number }).bufferResizes).toBe(resizes);
+    expect(Number(reused.domElement.dataset.viewerPoolSizeChanges ?? 0)).toBe(sizeChanges);
     setViewerRendererSize(reused, 800, 480);
     expect((reused as unknown as { bufferResizes: number }).bufferResizes).toBe(resizes + 1);
+    expect(Number(reused.domElement.dataset.viewerPoolSizeChanges)).toBe(sizeChanges + 1);
     releaseViewerRenderer(reused);
   });
 });
