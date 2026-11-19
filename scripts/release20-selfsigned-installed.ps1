@@ -88,7 +88,7 @@ function Install([string]$file, [string]$destination) {
 function Playwright([string[]]$arguments) {
   Push-Location $repo
   try {
-    & (Join-Path $repo 'node_modules/.bin/playwright.cmd') @arguments --reporter=list
+    & (Join-Path $repo 'node_modules/.bin/playwright.cmd') @arguments --reporter=list | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "Installed Playwright check failed: $($arguments -join ' ')" }
   } finally { Pop-Location }
 }
