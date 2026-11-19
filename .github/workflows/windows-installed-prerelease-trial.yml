@@ -2,12 +2,40 @@ name: Windows Installed Prerelease Trial
 
 on:
   workflow_dispatch:
+    inputs:
+      trial:
+        description: Existing 1.7 rc.4 trial or exact self-signed 2.0 installed qualification
+        required: true
+        type: choice
+        options: [rc4, signed-20]
+        default: rc4
+      draft_release_id:
+        description: Unpublished draft release ID containing only the signed installer and public manifests
+        required: false
+        type: string
+      source_commit:
+        description: Approved 40-character installer source commit
+        required: false
+        type: string
+      installer_sha256:
+        description: Approved signed installer SHA-256
+        required: false
+        type: string
+      freeze_sha256:
+        description: Approved freeze manifest SHA-256
+        required: false
+        type: string
+      signer_thumbprint:
+        description: Approved self-signed signer thumbprint
+        required: false
+        type: string
 
 permissions:
   contents: read
 
 jobs:
   installed-rc4-trial:
+    if: inputs.trial == 'rc4'
     runs-on: windows-2022
     timeout-minutes: 35
     steps:
@@ -56,3 +84,153 @@ jobs:
             ${{ runner.temp }}/math3d-rc4-trial/trial.json
             test-results/playwright/**/trace.zip
             test-results/playwright/**/*.png
+
+  selfsigned-fresh:
+    if: inputs.trial == 'signed-20'
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Download and attest exact unpublished signed assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ inputs.draft_release_id }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          INSTALLER_SHA256: ${{ inputs.installer_sha256 }}
+          FREEZE_SHA256: ${{ inputs.freeze_sha256 }}
+          SIGNER_THUMBPRINT: ${{ inputs.signer_thumbprint }}
+        run: |
+          $checkoutSha = (& git rev-parse HEAD).Trim()
+          if ($checkoutSha -ne $env:SOURCE_COMMIT) { throw 'Workflow checkout differs from approved installer source.' }
+          ./scripts/stage-release20-selfsigned-draft.ps1 `
+            -ReleaseId $env:RELEASE_ID -SourceCommit $env:SOURCE_COMMIT `
+            -InstallerSha256 $env:INSTALLER_SHA256 -FreezeSha256 $env:FREEZE_SHA256 `
+            -SignerThumbprint $env:SIGNER_THUMBPRINT `
+            -ArtifactRoot (Join-Path $env:RUNNER_TEMP 'selfsigned-candidate')
+      - name: Install exact test dependencies
+        shell: pwsh
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw 'Root lockfile install failed.' }
+          npm --prefix renderer ci
+          if ($LASTEXITCODE -ne 0) { throw 'Renderer lockfile install failed.' }
+      - name: Run signed candidate Fresh acceptance
+        shell: pwsh
+        env:
+          MATH3D_RELEASE20_SAGE_SERVICE_URL: ${{ secrets.MATH3D_RELEASE20_SAGE_SERVICE_URL }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          INSTALLER_SHA256: ${{ inputs.installer_sha256 }}
+          SIGNER_THUMBPRINT: ${{ inputs.signer_thumbprint }}
+        run: |
+          $evidence = Join-Path $env:TEMP 'math3d-selfsigned-fresh'
+          ./scripts/release20-selfsigned-installed.ps1 -Mode Fresh `
+            -ArtifactRoot (Join-Path $env:RUNNER_TEMP 'selfsigned-candidate') -EvidenceRoot $evidence `
+            -SourceCommit $env:SOURCE_COMMIT -InstallerSha256 $env:INSTALLER_SHA256 `
+            -SignerThumbprint $env:SIGNER_THUMBPRINT
+          $receipt = Get-Content -LiteralPath (Join-Path $evidence 'fresh-receipt.json') -Raw | ConvertFrom-Json
+          if ($receipt.status -ne 'passed' -or $receipt.installedJourneysQualified -ne $true) {
+            throw 'Fresh installed acceptance is incomplete; inspect the uploaded receipt.'
+          }
+      - name: Collect Fresh evidence
+        if: always()
+        shell: pwsh
+        run: |
+          $output = Join-Path $env:RUNNER_TEMP 'selfsigned-fresh-evidence'
+          New-Item -ItemType Directory -Path $output -Force | Out-Null
+          $stage = Join-Path $env:RUNNER_TEMP 'selfsigned-candidate/stage-receipt.json'
+          if (Test-Path -LiteralPath $stage) { Copy-Item -LiteralPath $stage -Destination $output }
+          $evidence = Join-Path $env:TEMP 'math3d-selfsigned-fresh'
+          if (Test-Path -LiteralPath $evidence) { Copy-Item -Path (Join-Path $evidence '*') -Destination $output -Recurse }
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: release20-selfsigned-fresh-evidence
+          path: |
+            ${{ runner.temp }}/selfsigned-fresh-evidence/**
+            test-results/playwright/**/trace.zip
+          if-no-files-found: warn
+
+  selfsigned-upgrade:
+    if: inputs.trial == 'signed-20'
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Download and attest exact unpublished signed assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ inputs.draft_release_id }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          INSTALLER_SHA256: ${{ inputs.installer_sha256 }}
+          FREEZE_SHA256: ${{ inputs.freeze_sha256 }}
+          SIGNER_THUMBPRINT: ${{ inputs.signer_thumbprint }}
+        run: |
+          $checkoutSha = (& git rev-parse HEAD).Trim()
+          if ($checkoutSha -ne $env:SOURCE_COMMIT) { throw 'Workflow checkout differs from approved installer source.' }
+          ./scripts/stage-release20-selfsigned-draft.ps1 `
+            -ReleaseId $env:RELEASE_ID -SourceCommit $env:SOURCE_COMMIT `
+            -InstallerSha256 $env:INSTALLER_SHA256 -FreezeSha256 $env:FREEZE_SHA256 `
+            -SignerThumbprint $env:SIGNER_THUMBPRINT `
+            -ArtifactRoot (Join-Path $env:RUNNER_TEMP 'selfsigned-candidate')
+      - name: Install exact test dependencies and published 1.7 assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw 'Root lockfile install failed.' }
+          npm --prefix renderer ci
+          if ($LASTEXITCODE -ne 0) { throw 'Renderer lockfile install failed.' }
+          $old = Join-Path $env:RUNNER_TEMP 'published-1.7'
+          New-Item -ItemType Directory -Path $old | Out-Null
+          gh release download v1.7.0 --repo expert10000/Math3D `
+            --pattern Math3D-Setup-1.7.0.exe --pattern candidate-manifest.json `
+            --pattern SHA256SUMS.txt --dir $old
+          if ($LASTEXITCODE -ne 0) { throw 'Published 1.7 asset download failed.' }
+      - name: Run signed candidate Upgrade and rollback acceptance
+        shell: pwsh
+        env:
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          INSTALLER_SHA256: ${{ inputs.installer_sha256 }}
+          SIGNER_THUMBPRINT: ${{ inputs.signer_thumbprint }}
+        run: |
+          $evidence = Join-Path $env:TEMP 'math3d-selfsigned-upgrade'
+          ./scripts/release20-selfsigned-installed.ps1 -Mode Upgrade `
+            -ArtifactRoot (Join-Path $env:RUNNER_TEMP 'selfsigned-candidate') `
+            -OldInstaller (Join-Path $env:RUNNER_TEMP 'published-1.7/Math3D-Setup-1.7.0.exe') `
+            -EvidenceRoot $evidence -SourceCommit $env:SOURCE_COMMIT `
+            -InstallerSha256 $env:INSTALLER_SHA256 -SignerThumbprint $env:SIGNER_THUMBPRINT
+          $receipt = Get-Content -LiteralPath (Join-Path $evidence 'upgrade-receipt.json') -Raw | ConvertFrom-Json
+          if ($receipt.status -ne 'passed' -or $receipt.checks.published17Rollback -ne 'passed') {
+            throw 'Upgrade and rollback acceptance is incomplete; inspect the uploaded receipt.'
+          }
+      - name: Collect Upgrade evidence
+        if: always()
+        shell: pwsh
+        run: |
+          $output = Join-Path $env:RUNNER_TEMP 'selfsigned-upgrade-evidence'
+          New-Item -ItemType Directory -Path $output -Force | Out-Null
+          $stage = Join-Path $env:RUNNER_TEMP 'selfsigned-candidate/stage-receipt.json'
+          if (Test-Path -LiteralPath $stage) { Copy-Item -LiteralPath $stage -Destination $output }
+          $evidence = Join-Path $env:TEMP 'math3d-selfsigned-upgrade'
+          if (Test-Path -LiteralPath $evidence) { Copy-Item -Path (Join-Path $evidence '*') -Destination $output -Recurse }
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: release20-selfsigned-upgrade-evidence
+          path: ${{ runner.temp }}/selfsigned-upgrade-evidence/**
+          if-no-files-found: warn
