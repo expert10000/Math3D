@@ -2,8 +2,7 @@ param(
   [Parameter(Mandatory = $true)][ValidateSet('Fresh', 'Upgrade')][string]$Mode,
   [Parameter(Mandatory = $true)][string]$ArtifactRoot,
   [Parameter(Mandatory = $true)][string]$EvidenceRoot,
-  [string]$OldInstaller = '',
-  [string]$SageServiceUrl = ''
+  [string]$OldInstaller = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -12,6 +11,7 @@ $sourceCommit = '300493c92c42a1f3b611bf09fef0d70f529a333e'
 $installerHash = '3c749ca2a75f173536e4a94df0a4afe0bcb1d9c07c269c2b343f694e24654396'
 $oldHash = 'eacffc903e988a15636f556b36d12621b9918f4cec69e5c8b19e7daa512222db'
 $thumbprint = '38F403CE0B42720EE5AFD61422D6A2C22EB733D9'
+$sageServiceUrl = [Environment]::GetEnvironmentVariable('MATH3D_RELEASE20_SAGE_SERVICE_URL', 'Process')
 $artifactRoot = (Resolve-Path -LiteralPath $ArtifactRoot).Path
 $evidenceRoot = [IO.Path]::GetFullPath($EvidenceRoot)
 $temp = [IO.Path]::GetFullPath($env:TEMP).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
@@ -163,7 +163,7 @@ try {
       }
       $receipt.checks[$phase] = 'passed'; Save-Receipt
     }
-    if ($SageServiceUrl) {
+    if ($sageServiceUrl) {
       $previousSageUrl = [Environment]::GetEnvironmentVariable('MATH3D_RELEASE20_SAGE_SERVICE_URL', 'Process')
       $previousReport = [Environment]::GetEnvironmentVariable('MATH3D_RELEASE20_JOURNEY_REPORT', 'Process')
       $previousApp = [Environment]::GetEnvironmentVariable('MATH3D_PACKAGED_APP_EXE', 'Process')
@@ -172,7 +172,7 @@ try {
       $report = Join-Path $evidenceRoot 'four-journeys-playwright.json'
       $journeys = Join-Path $evidenceRoot 'four-journeys.json'
       try {
-        $env:MATH3D_RELEASE20_SAGE_SERVICE_URL = $SageServiceUrl
+        $env:MATH3D_RELEASE20_SAGE_SERVICE_URL = $sageServiceUrl
         $env:MATH3D_RELEASE20_JOURNEY_REPORT = $report
         $env:MATH3D_PACKAGED_APP_EXE = $installed.app
         $env:MATH3D_RELEASE20_EXPECTED_VERSION = '2.0.0'
@@ -252,7 +252,7 @@ try {
     if ($LASTEXITCODE -ne 0 -or $backupAfter.digest -ne $inventory.digest) { throw 'Pristine 1.7 profile backup changed.' }
     $receipt.checks.published17Rollback = 'passed'
   }
-  $receipt.status = if ($Mode -eq 'Fresh' -and -not $SageServiceUrl) { 'partial' } else { 'passed' }
+  $receipt.status = if ($Mode -eq 'Fresh' -and -not $sageServiceUrl) { 'partial' } else { 'passed' }
 } catch {
   $receipt.status = 'failed'; $receipt.failure = $_.Exception.Message
   throw
