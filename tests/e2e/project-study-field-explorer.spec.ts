@@ -72,8 +72,10 @@ test("an unavailable scientific Field Study source blocks Project activation", a
       name: "missing-field-bundle.math3d.project.json", mimeType: "application/json",
       buffer: Buffer.from(core.serializeMath3DProject(studied)) });
     await projects.getByTestId("project-import-open").click();
-    await expect(projects.getByTestId("project-message")).toContainText("Project import failed:");
-    await expect(projects.locator(".project-gallery-preview-backdrop")).toBeVisible();
+    await expect(projects.getByTestId("project-message")).toContainText("Project scientific field unavailable:");
+    await expect(projects.getByTestId("project-message")).toContainText("no scientific values were activated");
+    await expect(projects.getByTestId("project-view-mode")).toContainText("Saved project preview");
+    await expect(projects.getByTestId("project-source-verification-warning")).toContainText("Saved metadata only");
     await expect(projects.getByTestId("project-study-field-slice")).toHaveCount(0);
   } finally { await closeSurfaceApp(app); }
 });
