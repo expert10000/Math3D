@@ -2,7 +2,8 @@ param(
   [Parameter(Mandatory = $true)][ValidateSet('Fresh', 'Upgrade')][string]$Mode,
   [Parameter(Mandatory = $true)][string]$ArtifactRoot,
   [Parameter(Mandatory = $true)][string]$EvidenceRoot,
-  [string]$OldInstaller = ''
+  [string]$OldInstaller = '',
+  [ValidatePattern('^[a-f0-9]{40}$')][string]$HarnessCommit = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -48,12 +49,21 @@ if ($nsis.installerSha256 -ne $installerHash) { throw 'Embedded NSIS verificatio
 if (-not (Test-Path -LiteralPath (Join-Path $repo 'node_modules/.bin/playwright.cmd'))) {
   throw 'Install exact test dependencies with npm ci in this checkout before the VM run.'
 }
-$harnessCommit = (& git -C $repo rev-parse HEAD).Trim()
-& git -C $repo merge-base --is-ancestor $sourceCommit HEAD
-if ($LASTEXITCODE -ne 0) { throw 'Harness checkout does not descend from the exact candidate source.' }
+$harnessScriptSha256 = (Get-FileHash -LiteralPath $PSCommandPath -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($HarnessCommit) {
+  $harnessCommit = $HarnessCommit
+  $ancestryCheck = 'reviewed PR ancestry; Git metadata unavailable in VM'
+} else {
+  $harnessCommit = (& git -C $repo rev-parse HEAD).Trim()
+  if ($LASTEXITCODE -ne 0 -or $harnessCommit -notmatch '^[a-f0-9]{40}$') { throw 'Cannot identify the harness commit.' }
+  & git -C $repo merge-base --is-ancestor $sourceCommit HEAD
+  if ($LASTEXITCODE -ne 0) { throw 'Harness checkout does not descend from the exact candidate source.' }
+  $ancestryCheck = 'passed'
+}
 $receipt = [ordered]@{
   schema = 'math3d/release20-selfsigned-installed/v1'; status = 'started'; mode = $Mode
-  sourceCommit = $sourceCommit; harnessCommit = $harnessCommit; installerSha256 = $installerHash
+  sourceCommit = $sourceCommit; harnessCommit = $harnessCommit; harnessScriptSha256 = $harnessScriptSha256
+  ancestryCheck = $ancestryCheck; installerSha256 = $installerHash
   signerThumbprint = $thumbprint; trust = 'self-signed-untrusted-by-default'; publiclyTrustedPublisher = $false
   signedPrereleaseOnly = $true; gaApproved = $false; installedJourneysQualified = $false
   liveSageJourneys = [ordered]@{ status = 'blocked'; reason = 'No stable reachable SageMath 10.10 service endpoint was supplied for the four advertised live journeys.' }
