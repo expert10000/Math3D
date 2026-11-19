@@ -2,16 +2,31 @@ name: Check live Sage endpoint from Windows
 
 on:
   workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Full reviewed source commit served by the Sage CI host
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 jobs:
   windows_sage:
+    if: github.ref == 'refs/heads/main'
     runs-on: windows-2022
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Require exact candidate source commit
+        shell: pwsh
+        env:
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          if ($env:SOURCE_COMMIT -notmatch '^[0-9a-f]{40}$') { throw 'A full source commit is required.' }
       - uses: actions/setup-node@v7
         with:
           node-version: '24'
@@ -19,6 +34,7 @@ jobs:
         shell: pwsh
         env:
           MATH3D_RELEASE20_SAGE_SERVICE_URL: ${{ secrets.MATH3D_RELEASE20_SAGE_SERVICE_URL }}
+          MATH3D_RELEASE20_SAGE_EXPECTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
         run: |
           node scripts/release20-sage-oracle.mjs (Join-Path $env:RUNNER_TEMP 'sage-oracle.json')
           if ($LASTEXITCODE -ne 0) { throw 'Windows runner cannot qualify the live Sage route.' }

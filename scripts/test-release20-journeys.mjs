@@ -16,7 +16,7 @@ try {
       status: 'expected', results: [{ status: 'passed' }] }] }],
   })) };
   const sage = { schema: 'math3d/release20-sage-oracle/v1', status: 'passed',
-    engine: 'sagemath', engineVersion: '10.10' };
+    engine: 'sagemath', engineVersion: '10.10', sourceCommit: commit };
   const save = () => { writeFileSync(reportPath, JSON.stringify(report)); writeFileSync(sagePath, JSON.stringify(sage)); };
   const run = (args = []) => spawnSync(process.execPath, ['scripts/check-release20-journeys.mjs',
     reportPath, sagePath, commit, hash, output, ...args], { encoding: 'utf8' });
@@ -28,6 +28,8 @@ try {
   assert.equal(dev.schema, 'math3d/release20-unsigned-installed-rehearsal/v1');
   assert.equal(dev.installedExecutableSha256, installedHash);
   assert.equal(run(['--dev', 'invalid']).status, 1);
+  sage.sourceCommit = 'd'.repeat(40); save(); assert.equal(run().status, 1);
+  sage.sourceCommit = commit;
   report.suites[4].specs[0].tests[0].results[0].status = 'skipped';
   save(); assert.equal(run().status, 1);
   assert.equal(JSON.parse(readFileSync(output, 'utf8')).journeys.field, 'failed');

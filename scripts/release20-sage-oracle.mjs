@@ -24,6 +24,10 @@ if (health.engine !== 'sagemath' || health.available !== true ||
   !/^10\.10(?:\.|$)/.test(health.engineVersion ?? '') ||
   !health.operations?.includes('sage.symbolic.singularities'))
   throw new Error('Sage service is not the supported live SageMath 10.10 singularity route.');
+const expectedSourceCommit = process.env.MATH3D_RELEASE20_SAGE_EXPECTED_SOURCE_COMMIT;
+if (expectedSourceCommit && (!/^[0-9a-f]{40}$/.test(expectedSourceCommit) ||
+  health.math3dSourceCommit !== expectedSourceCommit))
+  throw new Error('Sage service source commit does not match the installed candidate.');
 const run = async (label, equations) => {
   const response = await json('/run', { operation: 'sage.symbolic.singularities', backend: 'docker',
     jobId: `release20-${label}-${Date.now()}`, params: { equations, variables: ['x', 'y', 'z'] } });
@@ -51,6 +55,7 @@ if (JSON.stringify(cusp.points) !== JSON.stringify([{ x: '0', y: '0', z: '0' }])
   JSON.stringify(polynomialSmooth.points) !== '[]') throw new Error('Live Sage cusp/smooth oracle differs.');
 const receipt = { schema: 'math3d/release20-sage-oracle/v1', status: 'passed',
   engine: health.engine, engineVersion: health.engineVersion, operation: 'sage.symbolic.singularities',
+  ...(health.math3dSourceCommit ? { sourceCommit: health.math3dSourceCommit } : {}),
   cuspPoints: cusp.points, smoothPoints: smooth.points,
   polynomialCuspPoints: polynomialCusp.points, polynomialSmoothPoints: polynomialSmooth.points };
 mkdirSync(dirname(resolve(outputPath)), { recursive: true });
