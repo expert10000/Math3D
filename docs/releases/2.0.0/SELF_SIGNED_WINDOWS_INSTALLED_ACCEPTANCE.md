@@ -15,7 +15,7 @@ The candidate package, `prerelease-manifest.json`, `freeze-manifest.json`, and p
 
 ## Run on two clean Windows snapshots
 
-Use two separate fresh Windows 10/11 VMs or disposable Windows runners, one for `Fresh` and one for `Upgrade`. Each must begin without a Math3D entry in `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall`; the runner refuses any existing entry before starting an installer. Do not run it on the local host, which has stable Math3D 1.4.9 registered. Use a dedicated VM user profile and a new evidence directory below that VM's `%TEMP%` for each mode.
+Use two separate fresh Windows 10/11 VMs or disposable Windows runners, one for `Fresh` and one for `Upgrade`. Each must begin without a Math3D uninstall entry in HKCU or either HKLM uninstall view; the runner refuses any existing entry before starting an installer. Do not run it on the local host, which has stable Math3D 1.4.9 registered. Use a dedicated VM user profile and a new evidence directory below that VM's `%TEMP%` for each mode.
 
 Install PowerShell 7, Node 24 and 7-Zip in the VM, clone this review branch, and run `npm ci` in the checkout. Stage the exact candidate package and public manifests in one VM folder. Stage the exact published 1.7 installer together with its release `candidate-manifest.json` and `SHA256SUMS.txt` in another folder for `Upgrade`. Run these commands in `pwsh`:
 
@@ -40,4 +40,4 @@ The four advertised installed Sage journeys require a stable reachable SageMath 
 
 ## Current execution evidence
 
-The local 2.0 installer SHA-256 equals the pinned value, and its prerelease manifest names the same source commit and signer. The local host's HKCU uninstall entry is Math3D 1.4.9. A Windows Sandbox probe on this host launched `WindowsSandbox.exe` but exited without creating its mapped-folder marker; querying the optional feature state required elevation. No installed result is inferred from that probe. Until a clean VM supplies `fresh-receipt.json` and `upgrade-receipt.json`, installed acceptance remains pending.
+The local 2.0 installer SHA-256 equals the pinned value, and its prerelease manifest names the same source commit and signer. The local host's HKCU uninstall entry is Math3D 1.4.9. Windows reports the Sandbox optional feature installed, but a mapped-folder probe launched `WindowsSandbox.exe` without producing its marker. Existing Sandbox processes and a concurrent Computer Use request prevented verifying that the probe reached a clean VM desktop. No installed result is inferred from that probe. Until two clean VM snapshots supply `fresh-receipt.json` and `upgrade-receipt.json`, installed acceptance remains pending.

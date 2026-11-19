@@ -19,10 +19,17 @@ if ($env:OS -ne 'Windows_NT' -or $evidenceRoot.StartsWith($temp, [StringComparis
   throw 'Run in a clean Windows VM with a new EvidenceRoot below TEMP.'
 }
 if (Test-Path -LiteralPath $evidenceRoot) { throw 'EvidenceRoot must be new.' }
-$registered = @(Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' -ErrorAction SilentlyContinue |
-  ForEach-Object { Get-ItemProperty -LiteralPath $_.PSPath -ErrorAction SilentlyContinue } |
-  Where-Object { $_.DisplayName -eq 'Math3D' })
-if ($registered.Count) { throw 'Math3D is registered in HKCU; use a clean VM or runner.' }
+$uninstallRoots = @(
+  'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
+  'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
+  'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
+)
+$registered = @(foreach ($root in $uninstallRoots) {
+  Get-ChildItem -LiteralPath $root -ErrorAction SilentlyContinue |
+    ForEach-Object { Get-ItemProperty -LiteralPath $_.PSPath -ErrorAction SilentlyContinue } |
+    Where-Object { $_.DisplayName -eq 'Math3D' }
+})
+if ($registered.Count) { throw 'Math3D is registered in an HKCU or HKLM uninstall hive; use a clean VM or runner.' }
 $installer = Join-Path $artifactRoot 'Math3D-Setup-2.0.0-selfsigned-prerelease.exe'
 $manifestPath = Join-Path $artifactRoot 'prerelease-manifest.json'
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
