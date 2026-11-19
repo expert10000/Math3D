@@ -5,6 +5,8 @@
 
 The items are ranked by release risk and dependencies. Estimates are **engineering days for one person**; they exclude certificate procurement and CI queues. The reference-host and installed memory portions of #2–3, #10 and #14 are [deferred to 2.5 or later](../2.5.0/MEMORY_QUALIFICATION.md) by the 2026-11-19 release decision; their measurements remain open and must not be claimed as 2.0 passes. Web, Android, and Linux work can proceed alongside Windows work. Mark an item closed only after its required evidence identifies the reviewed source commit and, where relevant, the exact artifact hash and host.
 
+The 2–3 day target is a prerelease target while the signing certificate and reachable Sage service are unavailable. A signed Windows GA remains conditional on a trusted signer, a qualified live Sage route, and all exact-candidate nonmemory gates. The memory deferral must be explicit in any RC2 rehearsal and final GA sign-off.
+
 | # | Priority | Closure item and proof | Estimate | Status |
 | --- | --- | --- | --- | --- |
 | 1 | P0 | Freeze the advertised 2.0 journeys and host claims. Give every open defect a blocking, limited, or deferred disposition in the [release scope](RELEASE_SCOPE.md). | 2–3 d | [Defect and host dispositions](DEFECT_DISPOSITION.md) reconciled against `6c3d2012`; re-review at exact RC1 freeze pending |

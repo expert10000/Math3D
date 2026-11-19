@@ -33,6 +33,19 @@ assert.throws(() => assertRelease20RehearsalIdentities({ ...inputs,
   upgrade: { ...inputs.upgrade, candidateInstallerSha256: 'f'.repeat(64) } }), /Upgrade evidence/);
 assert.throws(() => assertRelease20RehearsalIdentities({ ...inputs,
   soak: { ...inputs.soak, elapsedMs: 7_199_999 } }), /requested duration/);
+const deferred = { schema: 'math3d/release20-memory-deferral/v1', status: 'deferred',
+  releaseVersion: '2.0.0', earliestVersion: '2.5.0', sourceCommit: commit, freezeManifestSha256,
+  unpassedChecks: ['800-switch', 'two-hour-source-memory', 'installed-memory'],
+  knownLimitation: 'Long-running mixed Mesh and Volume use has not passed the memory budget.',
+  failedEvidence: ['docs/releases/2.0.0/evidence/m3d20-long-memory-review-v2-79325f2d.json'] };
+assert.deepEqual(assertRelease20RehearsalIdentities({ ...inputs, soak: deferred }).memoryGate,
+  { status: 'deferred', earliestVersion: '2.5.0', knownLimitation: deferred.knownLimitation });
+assert.throws(() => assertRelease20RehearsalIdentities({ ...inputs,
+  soak: { ...deferred, earliestVersion: '2.0.0' } }), /memory deferral/);
+assert.throws(() => assertRelease20RehearsalIdentities({ ...inputs,
+  soak: { ...deferred, knownLimitation: 'Memory passed' } }), /memory deferral/);
+assert.throws(() => assertRelease20RehearsalIdentities({ ...inputs,
+  soak: { ...deferred, sourceCommit: 'f'.repeat(40) } }), /freeze identity/);
 assert.throws(() => assertRelease20RehearsalIdentities({ ...inputs,
   assets: { ...inputs.assets, installerSha256: 'f'.repeat(64) } }), /asset integrity/);
 const plan = spawnSync(process.execPath, ['scripts/verify-release20-rc2-rehearsal.mjs', '--plan'], { encoding: 'utf8' });
@@ -57,4 +70,4 @@ try {
   await writeFile(join(siteDir, 'index.html'), '<a href="/releases">Download</a>');
   await assert.rejects(verifyRelease20SiteBundle({ siteDir, galleryDir }), /exact 2.0 installer download link/);
 } finally { await rm(root, { recursive: true, force: true }); }
-console.log('RC2 rehearsal rejects mixed candidate receipts, short soaks, altered staged images, and missing download links.');
+console.log('RC2 rehearsal requires an exact soak or memory deferral and rejects mixed candidate receipts, altered staged images, and missing download links.');

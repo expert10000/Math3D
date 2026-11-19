@@ -13,6 +13,8 @@ const insist = (condition, message) => { if (!condition) throw new Error(message
 const requiredFresh = ['exactBytes', 'signature', 'cleanInstall', 'installedResources', 'workerWithoutPython', 'firstUseStudy', 'fourJourneys'];
 const requiredUpgrade = ['exactBytes', 'signature', 'oldInstall', 'seed', 'profileBackup', 'inPlaceUpgrade', 'retainedBytesAndSetting'];
 const releaseUrl = 'https://github.com/expert10000/Math3D/releases/download/v2.0.0/Math3D-Setup-2.0.0.exe';
+const memoryLimitation = 'Long-running mixed Mesh and Volume use has not passed the memory budget.';
+const failedMemoryReview = 'docs/releases/2.0.0/evidence/m3d20-long-memory-review-v2-79325f2d.json';
 
 export function assertRelease20RehearsalIdentities({ candidate, freeze, freezeManifestSha256, fresh, upgrade, soak, assets, gallery, sourceCommit }) {
   const app = candidate.math3d;
@@ -42,20 +44,33 @@ export function assertRelease20RehearsalIdentities({ candidate, freeze, freezeMa
     upgrade.checkpointSha256 === upgrade.checkpointSha256?.toLowerCase() &&
     /^[0-9a-f]{64}$/.test(upgrade.checkpointSha256 ?? ''),
   'Upgrade evidence is incomplete or has a different candidate.');
-  insist(soak.schema === 'math3d/release20-rc2-source-soak/v1' && soak.status === 'passed' &&
-    soak.sourceCommit === sourceCommit && soak.freezeManifestSha256 === freezeManifestSha256,
-  'RC2 soak evidence does not match the freeze identity.');
-  const expectedCycleIds = ['project-contracts', 'scientific-results', 'quantum-baseline', 'first-use-study'];
-  insist(soak.requestedMinutes >= 120 && soak.elapsedMs >= soak.requestedMinutes * 60_000 &&
-    Array.isArray(soak.cycles) && soak.cycles.length > 0 && soak.cycles.every(cycle =>
-      cycle.finishedAtUtc && cycle.checks?.length === expectedCycleIds.length &&
-      cycle.checks.every((check, index) => check.id === expectedCycleIds[index] && check.status === 'passed')),
-  'RC2 soak did not complete its requested duration and every cycle.');
+  insist(soak.sourceCommit === sourceCommit && soak.freezeManifestSha256 === freezeManifestSha256,
+    'RC2 memory disposition does not match the freeze identity.');
+  let memoryGate;
+  if (soak.schema === 'math3d/release20-rc2-source-soak/v1') {
+    insist(soak.status === 'passed', 'RC2 source soak did not pass.');
+    const expectedCycleIds = ['project-contracts', 'scientific-results', 'quantum-baseline', 'first-use-study'];
+    insist(soak.requestedMinutes >= 120 && soak.elapsedMs >= soak.requestedMinutes * 60_000 &&
+      Array.isArray(soak.cycles) && soak.cycles.length > 0 && soak.cycles.every(cycle =>
+        cycle.finishedAtUtc && cycle.checks?.length === expectedCycleIds.length &&
+        cycle.checks.every((check, index) => check.id === expectedCycleIds[index] && check.status === 'passed')),
+    'RC2 soak did not complete its requested duration and every cycle.');
+    memoryGate = { status: 'passed' };
+  } else {
+    insist(soak.schema === 'math3d/release20-memory-deferral/v1' && soak.status === 'deferred' &&
+      soak.releaseVersion === '2.0.0' && soak.earliestVersion === '2.5.0' &&
+      JSON.stringify(soak.unpassedChecks) === JSON.stringify(['800-switch', 'two-hour-source-memory', 'installed-memory']) &&
+      soak.knownLimitation === memoryLimitation &&
+      Array.isArray(soak.failedEvidence) && soak.failedEvidence.includes(failedMemoryReview) &&
+      soak.failedEvidence.every(item => typeof item === 'string' && item.trim().length > 0),
+    'RC2 memory deferral is incomplete or changes the 2.0 scope decision.');
+    memoryGate = { status: 'deferred', earliestVersion: soak.earliestVersion, knownLimitation: soak.knownLimitation };
+  }
   insist(gallery.version === '2.0.0' && gallery.sourceCommit === sourceCommit &&
     gallery.installerSha256 === app.installerSha256 &&
     ['algebra', 'quantum', 'surface'].every(scenario => gallery.scenarios.includes(scenario)),
   'Gallery evidence differs from the exact candidate.');
-  return { sourceCommit, installerSha256: app.installerSha256, releaseUrl };
+  return { sourceCommit, installerSha256: app.installerSha256, releaseUrl, memoryGate };
 }
 
 export async function verifyRelease20SiteBundle({ siteDir, galleryDir }) {
@@ -80,11 +95,11 @@ async function main() {
   const [mode, candidatePath, freezePath, freshPath, upgradePath, soakPath, galleryDir, siteDir, reportPath] = process.argv.slice(2);
   if (mode === '--plan') {
     console.log(JSON.stringify({ releaseUrl, requiredFresh, requiredUpgrade,
-      inputs: ['candidate', 'freeze', 'fresh install', 'upgrade', 'two-hour soak', 'gallery', 'built site', 'release-assets'] }, null, 2));
+      inputs: ['candidate', 'freeze', 'fresh install', 'upgrade', 'two-hour soak or explicit memory deferral', 'gallery', 'built site', 'release-assets'] }, null, 2));
     return;
   }
   if (mode !== '--run' || ![candidatePath, freezePath, freshPath, upgradePath, soakPath, galleryDir, siteDir, reportPath].every(Boolean))
-    throw new Error('Usage: node scripts/verify-release20-rc2-rehearsal.mjs --plan | --run <candidate> <freeze> <fresh> <upgrade> <soak> <gallery-dir> <site-dir> <report-json>');
+    throw new Error('Usage: node scripts/verify-release20-rc2-rehearsal.mjs --plan | --run <candidate> <freeze> <fresh> <upgrade> <soak-or-memory-deferral> <gallery-dir> <site-dir> <report-json>');
   const root = process.cwd(), sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
   const freezeBytes = await readFile(resolve(freezePath));
   await verifyRelease20Freeze({ root, manifestPath: resolve(freezePath), expectedCommit: sourceCommit });
@@ -105,7 +120,7 @@ async function main() {
     checkedAtUtc: new Date().toISOString(),
     sourceCommit, installerSha256: result.installerSha256, freezeManifestSha256: sha(freezeBytes),
     assetCount: assets.assetCount, unpackedFileCount: assets.unpackedFileCount,
-    galleryCaptures: site.galleryCaptures, stagedDownloadUrl: site.releaseUrl,
+    galleryCaptures: site.galleryCaptures, stagedDownloadUrl: site.releaseUrl, memoryGate: result.memoryGate,
     evidenceSha256: Object.fromEntries(await Promise.all([
       ['candidate', candidatePath], ['freshInstall', freshPath], ['upgrade', upgradePath], ['soak', soakPath],
       ['assetChecksums', join(root, 'release-assets/SHA256SUMS.txt')], ['galleryManifest', join(galleryDir, 'manifest.json')],

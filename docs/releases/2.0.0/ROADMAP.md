@@ -13,6 +13,8 @@
 
 **Memory release disposition (2026-11-19):** The unresolved reference-workstation mixed-route plateau and installed-candidate memory qualification are deferred to [the 2.5-or-later memory track](../2.5.0/MEMORY_QUALIFICATION.md) under the revised 2.0 release scope. The existing 32 MiB renderer retention budget and failed local receipt remain recorded below; the passing hosted Windows source run qualifies only its hosted runner. Do not describe 2.0 as having passed the local or installed memory gates. Earlier checklist and gate language below documents the original 2.0 target and must be read with this disposition.
 
+RC2 now requires a passed source soak or an explicit same-freeze memory deferral receipt; GA sign-off must disclose any deferral. The 2–3 day target is a prerelease target while trusted Windows signing and a reachable live Sage route remain unavailable. Signed GA still requires those inputs and the nonmemory exact-candidate gates.
+
 **UI ownership, 2026-11-15:** The [UI work queue](../../ui/2.0/DRAFT_STATE.md) is the detailed claim and evidence record. The current open slices are:
 
 | Tasks | Owner / review | Current boundary |
