@@ -1,5 +1,6 @@
 import { createSurfaceDocument, instantiateMath3DProjectTemplate, serializeMath3DProject, structuralHash } from "@math3d/core";
-import { importMobileProjectPreview } from "../models/mobileProjectPreview";
+import { importMobileProjectPreview, readMobilePreviewProject } from "../models/mobileProjectPreview";
+import { serializeMobileProjectHandoff } from "../models/mobileProjectTransfer";
 import { canonicalJsonStringify, captureProjectResources, createMath3DProject, createMixedWorkspaceDocument,
   exportProjectPackage, getGraph2DPresetCatalog, Graph2DPointTableStore, instantiateGraph2DPreset } from "@math3d/core";
 import { MobileProjectGraphSessions } from "../models/mobileProjectGraphSessions";
@@ -98,6 +99,15 @@ export const prepareMobileStorageRecoveryCheck = () => exclusive(async () => {
   await check(report, "first-save-backup", async () => {
     reset(); const storage = store(); await storage.save(projects); same((await storage.load()).projects, projects);
     same(JSON.parse(await backup().text()).projects, projects);
+  });
+  await check(report, "edited-project-package-round-trip", async () => {
+    const saved = (await store().load()).projects.find(project => project.title === "Recovery mixed resources");
+    assert(saved?.projectType === "project-preview" && saved.projectResources?.length, "Edited Project package fixture was not saved.");
+    const exported = serializeMobileProjectHandoff(saved!);
+    const imported = importMobileProjectPreview(exported, [], "reimported-project.json", "shared", 3);
+    same(readMobilePreviewProject(imported), readMobilePreviewProject(saved!));
+    same(imported.projectResources, saved!.projectResources);
+    same(serializeMobileProjectHandoff(imported), exported);
   });
   for (const damage of ["truncated", "missing", "blank"] as const) {
     await check(report, `${damage}-primary-repair`, async () => {

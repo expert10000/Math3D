@@ -1,5 +1,7 @@
 # M3D20-17c — source reliability soak
 
+**2.0 scope update, 2026-11-19:** The two-hour source memory plateau is deferred to 2.5.0 or later. This runner and its budgets remain valid diagnostic and future acceptance tools. A 2.0 RC2 rehearsal can use an explicit memory deferral receipt in place of a passed soak, but that receipt does not pass the soak's Project, scientific, or recovery checks. Preserve their separate exact-commit evidence and disclose the memory limitation in GA sign-off and release notes. See [release scope](RELEASE_SCOPE.md) and [RC2 rehearsal](RC2_REHEARSAL_GATE.md).
+
 The source manifests now identify 2.0.0, but no two-hour 2.0 soak has passed. Use `node scripts/release20-rc2-soak.mjs --plan` to see the checks. On the reviewed, clean 2.0 checkout, run:
 
 ```text

@@ -11,7 +11,7 @@ New-Item -ItemType Directory -Path $scratch | Out-Null
 try {
   $rows = & $sevenZip l -slt $installer
   if ($LASTEXITCODE -ne 0) { throw '7-Zip could not list candidate installer components.' }
-  $matches = @($rows | ForEach-Object { if ($_ -match '^Path = (.+[\/])?System\.dll$') { $Matches[0].Substring(7) } })
+  $matches = @($rows | ForEach-Object { if ($_ -match '^Path = (.+[\\/])?System\.dll$') { $Matches[0].Substring(7) } })
   if ($matches.Count -ne 1) { throw "Expected one installer System.dll; found $($matches.Count)." }
   & $sevenZip e -y "-o$scratch" $installer $matches[0] | Out-Null
   if ($LASTEXITCODE -ne 0) { throw '7-Zip could not extract installer System.dll.' }

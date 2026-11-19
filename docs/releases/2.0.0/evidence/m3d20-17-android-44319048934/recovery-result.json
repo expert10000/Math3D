@@ -1,0 +1,14 @@
+{
+  "ok": true,
+  "serial": "emulator-5554",
+  "model": "sdk_gphone64_x86_64",
+  "androidApi": "36",
+  "sourceCommit": "ea606f243291aca2787a2f1f93ca34889ab12055",
+  "apkSha256": "e43ea89e314d9e93c06c5b44441d591817714e0490f1269b38f805ecd99f45f2",
+  "checks": [
+    "PASS: 11/11 recovery checks; library unchanged. Close and restart the app, then verify recovery.",
+    "PASS: 12/12 recovery checks; library unchanged. Restart recovery verified."
+  ],
+  "startedAt": "2026-11-18T14:12:32.123Z",
+  "finishedAt": "2026-11-18T14:13:13.007Z"
+}

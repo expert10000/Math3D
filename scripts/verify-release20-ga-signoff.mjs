@@ -21,6 +21,10 @@ export function assertRelease20GaSignoff({ signoff, candidate, rc2, notes, sourc
     rc2.galleryCaptures >= 3 && rc2.assetCount >= 6 && rc2.unpackedFileCount > 0 &&
     rc2.stagedDownloadUrl === 'https://github.com/expert10000/Math3D/releases/download/v2.0.0/Math3D-Setup-2.0.0.exe',
   'RC2 rehearsal does not identify the same exact candidate.');
+  insist(rc2.memoryGate?.status === 'passed' ||
+    (rc2.memoryGate?.status === 'deferred' && rc2.memoryGate.earliestVersion === '2.5.0' &&
+      typeof rc2.memoryGate.knownLimitation === 'string' && rc2.memoryGate.knownLimitation.trim().length > 0),
+  'RC2 report has no valid memory disposition.');
   insist(signoff.schema === 'math3d/release20-ga-signoff/v1' && signoff.status === 'approved' &&
     signoff.tag === 'v2.0.0' && signoff.sourceCommit === sourceCommit &&
     signoff.installerSha256 === app.installerSha256 &&
@@ -34,6 +38,10 @@ export function assertRelease20GaSignoff({ signoff, candidate, rc2, notes, sourc
     typeof signoff.reviewer === 'string' && signoff.reviewer.trim().length > 0 &&
     !Number.isNaN(Date.parse(signoff.reviewedAtUtc)),
   'GA sign-off is missing review, has blockers, or differs from the candidate and RC2 evidence.');
+  insist(rc2.memoryGate.status !== 'deferred' ||
+    (signoff.knownLimitations.includes(rc2.memoryGate.knownLimitation) &&
+      notes.includes(rc2.memoryGate.knownLimitation)),
+  'Deferred memory limitation is missing from GA sign-off or release notes.');
   insist(notes.startsWith('# Math3D 2.0.0\n') &&
     ['## Changes', '## Compatibility', '## Known limitations', '## Migration', '## Release evidence']
       .every(heading => notes.includes(heading)) &&
@@ -41,7 +49,7 @@ export function assertRelease20GaSignoff({ signoff, candidate, rc2, notes, sourc
   '2.0 release notes are incomplete or still contain draft markers.');
   return { tag: 'v2.0.0', sourceCommit, installerSha256: app.installerSha256,
     signoffStatus: 'approved', publishedPlatforms: signoff.publishedPlatforms,
-    knownLimitations: signoff.knownLimitations.length };
+    knownLimitations: signoff.knownLimitations.length, memoryGate: rc2.memoryGate };
 }
 
 export async function verifyRelease20GaSignoff({ root, signoffPath, candidatePath, rc2Path, notesPath, expectedCommit }) {
