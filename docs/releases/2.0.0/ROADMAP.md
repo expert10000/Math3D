@@ -2,7 +2,7 @@
 
 **Product roadmap · Architecture / UX / Scientific interoperability / Release engineering**<br>
 **Prepared:** 2026-11-05<br>
-**Updated:** 2026-11-18<br>
+**Updated:** 2026-11-19<br>
 **Target:** Math3D 2.0.0 General Availability (GA)<br>
 **Status:** The combined source branch identifies 2.0.0 and includes Project-owned Studies, qualified cursor links, source recovery, and bounded flagship desktop journeys. RC1, RC2, and GA are not declared; no `v2.0.0` tag or signed 2.0 candidate exists.<br>
 **Primary product claim:** *Construct, compute, analyze, compare, document, and publish connected mathematical objects in one scientific workspace.*
@@ -10,6 +10,8 @@
 > **Release principle.** Version 2.0.0 is not another sequence of independent scientific-module expansions. It is the release that makes the already substantial Geometry, Curves, Surfaces, Mesh, Volume, Graphs, Field Explorer, Topology, CAS/Sage, Projects, Workbooks, and Quantum capabilities behave as **one integrated, reproducible scientific application**.
 
 **Active closure checklist:** [Ranked release closure TODO](RELEASE_CLOSURE_TODO.md). The [2.0 scope decision](RELEASE_SCOPE.md) adds a fourth bounded Field Explorer → Graph → Field journey to the three original roadmap flagships; Volume → Mesh remains a fifth candidate outside the current GA claim.
+
+**Memory release disposition (2026-11-19):** The unresolved reference-workstation mixed-route plateau and installed-candidate memory qualification are deferred to [the 2.5-or-later memory track](../2.5.0/MEMORY_QUALIFICATION.md) under the revised 2.0 release scope. The existing 32 MiB renderer retention budget and failed local receipt remain recorded below; the passing hosted Windows source run qualifies only its hosted runner. Do not describe 2.0 as having passed the local or installed memory gates. Earlier checklist and gate language below documents the original 2.0 target and must be read with this disposition.
 
 **UI ownership, 2026-11-15:** The [UI work queue](../../ui/2.0/DRAFT_STATE.md) is the detailed claim and evidence record. The current open slices are:
 
