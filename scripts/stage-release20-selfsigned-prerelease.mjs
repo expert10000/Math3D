@@ -1,18 +1,21 @@
 #!/usr/bin/env node
 import { createHash, X509Certificate } from 'node:crypto';
-import { createReadStream } from 'node:fs';
+import { constants, createReadStream } from 'node:fs';
 import { copyFile, lstat, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
-import { basename, join, resolve, sep } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const [artifactArg, stageArg] = process.argv.slice(2);
-const plan = process.argv.includes('--plan');
-if (!artifactArg || (!plan && !stageArg) || process.argv.length > (plan ? 4 : 4)) {
+const args = process.argv.slice(2);
+const [artifactArg, stageArg] = args;
+const plan = args.length === 2 && stageArg === '--plan';
+if (!artifactArg || args.length !== 2) {
   throw new Error('Usage: stage-release20-selfsigned-prerelease.mjs <artifact-root> [new-stage-dir] [--plan]');
 }
 const root = resolve(artifactArg);
 const stage = stageArg && stageArg !== '--plan' ? resolve(stageArg) : null;
 const insist = (condition, message) => { if (!condition) throw new Error(message); };
-const safeName = name => /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name);
+const safeName = name => /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name) &&
+  !/(?:^|[._-])(?:password|secret|private)(?:[._-]|$)|\.(?:pfx|p12|pem|key|jks|keystore)$/i.test(name);
 const sha256 = async file => {
   const hash = createHash('sha256');
   for await (const bytes of createReadStream(file)) hash.update(bytes);
@@ -124,13 +127,15 @@ if (plan) {
     status: map.status }));
   process.exit(0);
 }
-insist(stage && stage !== root && !stage.startsWith(root + sep) && !root.startsWith(stage + sep),
-  'Stage directory must be separate from the artifact root.');
+const checkout = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+insist(stage && stage !== root && !stage.startsWith(root + sep) && !root.startsWith(stage + sep) &&
+  stage !== checkout && !stage.startsWith(checkout + sep),
+  'Stage directory must be separate from the artifact root and source checkout.');
 try { await lstat(stage); throw new Error('Stage directory already exists.'); }
 catch (error) { if (error.code !== 'ENOENT') throw error; }
 await mkdir(stage, { recursive: true });
 for (const asset of assets) {
-  await copyFile(inputs.get(asset.name), join(stage, asset.name), 1);
+  await copyFile(inputs.get(asset.name), join(stage, asset.name), constants.COPYFILE_EXCL);
   insist(await sha256(join(stage, asset.name)) === asset.sha256,
     `Staged asset bytes changed: ${asset.name}`);
 }
