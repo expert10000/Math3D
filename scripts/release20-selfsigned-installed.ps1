@@ -2,16 +2,19 @@ param(
   [Parameter(Mandatory = $true)][ValidateSet('Fresh', 'Upgrade')][string]$Mode,
   [Parameter(Mandatory = $true)][string]$ArtifactRoot,
   [Parameter(Mandatory = $true)][string]$EvidenceRoot,
+  [Parameter(Mandatory = $true)][ValidatePattern('^[a-f0-9]{40}$')][string]$SourceCommit,
+  [Parameter(Mandatory = $true)][ValidatePattern('^[a-f0-9]{64}$')][string]$InstallerSha256,
+  [Parameter(Mandatory = $true)][ValidatePattern('^[A-F0-9]{40}$')][string]$SignerThumbprint,
   [string]$OldInstaller = '',
   [ValidatePattern('^[a-f0-9]{40}$')][string]$HarnessCommit = ''
 )
 
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
-$sourceCommit = '300493c92c42a1f3b611bf09fef0d70f529a333e'
-$installerHash = '3c749ca2a75f173536e4a94df0a4afe0bcb1d9c07c269c2b343f694e24654396'
+$sourceCommit = $SourceCommit
+$installerHash = $InstallerSha256
 $oldHash = 'eacffc903e988a15636f556b36d12621b9918f4cec69e5c8b19e7daa512222db'
-$thumbprint = '38F403CE0B42720EE5AFD61422D6A2C22EB733D9'
+$thumbprint = $SignerThumbprint
 $sageServiceUrl = [Environment]::GetEnvironmentVariable('MATH3D_RELEASE20_SAGE_SERVICE_URL', 'Process')
 $artifactRoot = (Resolve-Path -LiteralPath $ArtifactRoot).Path
 $evidenceRoot = [IO.Path]::GetFullPath($EvidenceRoot)
@@ -34,6 +37,15 @@ if ($registered.Count) { throw 'Math3D is registered in an HKCU or HKLM uninstal
 $installer = Join-Path $artifactRoot 'Math3D-Setup-2.0.0-selfsigned-prerelease.exe'
 $manifestPath = Join-Path $artifactRoot 'prerelease-manifest.json'
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+$stagePath = Join-Path $artifactRoot 'stage-receipt.json'
+if (Test-Path -LiteralPath $stagePath) {
+  $stage = Get-Content -LiteralPath $stagePath -Raw | ConvertFrom-Json
+  if ($stage.schema -ne 'math3d/release20-selfsigned-draft-stage/v1' -or $stage.status -ne 'passed' -or
+      $stage.sourceCommit -ne $sourceCommit -or $stage.installerSha256 -ne $installerHash -or
+      $stage.freezeSha256 -ne $manifest.freezeSha256 -or $stage.signerThumbprint -ne $thumbprint) {
+    throw 'Draft stage receipt differs from reviewed candidate inputs.'
+  }
+}
 if ($manifest.schema -ne 'math3d/release20-selfsigned-prerelease/v1' -or
     $manifest.sourceCommit -ne $sourceCommit -or $manifest.installerSha256 -ne $installerHash -or
     $manifest.signerThumbprint -ne $thumbprint -or $manifest.publiclyTrustedPublisher -ne $false -or

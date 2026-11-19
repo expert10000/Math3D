@@ -107,6 +107,8 @@ jobs:
           FREEZE_SHA256: ${{ inputs.freeze_sha256 }}
           SIGNER_THUMBPRINT: ${{ inputs.signer_thumbprint }}
         run: |
+          $checkoutSha = (& git rev-parse HEAD).Trim()
+          if ($checkoutSha -ne $env:SOURCE_COMMIT) { throw 'Workflow checkout differs from approved installer source.' }
           ./scripts/stage-release20-selfsigned-draft.ps1 `
             -ReleaseId $env:RELEASE_ID -SourceCommit $env:SOURCE_COMMIT `
             -InstallerSha256 $env:INSTALLER_SHA256 -FreezeSha256 $env:FREEZE_SHA256 `
@@ -123,10 +125,15 @@ jobs:
         shell: pwsh
         env:
           MATH3D_RELEASE20_SAGE_SERVICE_URL: ${{ secrets.MATH3D_RELEASE20_SAGE_SERVICE_URL }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          INSTALLER_SHA256: ${{ inputs.installer_sha256 }}
+          SIGNER_THUMBPRINT: ${{ inputs.signer_thumbprint }}
         run: |
           $evidence = Join-Path $env:TEMP 'math3d-selfsigned-fresh'
           ./scripts/release20-selfsigned-installed.ps1 -Mode Fresh `
-            -ArtifactRoot (Join-Path $env:RUNNER_TEMP 'selfsigned-candidate') -EvidenceRoot $evidence
+            -ArtifactRoot (Join-Path $env:RUNNER_TEMP 'selfsigned-candidate') -EvidenceRoot $evidence `
+            -SourceCommit $env:SOURCE_COMMIT -InstallerSha256 $env:INSTALLER_SHA256 `
+            -SignerThumbprint $env:SIGNER_THUMBPRINT
           $receipt = Get-Content -LiteralPath (Join-Path $evidence 'fresh-receipt.json') -Raw | ConvertFrom-Json
           if ($receipt.status -ne 'passed' -or $receipt.installedJourneysQualified -ne $true) {
             throw 'Fresh installed acceptance is incomplete; inspect the uploaded receipt.'
@@ -172,6 +179,8 @@ jobs:
           FREEZE_SHA256: ${{ inputs.freeze_sha256 }}
           SIGNER_THUMBPRINT: ${{ inputs.signer_thumbprint }}
         run: |
+          $checkoutSha = (& git rev-parse HEAD).Trim()
+          if ($checkoutSha -ne $env:SOURCE_COMMIT) { throw 'Workflow checkout differs from approved installer source.' }
           ./scripts/stage-release20-selfsigned-draft.ps1 `
             -ReleaseId $env:RELEASE_ID -SourceCommit $env:SOURCE_COMMIT `
             -InstallerSha256 $env:INSTALLER_SHA256 -FreezeSha256 $env:FREEZE_SHA256 `
@@ -194,12 +203,17 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Published 1.7 asset download failed.' }
       - name: Run signed candidate Upgrade and rollback acceptance
         shell: pwsh
+        env:
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          INSTALLER_SHA256: ${{ inputs.installer_sha256 }}
+          SIGNER_THUMBPRINT: ${{ inputs.signer_thumbprint }}
         run: |
           $evidence = Join-Path $env:TEMP 'math3d-selfsigned-upgrade'
           ./scripts/release20-selfsigned-installed.ps1 -Mode Upgrade `
             -ArtifactRoot (Join-Path $env:RUNNER_TEMP 'selfsigned-candidate') `
             -OldInstaller (Join-Path $env:RUNNER_TEMP 'published-1.7/Math3D-Setup-1.7.0.exe') `
-            -EvidenceRoot $evidence
+            -EvidenceRoot $evidence -SourceCommit $env:SOURCE_COMMIT `
+            -InstallerSha256 $env:INSTALLER_SHA256 -SignerThumbprint $env:SIGNER_THUMBPRINT
           $receipt = Get-Content -LiteralPath (Join-Path $evidence 'upgrade-receipt.json') -Raw | ConvertFrom-Json
           if ($receipt.status -ne 'passed' -or $receipt.checks.published17Rollback -ne 'passed') {
             throw 'Upgrade and rollback acceptance is incomplete; inspect the uploaded receipt.'
