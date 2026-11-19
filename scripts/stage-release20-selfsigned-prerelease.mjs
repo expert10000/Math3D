@@ -4,6 +4,11 @@ import { constants, createReadStream } from 'node:fs';
 import { copyFile, lstat, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const { selectPublicSources } = require('./native-cgal-source-contract.cjs');
+const checkout = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 const args = process.argv.slice(2);
 const [artifactArg, stageArg] = args;
@@ -73,6 +78,12 @@ insist(sourceManifest.target === 'windows' && sourceManifest.math3d?.commit === 
   sourceManifest.math3d.version === '2.0.0' &&
   sourceManifest.math3d.sourceArchive === 'Math3D-2.0.0-source.zip',
   'Corresponding-source manifest differs from prerelease source.');
+const reviewedSources = selectPublicSources(await json(join(checkout, 'compliance/public-source-manifest.json')), 'windows');
+insist(JSON.stringify(sourceManifest.sources) === JSON.stringify(reviewedSources) &&
+  sourceManifest.nativeCgal?.distributionStatus === 'source-bundle-integrated' &&
+  sourceManifest.nativeCgal.dependencyManifestSha256 ===
+    await sha256(join(checkout, 'native/cgal-worker/dependency-manifest.json')),
+  'Corresponding-source manifest differs from reviewed native source inventory.');
 const sourceZip = await file(sourceDir, sourceManifest.math3d.sourceArchive);
 insist(await sha256(sourceZip) === sourceManifest.math3d.sourceArchiveSha256,
   'Corresponding-source archive differs from source manifest.');
@@ -127,7 +138,6 @@ if (plan) {
     status: map.status }));
   process.exit(0);
 }
-const checkout = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 insist(stage && stage !== root && !stage.startsWith(root + sep) && !root.startsWith(stage + sep) &&
   stage !== checkout && !stage.startsWith(checkout + sep),
   'Stage directory must be separate from the artifact root and source checkout.');
