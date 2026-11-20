@@ -67,8 +67,12 @@ try {
     result.checks.firstUsePreferences = "passed";
     await page.getByTestId("projects-toggle").click();
     await page.getByTestId("project-template-open-graph-derivative-notebook").click();
+    // Starter import opens the workspace asynchronously and replaces the gallery
+    // with the Project companion. Wait for that transition before locating Save.
+    const quickToggle = page.getByTestId("projects-quick-toggle");
+    await quickToggle.waitFor({ state: "visible", timeout: 60_000 });
     const projectPanel = page.getByTestId("project-explorer-panel");
-    if (!await projectPanel.isVisible()) await page.getByTestId("projects-toggle").click();
+    if (!await projectPanel.isVisible()) await quickToggle.click();
     await projectPanel.waitFor({ state: "visible" });
     if (!await projectPanel.getByTestId("project-save").isVisible())
       await projectPanel.getByTestId("project-gallery-layout-toggle").first().click();
