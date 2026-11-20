@@ -45,6 +45,8 @@ async function main() {
   await mkdir(dirname(destination), { recursive: true });
   const save = () => writeFile(destination, JSON.stringify(report, null, 2) + '\n');
   await save();
+  const sourceEnv = { ...process.env, MATH3D_RELEASE20_EXPECTED_COMMIT: sourceCommit };
+  delete sourceEnv.MATH3D_RELEASE20_EXPECTED_VERSION;
   try {
     // Every cycle completes the full representative set, including the cycle crossing the deadline.
     do {
@@ -55,7 +57,7 @@ async function main() {
         const checkStart = Date.now();
         const result = spawnSync(check.command, check.args, { cwd: root, stdio: 'inherit',
           shell: process.platform === 'win32', timeout: check.id === 'same-process-memory' ? (minutes + 45) * 60_000 : 45 * 60_000,
-          env: { ...process.env, MATH3D_RELEASE20_EXPECTED_VERSION: '2.0.0', MATH3D_RELEASE20_EXPECTED_COMMIT: sourceCommit,
+          env: { ...sourceEnv,
             ...(check.id === 'same-process-memory' ? { MATH3D_MEMORY_SOAK_MINUTES: String(minutes),
               MATH3D_MEMORY_SOAK_REPORT: memoryReceipt } : {}) } });
         const passed = result.status === 0 && !result.error && !result.signal;
