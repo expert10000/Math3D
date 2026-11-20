@@ -268,8 +268,8 @@ async function journeyPhase() {
     result.checks.offlineColdReopen = "passed";
     await writeFile(receiptPath,JSON.stringify({...result,status:"incomplete"},null,2));
     await rename(offlinePath,workerPath);
-    result.recoveredWorker=await observe(app);
     await center(page,"ready");
+    result.recoveredWorker=await observe(app);
     assert(result.recoveredWorker.pid!==result.initialWorker.pid,"Expected fresh worker PID");
     assert(result.recoveredWorker.health.ok && result.recoveredWorker.version.protocol===result.initialWorker.version.protocol,"Recovered handshake mismatch");
     result.checks.reconnectCapabilityRefresh = "passed";

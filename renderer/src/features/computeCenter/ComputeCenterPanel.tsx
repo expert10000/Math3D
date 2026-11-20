@@ -69,11 +69,16 @@ export default function ComputeCenterPanel({ onClose, initialTab = "overview" }:
     return pythonResult.status === "fulfilled" ? pythonResult.value : null;
   }, []);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (retryWorker = false) => {
     setRefreshing(true);
     setPython(null); setCgal(null); setEngines(null); setBrokerBackends([]); setBrokerFailures([]);
     setSageProbes({}); setCheckedAt(0); setError(null);
     preparedReceiptRef.current = null; setReceiptStatus(null);
+    let retryError: string | null = null;
+    if (retryWorker) {
+      try { await window.pythonWorkerDiagnostics?.retry?.(); }
+      catch { retryError = "Python worker retry could not complete."; }
+    }
     const [[healthResult, engineResult, brokerResult], sageResults] = await Promise.all([
       Promise.allSettled([cgalHealth(),
         window.computeEngines?.getStatus() ?? Promise.resolve(null), discoverScientificBackendReport()]),
@@ -91,7 +96,7 @@ export default function ComputeCenterPanel({ onClose, initialTab = "overview" }:
         { error: result?.reason instanceof Error ? result.reason.message : "Route probe failed" }];
     })) as Record<SageBackend, RuntimeProbeResult>;
     setCgal(cgal); setEngines(engines); setBrokerBackends(broker); setBrokerFailures(failures); setSageProbes(sage);
-    setError(engineResult.status === "rejected" ? "Compute engine status could not be read." : null);
+    setError(engineResult.status === "rejected" ? "Compute engine status could not be read." : retryError);
     const python = await refreshLive();
     const checkedAt = Date.now();
     setCheckedAt(checkedAt);
@@ -140,7 +145,7 @@ export default function ComputeCenterPanel({ onClose, initialTab = "overview" }:
     <div role="dialog" aria-modal="true" aria-labelledby="compute-center-title" data-testid="compute-center" style={{ width: "min(900px, 96vw)", maxHeight: "90vh", overflow: "auto", border: "1px solid #cbd5e1", borderRadius: 12, background: "white", boxShadow: "0 18px 42px rgba(15, 23, 42, 0.24)", padding: 18, display: "grid", gap: 14 }}>
       <header style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 10 }}>
         <div><h2 id="compute-center-title" style={{ margin: 0, color: "#183b70", fontSize: 19 }}>Compute Center</h2><div style={{ color: "#64748b", fontSize: 12 }}>Local backends, scientific broker jobs, and live resources</div></div>
-        <div style={{ display: "flex", gap: 8 }}><button type="button" style={button} onClick={() => void refresh()} disabled={refreshing}>{refreshing ? "Refreshing…" : "Refresh"}</button><button type="button" style={button} autoFocus onClick={onClose}>Close</button></div>
+        <div style={{ display: "flex", gap: 8 }}><button type="button" style={button} onClick={() => void refresh(true)} disabled={refreshing}>{refreshing ? "Refreshing…" : "Refresh"}</button><button type="button" style={button} autoFocus onClick={onClose}>Close</button></div>
       </header>
       <nav aria-label="Compute sections" style={{ display: "flex", gap: 7 }}>
         <button type="button" style={button} aria-pressed={activeTab === "overview"} onClick={() => setActiveTab("overview")}>Overview</button>

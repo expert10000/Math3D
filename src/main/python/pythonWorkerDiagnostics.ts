@@ -294,10 +294,14 @@ export function recordPythonWorkerRuntimeEvent(
   appendDiagnosticsLog(event === "worker-exit" ? "error" : event === "job-start" || event === "job-finish" ? "info" : "warn", event, fields);
 }
 
-export function registerPythonWorkerDiagnosticsIpc(): void {
+export function registerPythonWorkerDiagnosticsIpc(retry: () => Promise<unknown>): void {
   if (diagnosticsIpcRegistered) return;
   diagnosticsIpcRegistered = true;
   ipcMain.handle("python-worker:diagnostics:get", async (): Promise<PythonWorkerDiagnosticsSnapshot> => {
+    return getPythonWorkerDiagnosticsSnapshot();
+  });
+  ipcMain.handle("python-worker:diagnostics:retry", async (): Promise<PythonWorkerDiagnosticsSnapshot> => {
+    await retry();
     return getPythonWorkerDiagnosticsSnapshot();
   });
 }

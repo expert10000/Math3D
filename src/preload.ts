@@ -749,6 +749,8 @@ contextBridge.exposeInMainWorld("appDiagnostics", {
 contextBridge.exposeInMainWorld("pythonWorkerDiagnostics", {
   getStatus: (): Promise<PythonWorkerDiagnosticsSnapshot> =>
     ipcRenderer.invoke("python-worker:diagnostics:get"),
+  retry: (): Promise<PythonWorkerDiagnosticsSnapshot> =>
+    ipcRenderer.invoke("python-worker:diagnostics:retry"),
 });
 
 contextBridge.exposeInMainWorld("sageService", {

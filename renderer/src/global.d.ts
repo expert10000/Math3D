@@ -908,6 +908,7 @@ declare global {
     };
     pythonWorkerDiagnostics?: {
       getStatus: () => Promise<PythonWorkerDiagnosticsSnapshot>;
+      retry?: () => Promise<PythonWorkerDiagnosticsSnapshot>;
     };
     octaveService?: {
       health: () => Promise<OctaveHealthResponse>;

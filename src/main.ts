@@ -985,7 +985,7 @@ app.whenReady().then(async () => {
     logStartupSmoke("APP_READY");
   }
 
-  registerPythonWorkerDiagnosticsIpc();
+  registerPythonWorkerDiagnosticsIpc(runAndRecordWorkerStartupCheck);
 
   ipcMain.handle("surfacePresets:list", (_evt, kind: PresetKind) => {
     return listPresets(kind);
