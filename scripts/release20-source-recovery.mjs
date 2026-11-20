@@ -40,13 +40,15 @@ async function main() {
   await mkdir(dirname(destination), { recursive: true });
   const save = () => writeFile(destination, JSON.stringify(report, null, 2) + '\n');
   await save();
+  const sourceEnv = { ...process.env, MATH3D_RELEASE20_EXPECTED_COMMIT: sourceCommit };
+  delete sourceEnv.MATH3D_RELEASE20_EXPECTED_VERSION;
   try {
     for (const check of recoveryChecks) {
       if (commit(root) !== sourceCommit || !clean(root)) throw new Error('Source checkout changed during recovery qualification.');
       const started = Date.now();
       const result = spawnSync(check.command, check.args, { cwd: root, stdio: 'inherit',
         shell: process.platform === 'win32', timeout: 45 * 60_000,
-        env: { ...process.env, MATH3D_RELEASE20_EXPECTED_COMMIT: sourceCommit } });
+        env: sourceEnv });
       const passed = result.status === 0 && !result.error && !result.signal;
       report.checks.push({ id: check.id, status: passed ? 'passed' : 'failed', exitCode: result.status,
         signal: result.signal ?? null, error: result.error?.message ?? null, durationMs: Date.now() - started });
