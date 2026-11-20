@@ -46,8 +46,7 @@ async function main() {
       const started = Date.now();
       const result = spawnSync(check.command, check.args, { cwd: root, stdio: 'inherit',
         shell: process.platform === 'win32', timeout: 45 * 60_000,
-        env: { ...process.env, MATH3D_RELEASE20_EXPECTED_VERSION: '2.0.0',
-          MATH3D_RELEASE20_EXPECTED_COMMIT: sourceCommit } });
+        env: { ...process.env, MATH3D_RELEASE20_EXPECTED_COMMIT: sourceCommit } });
       const passed = result.status === 0 && !result.error && !result.signal;
       report.checks.push({ id: check.id, status: passed ? 'passed' : 'failed', exitCode: result.status,
         signal: result.signal ?? null, error: result.error?.message ?? null, durationMs: Date.now() - started });
