@@ -93807,6 +93807,7 @@ case "mobius":
         ) : mode === "geometry" ? (
           showGeometryFullWorkbookWorkspace ? (
           <div
+            className="geometry-full-workbook"
             style={{
               flex: 1,
               minHeight: 0,
@@ -93995,6 +93996,7 @@ case "mobius":
                     <div key={`full-workbook-outline-stage-${stage.id}`} style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: 6 }}>
                       <button
                         type="button"
+                        aria-pressed={activeStageId === stage.id}
                         onClick={() => setActiveStageId(stage.id)}
                         style={{
                           width: "100%",
@@ -94018,6 +94020,7 @@ case "mobius":
                             <button
                               key={`full-workbook-outline-block-${block.id}`}
                               type="button"
+                              aria-pressed={selected}
                               onClick={() => {
                                 setActiveStageId(stage.id);
                                 setFullWorkbookSelectedBlockRef({ stageId: stage.id, blockId: block.id });

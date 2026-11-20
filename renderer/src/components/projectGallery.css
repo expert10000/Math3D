@@ -447,3 +447,26 @@ body:has(.project-viewer-panel:not(.project-embedded-panel)[data-project-placeme
 .curated-study-actions { display:flex;flex-wrap:wrap;gap:6px;align-items:center; }
 .curated-study-content > small { color:#9a4b1d;font-size:11px; }
 [data-testid="curated-study-research-preview"] { min-width:0;overflow-wrap:anywhere; }
+
+/* Gallery, Study and the compact Project companion share one dark palette.
+   These surfaces otherwise remain bright while the rest of the app is dark. */
+html[data-theme="dark"] :is(.project-gallery-page,.project-quick-panel) { background:#17202d;color:var(--text);border-color:var(--workspace-control-border); }
+html[data-theme="dark"] :is(.project-gallery-header,.project-workspace-nav,.project-viewer-switcher) { background:#17202d;border-color:var(--workspace-control-border); }
+html[data-theme="dark"] :is(.project-gallery-header h2,.project-gallery-header .project-gallery-heading p,.project-starters-heading h3,.project-starters-heading p,.curated-study-content h4,.curated-study-question,.curated-study-intro,.curated-study-content dd,.curated-study-content dt,.curated-study-content details,.project-study-pane,.project-research-grid h4,.project-research-grid li strong,.project-context-breadcrumb,.project-context-breadcrumb strong,.project-workspace-child-heading h4) { color:var(--text); }
+html[data-theme="dark"] :is(.project-viewer-switcher label,.project-document-tree h3,.project-document-tree section > strong,.project-placement-label,.project-gallery-library h3,.project-gallery-workspace h3) { color:var(--text); }
+html[data-theme="dark"] :is(.project-gallery-page,.project-quick-panel) :is(button,input,textarea,select,.project-header-more summary) { background:var(--workspace-control-bg);color:var(--workspace-control-text);border-color:var(--workspace-control-border); }
+html[data-theme="dark"] :is(.project-gallery-page,.project-quick-panel) button:hover:not(:disabled) { background:var(--workspace-control-hover-bg);border-color:var(--workspace-control-active-border); }
+html[data-theme="dark"] :is(.project-gallery-page,.project-quick-panel) :focus-visible { outline-color:var(--workspace-control-active-border); }
+html[data-theme="dark"] :is(.project-gallery-page,.project-quick-panel) :is(button[aria-current="page"],button[aria-pressed="true"],.project-gallery-filters button[aria-pressed="true"]) { background:var(--workspace-control-active-bg);color:var(--workspace-control-text);border-color:var(--workspace-control-active-border); }
+html[data-theme="dark"] :is(.project-gallery-page,.project-quick-panel) :is(.project-gallery-primary,.project-gallery-card-actions button:first-child,.project-starter-actions button:first-child) { background:#2563eb;color:#fff;border-color:#60a5fa; }
+html[data-theme="dark"] :is(.project-gallery-statusline p,.project-workspace-summary,.project-workspace-workbook,.project-dashboard-card,.project-study-pane,.project-research-grid > section,.project-results-list,.project-results-detail,.project-navigation-overview,.project-relation-detail,.project-workspace-child-group,.project-scene-shortcuts) { background:var(--workspace-section-bg);color:var(--text);border-color:var(--workspace-control-border); }
+html[data-theme="dark"] .project-dashboard-card :is(h4,h5,h6,li,p,span) { color:var(--text); }
+html[data-theme="dark"] :is(.project-gallery-card,.project-starter-card,.curated-study-card,.project-research-grid li,.project-document-list > li,.project-relation-row,.project-header-more > div,.project-gallery-preview-sheet) { background:#1b2838;color:var(--text);border-color:var(--workspace-control-border); }
+html[data-theme="dark"] :is(.project-gallery-card-content h4,.project-starter-body h4,.project-research-grid li small,.project-results-list button small,.project-workspace-summary p,.project-study-pane p,.project-gallery-card-content p,.project-gallery-library > p,.project-workspace-section small) { color:var(--muted); }
+html[data-theme="dark"] :is(.project-gallery-saved-badge,.project-gallery-count,.curated-study-badges span) { background:#24466e;color:#e8eef7; }
+html[data-theme="dark"] .curated-study-content details summary { color:#d5e7ff; }
+html[data-theme="dark"] .curated-study-switch button[aria-pressed="true"] { background:var(--workspace-control-active-bg);color:var(--workspace-control-text);border-color:var(--workspace-control-active-border); }
+@media (forced-colors: active) {
+  :is(.project-gallery-page,.project-quick-panel) :focus-visible { outline:3px solid Highlight;outline-offset:2px; }
+  :is(.project-gallery-page,.project-quick-panel) :is(button[aria-current="page"],button[aria-pressed="true"]) { border:2px solid Highlight; }
+}

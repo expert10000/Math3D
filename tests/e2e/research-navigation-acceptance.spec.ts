@@ -54,11 +54,11 @@ test("Gallery research path survives restart and returns to its source", async (
     await expect(panel.getByTestId("project-notes-panel")).toBeVisible();
     await search("open source");
     await palette.locator('[data-testid^="command-palette-research:document:"]:not([aria-disabled="true"])').first().click();
-    await expect(panel.getByTestId("project-breadcrumb")).toBeVisible();
+    await expect(panel.getByTestId("project-viewer-document")).toBeVisible();
     await search("open projects gallery");
     await palette.getByTestId("command-palette-research:gallery").click();
     await panel.getByTestId("project-gallery-guided").click();
-    await expect(panel.locator(".curated-study-card")).toHaveCount(16);
+    await expect(panel.locator(".curated-study-card")).toHaveCount(17);
     await panel.getByTestId("project-research-nav-source").click();
     await expect(panel).toHaveCount(0);
     await expect(page.getByTestId("module-workspace")).toBeFocused();
