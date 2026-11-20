@@ -305,7 +305,21 @@ async function exported(app,page,filename) {
   for(const item of pack.resources) assert("sha256:"+sha256(Buffer.from(item.data,"base64"))===item.checksum,"Source sidecar hash mismatch");
   return pack;
 }
-const facts=project=>({identity:project.identity,entries:project.workspace.entries.map(entry=>({expected:entry.expected,replay:entry.replay,checkpoint:entry.checkpoint})),results:project.workspace.results,selection:project.workspace.committedSelection,artifacts:project.workspace.artifacts,relations:project.workspace.relations});
+const facts=(project,historicalIds)=>({
+  identityId:project.identity.id,
+  entries:project.workspace.entries.map(entry=>({expected:entry.expected,replay:entry.replay,checkpoint:entry.checkpoint})),
+  results:project.workspace.results.map(result=>{
+    if(historicalIds.has(result.resultId)) return result;
+    // Opening a Project refreshes derived analysis; its timing and computed payload hash can change.
+    const copy=structuredClone(result);
+    delete copy.provenance?.elapsedMs;
+    delete copy.summary?.checksum;
+    return copy;
+  }),
+  selection:project.workspace.committedSelection,
+  artifacts:project.workspace.artifacts.map(artifact=>({handle:artifact.handle,byteLength:artifact.byteLength})),
+  relations:project.workspace.relations,
+});
 async function freshProfile() {
   const seed=JSON.parse(await readFile(path.join(path.dirname(args.fixture),"profile-seed.json"),"utf8"));
   let app=await launch();const snapshots=[];
@@ -323,11 +337,28 @@ async function freshProfile() {
       for(const entry of expected.workspace.entries) {
         const actual=saved.workspace.entries.find(e=>e.expected.id===entry.expected.id);assert(actual,"Fixture document missing");
         assert(isDeepStrictEqual(actual.expected,entry.expected),"Fixture document identity/hash changed");
-        assert(isDeepStrictEqual(actual.replay,entry.replay),"Fixture replay or committed selection changed");
+        assert(isDeepStrictEqual(actual.checkpoint,entry.checkpoint),"Fixture document checkpoint changed");
+        if(entry.replay===null) {
+          const replayFormats={
+            "math3d.graph2d-document":"math3d.graph2d-replay.v1",
+            "math3d.volume-document":"math3d.volume-replay.v1",
+            "math3d.curve-document":"math3d.curve-replay.v1",
+            "math3d.surface-document":"math3d.surface-replay.v1",
+            "math3d.geometry-document":"math3d.geometry-replay.v1",
+            "math3d.topology-document":"math3d.topology-replay.v1",
+            "math3d.complex-analysis-document":"math3d.complex-replay.v1",
+          };
+          assert(actual.replay?.format===replayFormats[entry.checkpoint?.format] &&
+            actual.replay.payload?.checkpoint && actual.replay.payload.cursor===0 &&
+            isDeepStrictEqual(actual.replay.payload.transactions,[]),"Legacy fixture replay migration changed");
+        } else {
+          assert(isDeepStrictEqual(actual.replay,entry.replay),"Fixture replay or committed selection changed");
+        }
       }
       for(const historical of expected.workspace.results) assert(saved.workspace.results.some(r=>isDeepStrictEqual(r,historical)),"Historical result missing");
       const pack=await exported(app,page,`seed-${index}.resources.json`);assert(pack.resources.length>=packet.resourceCount,"Sidecar missing");
-      snapshots.push({id:saved.identity.id,project:facts(saved),resources:pack.resources});
+      const historicalIds=new Set(expected.workspace.results.map(result=>result.resultId));
+      snapshots.push({id:saved.identity.id,revision:saved.identity.revision,historicalIds,project:facts(saved,historicalIds),resources:pack.resources});
       if(await savePanel.isVisible()) await page.getByRole("button",{name:"Close project explorer"}).click();
     }
   } finally {await app.close();}
@@ -338,7 +369,8 @@ async function freshProfile() {
       const panel=await openProjectPanel(page);await panel.getByTestId(`project-open-saved-${snapshot.id}`).click();
       await expect(panel.getByTestId("project-message")).toContainText("Opened supported project workspace");
       const pack=await exported(app,page,`reopened-${index}.resources.json`);
-      assert(isDeepStrictEqual(facts(pack.project),snapshot.project),"Cold reopen changed identity/hash/replay/selection/result/reference");
+      assert(pack.project.identity.revision>=snapshot.revision,"Cold reopen regressed Project revision");
+      assert(isDeepStrictEqual(facts(pack.project,snapshot.historicalIds),snapshot.project),"Cold reopen changed Project source, historical result, selection or reference");
       assert(isDeepStrictEqual(pack.resources,snapshot.resources),"Cold reopen changed actual sidecar bytes");
       if(await panel.isVisible()) await page.getByRole("button",{name:"Close project explorer"}).click();
     }
