@@ -268,8 +268,8 @@ async function journeyPhase() {
     result.checks.offlineColdReopen = "passed";
     await writeFile(receiptPath,JSON.stringify({...result,status:"incomplete"},null,2));
     await rename(offlinePath,workerPath);
-    await center(page,"ready");
     result.recoveredWorker=await observe(app);
+    await center(page,"ready");
     assert(result.recoveredWorker.pid!==result.initialWorker.pid,"Expected fresh worker PID");
     assert(result.recoveredWorker.health.ok && result.recoveredWorker.version.protocol===result.initialWorker.version.protocol,"Recovered handshake mismatch");
     result.checks.reconnectCapabilityRefresh = "passed";
@@ -305,21 +305,37 @@ async function exported(app,page,filename) {
   for(const item of pack.resources) assert("sha256:"+sha256(Buffer.from(item.data,"base64"))===item.checksum,"Source sidecar hash mismatch");
   return pack;
 }
-const facts=(project,historicalIds)=>({
-  identityId:project.identity.id,
-  entries:project.workspace.entries.map(entry=>({expected:entry.expected,replay:entry.replay,checkpoint:entry.checkpoint})),
-  results:project.workspace.results.map(result=>{
-    if(historicalIds.has(result.resultId)) return result;
-    // Opening a Project refreshes derived analysis; its timing and computed payload hash can change.
-    const copy=structuredClone(result);
-    delete copy.provenance?.elapsedMs;
-    delete copy.summary?.checksum;
-    return copy;
-  }),
-  selection:project.workspace.committedSelection,
-  artifacts:project.workspace.artifacts.map(artifact=>({handle:artifact.handle,byteLength:artifact.byteLength})),
-  relations:project.workspace.relations,
-});
+function facts(project,historicalIds) {
+  const {revision,structuralHash,...identity}=project.identity;
+  const qualityArtifactIds=new Set(project.workspace.results
+    .filter(result=>!historicalIds.has(result.resultId) && result.provenance?.operation?.type==="mesh.analyze.quality")
+    .flatMap(result=>result.artifacts.map(artifact=>artifact.artifactId)));
+  for(const result of project.workspace.results) for(const reference of result.artifacts) {
+    const artifact=project.workspace.artifacts.find(item=>item.handle.artifactId===reference.artifactId);
+    assert(artifact && result.summary?.checksum===artifact.contentHash &&
+      result.summary?.byteLength===artifact.byteLength,"Derived result and artifact hash/length differ");
+  }
+  return {
+    identity,
+    entries:project.workspace.entries.map(entry=>({expected:entry.expected,replay:entry.replay,checkpoint:entry.checkpoint})),
+    historicalSequence:project.workspace.results.filter(result=>historicalIds.has(result.resultId)).map(result=>result.resultId),
+    results:project.workspace.results.map(result=>{
+      if(historicalIds.has(result.resultId)) return result;
+      const copy=structuredClone(result);
+      if(result.provenance?.operation?.type?.startsWith("mesh.analyze.")) delete copy.provenance.elapsedMs;
+      if(result.provenance?.operation?.type==="mesh.analyze.quality") delete copy.summary.checksum;
+      return copy;
+    }).sort((a,b)=>a.resultId.localeCompare(b.resultId)),
+    selection:project.workspace.committedSelection,
+    artifacts:project.workspace.artifacts.map(artifact=>{
+      if(!qualityArtifactIds.has(artifact.handle.artifactId)) return artifact;
+      const copy=structuredClone(artifact);
+      delete copy.contentHash;
+      return copy;
+    }).sort((a,b)=>a.handle.artifactId.localeCompare(b.handle.artifactId)),
+    relations:project.workspace.relations,
+  };
+}
 async function freshProfile() {
   const seed=JSON.parse(await readFile(path.join(path.dirname(args.fixture),"profile-seed.json"),"utf8"));
   let app=await launch();const snapshots=[];
@@ -349,7 +365,8 @@ async function freshProfile() {
             "math3d.complex-analysis-document":"math3d.complex-replay.v1",
           };
           assert(actual.replay?.format===replayFormats[entry.checkpoint?.format] &&
-            actual.replay.payload?.checkpoint && actual.replay.payload.cursor===0 &&
+            isDeepStrictEqual(actual.replay.payload?.checkpoint?.document??actual.replay.payload?.checkpoint,entry.checkpoint) &&
+            actual.replay.payload.cursor===0 &&
             isDeepStrictEqual(actual.replay.payload.transactions,[]),"Legacy fixture replay migration changed");
         } else {
           assert(isDeepStrictEqual(actual.replay,entry.replay),"Fixture replay or committed selection changed");
@@ -369,7 +386,7 @@ async function freshProfile() {
       const panel=await openProjectPanel(page);await panel.getByTestId(`project-open-saved-${snapshot.id}`).click();
       await expect(panel.getByTestId("project-message")).toContainText("Opened supported project workspace");
       const pack=await exported(app,page,`reopened-${index}.resources.json`);
-      assert(pack.project.identity.revision>=snapshot.revision,"Cold reopen regressed Project revision");
+      assert(pack.project.identity.revision===snapshot.revision+1,"Cold reopen Project revision transition changed");
       assert(isDeepStrictEqual(facts(pack.project,snapshot.historicalIds),snapshot.project),"Cold reopen changed Project source, historical result, selection or reference");
       assert(isDeepStrictEqual(pack.resources,snapshot.resources),"Cold reopen changed actual sidecar bytes");
       if(await panel.isVisible()) await page.getByRole("button",{name:"Close project explorer"}).click();

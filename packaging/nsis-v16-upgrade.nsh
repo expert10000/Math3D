@@ -27,5 +27,31 @@
   ${If} $R0 == "1.6.0"
   ${OrIf} $R0 == "1.7.0"
     DeleteRegValue HKCU "${UNINSTALL_REGISTRY_KEY}" "Math3DPreviousUninstallString"
+    DeleteRegValue HKCU "${INSTALL_REGISTRY_KEY}" "Math3DUpgradeFrom"
   ${EndIf}
 !macroend
+
+!macro restorePreviousUninstall
+  ReadRegStr $R0 HKCU "${INSTALL_REGISTRY_KEY}" "Math3DUpgradeFrom"
+  ${If} $R0 == "1.6.0"
+  ${OrIf} $R0 == "1.7.0"
+    ReadRegStr $R1 HKCU "${UNINSTALL_REGISTRY_KEY}" "Math3DPreviousUninstallString"
+    ReadRegStr $R2 HKCU "${UNINSTALL_REGISTRY_KEY}" "UninstallString"
+    ${If} $R1 != ""
+    ${AndIf} $R2 == ""
+      WriteRegStr HKCU "${UNINSTALL_REGISTRY_KEY}" "UninstallString" "$R1"
+      DeleteRegValue HKCU "${UNINSTALL_REGISTRY_KEY}" "Math3DPreviousUninstallString"
+      DeleteRegValue HKCU "${INSTALL_REGISTRY_KEY}" "Math3DUpgradeFrom"
+    ${EndIf}
+  ${EndIf}
+!macroend
+
+!ifndef BUILD_UNINSTALLER
+Function .onInstFailed
+  !insertmacro restorePreviousUninstall
+FunctionEnd
+
+Function .onUserAbort
+  !insertmacro restorePreviousUninstall
+FunctionEnd
+!endif

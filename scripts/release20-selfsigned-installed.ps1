@@ -261,6 +261,20 @@ try {
     $backupInventory = & node $inventoryScript $backup | ConvertFrom-Json
     if ($LASTEXITCODE -ne 0 -or $backupInventory.digest -ne $inventory.digest) { throw '1.7 profile backup differs.' }
     $receipt.checks.published17SeedAndBackup = 'passed'; Save-Receipt
+    $installPrefix = $install.TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+    $processDeadline = (Get-Date).AddSeconds(30)
+    do {
+      $lingering = @(Get-CimInstance Win32_Process | Where-Object {
+        $_.ExecutablePath -and $_.ExecutablePath.StartsWith($installPrefix, [StringComparison]::OrdinalIgnoreCase)
+      } | Select-Object ProcessId, Name, ExecutablePath)
+      if (-not $lingering.Count) { break }
+      Start-Sleep -Seconds 1
+    } while ((Get-Date) -lt $processDeadline)
+    if ($lingering.Count) {
+      $receipt.oldInstallProcesses = $lingering
+      throw 'Published 1.7 application or worker is still running before the 2.0 upgrade.'
+    }
+    $receipt.checks.published17ProcessesExited = 'passed'; Save-Receipt
     Install $installer $install
     $installed = Check-Installed $install
     $verify = Upgrade-Phase 'verify' $installed.app $profile $seedPath (Join-Path $evidenceRoot 'verify.json')
