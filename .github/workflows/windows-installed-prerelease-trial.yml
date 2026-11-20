@@ -88,6 +88,8 @@ jobs:
   selfsigned-fresh:
     if: inputs.trial == 'signed-20'
     runs-on: windows-2022
+    permissions:
+      contents: write
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
@@ -160,6 +162,8 @@ jobs:
   selfsigned-upgrade:
     if: inputs.trial == 'signed-20'
     runs-on: windows-2022
+    permissions:
+      contents: write
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
