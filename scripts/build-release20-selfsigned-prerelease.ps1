@@ -68,6 +68,7 @@ try {
   }
   $nsisRoot = Join-Path $env:TEMP ('math3d-2.0-prerelease-nsis-' + [guid]::NewGuid().ToString('N'))
   ./scripts/prepare-qi40-nsis313.ps1 -OutputRoot $nsisRoot
+  ./scripts/test-release20-nsis-include.ps1 -MakensisPath (Join-Path $env:ELECTRON_BUILDER_NSIS_DIR 'Bin/makensis.exe')
 
   $previousCscLink = $env:CSC_LINK
   $previousCscPassword = $env:CSC_KEY_PASSWORD
