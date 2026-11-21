@@ -1,0 +1,4 @@
+415028fb7e18ac9501d7d991b0d89c4dd36af5946601a5f754afdb507a595171  old-packages/Math3D-1.7.0-linux-x64.AppImage
+6ce53223c170018bf2707edcde435deaab13b1ec3ea2b083310711b8e3d90a39  old-packages/Math3D-1.7.0-linux-x64.deb
+aa714ea96a7d5870893cff1176d59002628465c55be476d1b8eda3ab55649484  new-packages/Math3D-2.0.0-linux-x86_64.AppImage
+5909f9b800ab26954ba3ff299053add6e8c00c9a30da072585d7ca89b8add6aa  new-packages/Math3D-2.0.0-linux-amd64.deb
