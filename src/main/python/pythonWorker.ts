@@ -3,7 +3,7 @@ import { app } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { mainDebugLog } from "../debugLog";
-import { recordPythonWorkerRuntimeEvent } from "./pythonWorkerDiagnostics";
+import { recordPythonWorkerRuntimeEvent, recordPythonWorkerSuccess } from "./pythonWorkerDiagnostics";
 import { WorkerAdmissionQueue, WorkerRestartBudget } from "./workerRuntimePolicy";
 import type {
   CgalMeshRequest,
@@ -1675,6 +1675,8 @@ export async function getPythonWorker(): Promise<PythonWorker> {
       if (version.protocol !== "2026-03-15") throw new Error(`Unsupported Python worker protocol ${version.protocol}.`);
       const health = await worker.health(workerStartupHealthTimeoutMs);
       if (!health?.ok) throw new Error(`Python worker state check failed: ${health?.error ?? "unknown error"}.`);
+      recordPythonWorkerSuccess({ backend: launch.backend, command: launch.command, args: launch.args,
+        version: version.version, protocol: version.protocol });
     } catch (err) {
       recordUnexpectedFailure("startup-rejected", String((err as Error)?.message ?? err));
       worker.kill();

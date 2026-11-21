@@ -34,12 +34,18 @@ test("M3D20-12 Windows source-build Project journey reopens verified resources",
     await panel.getByTestId("project-import-file").setInputFiles({ name: "project.resources.json", mimeType: "application/json", buffer: Buffer.from(raw) });
     await expect(panel.getByTestId("project-import-open")).toBeEnabled();
     await panel.getByTestId("project-import-open").click();
-    await expect.poll(() => ctx!.page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).identity.id)).toBe(id);
+    await expect.poll(() => ctx!.page.evaluate(() => {
+      const stored = localStorage.getItem("math3d.project.v1");
+      return stored ? JSON.parse(stored).identity.id : null;
+    })).toBe(id);
     const profile = ctx.profileDir;
     await ctx.app.close(); ctx = await launchSurfaceApp({}, profile);
     panel = await showProjectGallery(ctx.page);
     await panel.getByTestId(`project-open-saved-${id}`).click();
-    await expect.poll(() => ctx!.page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).identity.id)).toBe(id);
+    await expect.poll(() => ctx!.page.evaluate(() => {
+      const stored = localStorage.getItem("math3d.project.v1");
+      return stored ? JSON.parse(stored).identity.id : null;
+    })).toBe(id);
     await expect(ctx.page.getByTestId("project-workbooks")).toContainText("Graph Derivative Investigation");
   } finally { await closeSurfaceApp(ctx); }
 });

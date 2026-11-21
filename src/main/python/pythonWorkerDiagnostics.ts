@@ -195,6 +195,8 @@ export function recordPythonWorkerStartup(status: PythonWorkerStartupStatus): vo
 
 export function recordPythonWorkerSuccess(fields?: {
   backend?: PythonWorkerBackend;
+  command?: string;
+  args?: string[];
   version?: string;
   protocol?: string;
 }): void {
@@ -205,6 +207,8 @@ export function recordPythonWorkerSuccess(fields?: {
   state.lastCheckAt = Date.now();
   state.lastError = undefined;
   if (fields?.backend) state.backend = fields.backend;
+  if (fields?.command) state.command = fields.command;
+  if (fields?.args) state.args = [...fields.args];
   if (fields?.version) state.version = fields.version;
   if (fields?.protocol) state.protocol = fields.protocol;
   state.statusMessage = state.version
@@ -290,10 +294,14 @@ export function recordPythonWorkerRuntimeEvent(
   appendDiagnosticsLog(event === "worker-exit" ? "error" : event === "job-start" || event === "job-finish" ? "info" : "warn", event, fields);
 }
 
-export function registerPythonWorkerDiagnosticsIpc(): void {
+export function registerPythonWorkerDiagnosticsIpc(retry: () => Promise<unknown>): void {
   if (diagnosticsIpcRegistered) return;
   diagnosticsIpcRegistered = true;
   ipcMain.handle("python-worker:diagnostics:get", async (): Promise<PythonWorkerDiagnosticsSnapshot> => {
+    return getPythonWorkerDiagnosticsSnapshot();
+  });
+  ipcMain.handle("python-worker:diagnostics:retry", async (): Promise<PythonWorkerDiagnosticsSnapshot> => {
+    await retry();
     return getPythonWorkerDiagnosticsSnapshot();
   });
 }
