@@ -3,6 +3,11 @@
 ; either registered per-user installation at this installer's exact destination.
 ; The new package then replaces managed files in place and writes its own
 ; uninstall entry. User data lives outside INSTDIR and is never removed here.
+; This custom include is read before electron-builder's multiUser.nsh. The
+; top-level failure callbacks below need these same default keys at read time.
+!define /ifndef INSTALL_REGISTRY_KEY "Software\${APP_GUID}"
+!define /ifndef UNINSTALL_REGISTRY_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}"
+
 !macro customInit
   ReadRegStr $R0 HKCU "${UNINSTALL_REGISTRY_KEY}" "DisplayVersion"
   ${If} $R0 == "1.6.0"
