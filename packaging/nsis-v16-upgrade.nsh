@@ -46,12 +46,16 @@
   ${EndIf}
 !macroend
 
-!ifndef BUILD_UNINSTALLER
-Function .onInstFailed
-  !insertmacro restorePreviousUninstall
-FunctionEnd
+; electron-builder expands customHeader after multiUser.nsh and LogicLib, so
+; callback bodies can use their registry definitions and conditional macros.
+!macro customHeader
+  !ifndef BUILD_UNINSTALLER
+    Function .onInstFailed
+      !insertmacro restorePreviousUninstall
+    FunctionEnd
 
-Function .onUserAbort
-  !insertmacro restorePreviousUninstall
-FunctionEnd
-!endif
+    Function .onUserAbort
+      !insertmacro restorePreviousUninstall
+    FunctionEnd
+  !endif
+!macroend
