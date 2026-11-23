@@ -382,6 +382,12 @@ try {
     $profile = Join-Path $run 'profile'
     $seedPath = Join-Path $evidenceRoot 'seed.json'
     $seed = Upgrade-Phase 'seed' (Join-Path $install 'Math3D.exe') $profile $seedPath $seedPath
+    $seedReopen = Upgrade-Phase 'seed-reopen' (Join-Path $install 'Math3D.exe') $profile $seedPath (Join-Path $evidenceRoot 'seed-reopen.json')
+    if ($seedReopen.checkpointSha256 -ne $seed.checkpointSha256 -or
+        $seedReopen.checkpointBytes -cne $seed.checkpointBytes) {
+      throw 'Published 1.7 cold reopen changed the seeded Graph Project bytes.'
+    }
+    $receipt.checks.published17ColdReopen = 'passed'; Save-Receipt
     $inventoryScript = Join-Path $repo 'scripts/release20-profile-inventory.mjs'
     $inventory = & node $inventoryScript $profile | ConvertFrom-Json
     if ($LASTEXITCODE -ne 0) { throw '1.7 profile inventory failed.' }

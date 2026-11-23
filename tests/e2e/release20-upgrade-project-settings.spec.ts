@@ -11,7 +11,7 @@ const checkpointKey = "math3d.mixed-workspace.v1";
 test("M3D20-13c published 1.7 Project and setting survive the exact 2.0 upgrade", async () => {
   const phase = process.env.MATH3D_RELEASE20_UPGRADE_PHASE;
   test.skip(process.platform !== "win32" || !process.env.MATH3D_PACKAGED_APP_EXE ||
-    !process.env.MATH3D_RELEASE20_UPGRADE_PROFILE || !["seed", "verify", "rollback"].includes(phase ?? ""),
+    !process.env.MATH3D_RELEASE20_UPGRADE_PROFILE || !["seed", "seed-reopen", "verify", "rollback"].includes(phase ?? ""),
   "Run through scripts/release20-upgrade.ps1 with two exact installed artifacts");
   test.setTimeout(120_000);
   const executable = resolve(process.env.MATH3D_PACKAGED_APP_EXE!);
