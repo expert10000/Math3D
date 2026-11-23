@@ -32,8 +32,12 @@ $modeDefine
 !define /ifndef INSTALL_REGISTRY_KEY "Software\`${APP_GUID}"
 !define /ifndef UNINSTALL_REGISTRY_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\`${UNINSTALL_APP_KEY}"
 !include "LogicLib.nsh"
+!include "MUI2.nsh"
 Name "Math3D NSIS include smoke"
 OutFile "$outputPath"
+!insertmacro MUI_PAGE_WELCOME
+!insertmacro MUI_PAGE_INSTFILES
+!insertmacro MUI_LANGUAGE "English"
 !insertmacro customHeader
 $body
 "@ | Set-Content -LiteralPath $scriptPath -Encoding utf8

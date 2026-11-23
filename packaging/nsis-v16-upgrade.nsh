@@ -3,6 +3,10 @@
 ; either registered per-user installation at this installer's exact destination.
 ; The new package then replaces managed files in place and writes its own
 ; uninstall entry. User data lives outside INSTDIR and is never removed here.
+!ifndef BUILD_UNINSTALLER
+  !define MUI_CUSTOMFUNCTION_ABORT Math3DRestorePreviousUninstallOnAbort
+!endif
+
 !macro customInit
   ReadRegStr $R0 HKCU "${UNINSTALL_REGISTRY_KEY}" "DisplayVersion"
   ${If} $R0 == "1.6.0"
@@ -54,7 +58,7 @@
       !insertmacro restorePreviousUninstall
     FunctionEnd
 
-    Function .onUserAbort
+    Function Math3DRestorePreviousUninstallOnAbort
       !insertmacro restorePreviousUninstall
     FunctionEnd
   !endif
