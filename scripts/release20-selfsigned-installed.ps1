@@ -149,6 +149,7 @@ function Capture-UpgradeDiagnostics([string]$stage, [string]$destination, [int]$
     schema = 'math3d/release20-upgrade-diagnostic/v1'; stage = $stage
     recordedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
     sourceCommit = $sourceCommit; destination = $destination; installerPid = $installerPid
+    appExePresent = Test-Path -LiteralPath (Join-Path $destination 'Math3D.exe') -PathType Leaf
     registry = $registered; math3dByName = $math3dByName; processes = $processes
   } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $evidenceRoot "upgrade-diagnostic-$stage.json") -Encoding utf8
 }
@@ -205,13 +206,23 @@ function Uninstall-Signed20ForRollback([string]$destination) {
   })
   if ($lingering.Count) { throw 'Math3D process remains before signed 2.0 rollback uninstall.' }
   $receipt.signed20UninstallerSha256 = $uninstallerHash
-  $process = Start-Process -FilePath $uninstaller -ArgumentList @('/S', '/CURRENTUSER', '--updated') -WindowStyle Hidden -PassThru
+  $tempUninstaller = Join-Path $env:TEMP ('math3d-release20-rollback-' + [guid]::NewGuid().ToString('N') + '.exe')
+  Copy-Item -LiteralPath $uninstaller -Destination $tempUninstaller
+  if ((Get-FileHash -LiteralPath $tempUninstaller -Algorithm SHA256).Hash.ToLowerInvariant() -ne $uninstallerHash) {
+    throw 'Temporary signed 2.0 rollback uninstaller differs from installed bytes.'
+  }
+  $process = Start-Process -FilePath $tempUninstaller `
+    -ArgumentList @('/S', '/KEEP_APP_DATA', '/currentuser', '--updated', "_?=$destination") -WindowStyle Hidden -PassThru
   if (-not $process.WaitForExit(180000)) {
     Capture-UpgradeDiagnostics 'uninstall-2.0-timeout' $destination $process.Id
     Stop-Process -Id $process.Id -Force
     throw 'Signed 2.0 rollback uninstaller timed out.'
   }
-  if ($process.ExitCode -ne 0) { throw "Signed 2.0 rollback uninstaller exit $($process.ExitCode)." }
+  $receipt.signed20UninstallerExitCode = $process.ExitCode
+  if ($process.ExitCode -ne 0) {
+    Capture-UpgradeDiagnostics 'uninstall-2.0-nonzero' $destination $process.Id
+    throw "Signed 2.0 rollback uninstaller exit $($process.ExitCode)."
+  }
   Capture-UpgradeDiagnostics 'after-2.0-uninstall-return' $destination $process.Id
   $deadline = (Get-Date).AddSeconds(180)
   do {
