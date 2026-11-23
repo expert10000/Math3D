@@ -1,0 +1,27 @@
+{
+  "schema": "math3d/release20-linux-package-qualification/v1",
+  "format": "AppImage",
+  "buildRunId": "44712803846",
+  "sourceSha": "4e8e9a16d2f3555d6b74b3f835698cc2b5c55eb1",
+  "package": "Math3D-2.0.0-linux-x86_64.AppImage",
+  "packageSha256": "aa714ea96a7d5870893cff1176d59002628465c55be476d1b8eda3ab55649484",
+  "packageBytes": 415513631,
+  "appPath": "/home/runner/work/Math3D/Math3D/packages/Math3D-2.0.0-linux-x86_64.AppImage",
+  "workerPath": "/home/runner/work/Math3D/Math3D/appimage-extract/squashfs-root/resources/python-worker/worker",
+  "checks": {
+    "bundledWorker": "passed",
+    "installedVersion": "passed",
+    "firstLaunch": "passed",
+    "firstUsePreferences": "passed",
+    "projectSave": "passed",
+    "projectColdReopen": "passed"
+  },
+  "project": {
+    "id": "math3d:project:9cd9c1584cf9f23bb33a4f0d3805c75d",
+    "title": "Graph Derivative Investigation",
+    "savedCheckpointSha256": "84c39c67cd014dcaec23eaf1de2accdd53474419ded683af1136c98d19d7674a",
+    "reopenedCheckpointSha256": "84c39c67cd014dcaec23eaf1de2accdd53474419ded683af1136c98d19d7674a",
+    "exactCheckpointBytes": true
+  },
+  "status": "passed"
+}
