@@ -78,6 +78,7 @@ $receipt = [ordered]@{
   ancestryCheck = $ancestryCheck; installerSha256 = $installerHash
   signerThumbprint = $thumbprint; trust = 'self-signed-untrusted-by-default'; publiclyTrustedPublisher = $false
   signedPrereleaseOnly = $true; gaApproved = $false; installedJourneysQualified = $false
+  diagnosticOnly = ($Mode -eq 'Upgrade' -and $env:MATH3D_UPGRADE_DIAGNOSTICS -eq '1')
   liveSageJourneys = [ordered]@{ status = 'blocked'; reason = 'No stable reachable SageMath 10.10 service endpoint was supplied for the four advertised live journeys.' }
   host = [ordered]@{ machine = $env:COMPUTERNAME; os = [Environment]::OSVersion.VersionString; powershell = $PSVersionTable.PSVersion.ToString() }
   checks = [ordered]@{}; failure = $null
@@ -85,6 +86,69 @@ $receipt = [ordered]@{
 New-Item -ItemType Directory -Path $evidenceRoot | Out-Null
 $receiptPath = Join-Path $evidenceRoot "$($Mode.ToLowerInvariant())-receipt.json"
 function Save-Receipt { $receipt | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $receiptPath -Encoding utf8 }
+function Capture-UpgradeDiagnostics([string]$stage, [string]$destination, [int]$installerPid = 0) {
+  if ($env:MATH3D_UPGRADE_DIAGNOSTICS -ne '1') { return }
+  $keys = @(
+    @{ name = 'HKCU-install'; path = 'HKCU:\Software\04569709-f841-5d53-81a9-9e9132fd0377' },
+    @{ name = 'HKCU-uninstall'; path = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\04569709-f841-5d53-81a9-9e9132fd0377' },
+    @{ name = 'HKLM-install'; path = 'HKLM:\Software\04569709-f841-5d53-81a9-9e9132fd0377' },
+    @{ name = 'HKLM-uninstall'; path = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\04569709-f841-5d53-81a9-9e9132fd0377' },
+    @{ name = 'HKCU-WOW-install'; path = 'HKCU:\Software\WOW6432Node\04569709-f841-5d53-81a9-9e9132fd0377' },
+    @{ name = 'HKCU-WOW-uninstall'; path = 'HKCU:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\04569709-f841-5d53-81a9-9e9132fd0377' },
+    @{ name = 'HKLM-WOW-install'; path = 'HKLM:\Software\WOW6432Node\04569709-f841-5d53-81a9-9e9132fd0377' },
+    @{ name = 'HKLM-WOW-uninstall'; path = 'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\04569709-f841-5d53-81a9-9e9132fd0377' }
+  )
+  $registered = @(foreach ($key in $keys) {
+    $value = Get-ItemProperty -LiteralPath $key.path -ErrorAction SilentlyContinue
+    if (-not $value) { continue }
+    $location = [string]$value.InstallLocation
+    [ordered]@{
+      name = $key.name; path = $key.path
+      displayVersion = [string]$value.DisplayVersion
+      installLocation = $location
+      exactDestination = $location -ceq $destination
+      normalizedDestination = $location.TrimEnd('\', '/') -eq $destination.TrimEnd('\', '/')
+      uninstallString = [string]$value.UninstallString
+      previousUninstallString = [string]$value.Math3DPreviousUninstallString
+      upgradeFrom = [string]$value.Math3DUpgradeFrom
+    }
+  })
+  $uninstallRoots = @(
+    'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
+    'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
+    'HKCU:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
+    'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
+  )
+  $math3dByName = @(foreach ($root in $uninstallRoots) {
+    foreach ($entry in @(Get-ChildItem -LiteralPath $root -ErrorAction SilentlyContinue)) {
+      $value = Get-ItemProperty -LiteralPath $entry.PSPath -ErrorAction SilentlyContinue
+      if ($value.DisplayName -ne 'Math3D') { continue }
+      [ordered]@{
+        path = $entry.Name; displayVersion = [string]$value.DisplayVersion
+        installLocation = [string]$value.InstallLocation
+        uninstallString = [string]$value.UninstallString
+      }
+    }
+  })
+  $all = @(Get-CimInstance Win32_Process)
+  $family = @($installerPid)
+  do {
+    $new = @($all | Where-Object { $family -contains $_.ParentProcessId -and $family -notcontains $_.ProcessId } |
+      Select-Object -ExpandProperty ProcessId)
+    $family += $new
+  } while ($new.Count)
+  $prefix = $destination.TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+  $processes = @($all | Where-Object {
+    $family -contains $_.ProcessId -or
+    ($_.ExecutablePath -and $_.ExecutablePath.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase))
+  } | Select-Object ProcessId, ParentProcessId, Name, ExecutablePath)
+  [ordered]@{
+    schema = 'math3d/release20-upgrade-diagnostic/v1'; stage = $stage
+    recordedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+    sourceCommit = $sourceCommit; destination = $destination; installerPid = $installerPid
+    registry = $registered; math3dByName = $math3dByName; processes = $processes
+  } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $evidenceRoot "upgrade-diagnostic-$stage.json") -Encoding utf8
+}
 function Restore-Env([string]$name, $value) {
   if ($null -eq $value) { Remove-Item "Env:$name" -ErrorAction SilentlyContinue }
   else { [Environment]::SetEnvironmentVariable($name, $value, 'Process') }
@@ -102,9 +166,15 @@ function Check-Installed([string]$root) {
   if ($installedSignatures.files.Count -ne 2) { throw 'Installed Authenticode verification failed.' }
   return @{ app = $app; worker = $worker; web = $web }
 }
-function Install([string]$file, [string]$destination) {
+function Install([string]$file, [string]$destination, [string]$phase) {
   $process = Start-Process -FilePath $file -ArgumentList @('/S', '/CURRENTUSER', "/D=$destination") -WindowStyle Hidden -PassThru
-  if (-not $process.WaitForExit(180000)) { Stop-Process -Id $process.Id -Force; throw 'Installer timed out.' }
+  $diagnosticRollback = $Mode -eq 'Upgrade' -and $env:MATH3D_UPGRADE_DIAGNOSTICS -eq '1' -and $phase -eq 'rollback-1.7'
+  $waitMilliseconds = if ($diagnosticRollback) { 90000 } else { 180000 }
+  if (-not $process.WaitForExit($waitMilliseconds)) {
+    if ($diagnosticRollback) { Capture-UpgradeDiagnostics 'rollback-timeout' $destination $process.Id }
+    Stop-Process -Id $process.Id -Force
+    throw "Installer timed out during $phase."
+  }
   if ($process.ExitCode -ne 0) { throw "Installer exit $($process.ExitCode)." }
 }
 function Playwright([string[]]$arguments) {
@@ -147,7 +217,7 @@ try {
   $install = Join-Path $run 'Math3D'
   if ($Mode -eq 'Fresh') {
     $receipt.checks.fourLiveSageJourneys = 'blocked'
-    Install $installer $install
+    Install $installer $install 'fresh-2.0'
     $installed = Check-Installed $install
     $receipt.checks.cleanInstall = 'passed'; $receipt.checks.installedBytesAndSignatures = 'passed'; Save-Receipt
     $originalPath = $env:PATH
@@ -249,7 +319,7 @@ try {
     $receipt.oldInstallerSha256 = $oldHash
     $receipt.oldManifestSha256 = (Get-FileHash -LiteralPath $oldManifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
     $receipt.oldChecksumsSha256 = (Get-FileHash -LiteralPath $checksumsPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    Install $old $install
+    Install $old $install 'seed-1.7'
     $profile = Join-Path $run 'profile'
     $seedPath = Join-Path $evidenceRoot 'seed.json'
     $seed = Upgrade-Phase 'seed' (Join-Path $install 'Math3D.exe') $profile $seedPath $seedPath
@@ -275,7 +345,9 @@ try {
       throw 'Published 1.7 application or worker is still running before the 2.0 upgrade.'
     }
     $receipt.checks.published17ProcessesExited = 'passed'; Save-Receipt
-    Install $installer $install
+    Capture-UpgradeDiagnostics 'before-2.0' $install
+    Install $installer $install 'upgrade-2.0'
+    Capture-UpgradeDiagnostics 'after-2.0' $install
     $installed = Check-Installed $install
     $verify = Upgrade-Phase 'verify' $installed.app $profile $seedPath (Join-Path $evidenceRoot 'verify.json')
     if ($verify.checkpointSha256 -ne $seed.checkpointSha256 -or $verify.checkpointBytes -cne $seed.checkpointBytes) {
@@ -286,7 +358,9 @@ try {
     Copy-Item -LiteralPath $backup -Destination $rollbackProfile -Recurse
     $rollbackInventory = & node $inventoryScript $rollbackProfile | ConvertFrom-Json
     if ($LASTEXITCODE -ne 0 -or $rollbackInventory.digest -ne $inventory.digest) { throw 'Rollback profile differs from 1.7 backup.' }
-    Install $old $install
+    Capture-UpgradeDiagnostics 'before-rollback' $install
+    Install $old $install 'rollback-1.7'
+    Capture-UpgradeDiagnostics 'after-rollback' $install
     $rollback = Upgrade-Phase 'rollback' (Join-Path $install 'Math3D.exe') $rollbackProfile $seedPath (Join-Path $evidenceRoot 'rollback.json')
     if ($rollback.checkpointSha256 -ne $seed.checkpointSha256 -or $rollback.checkpointBytes -cne $seed.checkpointBytes) {
       throw 'Rollback did not reopen the exact original Graph Project.'
@@ -295,7 +369,7 @@ try {
     if ($LASTEXITCODE -ne 0 -or $backupAfter.digest -ne $inventory.digest) { throw 'Pristine 1.7 profile backup changed.' }
     $receipt.checks.published17Rollback = 'passed'
   }
-  $receipt.status = if ($Mode -eq 'Fresh' -and -not $sageServiceUrl) { 'partial' } else { 'passed' }
+  $receipt.status = if ($receipt.diagnosticOnly) { 'diagnostic' } elseif ($Mode -eq 'Fresh' -and -not $sageServiceUrl) { 'partial' } else { 'passed' }
 } catch {
   $receipt.status = 'failed'; $receipt.failure = $_.Exception.Message
   throw

@@ -7,7 +7,7 @@ on:
         description: Existing 1.7 rc.4 trial or exact self-signed 2.0 installed qualification
         required: true
         type: choice
-        options: [rc4, signed-20]
+        options: [rc4, signed-20, diag-20]
         default: rc4
       draft_release_id:
         description: Unpublished draft release ID containing only the signed installer and public manifests
@@ -160,7 +160,7 @@ jobs:
           if-no-files-found: warn
 
   selfsigned-upgrade:
-    if: inputs.trial == 'signed-20'
+    if: inputs.trial == 'signed-20' || inputs.trial == 'diag-20'
     runs-on: windows-2022
     permissions:
       contents: write
@@ -182,9 +182,14 @@ jobs:
           INSTALLER_SHA256: ${{ inputs.installer_sha256 }}
           FREEZE_SHA256: ${{ inputs.freeze_sha256 }}
           SIGNER_THUMBPRINT: ${{ inputs.signer_thumbprint }}
+          TRIAL: ${{ inputs.trial }}
         run: |
           $checkoutSha = (& git rev-parse HEAD).Trim()
-          if ($checkoutSha -ne $env:SOURCE_COMMIT) { throw 'Workflow checkout differs from approved installer source.' }
+          if ($checkoutSha -ne $env:SOURCE_COMMIT) {
+            if ($env:TRIAL -ne 'diag-20') { throw 'Workflow checkout differs from approved installer source.' }
+            & git merge-base --is-ancestor $env:SOURCE_COMMIT HEAD
+            if ($LASTEXITCODE -ne 0) { throw 'Diagnostic harness does not descend from approved installer source.' }
+          }
           ./scripts/stage-release20-selfsigned-draft.ps1 `
             -ReleaseId $env:RELEASE_ID -SourceCommit $env:SOURCE_COMMIT `
             -InstallerSha256 $env:INSTALLER_SHA256 -FreezeSha256 $env:FREEZE_SHA256 `
@@ -211,7 +216,9 @@ jobs:
           SOURCE_COMMIT: ${{ inputs.source_commit }}
           INSTALLER_SHA256: ${{ inputs.installer_sha256 }}
           SIGNER_THUMBPRINT: ${{ inputs.signer_thumbprint }}
+          TRIAL: ${{ inputs.trial }}
         run: |
+          if ($env:TRIAL -eq 'diag-20') { $env:MATH3D_UPGRADE_DIAGNOSTICS = '1' }
           $evidence = Join-Path $env:TEMP 'math3d-selfsigned-upgrade'
           ./scripts/release20-selfsigned-installed.ps1 -Mode Upgrade `
             -ArtifactRoot (Join-Path $env:RUNNER_TEMP 'selfsigned-candidate') `
@@ -219,22 +226,37 @@ jobs:
             -EvidenceRoot $evidence -SourceCommit $env:SOURCE_COMMIT `
             -InstallerSha256 $env:INSTALLER_SHA256 -SignerThumbprint $env:SIGNER_THUMBPRINT
           $receipt = Get-Content -LiteralPath (Join-Path $evidence 'upgrade-receipt.json') -Raw | ConvertFrom-Json
+          if ($env:TRIAL -eq 'diag-20') {
+            if ($receipt.status -ne 'diagnostic' -or $receipt.diagnosticOnly -ne $true) {
+              throw 'Diagnostic-only rollback did not complete; inspect the limited diagnostic artifact.'
+            }
+            Write-Host 'Diagnostic-only rollback completed; this is not installed qualification.'
+            exit 0
+          }
           if ($receipt.status -ne 'passed' -or $receipt.checks.published17Rollback -ne 'passed') {
             throw 'Upgrade and rollback acceptance is incomplete; inspect the uploaded receipt.'
           }
       - name: Collect Upgrade evidence
         if: always()
         shell: pwsh
+        env:
+          TRIAL: ${{ inputs.trial }}
         run: |
           $output = Join-Path $env:RUNNER_TEMP 'selfsigned-upgrade-evidence'
           New-Item -ItemType Directory -Path $output -Force | Out-Null
           $stage = Join-Path $env:RUNNER_TEMP 'selfsigned-candidate/stage-receipt.json'
           if (Test-Path -LiteralPath $stage) { Copy-Item -LiteralPath $stage -Destination $output }
           $evidence = Join-Path $env:TEMP 'math3d-selfsigned-upgrade'
-          if (Test-Path -LiteralPath $evidence) { Copy-Item -Path (Join-Path $evidence '*') -Destination $output -Recurse }
+          if (Test-Path -LiteralPath $evidence) {
+            if ($env:TRIAL -eq 'diag-20') {
+              Get-ChildItem -LiteralPath $evidence -File -Filter '*-diagnostic-*.json' | Copy-Item -Destination $output
+              $receipt = Join-Path $evidence 'upgrade-receipt.json'
+              if (Test-Path -LiteralPath $receipt) { Copy-Item -LiteralPath $receipt -Destination $output }
+            } else { Copy-Item -Path (Join-Path $evidence '*') -Destination $output -Recurse }
+          }
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: release20-selfsigned-upgrade-evidence
+          name: ${{ inputs.trial == 'diag-20' && 'release20-upgrade-diagnostic' || 'release20-selfsigned-upgrade-evidence' }}
           path: ${{ runner.temp }}/selfsigned-upgrade-evidence/**
           if-no-files-found: warn
