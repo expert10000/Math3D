@@ -424,11 +424,16 @@ try {
     $rollbackInventory = & node $inventoryScript $rollbackProfile | ConvertFrom-Json
     if ($LASTEXITCODE -ne 0 -or $rollbackInventory.digest -ne $inventory.digest) { throw 'Rollback profile differs from 1.7 backup.' }
     Capture-UpgradeDiagnostics 'before-rollback' $install
+    $activeBeforeUninstall = & node $inventoryScript $profile | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0) { throw 'Active 2.0 profile inventory failed before rollback uninstall.' }
     Uninstall-Signed20ForRollback $install
-    foreach ($profilePath in @($profile, $backup, $rollbackProfile)) {
-      $afterUninstall = & node $inventoryScript $profilePath | ConvertFrom-Json
-      if ($LASTEXITCODE -ne 0 -or $afterUninstall.digest -ne $inventory.digest) {
-        throw 'Signed 2.0 rollback uninstall changed the saved 1.7 profile or its backup.'
+    foreach ($expected in @(
+        @{ path = $profile; digest = $activeBeforeUninstall.digest; label = 'active 2.0 profile' },
+        @{ path = $backup; digest = $inventory.digest; label = 'pristine 1.7 backup' },
+        @{ path = $rollbackProfile; digest = $inventory.digest; label = 'cloned 1.7 rollback profile' })) {
+      $afterUninstall = & node $inventoryScript $expected.path | ConvertFrom-Json
+      if ($LASTEXITCODE -ne 0 -or $afterUninstall.digest -ne $expected.digest) {
+        throw "Signed 2.0 rollback uninstall changed $($expected.label)."
       }
     }
     $receipt.checks.signed20UninstallBefore17Rollback = 'passed'; Save-Receipt
