@@ -212,8 +212,16 @@ function Uninstall-Signed20ForRollback([string]$destination) {
     throw 'Signed 2.0 rollback uninstaller timed out.'
   }
   if ($process.ExitCode -ne 0) { throw "Signed 2.0 rollback uninstaller exit $($process.ExitCode)." }
-  $remaining = Get-ItemProperty -LiteralPath $uninstallKey -ErrorAction SilentlyContinue
-  if ($remaining.DisplayVersion -eq '2.0.0' -or (Test-Path -LiteralPath (Join-Path $destination 'Math3D.exe'))) {
+  Capture-UpgradeDiagnostics 'after-2.0-uninstall-return' $destination $process.Id
+  $deadline = (Get-Date).AddSeconds(30)
+  do {
+    $remaining = Get-ItemProperty -LiteralPath $uninstallKey -ErrorAction SilentlyContinue
+    $appRemains = Test-Path -LiteralPath (Join-Path $destination 'Math3D.exe')
+    if ($remaining.DisplayVersion -ne '2.0.0' -and -not $appRemains) { break }
+    Start-Sleep -Seconds 1
+  } while ((Get-Date) -lt $deadline)
+  if ($remaining.DisplayVersion -eq '2.0.0' -or $appRemains) {
+    Capture-UpgradeDiagnostics 'after-2.0-uninstall-wait' $destination $process.Id
     throw 'Signed 2.0 rollback uninstall left registered or executable application bytes.'
   }
 }
