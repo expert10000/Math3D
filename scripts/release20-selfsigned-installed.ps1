@@ -213,7 +213,7 @@ function Uninstall-Signed20ForRollback([string]$destination) {
   }
   if ($process.ExitCode -ne 0) { throw "Signed 2.0 rollback uninstaller exit $($process.ExitCode)." }
   Capture-UpgradeDiagnostics 'after-2.0-uninstall-return' $destination $process.Id
-  $deadline = (Get-Date).AddSeconds(30)
+  $deadline = (Get-Date).AddSeconds(180)
   do {
     $remaining = Get-ItemProperty -LiteralPath $uninstallKey -ErrorAction SilentlyContinue
     $appRemains = Test-Path -LiteralPath (Join-Path $destination 'Math3D.exe')
