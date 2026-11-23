@@ -131,12 +131,15 @@ function Capture-UpgradeDiagnostics([string]$stage, [string]$destination, [int]$
     }
   })
   $all = @(Get-CimInstance Win32_Process)
-  $family = @($installerPid)
-  do {
-    $new = @($all | Where-Object { $family -contains $_.ParentProcessId -and $family -notcontains $_.ProcessId } |
-      Select-Object -ExpandProperty ProcessId)
-    $family += $new
-  } while ($new.Count)
+  $family = @()
+  if ($installerPid -gt 0) {
+    $family = @($installerPid)
+    do {
+      $new = @($all | Where-Object { $family -contains $_.ParentProcessId -and $family -notcontains $_.ProcessId } |
+        Select-Object -ExpandProperty ProcessId)
+      $family += $new
+    } while ($new.Count)
+  }
   $prefix = $destination.TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
   $processes = @($all | Where-Object {
     $family -contains $_.ProcessId -or
