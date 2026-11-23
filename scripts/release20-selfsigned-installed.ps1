@@ -107,6 +107,55 @@ function Install([string]$file, [string]$destination) {
   if (-not $process.WaitForExit(180000)) { Stop-Process -Id $process.Id -Force; throw 'Installer timed out.' }
   if ($process.ExitCode -ne 0) { throw "Installer exit $($process.ExitCode)." }
 }
+function Uninstall-Signed20ForRollback([string]$destination) {
+  $installKey = 'HKCU:\Software\04569709-f841-5d53-81a9-9e9132fd0377'
+  $uninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\04569709-f841-5d53-81a9-9e9132fd0377'
+  $installEntry = Get-ItemProperty -LiteralPath $installKey -ErrorAction Stop
+  $uninstallEntry = Get-ItemProperty -LiteralPath $uninstallKey -ErrorAction Stop
+  $uninstaller = Join-Path $destination 'Uninstall Math3D.exe'
+  $expectedCommand = '"' + $uninstaller + '" /currentuser'
+  if ($installEntry.InstallLocation -cne $destination -or
+      $uninstallEntry.DisplayVersion -cne '2.0.0' -or
+      $uninstallEntry.UninstallString -cne $expectedCommand -or
+      -not (Test-Path -LiteralPath $uninstaller -PathType Leaf)) {
+    throw 'Signed 2.0 registration does not match the exact rollback destination and uninstaller.'
+  }
+  $uninstallerHash = (Get-FileHash -LiteralPath $uninstaller -Algorithm SHA256).Hash.ToLowerInvariant()
+  $signature = & (Join-Path $repo 'scripts/verify-release20-selfsigned-prerelease.ps1') `
+    -Paths @($uninstaller) -ExpectedThumbprint $thumbprint | ConvertFrom-Json
+  if ($signature.files.Count -ne 1 -or $signature.files[0].sha256 -ne $uninstallerHash) {
+    throw 'Signed 2.0 uninstaller verification failed.'
+  }
+  $prefix = $destination.TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+  $lingering = @(Get-CimInstance Win32_Process | Where-Object {
+    $_.ExecutablePath -and $_.ExecutablePath.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)
+  })
+  if ($lingering.Count) { throw 'Math3D process remains before signed 2.0 rollback uninstall.' }
+  $receipt.signed20UninstallerSha256 = $uninstallerHash
+  $tempUninstaller = Join-Path $env:TEMP ('math3d-release20-rollback-' + [guid]::NewGuid().ToString('N') + '.exe')
+  Copy-Item -LiteralPath $uninstaller -Destination $tempUninstaller
+  if ((Get-FileHash -LiteralPath $tempUninstaller -Algorithm SHA256).Hash.ToLowerInvariant() -ne $uninstallerHash) {
+    throw 'Temporary signed 2.0 rollback uninstaller differs from installed bytes.'
+  }
+  $process = Start-Process -FilePath $tempUninstaller `
+    -ArgumentList @('/S', '/KEEP_APP_DATA', '/currentuser', "_?=$destination") -WindowStyle Hidden -PassThru
+  if (-not $process.WaitForExit(180000)) {
+    Stop-Process -Id $process.Id -Force
+    throw 'Signed 2.0 rollback uninstaller timed out.'
+  }
+  $receipt.signed20UninstallerExitCode = $process.ExitCode
+  if ($process.ExitCode -ne 0) { throw "Signed 2.0 rollback uninstaller exit $($process.ExitCode)." }
+  $deadline = (Get-Date).AddSeconds(180)
+  do {
+    $remaining = Get-ItemProperty -LiteralPath $uninstallKey -ErrorAction SilentlyContinue
+    $appRemains = Test-Path -LiteralPath (Join-Path $destination 'Math3D.exe')
+    if ($remaining.DisplayVersion -ne '2.0.0' -and -not $appRemains) { break }
+    Start-Sleep -Seconds 1
+  } while ((Get-Date) -lt $deadline)
+  if ($remaining.DisplayVersion -eq '2.0.0' -or $appRemains) {
+    throw 'Signed 2.0 rollback uninstall left registered or executable application bytes.'
+  }
+}
 function Playwright([string[]]$arguments) {
   Push-Location $repo
   try {
@@ -253,6 +302,12 @@ try {
     $profile = Join-Path $run 'profile'
     $seedPath = Join-Path $evidenceRoot 'seed.json'
     $seed = Upgrade-Phase 'seed' (Join-Path $install 'Math3D.exe') $profile $seedPath $seedPath
+    $seedReopen = Upgrade-Phase 'seed-reopen' (Join-Path $install 'Math3D.exe') $profile $seedPath (Join-Path $evidenceRoot 'seed-reopen.json')
+    if ($seedReopen.checkpointSha256 -ne $seed.checkpointSha256 -or
+        $seedReopen.checkpointBytes -cne $seed.checkpointBytes) {
+      throw 'Published 1.7 cold reopen changed the seeded Graph Project bytes.'
+    }
+    $receipt.checks.published17ColdReopen = 'passed'; Save-Receipt
     $inventoryScript = Join-Path $repo 'scripts/release20-profile-inventory.mjs'
     $inventory = & node $inventoryScript $profile | ConvertFrom-Json
     if ($LASTEXITCODE -ne 0) { throw '1.7 profile inventory failed.' }
@@ -286,6 +341,19 @@ try {
     Copy-Item -LiteralPath $backup -Destination $rollbackProfile -Recurse
     $rollbackInventory = & node $inventoryScript $rollbackProfile | ConvertFrom-Json
     if ($LASTEXITCODE -ne 0 -or $rollbackInventory.digest -ne $inventory.digest) { throw 'Rollback profile differs from 1.7 backup.' }
+    $activeBeforeUninstall = & node $inventoryScript $profile | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0) { throw 'Active 2.0 profile inventory failed before rollback uninstall.' }
+    Uninstall-Signed20ForRollback $install
+    foreach ($expected in @(
+        @{ path = $profile; digest = $activeBeforeUninstall.digest; label = 'active 2.0 profile' },
+        @{ path = $backup; digest = $inventory.digest; label = 'pristine 1.7 backup' },
+        @{ path = $rollbackProfile; digest = $inventory.digest; label = 'cloned 1.7 rollback profile' })) {
+      $afterUninstall = & node $inventoryScript $expected.path | ConvertFrom-Json
+      if ($LASTEXITCODE -ne 0 -or $afterUninstall.digest -ne $expected.digest) {
+        throw "Signed 2.0 rollback uninstall changed $($expected.label)."
+      }
+    }
+    $receipt.checks.signed20UninstallBefore17Rollback = 'passed'; Save-Receipt
     Install $old $install
     $rollback = Upgrade-Phase 'rollback' (Join-Path $install 'Math3D.exe') $rollbackProfile $seedPath (Join-Path $evidenceRoot 'rollback.json')
     if ($rollback.checkpointSha256 -ne $seed.checkpointSha256 -or $rollback.checkpointBytes -cne $seed.checkpointBytes) {
