@@ -212,7 +212,7 @@ function Uninstall-Signed20ForRollback([string]$destination) {
     throw 'Temporary signed 2.0 rollback uninstaller differs from installed bytes.'
   }
   $process = Start-Process -FilePath $tempUninstaller `
-    -ArgumentList @('/S', '/KEEP_APP_DATA', '/currentuser', '--updated', "_?=$destination") -WindowStyle Hidden -PassThru
+    -ArgumentList @('/S', '/KEEP_APP_DATA', '/currentuser', "_?=$destination") -WindowStyle Hidden -PassThru
   if (-not $process.WaitForExit(180000)) {
     Capture-UpgradeDiagnostics 'uninstall-2.0-timeout' $destination $process.Id
     Stop-Process -Id $process.Id -Force
