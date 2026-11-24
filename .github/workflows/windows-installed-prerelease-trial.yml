@@ -165,6 +165,7 @@ jobs:
         env:
           MATH3D_RELEASE20_SAGE_SERVICE_URL: ${{ secrets.MATH3D_RELEASE20_SAGE_SERVICE_URL }}
           MATH3D_RELEASE20_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          MATH3D_RELEASE20_HARNESS_COMMIT: ${{ inputs.harness_commit }}
           MATH3D_RELEASE20_INSTALLER_SHA256: ${{ inputs.installer_sha256 }}
         run: |
           $evidence = Join-Path $env:TEMP 'math3d-selfsigned-fresh'

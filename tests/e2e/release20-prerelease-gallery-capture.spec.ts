@@ -9,6 +9,7 @@ import { launchRepoElectron } from "./helpers/electronLauncher";
 
 const sha256 = (bytes: Buffer | string) => createHash("sha256").update(bytes).digest("hex");
 const commit = process.env.MATH3D_RELEASE20_SOURCE_COMMIT ?? "";
+const harnessCommit = process.env.MATH3D_RELEASE20_HARNESS_COMMIT ?? "";
 const installerSha256 = process.env.MATH3D_RELEASE20_INSTALLER_SHA256 ?? "";
 const output = process.env.MATH3D_RELEASE20_GALLERY_OUT;
 const installed = process.env.MATH3D_PACKAGED_APP_EXE;
@@ -19,10 +20,13 @@ test("capture exact installed prerelease Surface, Quantum, and Algebra scenes", 
     "Requires an exact installed Windows prerelease and passed Fresh receipt");
   test.setTimeout(240_000);
   expect(commit).toMatch(/^[0-9a-f]{40}$/);
+  expect(harnessCommit).toMatch(/^[0-9a-f]{40}$/);
   expect(installerSha256).toMatch(/^[0-9a-f]{64}$/);
-  const fresh = JSON.parse(await readFile(freshReceipt!, "utf8"));
+  const freshBytes = await readFile(freshReceipt!);
+  const freshReceiptSha256 = sha256(freshBytes);
+  const fresh = JSON.parse(freshBytes.toString("utf8"));
   expect(fresh).toMatchObject({ schema: "math3d/release20-selfsigned-installed/v1",
-    status: "passed", sourceCommit: commit, installerSha256,
+    status: "passed", sourceCommit: commit, harnessCommit, installerSha256,
     installedJourneysQualified: true, trust: "self-signed-untrusted-by-default" });
   await mkdir(output!, { recursive: true });
   const captures: Array<{ scenario: string; file: string; sha256: string; sourceHash: string;
@@ -39,7 +43,8 @@ test("capture exact installed prerelease Surface, Quantum, and Algebra scenes", 
     expect(png.height).toBeGreaterThanOrEqual(900);
     const evidenceFile = `${scenario}-scene.json`;
     const evidence = { schema: "math3d/release20-scene-capture/v1", status: "passed",
-      scenario, appVersion: "2.0.0", sourceCommit: commit, installerSha256,
+      scenario, appVersion: "2.0.0", sourceCommit: commit, harnessCommit,
+      installerSha256, freshReceiptSha256,
       sourceHash, captureKind: "installed-selfsigned-prerelease",
       checks: { sourceVerified: "passed", installedUiCapture: "passed" } };
     const evidenceBytes = Buffer.from(JSON.stringify(evidence, null, 2) + "\n");
@@ -113,6 +118,7 @@ test("capture exact installed prerelease Surface, Quantum, and Algebra scenes", 
 
   await writeFile(join(output!, "manifest.json"), JSON.stringify({
     schema: "math3d/release20-prerelease-gallery/v1", status: "captured-needs-visual-review",
-    version: "2.0.0", sourceCommit: commit, installerSha256, captures,
+    version: "2.0.0", sourceCommit: commit, harnessCommit, installerSha256,
+    freshReceiptSha256, captures,
   }, null, 2) + "\n");
 });
