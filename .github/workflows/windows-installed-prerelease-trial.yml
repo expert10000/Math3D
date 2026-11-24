@@ -17,6 +17,10 @@ on:
         description: Approved 40-character installer source commit
         required: false
         type: string
+      harness_commit:
+        description: Reviewed 40-character installed harness commit (defaults to installer source commit)
+        required: false
+        type: string
       installer_sha256:
         description: Approved signed installer SHA-256
         required: false
@@ -105,12 +109,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_ID: ${{ inputs.draft_release_id }}
           SOURCE_COMMIT: ${{ inputs.source_commit }}
+          HARNESS_COMMIT: ${{ inputs.harness_commit }}
           INSTALLER_SHA256: ${{ inputs.installer_sha256 }}
           FREEZE_SHA256: ${{ inputs.freeze_sha256 }}
           SIGNER_THUMBPRINT: ${{ inputs.signer_thumbprint }}
         run: |
           $checkoutSha = (& git rev-parse HEAD).Trim()
-          if ($checkoutSha -ne $env:SOURCE_COMMIT) { throw 'Workflow checkout differs from approved installer source.' }
+          $expectedHarness = if ($env:HARNESS_COMMIT) { $env:HARNESS_COMMIT } else { $env:SOURCE_COMMIT }
+          if ($expectedHarness -notmatch '^[a-f0-9]{40}$' -or $checkoutSha -ne $expectedHarness) {
+            throw 'Workflow checkout differs from the reviewed installed harness commit.'
+          }
+          & git merge-base --is-ancestor $env:SOURCE_COMMIT HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Reviewed harness does not descend from approved installer source.' }
           ./scripts/stage-release20-selfsigned-draft.ps1 `
             -ReleaseId $env:RELEASE_ID -SourceCommit $env:SOURCE_COMMIT `
             -InstallerSha256 $env:INSTALLER_SHA256 -FreezeSha256 $env:FREEZE_SHA256 `
@@ -128,6 +138,7 @@ jobs:
         env:
           MATH3D_RELEASE20_SAGE_SERVICE_URL: ${{ secrets.MATH3D_RELEASE20_SAGE_SERVICE_URL }}
           SOURCE_COMMIT: ${{ inputs.source_commit }}
+          HARNESS_COMMIT: ${{ inputs.harness_commit }}
           INSTALLER_SHA256: ${{ inputs.installer_sha256 }}
           SIGNER_THUMBPRINT: ${{ inputs.signer_thumbprint }}
         run: |
@@ -137,7 +148,10 @@ jobs:
             -SourceCommit $env:SOURCE_COMMIT -InstallerSha256 $env:INSTALLER_SHA256 `
             -SignerThumbprint $env:SIGNER_THUMBPRINT
           $receipt = Get-Content -LiteralPath (Join-Path $evidence 'fresh-receipt.json') -Raw | ConvertFrom-Json
-          if ($receipt.status -ne 'passed' -or $receipt.installedJourneysQualified -ne $true) {
+          $expectedHarness = if ($env:HARNESS_COMMIT) { $env:HARNESS_COMMIT } else { $env:SOURCE_COMMIT }
+          if ($receipt.status -ne 'passed' -or $receipt.installedJourneysQualified -ne $true -or
+              $receipt.sourceCommit -ne $env:SOURCE_COMMIT -or $receipt.harnessCommit -ne $expectedHarness -or
+              $receipt.installerSha256 -ne $env:INSTALLER_SHA256) {
             throw 'Fresh installed acceptance is incomplete; inspect the uploaded receipt.'
           }
       - name: Collect Fresh evidence
@@ -179,12 +193,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_ID: ${{ inputs.draft_release_id }}
           SOURCE_COMMIT: ${{ inputs.source_commit }}
+          HARNESS_COMMIT: ${{ inputs.harness_commit }}
           INSTALLER_SHA256: ${{ inputs.installer_sha256 }}
           FREEZE_SHA256: ${{ inputs.freeze_sha256 }}
           SIGNER_THUMBPRINT: ${{ inputs.signer_thumbprint }}
         run: |
           $checkoutSha = (& git rev-parse HEAD).Trim()
-          if ($checkoutSha -ne $env:SOURCE_COMMIT) { throw 'Workflow checkout differs from approved installer source.' }
+          $expectedHarness = if ($env:HARNESS_COMMIT) { $env:HARNESS_COMMIT } else { $env:SOURCE_COMMIT }
+          if ($expectedHarness -notmatch '^[a-f0-9]{40}$' -or $checkoutSha -ne $expectedHarness) {
+            throw 'Workflow checkout differs from the reviewed installed harness commit.'
+          }
+          & git merge-base --is-ancestor $env:SOURCE_COMMIT HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Reviewed harness does not descend from approved installer source.' }
           ./scripts/stage-release20-selfsigned-draft.ps1 `
             -ReleaseId $env:RELEASE_ID -SourceCommit $env:SOURCE_COMMIT `
             -InstallerSha256 $env:INSTALLER_SHA256 -FreezeSha256 $env:FREEZE_SHA256 `
@@ -209,6 +229,7 @@ jobs:
         shell: pwsh
         env:
           SOURCE_COMMIT: ${{ inputs.source_commit }}
+          HARNESS_COMMIT: ${{ inputs.harness_commit }}
           INSTALLER_SHA256: ${{ inputs.installer_sha256 }}
           SIGNER_THUMBPRINT: ${{ inputs.signer_thumbprint }}
         run: |
@@ -219,7 +240,13 @@ jobs:
             -EvidenceRoot $evidence -SourceCommit $env:SOURCE_COMMIT `
             -InstallerSha256 $env:INSTALLER_SHA256 -SignerThumbprint $env:SIGNER_THUMBPRINT
           $receipt = Get-Content -LiteralPath (Join-Path $evidence 'upgrade-receipt.json') -Raw | ConvertFrom-Json
-          if ($receipt.status -ne 'passed' -or $receipt.checks.published17Rollback -ne 'passed') {
+          $expectedHarness = if ($env:HARNESS_COMMIT) { $env:HARNESS_COMMIT } else { $env:SOURCE_COMMIT }
+          if ($receipt.status -ne 'passed' -or $receipt.sourceCommit -ne $env:SOURCE_COMMIT -or
+              $receipt.harnessCommit -ne $expectedHarness -or $receipt.installerSha256 -ne $env:INSTALLER_SHA256 -or
+              $receipt.checks.published17ColdReopen -ne 'passed' -or
+              $receipt.checks.sameDirectoryUpgradeAndProfile -ne 'passed' -or
+              $receipt.checks.signed20UninstallBefore17Rollback -ne 'passed' -or
+              $receipt.checks.published17Rollback -ne 'passed') {
             throw 'Upgrade and rollback acceptance is incomplete; inspect the uploaded receipt.'
           }
       - name: Collect Upgrade evidence
