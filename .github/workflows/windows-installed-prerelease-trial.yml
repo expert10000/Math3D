@@ -21,6 +21,11 @@ on:
         description: Reviewed 40-character installed harness commit (defaults to installer source commit)
         required: false
         type: string
+      gallery_capture:
+        description: Capture three exact installed prerelease Gallery scenes for manual review
+        required: false
+        default: false
+        type: boolean
       installer_sha256:
         description: Approved signed installer SHA-256
         required: false
@@ -154,6 +159,29 @@ jobs:
               $receipt.installerSha256 -ne $env:INSTALLER_SHA256) {
             throw 'Fresh installed acceptance is incomplete; inspect the uploaded receipt.'
           }
+      - name: Capture installed prerelease Gallery for manual review
+        if: inputs.gallery_capture
+        shell: pwsh
+        env:
+          MATH3D_RELEASE20_SAGE_SERVICE_URL: ${{ secrets.MATH3D_RELEASE20_SAGE_SERVICE_URL }}
+          MATH3D_RELEASE20_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          MATH3D_RELEASE20_INSTALLER_SHA256: ${{ inputs.installer_sha256 }}
+        run: |
+          $evidence = Join-Path $env:TEMP 'math3d-selfsigned-fresh'
+          $env:MATH3D_RELEASE20_FRESH_RECEIPT = Join-Path $evidence 'fresh-receipt.json'
+          $env:MATH3D_PACKAGED_APP_EXE = Join-Path $evidence 'run/Math3D/Math3D.exe'
+          $env:MATH3D_RELEASE20_GALLERY_OUT = Join-Path $env:RUNNER_TEMP 'prerelease-gallery-capture'
+          if (-not (Test-Path -LiteralPath $env:MATH3D_PACKAGED_APP_EXE -PathType Leaf)) {
+            throw 'Exact installed app is unavailable for Gallery capture.'
+          }
+          npx playwright test tests/e2e/release20-prerelease-gallery-capture.spec.ts --workers=1 --reporter=list
+          if ($LASTEXITCODE -ne 0) { throw 'Installed prerelease Gallery capture failed.' }
+      - uses: actions/upload-artifact@v7
+        if: always() && inputs.gallery_capture
+        with:
+          name: release20-prerelease-gallery-capture
+          path: ${{ runner.temp }}/prerelease-gallery-capture/**
+          if-no-files-found: error
       - name: Collect Fresh evidence
         if: always()
         shell: pwsh
