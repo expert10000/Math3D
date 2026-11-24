@@ -107,7 +107,7 @@ test("capture exact installed prerelease Surface, Quantum, and Algebra scenes", 
     const services = cas.getByTestId("scientific-services-cas");
     await services.getByLabel("Services preset").selectOption("Basic");
     await services.getByLabel("SageMath backend").selectOption("docker");
-    const expression = await services.getByLabel("Expression", { exact: true }).inputValue();
+    const expression = await services.locator("textarea").first().inputValue();
     expect(expression).toBe("sin(x)^2 + cos(x)^2");
     await services.getByRole("button", { name: "Run", exact: true }).click();
     const result = cas.getByTestId("sage-analysis-result");
