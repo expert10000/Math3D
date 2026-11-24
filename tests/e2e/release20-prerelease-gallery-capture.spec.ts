@@ -79,11 +79,12 @@ test("capture exact installed prerelease Surface, Quantum, and Algebra scenes", 
     const surface = project.workspace.entries.find((entry: { module: string }) => entry.module === "surface");
     expect(surface.checkpoint.source.definition.familyId).toBe("graph2d.revolution");
     const sourceHash = surface.expected.structuralHash as string;
+    expect(sourceHash).toMatch(/^sha256:[0-9a-f]{64}$/);
     const editor = page.getByTestId("project-source-editor");
     await expect(editor).toHaveAttribute("data-source-hash", sourceHash);
     await expect(editor.getByTestId("document-viewport")).toHaveAttribute("data-source-hash", sourceHash);
     await expect(editor.getByTestId("surface-viewer-canvas-host").locator("canvas")).toBeVisible();
-    await capture("surface", sourceHash, page);
+    await capture("surface", sourceHash.slice("sha256:".length), page);
   });
 
   await withApp(async app => {
