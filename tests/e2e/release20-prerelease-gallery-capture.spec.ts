@@ -73,12 +73,17 @@ test("capture exact installed prerelease Surface, Quantum, and Algebra scenes", 
   await withApp(async app => {
     const page = await app.firstWindow();
     await page.getByTestId("projects-toggle").click();
-    await page.getByTestId("project-explorer-panel").getByTestId("project-template-open-catenary-study").click();
+    await page.getByTestId("project-explorer-panel").getByTestId("project-template-open-catenoid-evidence").click();
     await expect.poll(() => page.evaluate(() => localStorage.getItem("math3d.project.v1"))).not.toBeNull();
-    const source = await page.evaluate(() => localStorage.getItem("math3d.project.v1")!);
-    expect(JSON.parse(source).metadata.title).toBe("Minimal Surface Study");
-    await page.getByTestId("workspace-nav-surfaces").click();
-    await capture("surface", sha256(source), page);
+    const project = JSON.parse(await page.evaluate(() => localStorage.getItem("math3d.project.v1")!));
+    const surface = project.workspace.entries.find((entry: { module: string }) => entry.module === "surface");
+    expect(surface.checkpoint.source.definition.familyId).toBe("graph2d.revolution");
+    const sourceHash = surface.expected.structuralHash as string;
+    const editor = page.getByTestId("project-source-editor");
+    await expect(editor).toHaveAttribute("data-source-hash", sourceHash);
+    await expect(editor.getByTestId("document-viewport")).toHaveAttribute("data-source-hash", sourceHash);
+    await expect(editor.getByTestId("surface-viewer-canvas-host").locator("canvas")).toBeVisible();
+    await capture("surface", sourceHash, page);
   });
 
   await withApp(async app => {
@@ -107,12 +112,12 @@ test("capture exact installed prerelease Surface, Quantum, and Algebra scenes", 
     const services = cas.getByTestId("scientific-services-cas");
     await services.getByLabel("Services preset").selectOption("Basic");
     await services.getByLabel("SageMath backend").selectOption("docker");
-    const expression = await services.locator("textarea").first().inputValue();
-    expect(expression).toBe("sin(x)^2 + cos(x)^2");
+    const expression = "sin(x)^2 + cos(x)^2";
     await services.getByRole("button", { name: "Run", exact: true }).click();
     const result = cas.getByTestId("sage-analysis-result");
     await expect(result).toContainText("SageMath (Docker)", { timeout: 60_000 });
     await expect(result).toContainText("Version: 10.10");
+    await expect(result).toContainText(`Input = ${expression}`);
     await capture("algebra", sha256(expression), page);
   });
 
