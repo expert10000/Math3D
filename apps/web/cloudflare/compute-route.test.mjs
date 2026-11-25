@@ -46,7 +46,8 @@ test("verified worker request forwards only the scoped JSON call and edge creden
     return Response.json({ available: true });
   };
   const response = await routeCompute({ request: request("/api/worker/diagnostics?probe=1", {
-    headers: { "cf-access-jwt-assertion": token(), "x-math3d-edge-token": "attacker", cookie: "private=x" },
+    headers: { "cf-access-jwt-assertion": token(), "sec-fetch-site": "cross-site",
+      "x-math3d-edge-token": "attacker", cookie: "private=x" },
   }), env }, "worker");
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { available: true });
@@ -89,6 +90,11 @@ test("Sage session forwards cookies but denies cross-origin POST and returns typ
     method: "POST", headers: { origin: "https://evil.example", "content-type": "application/json" }, body: "{}",
   }), env }, "sage-private");
   assert.equal(denied.status, 403);
+  const crossSite = await routeCompute({ request: request("/api/sage-private/session", {
+    method: "POST", headers: { origin: "https://app.math3dlab.com", "sec-fetch-site": "cross-site",
+      "content-type": "application/json" }, body: "{}",
+  }), env }, "sage-private");
+  assert.equal(crossSite.status, 403);
   const response = await routeCompute({ request: request("/api/sage-private/session", {
     method: "POST", headers: { origin: "https://app.math3dlab.com", cookie: "math3d_sage_session=abc",
       "x-math3d-edge-token": "attacker", "content-type": "application/json" }, body: "{}",

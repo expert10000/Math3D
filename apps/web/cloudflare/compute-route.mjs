@@ -66,8 +66,9 @@ export async function routeCompute({ request, env }, kind) {
   if (!incoming.pathname.startsWith(prefix)) return error(404, "not_found", "Unknown compute route.");
   if (!["GET", "POST"].includes(request.method))
     return error(405, "method_not_allowed", "Unsupported compute method.");
-  if (request.headers.get("sec-fetch-site") === "cross-site" ||
-      (request.method === "POST" && request.headers.get("origin") !== incoming.origin))
+  if (request.method === "POST" &&
+      (request.headers.get("sec-fetch-site") === "cross-site" ||
+        request.headers.get("origin") !== incoming.origin))
     return error(403, "origin_denied", "Compute request origin is not allowed.");
   const workerSubject = kind === "worker" ? await accessAllowed(request, env) : null;
   if (kind === "worker" && !workerSubject)
