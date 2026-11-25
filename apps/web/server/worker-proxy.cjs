@@ -18,6 +18,8 @@ const WORKER_CAPABILITIES = Object.freeze([
   "jobs.cancel",
   "cgal.health",
   "cgal.mesh",
+  "cgal.validate",
+  "cgal.repair",
   "cgal.geodesic-heat",
   "vtk.preview-implicit",
   "vtk.clean-normals",
@@ -551,6 +553,78 @@ class PythonWorkerClient {
       positions,
       indices,
       scalars,
+    };
+  }
+
+  async validateCgalMesh(req) {
+    const positions = toBuffer(req.positions);
+    const indices = toBuffer(req.indices);
+    if (!positions.length || !indices.length)
+      return { ok: false, error: "CGAL validation request missing buffers" };
+    const response = await this.request({
+      type: "mesh.validate", jobId: req.jobId, options: req.options || {},
+      binary: [{ name: "positions", bytes: positions.length }, { name: "indices", bytes: indices.length }],
+    }, 180000, [positions, indices]);
+    if (!response || response.type !== "cgal_validate_result")
+      return { ok: false, error: workerErrorText(response, "Unknown CGAL validation response") };
+    const number = (value) => Number(value) || 0;
+    return {
+      ok: true,
+      vertexCount: number(response.vertexCount), faceCount: number(response.faceCount),
+      edgeCount: number(response.edgeCount), componentCount: number(response.componentCount),
+      boundaryEdgeCount: number(response.boundaryEdgeCount),
+      nonManifoldEdgeCount: number(response.nonManifoldEdgeCount),
+      invalidFaceCount: number(response.invalidFaceCount),
+      degenerateFaceCount: number(response.degenerateFaceCount),
+      duplicateFaceCount: number(response.duplicateFaceCount),
+      watertight: response.watertight === true, manifold: response.manifold === true,
+      oriented: response.oriented === true,
+      selfIntersection: {
+        checked: response.selfIntersection?.checked === true,
+        suspectedPairs: number(response.selfIntersection?.suspectedPairs),
+        sampledFaces: number(response.selfIntersection?.sampledFaces),
+        truncated: response.selfIntersection?.truncated === true,
+      },
+      diagnostics: Array.isArray(response.diagnostics) ? response.diagnostics.map(String) : [],
+      warnings: Array.isArray(response.warnings) ? response.warnings.map(String) : [],
+    };
+  }
+
+  async repairCgalMesh(req) {
+    const positions = toBuffer(req.positions);
+    const indices = toBuffer(req.indices);
+    if (!positions.length || !indices.length)
+      return { ok: false, error: "CGAL repair request missing buffers" };
+    const response = await this.request({
+      type: "mesh.repair", jobId: req.jobId, options: req.options || {},
+      binary: [{ name: "positions", bytes: positions.length }, { name: "indices", bytes: indices.length }],
+    }, 180000, [positions, indices]);
+    if (!response || response.type !== "cgal_repair_result")
+      return { ok: false, error: workerErrorText(response, "Unknown CGAL repair response") };
+    const pos = response.binaryPayloads?.positions;
+    const idx = response.binaryPayloads?.indices;
+    if (!pos || !idx) return { ok: false, error: "CGAL repair worker returned empty buffers" };
+    const normals = response.binaryPayloads?.normals;
+    const repair = response.repair && typeof response.repair === "object" ? response.repair : {};
+    const number = (value) => Number(value) || 0;
+    return {
+      ok: true,
+      positions_b64: Buffer.from(pos).toString("base64"),
+      indices_b64: Buffer.from(idx).toString("base64"),
+      normals_b64: normals ? Buffer.from(normals).toString("base64") : undefined,
+      vertexCount: number(response.vertexCount) || Math.floor(pos.byteLength / 12),
+      triCount: number(response.triCount) || Math.floor(idx.byteLength / 12),
+      repair: {
+        inputVertices: number(repair.inputVertices), inputFaces: number(repair.inputFaces),
+        outputVertices: number(repair.outputVertices), outputFaces: number(repair.outputFaces),
+        removedInvalidFaces: number(repair.removedInvalidFaces),
+        removedDegenerateFaces: number(repair.removedDegenerateFaces),
+        removedDuplicateFaces: number(repair.removedDuplicateFaces),
+        removedUnusedVertices: number(repair.removedUnusedVertices),
+        orientedComponents: number(repair.orientedComponents), filledHoles: number(repair.filledHoles),
+        diagnostics: Array.isArray(repair.diagnostics) ? repair.diagnostics.map(String) : [],
+        warnings: Array.isArray(repair.warnings) ? repair.warnings.map(String) : [],
+      },
     };
   }
 
@@ -1344,6 +1418,29 @@ async function handleRoute(req, res, pathname) {
       const result = await worker.meshCgal(payload);
       if (!result.ok) {
         const diag = recordWorkerFailure(result.error, "web:cgal:mesh", "WORKER_OPERATION_FAILED");
+        json(res, 200, { ok: false, error: diag.message });
+        return;
+      }
+      recordWorkerSuccess();
+      json(res, 200, result);
+      return;
+    }
+
+    if (req.method === "POST" &&
+        ["/api/worker/cgal/validate", "/api/worker/cgal/repair"].includes(pathname)) {
+      const body = await readJsonBody(req);
+      const worker = await getPythonWorker();
+      const kind = pathname.endsWith("/validate") ? "validate" : "repair";
+      const payload = {
+        jobId: String(body?.jobId || nextJobId(`cgal-${kind}`)),
+        positions: toBuffer(body?.positions_b64),
+        indices: toBuffer(body?.indices_b64),
+        options: body?.options || {},
+      };
+      const result = kind === "validate"
+        ? await worker.validateCgalMesh(payload) : await worker.repairCgalMesh(payload);
+      if (!result.ok) {
+        const diag = recordWorkerFailure(result.error, `web:cgal:${kind}`, "WORKER_OPERATION_FAILED");
         json(res, 200, { ok: false, error: diag.message });
         return;
       }
