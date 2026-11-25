@@ -10,6 +10,7 @@ const root = path.resolve(__dirname, "../..");
 const dist = path.join(root, "apps/web/dist");
 const port = Number(process.env.MATH3D_SAGE_EDGE_TEST_PORT || 8443);
 const proxyPort = Number(process.env.MATH3D_SAGE_EDGE_PROXY_TEST_PORT || 8797);
+const edgeToken = "sage-edge-test-token-000000000000000000000000";
 if (!fs.existsSync(path.join(dist, "index.html"))) throw new Error("Build the production web bundle before the HTTPS edge gate.");
 const tls = { key: fs.readFileSync(process.env.MATH3D_SAGE_EDGE_TEST_KEY),
   cert: fs.readFileSync(process.env.MATH3D_SAGE_EDGE_TEST_CERT) };
@@ -22,6 +23,7 @@ function launchProxy() {
     cwd: root,
     env: { ...process.env, MATH3D_WEB_WORKER_PROXY_HOST: "127.0.0.1",
       MATH3D_WEB_WORKER_PROXY_PORT: String(proxyPort), MATH3D_SAGE_WEB_AUTH_MODE: "hosted",
+      MATH3D_WEB_EDGE_TOKEN: edgeToken,
       MATH3D_SAGE_WEB_ORIGIN: `https://127.0.0.1:${port}` },
     stdio: ["ignore", "pipe", "pipe"], windowsHide: true,
   });
@@ -29,7 +31,8 @@ function launchProxy() {
   proxy.stderr.on("data", (chunk) => process.stderr.write(chunk));
   proxy.on("exit", () => { proxyReady = false; });
   const check = () => new Promise((resolve) => {
-    http.get(`http://127.0.0.1:${proxyPort}/api/sage-private/session`, (res) => {
+    http.get(`http://127.0.0.1:${proxyPort}/api/sage-private/session`,
+      { headers: { "x-math3d-edge-token": edgeToken } }, (res) => {
       res.resume(); resolve(res.statusCode === 200);
     }).on("error", () => resolve(false));
   });
@@ -44,7 +47,8 @@ function launchProxy() {
 
 function forward(req, res) {
   const upstream = http.request({ hostname: "127.0.0.1", port: proxyPort,
-    path: req.url, method: req.method, headers: { ...req.headers, host: `127.0.0.1:${proxyPort}` } }, (response) => {
+    path: req.url, method: req.method, headers: { ...req.headers, host: `127.0.0.1:${proxyPort}`,
+      "x-math3d-edge-token": edgeToken } }, (response) => {
     res.writeHead(response.statusCode, response.headers);
     response.pipe(res);
   });
