@@ -90,6 +90,40 @@ function installCgalBridge(win: Window & typeof globalThis) {
         return { ok: false, error: asErrorMessage(error, "CGAL proxy unavailable") };
       }
     },
+    validateMesh: async (req: any) => {
+      try {
+        return await requestJson<any>("POST", "/cgal/validate", {
+          jobId: req.jobId,
+          options: req.options || {},
+          positions_b64: encodeBase64(req.positions),
+          indices_b64: encodeBase64(req.indices),
+        });
+      } catch (error) {
+        return { ok: false, error: asErrorMessage(error, "CGAL validation proxy unavailable") };
+      }
+    },
+    repairMesh: async (req: any) => {
+      try {
+        const result = await requestJson<any>("POST", "/cgal/repair", {
+          jobId: req.jobId,
+          options: req.options || {},
+          positions_b64: encodeBase64(req.positions),
+          indices_b64: encodeBase64(req.indices),
+        });
+        if (!result?.ok) return { ok: false, error: result?.error || "CGAL repair failed" };
+        return {
+          ok: true,
+          positions: decodeBase64(String(result.positions_b64 || "")),
+          indices: decodeBase64(String(result.indices_b64 || "")),
+          normals: result.normals_b64 ? decodeBase64(String(result.normals_b64)) : undefined,
+          vertexCount: Number(result.vertexCount) || 0,
+          triCount: Number(result.triCount) || 0,
+          repair: result.repair,
+        };
+      } catch (error) {
+        return { ok: false, error: asErrorMessage(error, "CGAL repair proxy unavailable") };
+      }
+    },
     geodesicHeat: async (req: any) => {
       try {
         return await requestJson<any>("POST", "/cgal/geodesic-heat", req);

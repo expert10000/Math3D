@@ -53,6 +53,32 @@ test("hosted Node route executes a real Python VTK job with identity isolation",
     assert.equal(version.ok, true);
     assert.equal(version.serverVersion, "2.0.0");
 
+    const positions = Buffer.from(new Float32Array([
+      0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1,
+    ]).buffer).toString("base64");
+    const indices = Buffer.from(new Uint32Array([
+      0, 2, 1, 0, 1, 3, 1, 2, 3, 2, 0, 3,
+    ]).buffer).toString("base64");
+    const cgalBody = { positions_b64: positions, indices_b64: indices, options: {} };
+    const validateResponse = await request("/api/worker/cgal/validate", owner, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...cgalBody, jobId: "live-cgal-validate" }),
+    });
+    assert.equal(validateResponse.status, 200);
+    const validation = await validateResponse.json();
+    assert.equal(validation.ok, true, JSON.stringify(validation));
+    assert.equal(validation.vertexCount, 4);
+    assert.equal(validation.faceCount, 4);
+    const repairResponse = await request("/api/worker/cgal/repair", owner, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...cgalBody, jobId: "live-cgal-repair" }),
+    });
+    assert.equal(repairResponse.status, 200);
+    const repair = await repairResponse.json();
+    assert.equal(repair.ok, true, JSON.stringify(repair));
+    assert.equal(repair.vertexCount, 4);
+    assert.equal(repair.triCount, 4);
+
     const body = { operation: "vtk.preview-implicit", inputHash: "live-test-sphere",
       sceneId: "live-test-scene", sceneSchemaVersion: 1,
       parameters: { expr: "x*x+y*y+z*z-1", iso: 0,
