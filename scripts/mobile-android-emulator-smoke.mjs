@@ -107,8 +107,13 @@ const tapVisibleInspectorControl = (text, contentLabel = "Object", resourceId = 
     const snapshot = nodes();
     const node = snapshot.find(n => (resourceId ? n.resourceId === resourceId : n.text === text || n.description === text) && n.bounds);
     const nav = snapshot.filter(n => n.text === "Explore" && n.bounds).sort((a, b) => b.bounds[1] - a.bounds[1])[0];
-    const anchor = snapshot.find(n => n.text === contentLabel && n.bounds);
-    if (!nav || !anchor) throw new Error("Expected content controls and bottom navigation.");
+    // Filtering examples can scroll their heading away while the result card stays visible.
+    const anchor = snapshot.find(n => n.text === contentLabel && n.bounds)
+      || (contentLabel === "Examples" ? snapshot.find(n => n.text === "Mobile workspace" && n.bounds) : null);
+    if (!nav || !anchor) {
+      pause(250);
+      continue;
+    }
     const navTop = nav.bounds[1] - 20;
     const contentTop = anchor.bounds[3] + 8;
     // Accessibility bounds may include the clipped portion of a scroll row.
