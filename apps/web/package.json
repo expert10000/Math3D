@@ -6,7 +6,7 @@
     "proxy": "node server/worker-proxy.cjs",
     "dev": "npm --prefix ../../renderer run dev",
     "build": "npm --prefix ../../renderer run build:web && node scripts/copy-gallery-assets.cjs",
-    "build:pages": "npm --prefix ../../renderer run build:web:pages && node scripts/copy-gallery-assets.cjs",
+    "build:pages": "npm --prefix ../../renderer run build:web:pages && node scripts/copy-gallery-assets.cjs && node scripts/write-pages-routes.cjs",
     "preview": "npm --prefix ../../renderer run preview:web",
     "test": "npm --prefix ../../renderer run test"
   }

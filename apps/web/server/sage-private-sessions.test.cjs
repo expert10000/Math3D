@@ -101,3 +101,13 @@ test("hosted web proxy refuses a direct non-loopback listener", () => {
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /must bind to loopback/);
 });
+
+test("hosted web proxy refuses to start without an edge credential", () => {
+  const result = spawnSync(process.execPath, [join(__dirname, "worker-proxy.cjs")], {
+    env: { ...process.env, MATH3D_SAGE_WEB_AUTH_MODE: "hosted",
+      MATH3D_WEB_EDGE_TOKEN: "", MATH3D_WEB_WORKER_PROXY_HOST: "127.0.0.1" },
+    encoding: "utf8", timeout: 5000,
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /MATH3D_WEB_EDGE_TOKEN/);
+});

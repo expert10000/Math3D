@@ -79,6 +79,7 @@ to the proxy. Configure these variables in the web proxy process:
 
 ```text
 MATH3D_SAGE_WEB_AUTH_MODE=hosted
+MATH3D_WEB_EDGE_TOKEN=<same random 32-character-or-longer secret configured on the HTTPS edge>
 MATH3D_SAGE_WEB_ORIGIN=https://math.example.org
 MATH3D_SAGE_WEB_SESSION_SECRET=<random secret of at least 32 characters>
 MATH3D_SAGE_WEB_USERS_JSON=[{"id":"ada","accessKey":"<unique random key of at least 32 characters>"}]

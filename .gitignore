@@ -29,6 +29,7 @@ apps/mobile/.expo/
 /docs/from-A/
 /.tools/
 /.deps/
+/.wrangler/
 
 # Large demo/reference assets are local-only unless explicitly committed.
 /data/

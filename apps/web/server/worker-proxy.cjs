@@ -34,8 +34,12 @@ const MOBILE_PAIR_EXPIRES_AT = Number(process.env.MATH3D_MOBILE_PAIR_EXPIRES_AT 
 const SAGE_PRIVATE_URL = String(process.env.MATH3D_SAGE_GATEWAY_URL || "http://127.0.0.1:8770").replace(/\/+$/, "");
 const SAGE_PRIVATE_TOKEN = String(process.env.MATH3D_SAGE_GATEWAY_TOKEN || "");
 const SAGE_HOSTED_MODE = process.env.MATH3D_SAGE_WEB_AUTH_MODE === "hosted";
+const WEB_EDGE_TOKEN = String(process.env.MATH3D_WEB_EDGE_TOKEN || "");
+const hostedWorkerUsage = new Map();
 if (SAGE_HOSTED_MODE && !["127.0.0.1", "localhost", "::1"].includes(HOST))
   throw new Error("Hosted Sage web proxy must bind to loopback behind an HTTPS reverse proxy.");
+if (SAGE_HOSTED_MODE && WEB_EDGE_TOKEN.length < 32)
+  throw new Error("MATH3D_WEB_EDGE_TOKEN must contain at least 32 characters in hosted mode.");
 if (SAGE_HOSTED_MODE && !process.env.MATH3D_SAGE_WEB_STATE_FILE)
   throw new Error("MATH3D_SAGE_WEB_STATE_FILE is required for restart-safe hosted Sage quotas and revocations.");
 const sagePrivateSessions = SAGE_HOSTED_MODE ? createSagePrivateSessions({
@@ -70,6 +74,39 @@ function authorizeMobilePairingRequest(req, res) {
     json(res, 401, { ok: false, error: "A valid Math3D mobile pairing token is required." });
     return false;
   }
+  return true;
+}
+
+function authorizeWebEdgeRequest(req, res) {
+  if (!WEB_EDGE_TOKEN) return true;
+  if (!secureTokenMatches(req.headers["x-math3d-edge-token"], WEB_EDGE_TOKEN)) {
+    json(res, 401, { code: "edge_token_required", error: "Authorized web edge is required." });
+    return false;
+  }
+  return true;
+}
+
+function authorizeHostedWorkerRequest(req, res, pathname) {
+  if (!SAGE_HOSTED_MODE || !pathname.startsWith("/api/worker/")) return true;
+  const user = String(req.headers["x-math3d-worker-user"] || "");
+  if (!/^[0-9a-f]{64}$/.test(user)) {
+    json(res, 401, { code: "worker_identity_required", error: "Authorized worker identity is required." });
+    return false;
+  }
+  if (pathname === "/api/worker/cgal/stop") {
+    json(res, 403, { code: "global_stop_denied", error: "Global worker stop is unavailable in hosted mode." });
+    return false;
+  }
+  if (req.method !== "POST" || /^\/api\/worker\/jobs\/[^/]+\/cancel$/.test(pathname)) return true;
+  const now = Date.now();
+  const recent = (hostedWorkerUsage.get(user) || []).filter((at) => at > now - 60_000);
+  if (recent.length >= 10) {
+    json(res, 429, { code: "worker_rate_limited", error: "Your worker request quota is exhausted.",
+      retryAfterMs: 60_000 - (now - recent[0]) });
+    return false;
+  }
+  recent.push(now);
+  hostedWorkerUsage.set(user, recent);
   return true;
 }
 
@@ -1113,7 +1150,9 @@ async function handleRoute(req, res, pathname) {
       try { body = await readJsonBody(req, 1024); }
       catch { return json(res, 400, { code: "invalid_input", error: "A valid access key request is required." }); }
       let result;
-      try { result = sagePrivateSessions.login(body?.accessKey, req.socket.remoteAddress || "unknown"); }
+      try { result = sagePrivateSessions.login(body?.accessKey,
+        WEB_EDGE_TOKEN ? String(req.headers["x-math3d-client-ip"] || req.socket.remoteAddress || "unknown")
+          : req.socket.remoteAddress || "unknown"); }
       catch { return json(res, 503, { code: "policy_store_unavailable", error: "Sage web session policy state is unavailable." }); }
       if (result.code) return json(res, result.status, { code: result.code, error: "Sage web session authorization failed." });
       res.setHeader("Set-Cookie", result.cookie);
@@ -1194,6 +1233,8 @@ async function handleRoute(req, res, pathname) {
       const jobId = String(body.jobId || nextJobId("mobile-vtk-preview"));
       const existing = computeJobs.get(jobId);
       if (existing) {
+        if (SAGE_HOSTED_MODE && existing.owner !== req.headers["x-math3d-worker-user"])
+          return json(res, 404, { ok: false, error: "Compute job was not found." });
         json(res, 200, computeJobSnapshot(existing));
         return;
       }
@@ -1205,6 +1246,7 @@ async function handleRoute(req, res, pathname) {
       const now = Date.now();
       const job = {
         jobId,
+        ...(SAGE_HOSTED_MODE ? { owner: req.headers["x-math3d-worker-user"] } : {}),
         operation: "vtk.preview-implicit",
         inputHash: body.inputHash.trim(),
         sceneId: body.sceneId.trim(),
@@ -1228,7 +1270,7 @@ async function handleRoute(req, res, pathname) {
     if (req.method === "GET" && computeJobMatch) {
       const jobId = decodeURIComponent(computeJobMatch[1]);
       const job = computeJobs.get(jobId);
-      if (!job) {
+      if (!job || (SAGE_HOSTED_MODE && job.owner !== req.headers["x-math3d-worker-user"])) {
         json(res, 404, { ok: false, error: `Compute job '${jobId}' was not found.` });
         return;
       }
@@ -1240,7 +1282,7 @@ async function handleRoute(req, res, pathname) {
     if (req.method === "POST" && computeJobCancelMatch) {
       const jobId = decodeURIComponent(computeJobCancelMatch[1]);
       const job = computeJobs.get(jobId);
-      if (!job) {
+      if (!job || (SAGE_HOSTED_MODE && job.owner !== req.headers["x-math3d-worker-user"])) {
         json(res, 404, { ok: false, error: `Compute job '${jobId}' was not found.` });
         return;
       }
@@ -1512,6 +1554,7 @@ async function handleRoute(req, res, pathname) {
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || "/", `http://${HOST}:${PORT}`);
+  if (!authorizeWebEdgeRequest(req, res)) return;
   if (req.method === "OPTIONS") {
     if (url.pathname.startsWith("/api/sage/") || url.pathname.startsWith("/api/sage-private/")) {
       const hostedPrivate = url.pathname.startsWith("/api/sage-private/") && sagePrivateSessions;
@@ -1537,6 +1580,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (!authorizeMobilePairingRequest(req, res)) return;
+  if (!authorizeHostedWorkerRequest(req, res, url.pathname)) return;
 
   await handleRoute(req, res, url.pathname);
 });
