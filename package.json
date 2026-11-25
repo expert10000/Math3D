@@ -125,6 +125,7 @@
     "test:sage:gateway:live": "playwright test --config playwright.sage-gateway.config.ts",
     "test:sage:hosted:unit": "node --test apps/web/server/sage-private-sessions.test.cjs",
     "test:hosted:route": "node --test apps/web/cloudflare/compute-route.test.mjs apps/web/server/sage-private-sessions.test.cjs apps/web/server/hosted-edge-proxy.test.cjs",
+    "test:hosted:worker:live": "node --test apps/web/server/hosted-worker-live.test.cjs",
     "test:sage:hosted:live": "playwright test --config playwright.sage-hosted.config.ts",
     "test:sage:edge:live": "npm run build:web && playwright test --config playwright.sage-edge.config.ts",
     "test:projects:fixtures": "node scripts/projects-freeze-fixtures.mjs",
