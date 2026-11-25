@@ -26,3 +26,23 @@ output/scientific-vortex-80-overview.sscene/*.json -text
 output/scientific-vortex-80-overview.sscene/*.f64 -text
 output/scientific-burgers-horizontal-level1.sscene/*.json -text
 output/scientific-burgers-horizontal-level1.sscene/*.f64 -text
+
+# Keep private historical Android QA identifiers out of generated release archives.
+docs/evidence/graph2d-gra11-8-samsung-2026-10-19/README.md export-ignore
+docs/evidence/mobile-android-followup-2026-10-31.md export-ignore
+docs/evidence/mobile-android-graph-open-retry-2026-10-31.json export-ignore
+docs/evidence/mobile-android-layout-2026-11-02.json export-ignore
+docs/evidence/mobile-android-producer-version-2026-11-01.json export-ignore
+docs/evidence/mobile-android-session-2026-10-31.md export-ignore
+docs/evidence/mobile-android-tp01-tp05-2026-10-31.json export-ignore
+docs/evidence/mobile-android-tp03-probes-2026-11-01.json export-ignore
+docs/evidence/mobile-android-tp04-analysis-2026-11-01.json export-ignore
+docs/evidence/mobile-android-tp06-lifecycle-2026-11-01.json export-ignore
+docs/evidence/mobile-android-tp08-transfer-2026-11-01.json export-ignore
+docs/evidence/mobile-android-tp11-publication-2026-11-02.json export-ignore
+docs/evidence/mobile-android-tp12-scales-2026-11-02.json export-ignore
+docs/evidence/mobile-android-tp13-parameters-2026-11-01.json export-ignore
+docs/evidence/mobile-android-tp14-regression-2026-11-01.json export-ignore
+docs/graph2d-gallery-ggl14-ggl17-showcase.md export-ignore
+docs/mobile-mob24-physical-evidence.md export-ignore
+docs/mobile-project-transfer-gate.md export-ignore
