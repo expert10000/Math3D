@@ -1,6 +1,8 @@
 # Quantum Hamiltonian Lab × Math3D
 ## Scientific Integration, Architecture and Development Roadmap
 
+**New feature track (26 November 2026):** [UTe2 Study consumer roadmap](quantum-ute2-study-roadmap.md) defines the source-pinned, two-component GL/BdG/conditional-topology journey with Theory Lab. Its intake step is documented; no UTe2 scene consumer or installed qualification is claimed yet.
+
 **Date:** 2026-11-04<br>
 **Programme:** MATH3D-2026 / Theory Lab / Python Scientific Runtimes<br>
 **Status:** reviewed candidate for future QI work; existing bounded QLAB/QVIS/M3D-Q/SSR delivery is recorded separately below<br>

@@ -1,5 +1,7 @@
 # MATH3D 2.0.0 — Unified Scientific Workspace
 
+The [UTe2 Study plan](../../quantum-ute2-study-roadmap.md) is a later feature track with Theory Lab. Source intake and consumer design do not add a fifth 2.0 GA journey or qualify an installed UTe2 pair.
+
 **Product roadmap · Architecture / UX / Scientific interoperability / Release engineering**<br>
 **Prepared:** 2026-11-05<br>
 **Updated:** 2026-11-19<br>
