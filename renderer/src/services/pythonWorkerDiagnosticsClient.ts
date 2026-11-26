@@ -3,6 +3,7 @@ export type PythonWorkerFailureCategory =
   | "startup-crash"
   | "dependency-load-failure"
   | "operation-timeout"
+  | "access-required"
   | "unknown";
 
 export type PythonWorkerDiagnosticsError = {
@@ -38,15 +39,15 @@ export type PythonWorkerDiagnosticsSnapshot = {
   };
 };
 
-const fallbackSnapshot = (message: string): PythonWorkerDiagnosticsSnapshot => ({
+const fallbackSnapshot = (message: string, category: PythonWorkerFailureCategory = "unknown"): PythonWorkerDiagnosticsSnapshot => ({
   startupChecked: true,
   available: false,
   statusMessage: message,
   logPath: "",
   lastCheckAt: Date.now(),
   lastError: {
-    category: "unknown",
-    code: "DIAGNOSTICS_IPC_UNAVAILABLE",
+    category,
+    code: category === "access-required" ? "WORKER_ACCESS_SIGN_IN_REQUIRED" : "DIAGNOSTICS_IPC_UNAVAILABLE",
     message,
     detail: message,
     context: "renderer",
@@ -68,6 +69,6 @@ export async function getPythonWorkerDiagnostics(): Promise<PythonWorkerDiagnost
     return status as PythonWorkerDiagnosticsSnapshot;
   } catch (error: any) {
     const message = error?.message ?? String(error ?? "Failed to read python worker diagnostics.");
-    return fallbackSnapshot(message);
+    return fallbackSnapshot(message, error?.name === "WorkerAccessSignInRequired" ? "access-required" : "unknown");
   }
 }

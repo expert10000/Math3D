@@ -319,7 +319,10 @@ export function SurfaceAnalysisComputationPanel({
             <button type="button" data-testid="surface-derived-mesh-remesh" disabled={!derivedMeshLifecycle.selected || derivedMeshLifecycle.backendAvailability !== "ready"} onClick={derivedMeshLifecycle.onRemesh}>Remesh</button>
             <button type="button" data-testid="surface-derived-mesh-robust" disabled={!derivedMeshLifecycle.selected || derivedMeshLifecycle.backendAvailability !== "ready"} onClick={derivedMeshLifecycle.onRobustMesh}>Robust Mesh</button>
           </div>
-          <div data-testid="surface-derived-mesh-backend-status" style={{ color: derivedMeshLifecycle.backendAvailability === "ready" ? "#166534" : "#9a3412", fontSize: 9.5 }}>CGAL backend: {derivedMeshLifecycle.backendAvailability} · {derivedMeshLifecycle.backendAvailabilityMessage} Advanced parameters, logs, validation, and fallback choices stay in Mesh Analysis.</div>
+          <div data-testid="surface-derived-mesh-backend-status" style={{ color: derivedMeshLifecycle.backendAvailability === "ready" ? "#166534" : "#9a3412", fontSize: 9.5 }}>
+            CGAL backend: {derivedMeshLifecycle.backendAvailability} · {derivedMeshLifecycle.backendAvailabilityMessage} Advanced parameters, logs, validation, and fallback choices stay in Mesh Analysis.
+            {derivedMeshLifecycle.backendAvailabilityMessage.includes("Compute access sign-in required.") && <span> <a href="/api/worker/cgal/health" target="_blank" rel="noopener noreferrer">Sign in to compute</a>, then return here. Availability refreshes automatically.</span>}
+          </div>
           <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
             <button type="button" data-testid="surface-derived-mesh-regenerate" disabled={!derivedMesh.available} onClick={derivedMeshLifecycle.onRegenerate}>{derivedMeshLifecycle.selected ? "Regenerate" : "Register live mesh"}</button>
             <button type="button" disabled={!derivedMeshLifecycle.selected} onClick={derivedMeshLifecycle.onDetach}>Detach</button>

@@ -85305,6 +85305,11 @@ case "mobius":
                           </div>
                           {surfaceMeshWeldError && <div role="alert">{surfaceMeshWeldError}</div>}
                         </div>
+                        {cgalHealthState?.errorCategory === "access-required" && (
+                          <div data-testid="mesh-worker-access-reauth" role="status" style={{ border: "1px solid #f59e0b", borderRadius: 8, padding: 8, fontSize: 11 }}>
+                            Compute access needs sign-in. <a href="/api/worker/cgal/health" target="_blank" rel="noopener noreferrer">Sign in to compute</a>, then return here. Worker availability refreshes automatically.
+                          </div>
+                        )}
                         <MeshOperationsPanel
                           testId="mesh-workspace-operation-registry"
                           meshReady={!!surfaceMeshStats}
