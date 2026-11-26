@@ -2,6 +2,8 @@
 
 Status: **design for the isolated preview**, 26 November 2026. No paid service, production compute binding, or broader Access policy is part of this design. The public hosted 2.0 platform remains **Limited**. This builds on the [route runbook](HOSTED_COMPUTE_ROUTE_RUNBOOK.md), [temporary PC receipt](HOSTED_COMPUTE_TEMP_PC_RECEIPT_2026-11-25.md), and [restart receipt](HOSTED_COMPUTE_TEMP_PC_RESTART_2026-11-26.md).
 
+The route runbook now also records a **proposed paid Hetzner VPS migration**. That option has not been provisioned and does not change the free preview's status or limits.
+
 ## Current topology
 
 ```text
