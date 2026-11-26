@@ -49,7 +49,16 @@ async function requestJson<T>(method: "GET" | "POST", path: string, body?: Recor
     method,
     headers: { "Content-Type": "application/json" },
     body: body == null ? undefined : JSON.stringify(body),
+    redirect: "manual",
   });
+
+  // Cloudflare Access sends an interactive login redirect when its browser session expires.
+  // A background fetch cannot complete that login; expose a recovery action in the UI.
+  if (response.type === "opaqueredirect" || (response.status >= 300 && response.status < 400)) {
+    const error = new Error("Compute access sign-in required.");
+    error.name = "WorkerAccessSignInRequired";
+    throw error;
+  }
 
   const data = (await response.json().catch(() => null)) as any;
   if (!response.ok) {
