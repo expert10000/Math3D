@@ -5,3 +5,12 @@ gradle.beforeSettings { settings ->
     url = "https://maven-central.storage-download.googleapis.com/maven2/"
   }
 }
+
+// The included React Native plugin also resolves Kotlin/Gson/Guava as ordinary
+// project dependencies. Put the same mirror before its Maven Central repository.
+gradle.beforeProject { project ->
+  project.repositories.maven {
+    name = "GoogleMavenCentralMirror"
+    url = "https://maven-central.storage-download.googleapis.com/maven2/"
+  }
+}

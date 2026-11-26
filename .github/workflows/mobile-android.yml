@@ -150,11 +150,10 @@ jobs:
               exit 0
             fi
             if (( attempt == 3 )) ||
-               ! grep -Fq 'com.google.code.gson:gson:2.9.1' "$log" ||
                ! grep -Eq 'Could not find com\.google\.code\.gson:gson:2\.9\.1|Received status code 429 from server' "$log"; then
               exit 1
             fi
-            echo "Gradle Gson resolution failed; retrying build after a delay (attempt $((attempt + 1)) of 3)."
+            echo "Transient Gradle repository resolution failed; retrying build after a delay (attempt $((attempt + 1)) of 3)."
             export GRADLE_USER_HOME="$RUNNER_TEMP/mobile-gradle-retry-$((attempt + 1))"
             mkdir -p "$GRADLE_USER_HOME/init.d"
             cp "$init_script" "$GRADLE_USER_HOME/init.d/maven-central-mirror.init.gradle"
