@@ -4,9 +4,9 @@ The [UTe2 Study plan](../../quantum-ute2-study-roadmap.md) is a later feature tr
 
 **Product roadmap · Architecture / UX / Scientific interoperability / Release engineering**<br>
 **Prepared:** 2026-11-05<br>
-**Updated:** 2026-11-19<br>
+**Updated:** 2026-11-27<br>
 **Target:** Math3D 2.0.0 General Availability (GA)<br>
-**Status:** The combined source branch identifies 2.0.0 and includes Project-owned Studies, qualified cursor links, source recovery, and bounded flagship desktop journeys. A self-signed prerelease package has a separate staging path; RC1, RC2, and GA are not declared, and no publicly trusted `v2.0.0` GA candidate or tag exists.<br>
+**Status:** The frozen `300d2420` application source and exact owner-self-signed Windows installer passed scoped RC1 source, clean-install, upgrade, and all four connected installed journeys. The owner published those same bytes under `v2.0.0` with explicit limitations. Publicly trusted Windows signing, RC2 rehearsal, formal GA sign-off, and stable-site Gallery qualification remain open. See the [current closure record](RELEASE_CLOSURE_TODO.md); the historical delivery snapshots below are not current gate status.<br>
 **Primary product claim:** *Construct, compute, analyze, compare, document, and publish connected mathematical objects in one scientific workspace.*
 
 > **Release principle.** Version 2.0.0 is not another sequence of independent scientific-module expansions. It is the release that makes the already substantial Geometry, Curves, Surfaces, Mesh, Volume, Graphs, Field Explorer, Topology, CAS/Sage, Projects, Workbooks, and Quantum capabilities behave as **one integrated, reproducible scientific application**.
