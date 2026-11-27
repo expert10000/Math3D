@@ -1,0 +1,19 @@
+.scientific-benchmarks-dialog { width: min(920px, 94vw); max-height: 88vh; padding: 1.25rem; border: 1px solid var(--border-color, #8b9bb0); border-radius: 12px; color: var(--text-color, #17263a); background: var(--surface, #fff); }
+.scientific-benchmarks-dialog::backdrop { background: #101b2baa; }
+.scientific-benchmarks-dialog header { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
+.scientific-benchmarks-dialog h2 { margin: 0 0 .4rem; }
+.scientific-benchmarks-dialog header p { margin: 0 0 1rem; max-width: 70ch; }
+.scientific-benchmarks-dialog header > button { font-size: 1.5rem; }
+.scientific-benchmarks-actions, .scientific-benchmarks-case-actions { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
+.scientific-benchmarks-actions { position: sticky; top: -1.25rem; z-index: 1; padding: .7rem 0; background: var(--surface, #fff); }
+.scientific-benchmarks-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: .75rem; }
+.scientific-benchmarks-list article { padding: .85rem; border: 1px solid var(--border-color, #b9c3d0); border-radius: 8px; }
+.scientific-benchmarks-list article p { margin: .4rem 0; }
+.scientific-benchmarks-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: .5rem; }
+.scientific-benchmarks-heading h3 { margin: 0; font-size: 1rem; }
+.scientific-benchmarks-status { text-transform: capitalize; font-size: .8rem; font-weight: 700; }
+.scientific-benchmarks-status[data-status="pass"] { color: #176e3b; }
+.scientific-benchmarks-status[data-status="fail"] { color: #ae2424; }
+.scientific-benchmarks-case-actions { margin-top: .7rem; }
+.scientific-benchmarks-case-actions small { margin-left: auto; }
+.scientific-benchmarks-dialog footer { padding-top: 1rem; font-size: .82rem; }

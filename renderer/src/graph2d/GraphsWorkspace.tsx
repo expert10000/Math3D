@@ -156,6 +156,7 @@ import { useGraph2DSampling } from "./useGraph2DSampling";
 import { useGraph2DPhaseAnalysis } from "./useGraph2DPhaseAnalysis";
 import { useGraph2DVectorFieldAnalysis } from "./useGraph2DVectorFieldAnalysis";
 import { GraphGalleryDialog } from "./GraphGalleryDialog";
+import { ScientificBenchmarksDialog } from "./ScientificBenchmarksDialog";
 import { Graph2DExportDialog } from "./Graph2DExportDialog";
 import { Graph2DParametersPanel } from "./Graph2DParametersPanel";
 import { Graph2DScalePanel } from "./Graph2DScalePanel";
@@ -679,6 +680,8 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   const studyPanel = <Graph2DParameterStudyPanel document={document}
     onAuthoringCommit={onAuthoringCommit} onSelectionCommit={onSelectionCommit} />;
   const [galleryOpen, setGalleryOpen] = useState(false);
+  const [benchmarksOpen, setBenchmarksOpen] = useState(false);
+  const benchmarksOpener = useRef<HTMLButtonElement>(null);
   const [leftSection, setLeftSection] = useState<"objects" | "services">("objects");
   const [sageRecord, setSageRecord] = useState<SymbolicResultRecord | null>(null);
   const [galleryStartCategory, setGalleryStartCategory] = useState<"All" | "Differential equations">("All");
@@ -1973,7 +1976,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
     setPreview(null);
   };
   wheelHandlerRef.current = (event: globalThis.WheelEvent) => {
-    if (galleryOpen || exportOpen || (event.target as Element).closest(".graph2d-toolbar,.graph2d-compact-panels,.graph2d-viewer-message")) return;
+    if (galleryOpen || benchmarksOpen || exportOpen || (event.target as Element).closest(".graph2d-toolbar,.graph2d-compact-panels,.graph2d-viewer-message")) return;
     const anchor = localPoint(event);
     if (!anchor) return;
     cancelParameter();
@@ -4404,6 +4407,8 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           </div>
           <div className="graph2d-toolbar-secondary">
             <button type="button" data-testid="graph-gallery-open" title="Preview curated scenes before opening one" onClick={event => { galleryOpener.current = event.currentTarget; setGalleryStartCategory("All"); finishWheel(); closeGrid(true, false); setScalesOpen(false); setParametersOpen(false); setParameterPreview(null); setGalleryError(null); setGalleryOpen(true); }}>Gallery</button>
+            <button type="button" ref={benchmarksOpener} data-testid="graph2d-scientific-benchmarks-open" aria-expanded={benchmarksOpen}
+              onClick={() => { finishWheel(); closeGrid(true, false); setToolsOpen(false); setBenchmarksOpen(true); }}>Benchmarks</button>
             <div className="graph2d-toolbar-group" role="group" aria-label="Construction tools">
               <button type="button" ref={toolsOpener} aria-expanded={toolsOpen} onClick={() => { finishWheel(); closeGrid(true, false); cancelParameter(); setToolsOpen(!toolsOpen); }}>Tools</button>
             </div>
@@ -5029,6 +5034,8 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           catch (error) { setGalleryError((error as Error).message); } }}
         onResume={id => { try { if (!onResumeCheckpoint) throw new Error("Project storage is unavailable."); onResumeCheckpoint(id); setGalleryOpen(false); }
           catch (error) { setGalleryError((error as Error).message); } }} />}
+      {benchmarksOpen && <ScientificBenchmarksDialog onClose={() => { setBenchmarksOpen(false); requestAnimationFrame(() => benchmarksOpener.current?.focus()); }}
+        onOpenPreset={onOpenPreset} />}
       {exportOpen && <Graph2DExportDialog document={document} analyses={exportAnalyses.analyses} analysisNotes={exportAnalyses.analysisNotes} onClose={() => {
         setExportOpen(false); galleryFocusFrame.current = requestAnimationFrame(() => {
           galleryFocusFrame.current = null; exportOpener.current?.focus();
