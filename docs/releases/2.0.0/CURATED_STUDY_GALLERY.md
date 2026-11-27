@@ -14,7 +14,7 @@ The active Gallery now qualifies each card against probed storage, WebGL and ver
 | Geometry and topology | Built-in Project | Geometry + Topology | Narrative matrix; no installed-host restart fixture |
 | Geometry Note pins | Built-in Project | Geometry | Narrative matrix; existing local pin behaviour has separate tests |
 | Derivative | Built-in Project | Graph + Curve; recorded derivative on Graph | Narrative matrix; no installed-host restart fixture |
-| Catenoid evidence | Built-in Project | Surface + Mesh; pinned analytic/discrete comparison on Surface and curvature result on Mesh | Narrative matrix with retained Mesh sidecar; desktop cold restart and Result navigation |
+| Catenoid evidence | Built-in Project | Surface + Mesh; pinned analytic/discrete comparison on Surface and curvature result on Mesh | Opening the guided copy shows Study, Curvature, Comparison and Workbook flow tabs; the connected desktop journey covers publication, restart, transfer and changed-source refusal |
 | Edge path evidence | Built-in Project | Mesh + Surface; saved path result on Mesh | Narrative matrix with retained Mesh sidecar; browser research preview; desktop editing |
 | Graph derivative notebook | Built-in Project | Graph + Curve; recorded result on Graph | Narrative matrix; existing Workbook retained alongside guided Workbook |
 | Ripple wave | Built-in Project | Graph + Surface + Geometry | Narrative matrix with retained Mesh sidecar; desktop only |
