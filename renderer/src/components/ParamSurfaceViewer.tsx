@@ -351,6 +351,7 @@ type Props = {
   paramResolution?: number;
   colorMode?: ColorMode;
   colorPalette?: ColorPalette;
+  curvatureDisplayScalar?: "K" | "H" | "k1" | "k2" | "shapeIndex" | "curvedness" | null;
   showChartGrid?: boolean;
   chartGridMode?: "local" | "mesh-face";
   onSurfaceCellSelectionEnabledChange?: (enabled: boolean) => void;
@@ -978,9 +979,9 @@ function applyHeatmapColors(
 
 const PARAM_CURVATURE_MODES = new Set<ColorMode>(["gaussian", "mean", "k1", "k2"]);
 
-type ParamCurvatureMode = "gaussian" | "mean" | "k1" | "k2";
+type ParamCurvatureMode = "gaussian" | "mean" | "k1" | "k2" | "shapeIndex" | "curvedness";
 
-function isParamCurvatureMode(mode: ColorMode): mode is ParamCurvatureMode {
+function isParamCurvatureMode(mode: ColorMode): mode is "gaussian" | "mean" | "k1" | "k2" {
   return PARAM_CURVATURE_MODES.has(mode);
 }
 
@@ -1074,10 +1075,14 @@ function applyParamCurvatureColors(
       const K = (e * g - f * f) / denom;
       const disc = Math.max(0, H * H - K);
 
+      const k1 = H + Math.sqrt(disc);
+      const k2 = H - Math.sqrt(disc);
       if (mode === "gaussian") val = K;
       else if (mode === "mean") val = H;
-      else if (mode === "k1") val = H + Math.sqrt(disc);
-      else val = H - Math.sqrt(disc);
+      else if (mode === "k1") val = k1;
+      else if (mode === "k2") val = k2;
+      else if (mode === "curvedness") val = Math.sqrt(0.5 * (k1 * k1 + k2 * k2));
+      else val = Math.abs(k1 - k2) <= 1e-12 ? Math.sign(k1 + k2) : (2 / Math.PI) * Math.atan((k1 + k2) / (k1 - k2));
     }
 
     if (!Number.isFinite(val)) val = 0;
@@ -1480,6 +1485,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   paramResolution = 64,
   colorMode = "solid",
   colorPalette = "blueRed",
+  curvatureDisplayScalar = null,
   showChartGrid = false,
   chartGridMode = "local",
   onSurfaceCellSelectionEnabledChange,
@@ -3291,6 +3297,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     scene.add(mesh);
     surfaceObjRef.current = mesh;
 
+    const prepareAnalysisSamples = () => {
     let sampleSet: SurfaceSampleSet | null = null;
     if (mesh.geometry) {
       mesh.updateMatrixWorld(true);
@@ -3368,6 +3375,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     }
     sampleSetRef.current = sampleSet;
     onSampleSet?.(sampleSet);
+    };
     if (onParamGeodesicState && mesh) {
       const wrap = wrapFlagsFor(surfaceId, documentBinding);
       const paramWorld = (u: number, v: number, target?: THREE.Vector3) => {
@@ -3928,7 +3936,19 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     onResize();
     emitViewportDebug("init");
 
+    // Paint the Surface before the more expensive analysis sampling starts.
+    let samplePreparationFrame = requestAnimationFrame(() => {
+      samplePreparationFrame = 0;
+      samplePreparationTimeout = window.setTimeout(() => {
+        samplePreparationTimeout = null;
+        prepareAnalysisSamples();
+      }, 0);
+    });
+    let samplePreparationTimeout: ReturnType<typeof setTimeout> | null = null;
+
       return () => {
+        if (samplePreparationFrame) cancelAnimationFrame(samplePreparationFrame);
+        if (samplePreparationTimeout != null) clearTimeout(samplePreparationTimeout);
         stopAnimationLoop();
         // dispose geodesic line if present
         if (geodesicLineRef.current) {
@@ -6655,6 +6675,12 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       applyHeatmapColors(geom, geodesicHeatmapValues!, colorPalette);
       mat.vertexColors = true;
       mat.color.set("#ffffff");
+    } else if (curvatureDisplayScalar && paramState) {
+      applyParamCurvatureColors(geom,
+        curvatureDisplayScalar === "K" ? "gaussian" : curvatureDisplayScalar === "H" ? "mean" : curvatureDisplayScalar,
+        colorPalette, paramState.paramFunc, paramState.uMin, paramState.uMax, paramState.vMin, paramState.vMax);
+      mat.vertexColors = true;
+      mat.color.set("#ffffff");
     } else if (colorMode === "solid") {
       geom.deleteAttribute("color");
       mat.vertexColors = false;
@@ -6678,6 +6704,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     mat.needsUpdate = true;
   }, [
     colorMode,
+    curvatureDisplayScalar,
     colorPalette,
     surfaceId,
     materialRoughness,
@@ -6887,7 +6914,8 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   );
 
   return (
-    <div style={{ width: "100%", height: "100%", position: "relative" }}>
+    <div data-curvature-display-scalar={curvatureDisplayScalar ?? undefined}
+      style={{ width: "100%", height: "100%", position: "relative" }}>
       <div ref={mountRef} data-testid="surface-viewer-canvas-host" style={{ width: "100%", height: "100%" }} />
 
       {showOverlayControls && (

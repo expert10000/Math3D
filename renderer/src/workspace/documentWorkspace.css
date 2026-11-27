@@ -10,6 +10,8 @@
 .saved-surface-toolbar .saved-surface-custom-options select { font-size:12px;padding:4px 6px; }
 .document-workspace .document-view-switch button[aria-pressed=true] { background:#e0edff;border-color:#2563eb;color:#1d4ed8; }
 .saved-surface-module { display:flex;flex-direction:column;flex:1;min-height:0;width:100%; }
+.math3d-app:has(.catenoid-document-workflow) { overflow-y:auto!important; }
+.math3d-app:has(.catenoid-document-workflow) > .saved-surface-module { flex:1 0 620px;min-height:620px; }
 .saved-surface-module > .document-toolbar { font:13px system-ui; }
 .saved-surface-module .surface-project-dock-controls { display:flex;gap:6px;margin-bottom:8px; }
 .saved-surface-module .native-module-panel:has(> .document-project-slot:not(:empty)) > .native-module-panel-content { display:none; }

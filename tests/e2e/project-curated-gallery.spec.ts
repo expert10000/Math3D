@@ -116,6 +116,8 @@ test("Catenoid workflow stays visible on its Surface and returns to the selected
       .toHaveAttribute("aria-current", "step");
     await expect(page.getByTestId("surfaces-left-tab-analysis")).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByTestId("surface-curvature-compute")).toBeVisible();
+    await expect(page.getByTestId("surface-viewer-canvas-host").locator("canvas")).toBeVisible();
+    await expect(surfaceFlow.getByRole("status")).toContainText("Compute curvature", { timeout: 10_000 });
     await surfaceFlow.getByTestId("catenoid-surface-step-surface").click();
     await expect(page.getByTestId("surfaces-left-tab-scene")).toHaveAttribute("aria-pressed", "true");
     await surfaceFlow.getByTestId("catenoid-surface-step-analysis").click();
@@ -127,6 +129,9 @@ test("Catenoid workflow stays visible on its Surface and returns to the selected
     await surfaceFlow.getByTestId("catenoid-surface-step-compute").click();
     await expect(surfaceFlow.getByRole("status"))
       .toHaveText("Curvature result ready. Continue with 3 Comparison.", { timeout: 30_000 });
+    await expect(page.locator('[data-curvature-display-scalar="K"]')).toBeVisible();
+    await page.getByLabel("Curvature scalar field").selectOption("H");
+    await expect(page.locator('[data-curvature-display-scalar="H"]')).toBeVisible();
     await expect(surfaceFlow.getByTestId("catenoid-surface-open-mesh")).toBeVisible();
     await surfaceFlow.getByTestId("catenoid-surface-open-mesh").click();
     await expect(page.getByTestId("saved-mesh-toolbar")).toBeVisible();
@@ -137,7 +142,7 @@ test("Catenoid workflow stays visible on its Surface and returns to the selected
     await page.getByRole("button", { name: "Back to catenoid" }).click();
     await expect(surfaceFlow).toBeVisible();
     await expect(inherited.getByRole("button")).toHaveText([
-      "1 Study", "2 Curvature", "3 Comparison", "4 Workbook",
+      "1 Study", "2 Curvature", "3 Comparison", "4 Workbook", "Clear journey",
     ]);
     const comparisonStart = Date.now();
     await inherited.getByTestId("catenoid-document-step-comparison").click();

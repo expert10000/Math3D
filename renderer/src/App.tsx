@@ -81115,6 +81115,8 @@ case "mobius":
                             paramResolution={activeParamLikeResolution}
                             colorMode={primaryOverlay.colorMode}
                             colorPalette={primaryOverlay.colorPalette}
+                            curvatureDisplayScalar={activeSurfaceComputation === "curvature-field" &&
+                              activeSurfaceCurvatureField && surfaceCurvatureVisible ? surfaceCurvatureScalar : null}
                             showChartGrid={cleanScreenshotSurfaceActive || meshAnalyzeDiagnosticFocusActive ? false : primaryOverlay.showChartGrid}
                             chartGridMode={meshChartGridMode === "meshFace" ? "mesh-face" : "local"}
                             onSurfaceCellSelectionEnabledChange={handleSurfaceCellSelectionEnabledChange}
