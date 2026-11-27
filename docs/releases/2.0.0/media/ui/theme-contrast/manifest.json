@@ -1,0 +1,107 @@
+{
+  "captureType": "Windows Electron source build",
+  "sourceCommit": "7e0dee6f63fd78e8634551b6c5d79513d076857a",
+  "viewport": "1280x900 at 200% document zoom",
+  "colorModes": [
+    "light",
+    "dark",
+    "forced-colors emulation"
+  ],
+  "files": [
+    {
+      "file": "dark-gallery-source-build.png",
+      "bytes": 112333,
+      "sha256": "e02a552776e6f9a7b7c58fad3db13e909cbafe6cb98b6036def744d0182c16c0"
+    },
+    {
+      "file": "dark-source-source-build.png",
+      "bytes": 113926,
+      "sha256": "b2acaca46336a9534bdc3041dfa8802a763bca9a13cbcb5649868310e93a35f3"
+    },
+    {
+      "file": "dark-study-source-build.png",
+      "bytes": 81822,
+      "sha256": "dcc1d85ab2a8f65b6b0c63601dad7a2f8c20ab40f6a214b42ebf246e6fb31796"
+    },
+    {
+      "file": "dark-workbook-editor-source-build.png",
+      "bytes": 88902,
+      "sha256": "f6d5ee830c9f52330bc09bc43f31b76e724ef6ba4719fc2cb7d800bd39eb6c52"
+    },
+    {
+      "file": "dark-workbook-preview-source-build.png",
+      "bytes": 118686,
+      "sha256": "8cdc6d30c253881cb5bac18c9c33cc91fd9deafddd4afd5712e0a6002d9fb23e"
+    },
+    {
+      "file": "dark-workbook-source-build.png",
+      "bytes": 89194,
+      "sha256": "8eeeed9492f1e4cee8ed915c59fb4422c2dba45d15f1aa94ea4e4171f09f935e"
+    },
+    {
+      "file": "high-contrast-gallery-source-build.png",
+      "bytes": 90323,
+      "sha256": "aa88dbe8b889f77d6f5664f8faa4069f081eb751e28521877edf05055250d921"
+    },
+    {
+      "file": "high-contrast-source-source-build.png",
+      "bytes": 96702,
+      "sha256": "a1a697436fab3d19c025e9e6f20737aaa7051c5a2b430a90bec096d03010e5ff"
+    },
+    {
+      "file": "high-contrast-study-source-build.png",
+      "bytes": 65988,
+      "sha256": "f214ac7497db7ef26280909a60cb0738b65ac481676b6c4d981c93a26848c6e9"
+    },
+    {
+      "file": "high-contrast-workbook-editor-source-build.png",
+      "bytes": 62539,
+      "sha256": "0c102f51c38f3bdd62f79f7e2c0d596ebfc6ad42a70e2fc088c3dce68f63c7c9"
+    },
+    {
+      "file": "high-contrast-workbook-preview-source-build.png",
+      "bytes": 83119,
+      "sha256": "1d89027c4acc0ba0cfd784ced7d6a3bd0a60c87211b7336cfcacaed0934f653d"
+    },
+    {
+      "file": "high-contrast-workbook-source-build.png",
+      "bytes": 61333,
+      "sha256": "f0a75050d2e94b0ae82f51a6bceec82009d475bc40862be87148fca3bf82cdf2"
+    },
+    {
+      "file": "light-gallery-source-build.png",
+      "bytes": 112846,
+      "sha256": "6d4749df84f1d965719317681fbeed07f483f1ef33259b0a9a126b8ab2dee4a2"
+    },
+    {
+      "file": "light-source-source-build.png",
+      "bytes": 111711,
+      "sha256": "7fc4cf792d85c9e33460b195597863c424b0889c617b8353b54c968ef279681f"
+    },
+    {
+      "file": "light-study-source-build.png",
+      "bytes": 80799,
+      "sha256": "882d38bb3f4fc04842875d110a6991f10e90e89803a2d749a7bc122198d44f47"
+    },
+    {
+      "file": "light-workbook-editor-source-build.png",
+      "bytes": 74626,
+      "sha256": "3fe92082d33dc0ceb25580efac091600e178dd8efa4139115704e801be6eaa97"
+    },
+    {
+      "file": "light-workbook-preview-source-build.png",
+      "bytes": 103449,
+      "sha256": "38c8d6638547ceaea41c6e528e99b0b826949c19a4218cfa84e0f213c181d073"
+    },
+    {
+      "file": "light-workbook-source-build.png",
+      "bytes": 75089,
+      "sha256": "fbd532e0fad454cd5223b6eab4e05dc84fc2ea39e31e3c4f3b07b05ed47e178b"
+    },
+    {
+      "file": "source-build-identity.json",
+      "bytes": 226,
+      "sha256": "ab2eb21fea5c7b1c95c5109bff9e23e45c25aa8c104004208c7d82fa574b58be"
+    }
+  ]
+}
