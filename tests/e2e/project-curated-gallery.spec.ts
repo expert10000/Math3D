@@ -125,6 +125,30 @@ test("Catenoid workflow stays visible on its Surface and returns to the selected
   } finally { await closeSurfaceApp(ctx); }
 });
 
+test("Surfaces navigation inherits the open Catenoid journey workflow", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    await page.getByTestId("workspace-nav-surfaces").click();
+    await expect(page.getByTestId("catenoid-document-workflow")).toHaveCount(0);
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByRole("button", { name: "Journeys", exact: true }).click();
+    await panel.getByTestId("curated-study-open-catenoid-evidence").click();
+    await expect(panel.getByTestId("catenoid-journey-flow")).toBeVisible();
+    await page.getByTestId("workspace-nav-surfaces").click();
+    await expect(panel).toBeHidden();
+    const workflow = page.getByTestId("catenoid-document-workflow");
+    await expect(workflow).toBeVisible();
+    await expect(workflow.getByTestId("catenoid-document-step-curvature"))
+      .toHaveAttribute("aria-current", "step");
+    await expect(page.getByTestId("surface-curvature-compute")).toBeVisible();
+    await page.getByTestId("workspace-nav-surfaces").click();
+    await expect(workflow).toBeVisible();
+    await expect(page.getByTestId("surface-curvature-compute")).toBeVisible();
+  } finally { await closeSurfaceApp(ctx); }
+});
+
 test("Catenoid Notebook links directly to its distinct guided journey", async () => {
   let ctx: LaunchedSurfaceApp | null = null;
   try {

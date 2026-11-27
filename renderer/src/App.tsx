@@ -82141,6 +82141,21 @@ case "mobius":
                             setNumberTheoryWorkspaceOpen(false);
                             if (entry.id !== "projects") setProjectsOpen(false);
                             if (entry.id === "surfaces") {
+                              const project = activeNotebookProjectRef.current;
+                              const journeySurface = project?.metadata.tags?.includes("curated-study-v1") &&
+                                project.metadata.tags.includes("catenoid-evidence") ?
+                                project.workspace.entries.find(document => document.module === "surface" &&
+                                  project.workspace.studies?.[0]?.members.some(member =>
+                                    member.documentId === document.expected.id)) : null;
+                              if (journeySurface && restoredProjectRef.current?.additional.has(journeySurface.expected.id)) {
+                                if (activeProjectDocumentId === journeySurface.expected.id &&
+                                  additionalActiveId === journeySurface.expected.id) {
+                                  setSurfacesPanelState("work"); setSurfacesLeftTab("analysis");
+                                  setActiveSurfaceComputation("curvature-field");
+                                  return;
+                                }
+                                if (navigateRestoredDocument(journeySurface.expected.id, "surface")) return;
+                              }
                               openNormalSurfacesWorkspace(); return;
                             }
                             const module = entry.id === "curves" ? "curve" : entry.id;
