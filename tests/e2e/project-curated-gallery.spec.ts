@@ -72,6 +72,13 @@ test("Projects Journeys lists the Catenoid flow and opens its step tabs", async 
     await expect(panel.getByTestId("project-detail-tab-journey")).toHaveAttribute("aria-current", "page");
     await expect(panel.getByTestId("catenoid-flow-tab-study")).toBeInViewport();
     await expect(panel.getByTestId("catenoid-flow-tab-study")).toBeFocused();
+    const workflow = panel.getByRole("tablist", { name: "Catenoid journey workflow" });
+    await expect(workflow).toContainText("Workflow");
+    await expect(workflow.locator(".catenoid-journey-arrow")).toHaveCount(3);
+    await expect(workflow.getByRole("tab")).toHaveText(["1 Study", "2 Curvature", "3 Comparison", "4 Workbook"]);
+    await workflow.getByRole("tab", { name: "1 Study" }).press("ArrowRight");
+    await expect(workflow.getByRole("tab", { name: "2 Curvature" })).toHaveAttribute("aria-selected", "true");
+    await expect(workflow.getByRole("tab", { name: "2 Curvature" })).toBeFocused();
     await expect(panel.getByTestId("project-study-create")).toBeHidden();
     await panel.getByTestId("project-detail-tab-overview").click();
     await expect(panel.locator(".project-dashboard-documents")).toBeVisible();

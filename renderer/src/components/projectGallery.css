@@ -199,9 +199,14 @@ body:has(#project-gallery-host:not(:empty)) :is([data-testid="projects-quick-tog
 .catenoid-journey-flow { display:grid;gap:10px;padding:14px;margin:0 0 16px;border:1px solid #a8c5e8;border-radius:10px;background:#f5f9ff; }
 .catenoid-journey-heading { display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px;color:#183a5c; }
 .catenoid-journey-heading span { color:#52657b;font-size:12px; }
-.catenoid-journey-tabs { display:flex;flex-wrap:wrap;gap:6px; }
-.catenoid-journey-tabs button { flex:1 1 130px;text-align:center; }
-.catenoid-journey-tabs button[aria-selected="true"] { border-color:#2563eb;background:#e4f0ff;color:#124d91;font-weight:700; }
+.catenoid-journey-tabs { display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:7px;padding:6px 10px;border:1px solid #bfdbfe;border-radius:10px;background:linear-gradient(180deg,#fff 0%,#eff6ff 100%); }
+.catenoid-journey-workflow-label { margin-right:3px;color:#1d4ed8;font-size:13px; }
+.catenoid-journey-step { display:inline-flex;align-items:center;gap:7px;white-space:nowrap; }
+.catenoid-journey-arrow { color:#94a3b8;font-size:13px; }
+.project-gallery-page .catenoid-journey-tabs button { min-height:32px;padding:4px 10px;border-radius:999px;border-color:#cbd5e1;background:#fff;color:#334155;font-size:13px;text-align:center;white-space:nowrap; }
+.project-gallery-page .catenoid-journey-tabs button[aria-selected="true"] { border-color:#0a66c2;background:linear-gradient(180deg,#dbeafe 0%,#bfdbfe 100%);color:#0a66c2;font-weight:700;box-shadow:0 4px 10px rgba(37,99,235,.2); }
+.project-gallery-page .catenoid-journey-tabs button[aria-selected="true"]:hover { background:linear-gradient(180deg,#dbeafe 0%,#bfdbfe 100%); }
+@media(max-width:520px) { .project-gallery-page .catenoid-journey-tabs button { min-height:44px; } }
 .catenoid-journey-flow [role="tabpanel"] { padding:12px;border:1px solid #d5e3f4;border-radius:8px;background:#fff; }
 .catenoid-journey-flow [role="tabpanel"] h5 { margin:0 0 6px;font-size:15px; }
 .catenoid-journey-flow [role="tabpanel"] p { margin:0 0 10px; }

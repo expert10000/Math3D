@@ -25,8 +25,8 @@ test("selected Surface ridge publishes Mesh error and Workbook evidence across r
     await expect(panel.getByTestId("project-message")).toContainText("Opened supported project", { timeout: 60_000 });
     await showProjectStudies(panel);
     const flow = panel.getByTestId("catenoid-journey-flow");
-    await expect(flow.getByRole("tab", { name: "1 · Study" })).toHaveAttribute("aria-selected", "true");
-    await flow.getByRole("tab", { name: "2 · Curvature" }).click();
+    await expect(flow.getByRole("tab", { name: "1 Study" })).toHaveAttribute("aria-selected", "true");
+    await flow.getByRole("tab", { name: "2 Curvature" }).click();
     await expect(flow.getByTestId("catenoid-flow-panel-curvature")).toContainText("Analysis → Curvature field → Compute");
     await flow.getByTestId("catenoid-flow-open-surface").click();
     // The real worker computes quickly; hold only its result delivery so Cancel remains actionable.
@@ -64,13 +64,13 @@ test("selected Surface ridge publishes Mesh error and Workbook evidence across r
     await expect(page.getByTestId("surface-curvature-result")).toBeVisible();
     await page.getByTestId("projects-toggle").click();
     await panel.getByRole("button", { name: "View current project" }).click();
-    await flow.getByRole("tab", { name: "3 · Comparison" }).click();
+    await flow.getByRole("tab", { name: "3 Comparison" }).click();
     const ridge = panel.getByTestId("project-surface-ridge-publication");
     await expect(ridge).toBeVisible();
     await ridge.locator("[data-testid^='project-publish-ridge-']").first().click();
     await expect(ridge.getByTestId("project-surface-ridge-evidence")).toContainText("absolute error", { timeout: 60_000 });
     await expect(ridge.getByTestId("project-surface-ridge-status")).toContainText("Workbook staged");
-    await flow.getByRole("tab", { name: "4 · Workbook" }).click();
+    await flow.getByRole("tab", { name: "4 Workbook" }).click();
     await expect(flow.getByTestId("catenoid-flow-open-workbook")).toBeEnabled();
     await flow.getByTestId("catenoid-flow-save-project").click();
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));

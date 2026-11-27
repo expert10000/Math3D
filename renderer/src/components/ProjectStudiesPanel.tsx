@@ -145,10 +145,13 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
       aria-label="Catenoid evidence journey">
       <div className="catenoid-journey-heading"><strong>Catenoid evidence journey</strong>
         <span>{ridgeResult ? "Comparison recorded" : "Continue the saved Study"}</span></div>
-      <div className="catenoid-journey-tabs" role="tablist" aria-label="Catenoid journey steps">
-        {([ ["study", "1 · Study"], ["curvature", "2 · Curvature"],
-          ["comparison", "3 · Comparison"], ["workbook", "4 · Workbook"] ] as const).map(([id, label]) =>
-          <button key={id} type="button" role="tab" id={`catenoid-flow-tab-${id}`}
+      <div className="catenoid-journey-tabs" role="tablist" aria-label="Catenoid journey workflow">
+        <strong className="catenoid-journey-workflow-label" aria-hidden="true">Workflow</strong>
+        {([ ["study", "Study"], ["curvature", "Curvature"],
+          ["comparison", "Comparison"], ["workbook", "Workbook"] ] as const).map(([id, label], index) =>
+          <span className="catenoid-journey-step" key={id}>
+            {index > 0 && <span className="catenoid-journey-arrow" aria-hidden="true">→</span>}
+            <button type="button" role="tab" id={`catenoid-flow-tab-${id}`}
             data-testid={`catenoid-flow-tab-${id}`} aria-selected={catenoidStep === id}
             aria-controls="catenoid-flow-panel" tabIndex={catenoidStep === id ? 0 : -1}
             onClick={() => setCatenoidStep(id)} onKeyDown={event => {
@@ -159,7 +162,8 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
                 event.key === "Home" ? order[0] : event.key === "End" ? order[order.length - 1] : null;
               if (next) { event.preventDefault(); setCatenoidStep(next);
                 document.getElementById(`catenoid-flow-tab-${next}`)?.focus(); }
-            }}>{label}</button>)}
+            }}>{index + 1} {label}</button>
+          </span>)}
       </div>
       <div role="tabpanel" id="catenoid-flow-panel" aria-labelledby={`catenoid-flow-tab-${catenoidStep}`}
         data-testid={`catenoid-flow-panel-${catenoidStep}`}>
