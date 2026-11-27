@@ -39,7 +39,7 @@ test("guided release journeys have distinct actions, Project focus and reduced m
     await open.focus();
     await page.keyboard.press("Enter");
     await expect(projects.getByTestId("project-message")).toContainText("Opened supported project");
-    await expect(projects.getByRole("heading", { name: "Catenoid Evidence Notebook", level: 2 })).toBeFocused();
+    await expect(projects.getByTestId("catenoid-flow-tab-study")).toBeFocused();
     await expect(projects.getByTestId("project-message")).toHaveAttribute("role", "status");
     await resizeSurfaceAppWindow(app, 760, 680);
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

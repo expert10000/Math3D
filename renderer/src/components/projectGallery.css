@@ -32,6 +32,8 @@ body:has(#project-gallery-host:not(:empty)) :is([data-testid="projects-quick-tog
 .project-research-navigation button { flex:0 0 auto; }
 .project-research-navigation button[aria-current="page"] { border-color:#2563eb;background:#eaf3ff;color:#124d91; }
 .project-gallery-layout { display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:24px;padding:20px 22px;align-items:start;flex:1;min-height:0; }
+.project-gallery-layout[data-collection="Journeys"]:not(.project-gallery-layout-detail) { grid-template-columns:minmax(0,1fr); }
+.project-gallery-layout[data-collection="Journeys"]:not(.project-gallery-layout-detail) > .project-gallery-workspace { display:none; }
 .project-gallery-layout-detail { grid-template-columns:minmax(0,1fr); }
 .project-gallery-layout-detail .project-gallery-library { display:none; }
 .project-gallery-layout-detail .project-gallery-workspace { border-left:0;padding:0;display:flex;flex-direction:column;width:min(1260px,100%);margin-inline:auto; }
@@ -56,6 +58,9 @@ body:has(#project-gallery-host:not(:empty)) :is([data-testid="projects-quick-tog
 .project-gallery-page .project-gallery-layout-detail[data-detail-page] .project-detail-results,
 .project-gallery-page .project-gallery-layout-detail[data-detail-page] .project-detail-history { display:none; }
 .project-gallery-page .project-gallery-layout-detail[data-detail-page] .project-workspace-summary > :is(.project-dashboard-grid,.project-relationship-map,.project-navigation-overview) { display:none; }
+.project-gallery-page .project-gallery-layout-detail[data-detail-page="journey"] .project-workspace-summary > .project-dashboard-grid { display:grid; }
+.project-gallery-page .project-gallery-layout-detail[data-detail-page="journey"] .project-dashboard-grid > :not([data-testid="project-studies-panel"]),
+.project-gallery-page .project-gallery-layout-detail[data-detail-page="journey"] .project-scene-shortcuts { display:none; }
 .project-gallery-page .project-gallery-layout-detail[data-detail-page="overview"] .project-workspace-summary > .project-dashboard-grid { display:grid; }
 .project-gallery-page .project-gallery-layout-detail[data-detail-page="overview"] .project-workspace-summary > .project-relationship-map,
 .project-gallery-page .project-gallery-layout-detail[data-detail-page="relations"] .project-workspace-summary > .project-relationship-map,

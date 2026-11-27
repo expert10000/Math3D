@@ -80,15 +80,17 @@ export const StarterArtwork: React.FC<{ id: ProjectStarterId }> = ({ id }) => <s
 
 export const ProjectTemplatesPanel: React.FC<{ onPreview: (id: ProjectStarterId) => void; onOpen: (id: ProjectStarterId) => void; onNewCopy: (id: ProjectStarterId) => void;
   onPreviewCurated: (id: ProjectStarterId) => void; onOpenCurated: (id: ProjectStarterId) => void; onNewCuratedCopy: (id: ProjectStarterId) => void;
-  view: "starters" | "studies"; onViewChange: (view: "starters" | "studies") => void;
+  view: "starters" | "studies"; onViewChange: (view: "starters" | "studies") => void; journeysOnly?: boolean;
   onImportQuantumScene?: () => void; quantumImportAvailable?: boolean; onOpenCasGallery?: () => void;
   casProvenance?: Readonly<{ projectTitle: string; definitions: readonly Readonly<{ label: string; revision: number }>[]; results: number }> | null;
   copies: Partial<Record<ProjectStarterId, ProjectLibraryEntry>>; guidedCopies: Partial<Record<ProjectStarterId, ProjectLibraryEntry>>;
   busy: boolean; query?: string; moduleFilter?: string; host?: PlatformCapabilitySnapshot;
   assetBytes?: Readonly<Record<string, number>>; guidedLimits?: Readonly<Record<string, string | null>> }> = ({ onPreview, onOpen, onNewCopy,
     onPreviewCurated, onOpenCurated, onNewCuratedCopy, onImportQuantumScene, quantumImportAvailable = false,
-    onOpenCasGallery, casProvenance, copies, guidedCopies, view, onViewChange, busy, query = "", moduleFilter = "All modules", host, assetBytes = {}, guidedLimits = {} }) => {
+    onOpenCasGallery, casProvenance, copies, guidedCopies, view, onViewChange, journeysOnly = false,
+    busy, query = "", moduleFilter = "All modules", host, assetBytes = {}, guidedLimits = {} }) => {
   const [id, setId] = useState<ProjectStarterId>("catenary-study");
+  const activeView = journeysOnly ? "studies" : view;
   const matches = starters.filter(item => (moduleFilter === "All modules" || PROJECT_STARTER_MODULES[item.id].includes(moduleFilter)) &&
     `${item.title} ${item.description} ${PROJECT_STARTER_MODULES[item.id].join(" ")}`.toLowerCase().includes(query.trim().toLowerCase()));
   const guided = CURATED_STUDIES.filter(item => {
@@ -104,11 +106,11 @@ export const ProjectTemplatesPanel: React.FC<{ onPreview: (id: ProjectStarterId)
   const galleryJourney = host ? resolvePlatformJourneys(host).gallery : null;
   const canCreateCopy = !galleryJourney || galleryJourney.mode === "open";
   return <section data-testid="project-templates" className="project-starters">
-    <div className="curated-study-switch" role="group" aria-label="Gallery view">
-      <button type="button" data-testid="project-gallery-guided" aria-pressed={view === "studies"} onClick={() => onViewChange("studies")}>Guided Studies ({guided.length})</button>
-      <button type="button" data-testid="project-gallery-all-starters" aria-pressed={view === "starters"} onClick={() => onViewChange("starters")}>All starters ({matches.length})</button>
-    </div>
-    {view === "studies" && <>
+    {journeysOnly ? <h3>Guided journeys</h3> : <div className="curated-study-switch" role="group" aria-label="Gallery view">
+      <button type="button" data-testid="project-gallery-guided" aria-pressed={activeView === "studies"} onClick={() => onViewChange("studies")}>Guided Studies ({guided.length})</button>
+      <button type="button" data-testid="project-gallery-all-starters" aria-pressed={activeView === "starters"} onClick={() => onViewChange("starters")}>All starters ({matches.length})</button>
+    </div>}
+    {activeView === "studies" && <>
       <p className="curated-study-intro">Choose a scientific question, inspect its saved sources, and follow the stated limitations. Quantum cards require your own verified scene bundle; CAS examples save into a named Project.</p>
       {!guided.length && <p className="project-gallery-empty">No guided Studies match. Try another search or module.</p>}
       <div className="curated-study-grid">{guided.map(item => <CuratedStudyCard key={item.id} item={item}
@@ -123,7 +125,7 @@ export const ProjectTemplatesPanel: React.FC<{ onPreview: (id: ProjectStarterId)
         casProvenance={casProvenance}
         onOpen={onOpenCurated} onPreview={onPreviewCurated} onNewCopy={onNewCuratedCopy} />)}</div>
     </>}
-    {view === "starters" && <>
+    {activeView === "starters" && <>
     <div className="project-starters-heading"><div><h3>Starter projects <span className="project-gallery-count">{matches.length}</span></h3><p>Open creates your first copy, then resumes it. New copy starts a separate project.</p></div>
       <div className="project-starter-picker"><label>Choose starter
         <select data-testid="project-template-select" disabled={!selected} value={selected?.id ?? ""} onChange={(event) => setId(event.target.value as ProjectStarterId)}>

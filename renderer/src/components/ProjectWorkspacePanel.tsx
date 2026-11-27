@@ -212,7 +212,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [resourceVersion, setResourceVersion] = useState(0);
   const [quick, setQuick] = useState(false), [detailView, setDetailView] = useState(false), [viewerCompanion, setViewerCompanion] = useState(false), [collection, setCollection] = useState("All projects");
   const [starterView, setStarterView] = useState<"starters" | "studies">("starters");
-  const [detailPage, setDetailPage] = useState<"overview" | "documents" | "relations" | "results" | "history" | "settings" | "transfer">("overview");
+  const [detailPage, setDetailPage] = useState<"journey" | "overview" | "documents" | "relations" | "results" | "history" | "settings" | "transfer">("overview");
   const [resultFocus, setResultFocus] = useState<{ id: string; token: number } | null>(null);
   const [studyFocus, setStudyFocus] = useState<{ id: string; token: number; selectionId?: string;
     quantumSelectionHash?: string } | null>(null);
@@ -383,7 +383,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const coordinateReview = useMemo(() => project ? buildProjectCoordinateObservationReview(project, comparisonResource) : [], [project, comparisonResource]);
   const projectWorkbookBytes = useCallback((id: string) => resourceSessionId.current === project?.identity.id
     ? resourceSession.current?.bytes({ kind: "workbook-payload", id }) ?? null : null, [project?.identity.id]);
-  useEffect(() => { setDetailPage("overview"); }, [project?.identity.id]);
+  useEffect(() => {
+    setDetailPage(project?.metadata.tags?.includes("curated-study-v1") &&
+      project.metadata.tags.includes("catenoid-evidence") ? "journey" : "overview");
+  }, [project?.identity.id]);
   const projectStateRef = useRef(project); projectStateRef.current = project;
   const [notesOpen, setNotesOpen] = useState(false);
   const [notesPlacement, setNotesPlacement] = useState<"floating" | "project">("floating");
@@ -1793,14 +1796,22 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const focusGuidedStudy = (next: Math3DProject) => {
     const study = next.workspace.studies?.[0];
     if (!study) return;
-    setStudyFocus(previous => ({ id: study.id, token: (previous?.token ?? 0) + 1 }));
-    setQuick(false); setViewerCompanion(false); setDetailView(true); setDetailPage("overview");
+    const catenoidJourney = next.metadata.tags?.includes("catenoid-evidence") ?? false;
+    if (catenoidJourney) setStudyFocus(null);
+    else setStudyFocus(previous => ({ id: study.id, token: (previous?.token ?? 0) + 1 }));
+    setQuick(false); setViewerCompanion(false); setDetailView(true);
+    setDetailPage(catenoidJourney ? "journey" : "overview");
     onOpenChange(true);
-    // Opening a guided copy replaces its card. Move focus into the new Project
-    // context instead of leaving keyboard users on the document body.
     window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
-      const heading = document.querySelector<HTMLElement>('#project-explorer-panel h2');
-      if (heading) { heading.tabIndex = -1; heading.focus({ preventScroll: true }); }
+      if (catenoidJourney) {
+        const flow = document.querySelector<HTMLElement>('#project-explorer-panel [data-testid="catenoid-journey-flow"]');
+        const firstStep = document.querySelector<HTMLElement>('#project-explorer-panel [data-testid="catenoid-flow-tab-study"]');
+        flow?.scrollIntoView({ block: "start" });
+        firstStep?.focus({ preventScroll: true });
+      } else {
+        const heading = document.querySelector<HTMLElement>('#project-explorer-panel h2');
+        if (heading) { heading.tabIndex = -1; heading.focus({ preventScroll: true }); }
+      }
     }));
   };
   useEffect(() => {
@@ -2216,17 +2227,22 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       } else document.querySelector<HTMLElement>('[data-testid="projects-toggle"]')?.focus({ preventScroll: true });
     }));
   };
-  const openResearchSection = (section: "gallery" | "studies" | "results" | "workbooks" | "notes") => {
+  const openResearchSection = (section: "gallery" | "journeys" | "studies" | "results" | "workbooks" | "notes") => {
     setNotesOpen(false); setQuick(false); setViewerCompanion(false);
     if (section === "gallery") { setDetailView(false); setCollection("Starter projects"); return; }
+    if (section === "journeys") {
+      setDetailView(false); setCollection("Journeys"); setQuery(""); setModuleFilter("All modules"); return;
+    }
     setDetailView(true);
     if (section === "notes") { openProjectNotes(); return; }
-    openDetailPage(section === "results" ? "results" : section === "workbooks" ? "documents" : "overview",
+    openDetailPage(section === "results" ? "results" : section === "workbooks" ? "documents" :
+      section === "studies" && project?.metadata.tags?.includes("curated-study-v1") &&
+      project.metadata.tags.includes("catenoid-evidence") ? "journey" : "overview",
       section === "workbooks" ? contentsSection : undefined);
   };
   const browseGuidedCatenoid = () => {
     setNotesOpen(false); setQuick(false); setViewerCompanion(false); setDetailView(false);
-    setCollection("Starter projects"); setStarterView("studies");
+    setCollection("Journeys");
     setQuery("catenoid evidence"); setModuleFilter("All modules");
     workspacePanel.current?.scrollTo({ top: 0 });
   };
@@ -2279,6 +2295,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     window.dispatchEvent(new CustomEvent("math3d:research-command-index", { detail: researchCommands }));
   }, [project, library, busy, preview, resourceVersion]);
   const fullDetails = !quick && detailView;
+  const catenoidJourney = !!project?.metadata.tags?.includes("catenoid-evidence") &&
+    project.metadata.tags.includes("curated-study-v1");
   const ordinaryCatenoid = !!project?.metadata.tags?.includes("catenoid-evidence") &&
     !project.metadata.tags.includes("curated-study-v1");
   useEffect(() => {
@@ -2308,7 +2326,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       }} className="project-context-toggle">{hasOpenProject ? "Project" : "Quick projects"}</button>, document.body)}
     {open && <ProjectGalleryFrame quick={quick} viewerCompanion={viewerCompanion} placement={projectPlacement} onClose={closeExplorer}>
       <header data-testid="project-explorer-header" className={`project-gallery-header${viewerCompanion && quick ? " project-companion-header" : ""}`}>
-        <div className="project-gallery-heading"><div><p>{viewerCompanion && quick ? "PROJECT" : "MATH3D · PROJECTS"}</p><h2>{quick && !viewerCompanion ? "Quick Projects" : detailView ? project?.metadata.title ?? "Project" : "Projects Gallery"}</h2></div><div className="project-gallery-heading-actions" style={{ display:"flex",gap:8 }}>
+        <div className="project-gallery-heading"><div><p>{viewerCompanion && quick ? "PROJECT" : "MATH3D · PROJECTS"}</p><h2>{quick && !viewerCompanion ? "Quick Projects" : detailView ? catenoidJourney && detailPage === "journey" ? "Catenoid evidence journey" : project?.metadata.title ?? "Project" : collection === "Journeys" ? "Journeys" : "Projects Gallery"}</h2>{fullDetails && catenoidJourney && detailPage === "journey" && <p data-testid="project-journey-source">Saved in Project: {project?.metadata.title}</p>}</div><div className="project-gallery-heading-actions" style={{ display:"flex",gap:8 }}>
           {fullDetails ? <>
             {!preview && viewingDocumentId && <button type="button" data-testid="project-viewer-return" onClick={() => { setViewerCompanion(true); setQuick(true); }}>Open current document</button>}
             <button type="button" data-testid="project-detail-toggle" aria-pressed={detailView} onClick={() => { setNotesOpen(false); workspacePanel.current?.scrollTo({ top: 0 }); setDetailView(false); }}>Browse projects</button>
@@ -2344,10 +2362,11 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           onClick={() => void stageHydrogenStudy("attach", hydrogenStudyRequest)}>Attach to current Project</button>
       </div>}
       {hasOpenProject && !quick && <nav className="project-research-navigation" aria-label="Research navigation" data-testid="project-research-navigation">
-        {(["gallery", "studies", "results", "workbooks", "notes"] as const).map(section =>
+        {(["gallery", "journeys", "studies", "results", "workbooks", "notes"] as const).map(section =>
           <button key={section} type="button" data-testid={`project-research-nav-${section}`}
-            aria-current={section === "gallery" ? !detailView ? "page" : undefined : detailView &&
-              ((section === "studies" && detailPage === "overview") || (section === "results" && detailPage === "results") ||
+            aria-current={section === "gallery" ? !detailView && collection !== "Journeys" ? "page" : undefined :
+              section === "journeys" ? !detailView && collection === "Journeys" ? "page" : undefined : detailView &&
+              ((section === "studies" && (detailPage === "overview" || detailPage === "journey")) || (section === "results" && detailPage === "results") ||
                 (section === "workbooks" && detailPage === "documents") || (section === "notes" && notesOpen)) ? "page" : undefined}
             onClick={() => openResearchSection(section)}>{section[0].toUpperCase() + section.slice(1)}</button>)}
         {ordinaryCatenoid && <button type="button" data-testid="project-open-guided-catenoid" onClick={browseGuidedCatenoid}>Find guided Catenoid journey</button>}
@@ -2383,16 +2402,16 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           aria-pressed={viewerCompanion && quick && projectPlacement === placement} onClick={() => placeProject(placement)}>{placement[0].toUpperCase() + placement.slice(1)}</button>)}
       </div>}
       </header>
-      <div className={`project-gallery-layout${detailView && (!quick || viewerCompanion) ? " project-gallery-layout-detail" : ""}`} data-detail-page={fullDetails ? detailPage : undefined}>
+      <div className={`project-gallery-layout${detailView && (!quick || viewerCompanion) ? " project-gallery-layout-detail" : ""}`} data-detail-page={fullDetails ? detailPage : undefined} data-collection={collection}>
 <section data-testid="project-library" className="project-gallery-library">
         <div className="project-gallery-browse-controls">
-          <div className="project-gallery-filters" aria-label="Project collection">{["All projects", "Starter projects", "Your saved projects", "Favorites"].map(value => <button type="button" key={value} aria-pressed={collection === value} onClick={() => setCollection(value)}>{value}</button>)}</div>
+          <div className="project-gallery-filters" aria-label="Project collection">{["All projects", "Journeys", "Starter projects", "Your saved projects", "Favorites"].map(value => <button type="button" key={value} aria-pressed={collection === value} onClick={() => setCollection(value)}>{value}</button>)}</div>
           <div className="project-gallery-search-row"><label>Search projects<input data-testid="project-library-search" type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search names, topics or tags" /></label>
             <label>Module<select data-testid="project-library-module" value={moduleFilter} onChange={event => setModuleFilter(event.target.value)}>{["All modules", "Graph", "3D vector field", "Curve", "Surface", "Mesh", "Volume", "Geometry", "Topology", "Complex", "Quantum scene", "Algebra", "Workbook", "Notes", "Analysis"].map(value => <option key={value}>{value}</option>)}</select></label>
             {(query || moduleFilter !== "All modules") && <button type="button" onClick={() => { setQuery(""); setModuleFilter("All modules"); }}>Clear filters</button>}
           </div>
         </div>
-        {(collection === "All projects" || collection === "Starter projects") && <ProjectTemplatesPanel query={query} moduleFilter={moduleFilter} view={starterView} onViewChange={setStarterView} copies={starterCopies} guidedCopies={guidedCopies} host={galleryHost} assetBytes={galleryAssetBytes} guidedLimits={guidedLimits} onPreview={id => { void previewTemplate(id); }} onOpen={(id) => { void openTemplate(id); }} onNewCopy={id => { void openTemplate(id, true); }}
+        {(collection === "All projects" || collection === "Starter projects" || collection === "Journeys") && <ProjectTemplatesPanel query={query} moduleFilter={moduleFilter} view={starterView} onViewChange={setStarterView} journeysOnly={collection === "Journeys"} copies={starterCopies} guidedCopies={guidedCopies} host={galleryHost} assetBytes={galleryAssetBytes} guidedLimits={guidedLimits} onPreview={id => { void previewTemplate(id); }} onOpen={(id) => { void openTemplate(id); }} onNewCopy={id => { void openTemplate(id, true); }}
           onPreviewCurated={id => { void previewTemplate(id, true); }} onOpenCurated={id => { void openTemplate(id, false, true); }}
           onNewCuratedCopy={id => { void openTemplate(id, true, true); }}
           onImportQuantumScene={onImportQuantumScene} quantumImportAvailable={!!window.quantumScenes?.open}
@@ -2402,7 +2421,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               .map(record => ({ label: record.label, revision: record.revision })),
             results: project.algebraEvidence?.length ?? 0,
           } : null} busy={busy} />}
-        {collection !== "Starter projects" && <>
+        {collection !== "Starter projects" && collection !== "Journeys" && <>
         <h3>Your saved projects ({library.entries.length})</h3><p>Favorites first, then recent. Open a project or preview its documents and compatibility.</p>
         {libraryMessage && <p role="status" data-testid="project-library-message">{libraryMessage}</p>}
         {!library.entries.length && !libraryMessage && <p>No saved projects yet. Save the current workspace or import the included Samsung collection.</p>}
@@ -2481,7 +2500,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           } catch (error) { setMessage(`Coordinate review export failed: ${(error as Error).message}`); } }} />}
         </section>}
         {fullDetails && <nav className="project-detail-tabs" aria-label="Project details sections">
-          {(["overview", "documents", "relations", "results", "history"] as const).map(page => <button key={page} type="button" data-testid={`project-detail-tab-${page}`}
+          {([...(catenoidJourney ? ["journey"] as const : []), "overview", "documents", "relations", "results", "history"] as const).map(page => <button key={page} type="button" data-testid={`project-detail-tab-${page}`}
             aria-current={detailPage === page ? "page" : undefined} onClick={() => openDetailPage(page)}>{page[0].toUpperCase() + page.slice(1)}</button>)}
         </nav>}
         <div className="project-workspace-summary">
