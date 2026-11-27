@@ -2664,6 +2664,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               onOpenQuantumSource={openLinkedQuantumScene}
               onInspectResult={id => { setResultFocus(previous => ({ id, token: (previous?.token ?? 0) + 1 }));
                 openDetailPage("results"); }}
+              onOpenJourneySurface={id => navigate(id, "surface")}
               onOpenDocument={(id, module) => viewBesideProject(id, module)} />
           </div>}
           {!quick && detailView && project && <ProjectRelationshipMap project={project} titles={documentTitles}

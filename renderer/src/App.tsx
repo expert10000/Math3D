@@ -80453,7 +80453,14 @@ case "mobius":
       setAdditionalActiveId(id); setRestoredCurveAdapter(null); setRestoredSurfaceAdapter(null);
       setRestoredComplexAdapter(null); setRestoredVolumeAdapter(null); setRestoredTopologyAdapter(null);
       if (module === "surface") {
-        setDatasetKind("surface"); setSurfaceViewerKind("param"); setSurfacesPanelState("browse"); setSurfacesWorkGalleryOpen(false);
+        const journeySurface = !!activeNotebookProjectRef.current?.metadata.tags?.includes("curated-study-v1") &&
+          !!activeNotebookProjectRef.current.metadata.tags.includes("catenoid-evidence") &&
+          !!activeNotebookProjectRef.current.workspace.studies?.[0]?.members.some(member => member.documentId === id);
+        if (journeySurface) skipSurfacesAutoBrowseOnModeChangeRef.current = true;
+        setDatasetKind("surface"); setSurfaceViewerKind("param");
+        setSurfacesPanelState(journeySurface ? "work" : "browse");
+        if (journeySurface) { setSurfacesLeftTab("analysis"); setActiveSurfaceComputation("curvature-field"); }
+        setSurfacesWorkGalleryOpen(false);
         setDisplayMode("workspace"); setShowRightPanel(true); setRightPanelTab("inspector");
         setSurfacePreviewFocusMode(false); setCleanScreenshotActive(false); setSurfaceDrawerPanel("left");
         setShowInViewportOverlayControls(true); setShowSurfaceViewGizmo(true);
@@ -82501,6 +82508,20 @@ case "mobius":
                   )}
                 </div>
               </div>
+              {catenoidJourneySurfaceActive && <div className="catenoid-document-workflow">
+                <CatenoidJourneyWorkflow activeStep="curvature" documentView onSelect={step => {
+                  if (step === "curvature") {
+                    setSurfacesPanelState("work");
+                    setSurfacesLeftTab("analysis");
+                    setActiveSurfaceComputation("curvature-field");
+                    return;
+                  }
+                  window.dispatchEvent(new CustomEvent("math3d:catenoid-journey-navigate", {
+                    detail: { projectId: catenoidJourneyProject!.identity.id, step },
+                  }));
+                }} />
+                <p>Analysis → Curvature field → Compute, then choose 3 Comparison.</p>
+              </div>}
               <div
                 data-testid="surface-context-actions-row"
                 style={mode === "surfaces" && surfaceViewerKind === "mesh" && !isPhoneViewerPriorityLayout
@@ -83932,13 +83953,6 @@ case "mobius":
         </div>}
       </header>
       <div id="project-gallery-host" data-testid="project-gallery-host" />
-      {catenoidJourneySurfaceActive && <div className="catenoid-document-workflow">
-        <CatenoidJourneyWorkflow activeStep="curvature" documentView onSelect={step => {
-          window.dispatchEvent(new CustomEvent("math3d:catenoid-journey-navigate", {
-            detail: { projectId: catenoidJourneyProject!.identity.id, step },
-          }));
-        }} />
-      </div>}
       {additionalActiveId && !savedSurfaceModuleActive && restoredProjectRef.current?.additional.get(additionalActiveId) && <SavedDocumentWorkbench customView={savedSurfaceCustomView} onSelectView={view => setSavedSurfaceCustomView(view === "custom")}
         onVerifyScientificPathline={async curve => {
           verifiedCurveTemporalTransfersRef.current = undefined;

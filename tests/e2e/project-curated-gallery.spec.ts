@@ -103,10 +103,16 @@ test("Catenoid workflow stays visible on its Surface and returns to the selected
     await panel.getByTestId("curated-study-open-catenoid-evidence").click();
     await panel.getByTestId("catenoid-flow-tab-curvature").click();
     await panel.getByTestId("catenoid-flow-open-surface").click();
+    await expect(panel).toBeHidden();
     const inherited = page.getByTestId("catenoid-document-workflow");
     await expect(inherited).toBeVisible();
+    await expect(inherited.locator("xpath=ancestor::header")).toHaveCount(1);
+    await expect(page.getByText("Analysis → Curvature field → Compute, then choose 3 Comparison."))
+      .toBeVisible();
     await expect(inherited.getByTestId("catenoid-document-step-curvature"))
       .toHaveAttribute("aria-current", "step");
+    await expect(page.getByTestId("surfaces-left-tab-analysis")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("surface-curvature-compute")).toBeVisible();
     await expect(inherited.getByRole("button")).toHaveText([
       "1 Study", "2 Curvature", "3 Comparison", "4 Workbook",
     ]);

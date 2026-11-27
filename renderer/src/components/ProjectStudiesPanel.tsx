@@ -57,6 +57,7 @@ type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoi
   onOpenNote?: (id: string) => void;
   onOpenQuantumSource?: (reference: ProjectQuantumSceneReference) => Promise<void>;
   onInspectResult?: (resultId: string) => void;
+  onOpenJourneySurface: (id: string) => void;
   onOpenDocument: (id: string, module: KernelWorkspaceModule) => void }>;
 
 /** A Study is a saved layout of references; opening a pane delegates to its owning document. */
@@ -68,7 +69,7 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
   onPublishVolumeMesh,
   onPinScientificSelection, workbookBytes, onOpenWorkbookBlock,
   onCapturePinnedNote, onOpenNote,
-  onOpenQuantumSource, onInspectResult, onOpenDocument }: Props) {
+  onOpenQuantumSource, onInspectResult, onOpenJourneySurface, onOpenDocument }: Props) {
   const [selected, setSelected] = useState<string[]>([]);
   const [title, setTitle] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
@@ -161,11 +162,11 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
           }}>Open saved Study</button>{" "}
           <button type="button" onClick={() => setCatenoidStep("curvature")}>Next: Curvature</button></>}
         {catenoidStep === "curvature" && <><h5>Compute Surface curvature</h5>
-          <p>Open the saved Surface, then choose Analysis → Curvature field → Compute. Return to Projects when the result is ready.</p>
+          <p>Open the saved Surface curvature analysis, compute the field, then choose 3 Comparison in the workflow above.</p>
           <button type="button" data-testid="catenoid-flow-open-surface"
             disabled={!editable || !catenoidSurface || catenoidSurfaceStatus !== "current-reference"}
-            onClick={() => { if (catenoidSurface) onOpenDocument(catenoidSurface.expected.id, "surface"); }}>
-            Open Surface</button>{" "}
+            onClick={() => { if (catenoidSurface) onOpenJourneySurface(catenoidSurface.expected.id); }}>
+            Open Surface curvature analysis</button>{" "}
           <button type="button" onClick={() => setCatenoidStep("comparison")}>Next: Comparison</button>
           {catenoidSurfaceStatus !== "current-reference" && <p role="status">Saved Surface source changed or is missing; reopen a current source before computing.</p>}</>}
         {catenoidStep === "comparison" && <><h5>Publish the comparison</h5>

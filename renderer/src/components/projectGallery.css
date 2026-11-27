@@ -203,7 +203,8 @@ body:has(#project-gallery-host:not(:empty)) :is([data-testid="projects-quick-tog
 .catenoid-journey-workflow-label { margin-right:3px;color:#1d4ed8;font-size:13px; }
 .catenoid-journey-step { display:inline-flex;align-items:center;gap:7px;white-space:nowrap; }
 .catenoid-journey-arrow { color:#94a3b8;font-size:13px; }
-.catenoid-document-workflow { margin:8px 18px; }
+.catenoid-document-workflow { display:grid;gap:4px; }
+.catenoid-document-workflow p { margin:0;color:#45617d;font:600 12px/1.35 system-ui,sans-serif;text-align:center; }
 :is(.project-gallery-page,.catenoid-document-workflow) .catenoid-journey-tabs button { min-height:32px;padding:4px 10px;border-radius:999px;border-color:#cbd5e1;background:#fff;color:#334155;font-size:13px;text-align:center;white-space:nowrap; }
 :is(.project-gallery-page,.catenoid-document-workflow) .catenoid-journey-tabs button:is([aria-selected="true"],[aria-current="step"]) { border-color:#0a66c2;background:linear-gradient(180deg,#dbeafe 0%,#bfdbfe 100%);color:#0a66c2;font-weight:700;box-shadow:0 4px 10px rgba(37,99,235,.2); }
 .project-gallery-page .catenoid-journey-tabs button[aria-selected="true"]:hover { background:linear-gradient(180deg,#dbeafe 0%,#bfdbfe 100%); }
