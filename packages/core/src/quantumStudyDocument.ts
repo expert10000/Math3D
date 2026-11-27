@@ -14,7 +14,8 @@ export type QuantumStudyDocument = Readonly<{
   link: Readonly<{ selection: "same-result-and-coordinate" }>;
 }>;
 
-export type QuantumStudyTemplateId = "qwz" | "ssh" | "rice-mele" | "hofstadter" | "hydrogen" | "ute2-landau";
+export type QuantumStudyTemplateId = "qwz" | "ssh" | "rice-mele" | "hofstadter" | "hydrogen" |
+  "ute2-landau" | "ute2-bdg" | "ute2-lattice";
 export const QUANTUM_STUDY_TEMPLATES: Readonly<Record<QuantumStudyTemplateId,
   Readonly<{ label: string; model: string; roles: readonly string[]; layout: "columns" | "rows" }>>> = {
   qwz: { label: "QWZ bands and curvature", model: "qwz", roles: ["curvature", "bands"], layout: "columns" },
@@ -23,8 +24,11 @@ export const QUANTUM_STUDY_TEMPLATES: Readonly<Record<QuantumStudyTemplateId,
   hofstadter: { label: "Hofstadter bulk and strip", model: "hofstadter", roles: ["bands", "strip"], layout: "columns" },
   hydrogen: { label: "Hydrogen density and phase", model: "hydrogenic", roles: ["density", "phase"], layout: "columns" },
   "ute2-landau": { label: "Two-order Landau candidates", model: "two_order_landau", roles: ["stationary"], layout: "columns" },
+  "ute2-bdg": { label: "Reduced BdG spectrum and weights", model: "reduced_bdg_2x2", roles: ["spectrum"], layout: "columns" },
+  "ute2-lattice": { label: "Lattice BdG energy, gap and pairing", model: "square_lattice_px_py",
+    roles: ["energy", "gap", "pairing"], layout: "columns" },
 };
-function templateSceneRole(templateId: QuantumStudyTemplateId, document: QuantumSceneDocument): string | null {
+function templateSceneRole(templateId: QuantumStudyTemplateId, document: QuantumSceneDocument, desiredRole?: string): string | null {
   const ids = new Set(document.source.objects.map(object => object.id));
   const sceneId = document.source.sceneId;
   if (templateId === "hydrogen") return ids.size === 0 &&
@@ -33,6 +37,14 @@ function templateSceneRole(templateId: QuantumStudyTemplateId, document: Quantum
   if (templateId === "ute2-landau") return ids.has("stationary") && ids.has("stable") && ids.has("global") &&
     document.source.coordinates.axes.join("|") === "order amplitude r1|order amplitude r2|free energy F" &&
     document.source.coordinates.units.every(unit => unit === "dimensionless") ? "stationary" : null;
+  if (templateId === "ute2-bdg") return ids.has("positive") && ids.has("negative") &&
+    document.source.coordinates.axes.join("|") === "xi|energy|display z" &&
+    document.source.coordinates.units.join("|") === "dimensionless|dimensionless|dimensionless" ? "spectrum" : null;
+  if (templateId === "ute2-lattice") return ["energy", "gap", "pairing"].includes(desiredRole ?? "") &&
+    ["positive-energy", "negative-energy", "gap-magnitude", "pairing-real", "pairing-imaginary",
+      "phase-defined-mask", "node-mask", "coherence-defined-mask"].every(id => ids.has(id)) &&
+    document.source.coordinates.axes.join("|") === "kx|ky|energy or display plane" &&
+    document.source.coordinates.units.join("|") === "rad/a|rad/a|t=1" ? desiredRole! : null;
   if (templateId === "qwz") return ids.has("berry-curvature") ? "curvature" : ids.has("band-0") ? "bands" : null;
   if (templateId === "ssh") return ids.has("edge-density") ? "chain" : ids.has("band-0") ? "bands" : null;
   if (templateId === "rice-mele") return /-finite-pump$|-open-chain-pump$/.test(sceneId) ? "finite" :
@@ -56,7 +68,7 @@ export function normalizeQuantumStudyDocument(value: unknown,
       typeof value.source.runId !== "string" || !token.test(value.source.runId) ||
       typeof value.source.model !== "string" || !token.test(value.source.model) ||
       typeof value.source.resultSha256 !== "string" || !hash.test(value.source.resultSha256) ||
-      !Array.isArray(value.panels) || value.panels.length < (value.templateId === "ute2-landau" ? 1 : 2) || value.panels.length > 8)
+      !Array.isArray(value.panels) || value.panels.length < (["ute2-landau", "ute2-bdg"].includes(String(value.templateId)) ? 1 : 2) || value.panels.length > 8)
     return { ok: false, errors: ["Invalid quantum study document."] };
   const template = value.templateId === undefined ? null : QUANTUM_STUDY_TEMPLATES[value.templateId as QuantumStudyTemplateId];
   if (value.templateId !== undefined && (!template || template.model !== value.source.model ||
@@ -69,7 +81,7 @@ export function normalizeQuantumStudyDocument(value: unknown,
     if (!record(panel) || Object.keys(panel).sort().join() !== "role,sampleIndex,sceneFingerprint,selectedObjectId" ||
         typeof panel.role !== "string" || !token.test(panel.role) ||
         typeof panel.sceneFingerprint !== "string" || !hash.test(panel.sceneFingerprint) ||
-        (seen.has(panel.sceneFingerprint) && value.templateId !== "hydrogen") ||
+        (seen.has(panel.sceneFingerprint) && !["hydrogen", "ute2-lattice"].includes(String(value.templateId))) ||
         !(panel.sampleIndex === null || Number.isSafeInteger(panel.sampleIndex) && Number(panel.sampleIndex) >= 0 && Number(panel.sampleIndex) <= 1000000) ||
         !(panel.selectedObjectId === null || typeof panel.selectedObjectId === "string" && token.test(panel.selectedObjectId)))
       return { ok: false, errors: ["Invalid quantum study panel."] };
@@ -80,7 +92,7 @@ export function normalizeQuantumStudyDocument(value: unknown,
         document.source.provenance.model !== value.source.model ||
         panel.selectedObjectId !== null && !document.source.objects.some(item => item.id === panel.selectedObjectId))
       return { ok: false, errors: ["Study panel source or selection is outside the declared result."] };
-    if (template && templateSceneRole(value.templateId as QuantumStudyTemplateId, document) !==
+    if (template && templateSceneRole(value.templateId as QuantumStudyTemplateId, document, panel.role as string) !==
         (value.templateId === "hydrogen" ? "density" : panel.role))
       return { ok: false, errors: ["Study panel does not match its template view role."] };
   }
@@ -105,11 +117,12 @@ export function createQuantumStudyFromTemplate(templateId: QuantumStudyTemplateI
     document.source.provenance.resultSha256 === provenance.resultSha256);
   const selected = template.roles.map(panelRole => {
     const document = templateId === "hydrogen" ? siblings.find(item => templateSceneRole(templateId, item) === "density") :
-      siblings.find(item => templateSceneRole(templateId, item) === panelRole);
+      siblings.find(item => templateSceneRole(templateId, item, panelRole) === panelRole);
     if (!document) throw new TypeError(`Missing verified ${panelRole} template scene`);
     return document;
   });
-  if (selected.length>1 && templateId !== "hydrogen" && selected[0].source.sceneFingerprint === selected[1].source.sceneFingerprint)
+  if (selected.length>1 && !["hydrogen", "ute2-lattice"].includes(templateId) &&
+      selected[0].source.sceneFingerprint === selected[1].source.sceneFingerprint)
     throw new TypeError("Template needs two distinct verified scene views");
   const study = createQuantumStudyDocument(`${template.label} · ${provenance.runId}`,
     { model: provenance.model, runId: provenance.runId, resultSha256: provenance.resultSha256 },

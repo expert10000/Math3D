@@ -788,6 +788,23 @@ declare global {
         units: { amplitude: "dimensionless"; freeEnergy: "dimensionless" };
         qualification: "producer-supplied stationary candidate";
       }>;
+      ute2ReducedBdgSample: (request: { fingerprint: string; sampleIndex: number }) => Promise<{
+        fingerprint: string; runId: string; resultSha256: string; sampleIndex: number; model: "reduced_bdg_2x2";
+        coordinate: { xi: number; unit: "dimensionless"; meaning: "dispersion parameter, not momentum" };
+        energies: { negative: number; positive: number; unit: "dimensionless" };
+        gapMagnitude: number; pairingPhaseRad: number | null; sampledNode: boolean;
+        electronWeight: number | null; holeWeight: number | null;
+        qualification: "producer-supplied reduced Nambu sector sample";
+      }>;
+      ute2LatticeBdgSample: (request: { fingerprint: string; sampleIndex: number }) => Promise<{
+        fingerprint: string; runId: string; resultSha256: string; sampleIndex: number; model: "square_lattice_px_py";
+        momentum: { kx: number; ky: number; unit: "rad/a" };
+        energy: { xi: number; negative: number; positive: number; unit: "t=1" };
+        pairing: { real: number; imaginary: number; magnitude: number; phaseRad: number | null; phaseDefined: boolean };
+        coherence: { electronWeight: number | null; holeWeight: number | null; defined: boolean };
+        sampledNode: boolean; grid: { size: number; order: "kx-major/ky-minor"; domain: "[-pi,pi)" };
+        qualification: "producer-supplied finite-grid spinless lattice toy sample";
+      }>;
       topologySample: (request: { fingerprint: string; quantityId: string; sampleIndex: number }) => Promise<
         { quantityId: string; quantityLabel: string; kind: string; objectId: string; sampleIndex: number; sampleId: string;
           position: [number, number, number]; positionDatasetId: string; coordinateAxes: [string, string, string];

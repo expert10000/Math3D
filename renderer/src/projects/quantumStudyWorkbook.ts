@@ -24,10 +24,11 @@ export function normalizeQuantumStudyWorkbookEvidence(value: unknown): WorkbookQ
   const snapshot = value.snapshot;
   if (Object.keys(snapshot).sort().join() !== "omissions,resultSha256,runId,schema,sources,studyId,templateId,values" ||
       snapshot.schema !== "math3d.quantum-study-selection-evidence/v1" || snapshot.studyId !== value.studyId ||
-      !["hydrogen", "ssh", "ute2-landau"].includes(String(snapshot.templateId)) ||
+      !["hydrogen", "ssh", "ute2-landau", "ute2-bdg", "ute2-lattice"].includes(String(snapshot.templateId)) ||
       typeof snapshot.runId !== "string" || !snapshot.runId ||
       typeof snapshot.resultSha256 !== "string" || !hash.test(snapshot.resultSha256) ||
-      !Array.isArray(snapshot.sources) || snapshot.sources.length !== (snapshot.templateId==="ute2-landau"?1:2) ||
+      !Array.isArray(snapshot.sources) || snapshot.sources.length !==
+        (["ute2-landau", "ute2-bdg"].includes(String(snapshot.templateId)) ? 1 : snapshot.templateId === "ute2-lattice" ? 3 : 2) ||
       !snapshot.sources.every((source: unknown) => object(source) &&
         Object.keys(source).sort().join() === "datasets,role,sceneFingerprint" &&
         typeof source.role === "string" && typeof source.sceneFingerprint === "string" && hash.test(source.sceneFingerprint) &&

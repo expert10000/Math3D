@@ -3,7 +3,7 @@ import { createMixedWorkspaceDocument, normalizeQuantumStudyDocument, replaceMat
 import { openVerifiedStudyQuantumScene } from "./studyQuantumSource";
 
 type QuantumApi = NonNullable<Window["quantumScenes"]>;
-type Role = "density" | "phase" | "chain" | "bands" | "stationary";
+type Role = "density" | "phase" | "chain" | "bands" | "stationary" | "spectrum" | "energy" | "gap" | "pairing";
 const sceneDocument = (project: Math3DProject, fingerprint: string) => project.workspace.entries
   .find(entry => entry.checkpoint.format === "math3d.quantum-scene-document" &&
     entry.checkpoint.source.sceneFingerprint === fingerprint)?.checkpoint as QuantumSceneDocument | undefined;
@@ -11,9 +11,11 @@ export const quantumStudyRecord = (project: Math3DProject, study: StudyRecordV1)
   const documents = study.members.map(member => project.workspace.entries
     .find(entry => entry.expected.id === member.documentId)?.checkpoint);
   return project.workspace.quantumStudies?.find(item => {
-    if(item.templateId === "ute2-landau")return documents.length===1 && item.panels.length===1 &&
+    if (["ute2-landau", "ute2-bdg", "ute2-lattice"].includes(String(item.templateId))) return (
+      documents.length === 1 && item.panels.length === (item.templateId === "ute2-lattice" ? 3 : 1) &&
       documents[0]?.format === "math3d.quantum-scene-document" &&
-      documents[0].source.sceneFingerprint === item.panels[0]?.sceneFingerprint;
+      item.panels.every(panel => documents[0]?.format === "math3d.quantum-scene-document" &&
+        documents[0].source.sceneFingerprint === panel.sceneFingerprint));
     if (documents.length !== 2 || item.panels.length !== 2) return false;
     if (item.templateId === "hydrogen") return documents.some(document =>
       document?.format === "math3d.quantum-scene-document" &&
@@ -47,10 +49,14 @@ export function pinQuantumStudySample(project: Math3DProject, study: StudyRecord
     throw new TypeError("Study selection is outside the saved quantum result.");
   if (record.templateId === "hydrogen" && !["density", "phase"].includes(role) ||
       record.templateId === "ssh" && !["chain", "bands"].includes(role) ||
-      record.templateId === "ute2-landau" && (role !== "stationary" || objectId !== "stationary"))
+      record.templateId === "ute2-landau" && (role !== "stationary" || objectId !== "stationary") ||
+      record.templateId === "ute2-bdg" && (role !== "spectrum" || objectId !== "positive") ||
+      record.templateId === "ute2-lattice" && (role !== "energy" || objectId !== "positive-energy"))
     throw new TypeError("Study selection role differs from the saved template.");
-  const panels = record.panels.map(panel => record.templateId === "hydrogen" || panel.role === role ?
-    { ...panel, selectedObjectId: record.templateId === "hydrogen" ? null : objectId,
+  const latticeObjects: Record<string, string> = { energy: "positive-energy", gap: "gap-magnitude", pairing: "pairing-real" };
+  const panels = record.panels.map(panel => record.templateId === "hydrogen" || record.templateId === "ute2-lattice" || panel.role === role ?
+    { ...panel, selectedObjectId: record.templateId === "hydrogen" ? null :
+      record.templateId === "ute2-lattice" ? latticeObjects[panel.role]! : objectId,
       sampleIndex: index } : panel);
   const documents = record.panels.map(panel => sceneDocument(project, panel.sceneFingerprint));
   if (documents.some(item => !item)) throw new TypeError("Saved quantum source document is missing.");
@@ -90,6 +96,38 @@ export async function quantumStudySelectionEvidence(project: Math3DProject, stud
         values.stationary=sample;
       }
       omissions.push("Uniform dimensionless producer result; no fitted UTe2 phase boundary or material topology is inferred.");
+    } else if (record.templateId === "ute2-bdg") {
+      const panel = record.panels[0]!;
+      if (panel.sampleIndex === null || panel.selectedObjectId !== "positive")
+        omissions.push("No reduced BdG spectrum sample is selected.");
+      else {
+        const sample = await api.ute2ReducedBdgSample({ fingerprint: panel.sceneFingerprint, sampleIndex: panel.sampleIndex });
+        if (sample.fingerprint !== panel.sceneFingerprint || sample.sampleIndex !== panel.sampleIndex ||
+            sample.runId !== record.source.runId || sample.resultSha256 !== record.source.resultSha256)
+          throw new TypeError("Reduced BdG sample differs from its verified source.");
+        values.spectrum = sample;
+        if (sample.pairingPhaseRad === null) omissions.push("Pairing phase is undefined at zero pairing amplitude.");
+        if (sample.sampledNode) omissions.push("Coherence weights are undefined at the zero-energy degeneracy.");
+      }
+      omissions.push("Reduced dimensionless ξ sector; ξ is not momentum and no UTe2 dispersion or topology is inferred.");
+    } else if (record.templateId === "ute2-lattice") {
+      const panels = record.panels;
+      const index = panels[0]?.sampleIndex;
+      if (index === null || index === undefined || panels.some(panel => panel.sampleIndex !== index))
+        omissions.push("No common saved lattice momentum point is selected.");
+      else {
+        const panel = panels[0]!;
+        const sample = await api.ute2LatticeBdgSample({ fingerprint: panel.sceneFingerprint, sampleIndex: index });
+        if (sample.fingerprint !== panel.sceneFingerprint || sample.sampleIndex !== index ||
+            sample.runId !== record.source.runId || sample.resultSha256 !== record.source.resultSha256)
+          throw new TypeError("Lattice BdG sample differs from its verified source.");
+        values.energy = { momentum: sample.momentum, ...sample.energy, sampledNode: sample.sampledNode, grid: sample.grid };
+        values.gap = { momentum: sample.momentum, magnitude: sample.pairing.magnitude, unit: sample.energy.unit };
+        values.pairing = { momentum: sample.momentum, ...sample.pairing, coherence: sample.coherence };
+        if (!sample.pairing.phaseDefined) omissions.push("Pairing phase is undefined at this sampled zero-gap point.");
+        if (!sample.coherence.defined) omissions.push("Coherence weights are undefined at this sampled zero-energy node.");
+      }
+      omissions.push("Spinless finite-grid lattice toy; samples have no interpolation or continuous bulk-gap qualification, and no UTe2 material topology is inferred.");
     } else if (record.templateId === "hydrogen") {
       const field = project.workspace.entries.find(entry => entry.checkpoint.format === "math3d.quantum-field-document" &&
         entry.checkpoint.source.scene.sceneFingerprint === record.panels[0]!.sceneFingerprint)?.checkpoint as QuantumFieldDocument | undefined;

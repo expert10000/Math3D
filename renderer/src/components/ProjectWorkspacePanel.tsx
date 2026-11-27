@@ -997,11 +997,11 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       const workspace = createMixedWorkspaceDocument({ ...current.workspace,
         quantumStudies: [...(current.workspace.quantumStudies ?? []).filter(item => item.id !== study.id), study] });
       let next = replaceMath3DProjectWorkspace(current, workspace);
-      if(templateId === "ute2-landau" && !next.workspace.studies?.some(item =>
+      if(["ute2-landau", "ute2-bdg", "ute2-lattice"].includes(templateId) && !next.workspace.studies?.some(item =>
         item.members.length === 1 && item.members[0]?.documentId === anchor.identity.id &&
         item.title === study.title))
         next = createProjectStudyFromDocuments(next,
-          ["ute2-landau",study.source.runId,study.source.resultSha256],study.title,[anchor.identity.id]);
+          [templateId,study.source.runId,study.source.resultSha256],study.title,[anchor.identity.id]);
       setProject(next); setExplorer(buildProjectExplorer(next, verifyMixedWorkspaceReplay(next.workspace)));
       setQuantumSceneMessage(`${QUANTUM_STUDY_TEMPLATES[templateId].label} layout staged. Save Project to retain it.`);
     } catch (error) { setQuantumSceneMessage(`Study template refused: ${String((error as Error).message)}`); }

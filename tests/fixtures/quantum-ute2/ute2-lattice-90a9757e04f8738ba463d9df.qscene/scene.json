@@ -1,0 +1,393 @@
+{
+  "schema": "quantum-scene/v1",
+  "id": "ute2-lattice-90a9757e04f8738ba463d9df",
+  "title": "Square-lattice pairing saved samples",
+  "provenance": {
+    "kind": "numerical-result",
+    "runId": "run-03e833ab6e0640ce9410c4ab00a2f74f",
+    "jobId": "lattice-gapped",
+    "model": "square_lattice_px_py",
+    "engine": "quantum-python",
+    "engineVersion": "0.1.0",
+    "computedAt": "2026-11-27T13:30:41.553451+00:00",
+    "resultSha256": "90a9757e04f8738ba463d9df6eb34bf11968a88474c0d7fa672592514b8bf489",
+    "adapter": "qvis/1",
+    "parameters": {
+      "mu": -2,
+      "amplitudeX": 0.8,
+      "amplitudeY": 0.8,
+      "relativePhaseRad": 1.5707963267948966,
+      "gridSize": 16
+    }
+  },
+  "coordinates": {
+    "handedness": "right",
+    "axes": [
+      "kx",
+      "ky",
+      "energy or display plane"
+    ],
+    "units": [
+      "rad/a",
+      "rad/a",
+      "t=1"
+    ]
+  },
+  "camera": {
+    "position": [
+      8,
+      -8,
+      7
+    ],
+    "target": [
+      0,
+      0,
+      0
+    ],
+    "up": [
+      0,
+      0,
+      1
+    ]
+  },
+  "datasets": [
+    {
+      "id": "positive-energy-positions",
+      "path": "positive-energy-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 256,
+      "unit": "kx, ky, energy",
+      "bytes": 6144,
+      "sha256": "68737eb79884e65cf622476dd123ec974a3b527abfe19c5984768d744351c099"
+    },
+    {
+      "id": "positive-energy-scalars",
+      "path": "positive-energy-scalars.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 256,
+      "unit": "t=1",
+      "bytes": 2048,
+      "sha256": "ddc4d95783ca0bfe5055375477c5484770e9ae0df9a6c696deb36112fb9c0ce8"
+    },
+    {
+      "id": "negative-energy-positions",
+      "path": "negative-energy-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 256,
+      "unit": "kx, ky, energy",
+      "bytes": 6144,
+      "sha256": "71a05932ee3ba8115781d330cb83267e0f03ec857068dca56fdedfc55730ca82"
+    },
+    {
+      "id": "gap-magnitude-positions",
+      "path": "gap-magnitude-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 256,
+      "unit": "kx, ky, display plane",
+      "bytes": 6144,
+      "sha256": "b1c7d86c88ed37adcce55a16b57b2b305eb551f7245fbbf0f28c5e195795a223"
+    },
+    {
+      "id": "gap-magnitude-scalars",
+      "path": "gap-magnitude-scalars.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 256,
+      "unit": "t=1",
+      "bytes": 2048,
+      "sha256": "558681e21c7ec401a568562c7d6191103f9a65bbc57ca9af4a35b35089d4e47f"
+    },
+    {
+      "id": "grid-plane-positions",
+      "path": "grid-plane-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 256,
+      "unit": "kx, ky, display plane",
+      "bytes": 6144,
+      "sha256": "b1c7d86c88ed37adcce55a16b57b2b305eb551f7245fbbf0f28c5e195795a223"
+    },
+    {
+      "id": "dispersion-xi-scalars",
+      "path": "dispersion-xi-scalars.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 256,
+      "unit": "t=1",
+      "bytes": 2048,
+      "sha256": "531b3093a6be6a4d80fc883710b12a3a0ec75d2998cd1fdafa28e23271360a24"
+    },
+    {
+      "id": "pairing-real-scalars",
+      "path": "pairing-real-scalars.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 256,
+      "unit": "t=1",
+      "bytes": 2048,
+      "sha256": "63a1a7d885e948b0e55742379c46909043cfee40620d3d9ab70507afd2859844"
+    },
+    {
+      "id": "pairing-imaginary-scalars",
+      "path": "pairing-imaginary-scalars.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 256,
+      "unit": "t=1",
+      "bytes": 2048,
+      "sha256": "250281dfb0275bfc58be278015c4effc1d3c55320f0dfa1b42abd243752085ef"
+    },
+    {
+      "id": "phase-defined-mask-scalars",
+      "path": "phase-defined-mask-scalars.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 256,
+      "unit": "binary mask",
+      "bytes": 2048,
+      "sha256": "3acbdc02ff7cf7f4107302dfa8d97f6d0ae70a2f364fa9197b1cfa2779bf3a04"
+    },
+    {
+      "id": "node-mask-scalars",
+      "path": "node-mask-scalars.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 256,
+      "unit": "binary mask",
+      "bytes": 2048,
+      "sha256": "e5a00aa9991ac8a5ee3109844d84a55583bd20572ad3ffcd42792f3c36b183ad"
+    },
+    {
+      "id": "coherence-defined-mask-scalars",
+      "path": "coherence-defined-mask-scalars.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 256,
+      "unit": "binary mask",
+      "bytes": 2048,
+      "sha256": "ec9d9827912e6fc384605ff044ae1117cb51deba78e578a2a9ca6e5979dba98a"
+    },
+    {
+      "id": "electron-weight-scalars",
+      "path": "electron-weight-scalars.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 256,
+      "unit": "probability",
+      "bytes": 2048,
+      "sha256": "3fdc6b1ebac0f6da603a6808001bd869ae4c4bfcdb6be539c8862155053e846d"
+    },
+    {
+      "id": "hole-weight-scalars",
+      "path": "hole-weight-scalars.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 256,
+      "unit": "probability",
+      "bytes": 2048,
+      "sha256": "ff98a942ff7bac9338fe77d8f8203206aad07227582c99a308350626c1371e0a"
+    },
+    {
+      "id": "pairing-phase-positions",
+      "path": "pairing-phase-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 252,
+      "unit": "kx, ky, display plane",
+      "bytes": 6048,
+      "sha256": "99db7d19286228535464177d9af0372e60e0a16137221bdfb0a47a6623658810"
+    },
+    {
+      "id": "pairing-phase-scalars",
+      "path": "pairing-phase-scalars.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 252,
+      "unit": "rad",
+      "bytes": 2016,
+      "sha256": "862993285337f405a3715820297e9fe555039762b0531983915f77484a1e2b3f"
+    }
+  ],
+  "objects": [
+    {
+      "id": "positive-energy",
+      "label": "Saved positive BdG energy",
+      "kind": "point-cloud",
+      "positions": "positive-energy-positions",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 0.15
+      },
+      "scalars": "positive-energy-scalars"
+    },
+    {
+      "id": "negative-energy",
+      "label": "Saved negative BdG energy",
+      "kind": "point-cloud",
+      "positions": "negative-energy-positions",
+      "visible": true,
+      "style": {
+        "color": "#8ca7ff",
+        "opacity": 1,
+        "size": 0.15
+      }
+    },
+    {
+      "id": "gap-magnitude",
+      "label": "Saved pairing magnitude on display plane",
+      "kind": "point-cloud",
+      "positions": "gap-magnitude-positions",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 0.15
+      },
+      "scalars": "gap-magnitude-scalars"
+    },
+    {
+      "id": "dispersion-xi",
+      "label": "Saved even dispersion xi",
+      "kind": "point-cloud",
+      "positions": "grid-plane-positions",
+      "visible": true,
+      "style": {
+        "color": "#8ca7ff",
+        "opacity": 1,
+        "size": 0.15
+      },
+      "scalars": "dispersion-xi-scalars"
+    },
+    {
+      "id": "pairing-real",
+      "label": "Saved real pairing component",
+      "kind": "point-cloud",
+      "positions": "grid-plane-positions",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 0.15
+      },
+      "scalars": "pairing-real-scalars"
+    },
+    {
+      "id": "pairing-imaginary",
+      "label": "Saved imaginary pairing component",
+      "kind": "point-cloud",
+      "positions": "grid-plane-positions",
+      "visible": true,
+      "style": {
+        "color": "#bca0ff",
+        "opacity": 1,
+        "size": 0.15
+      },
+      "scalars": "pairing-imaginary-scalars"
+    },
+    {
+      "id": "phase-defined-mask",
+      "label": "Phase defined mask: 1 valid, 0 undefined",
+      "kind": "point-cloud",
+      "positions": "grid-plane-positions",
+      "visible": true,
+      "style": {
+        "color": "#ffffff",
+        "opacity": 1,
+        "size": 0.15
+      },
+      "scalars": "phase-defined-mask-scalars"
+    },
+    {
+      "id": "node-mask",
+      "label": "Sampled zero-energy node mask",
+      "kind": "point-cloud",
+      "positions": "grid-plane-positions",
+      "visible": true,
+      "style": {
+        "color": "#ff8f8f",
+        "opacity": 1,
+        "size": 0.15
+      },
+      "scalars": "node-mask-scalars"
+    },
+    {
+      "id": "coherence-defined-mask",
+      "label": "Coherence weight mask: 1 valid, 0 undefined",
+      "kind": "point-cloud",
+      "positions": "grid-plane-positions",
+      "visible": true,
+      "style": {
+        "color": "#ffffff",
+        "opacity": 1,
+        "size": 0.15
+      },
+      "scalars": "coherence-defined-mask-scalars"
+    },
+    {
+      "id": "electron-weight",
+      "label": "Positive-branch electron weight; zero where masked",
+      "kind": "point-cloud",
+      "positions": "grid-plane-positions",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 0.15
+      },
+      "scalars": "electron-weight-scalars"
+    },
+    {
+      "id": "hole-weight",
+      "label": "Positive-branch hole weight; zero where masked",
+      "kind": "point-cloud",
+      "positions": "grid-plane-positions",
+      "visible": true,
+      "style": {
+        "color": "#bca0ff",
+        "opacity": 1,
+        "size": 0.15
+      },
+      "scalars": "hole-weight-scalars"
+    },
+    {
+      "id": "pairing-phase",
+      "label": "Defined pairing phase on display plane",
+      "kind": "point-cloud",
+      "positions": "pairing-phase-positions",
+      "visible": true,
+      "style": {
+        "color": "#ffffff",
+        "opacity": 1,
+        "size": 0.15
+      },
+      "scalars": "pairing-phase-scalars",
+      "colorMap": "phase"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "scope",
+      "text": "Exact saved kx-major, ky-minor half-open grid samples. Points have no interpolation or periodic seam. A missing sampled node does not establish a continuous bulk gap.",
+      "position": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "mask",
+      "text": "Binary masks mark undefined phase/weights and sampled zero energy. Masked weight values are stored as zero and must not be interpreted. Spinless lattice toy, not a UTe2 material model.",
+      "position": [
+        0,
+        0,
+        -1
+      ]
+    }
+  ]
+}

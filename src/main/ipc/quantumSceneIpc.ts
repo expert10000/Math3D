@@ -11,6 +11,8 @@ import { chooseTheoryLabTarget, configureTheoryLabTarget, launchTheoryLab, theor
 import { inspectVerifiedBandSample, type BandSampleRequest } from "../quantumScene/bandSelection";
 import { inspectVerifiedScalarSample, type ScalarSampleRequest } from "../quantumScene/scalarSelection";
 import { inspectVerifiedUte2LandauSample, type Ute2LandauSampleRequest } from "../quantumScene/ute2LandauSample";
+import { inspectVerifiedUte2ReducedBdgSample, inspectVerifiedUte2LatticeBdgSample,
+  type Ute2BdgSampleRequest } from "../quantumScene/ute2BdgSample";
 import { resolveStudySourceRun, type StudySourceRunRequest } from "../quantumScene/studySourceRun";
 import { resolveFluxSourceRun, type FluxSourceRunRequest } from "../quantumScene/fluxSourceRun";
 import { inspectVerifiedTopologySample, inspectVerifiedVectorSample,
@@ -358,6 +360,20 @@ export function registerQuantumSceneIpc(initialDirectory: string | null = null, 
     const reopened=await reopenActive(active);
     if(verifiedBySender.get(event.sender)!==active)throw new Error("Quantum scene changed during Landau selection");
     return inspectVerifiedUte2LandauSample(reopened.imported,args[0] as Ute2LandauSampleRequest);
+  });
+  ipcMain.handle("quantumScenes:ute2ReducedBdgSample", async (event, ...args: unknown[]) => {
+    if (args.length !== 1) throw new TypeError("Reduced BdG selection requires one request");
+    const active = activeField(event, args[0]);
+    const reopened = await reopenActive(active);
+    if (verifiedBySender.get(event.sender) !== active) throw new Error("Quantum scene changed during BdG selection");
+    return inspectVerifiedUte2ReducedBdgSample(reopened.imported, args[0] as Ute2BdgSampleRequest);
+  });
+  ipcMain.handle("quantumScenes:ute2LatticeBdgSample", async (event, ...args: unknown[]) => {
+    if (args.length !== 1) throw new TypeError("Lattice BdG selection requires one request");
+    const active = activeField(event, args[0]);
+    const reopened = await reopenActive(active);
+    if (verifiedBySender.get(event.sender) !== active) throw new Error("Quantum scene changed during BdG selection");
+    return inspectVerifiedUte2LatticeBdgSample(reopened.imported, args[0] as Ute2BdgSampleRequest);
   });
   ipcMain.handle("quantumScenes:topologySample", async (event, ...args: unknown[]) => {
     if (args.length !== 1) throw new TypeError("Topology selection requires one request");

@@ -3,7 +3,7 @@ import type { Math3DProject, StudyRecordV1 } from "@math3d/core";
 import { downloadStudyBlob } from "../projects/studyComparisonExport";
 import { pinQuantumStudySample, quantumStudyRecord, quantumStudySelectionEvidence } from "../projects/quantumStudySelection";
 
-type Role = "density" | "phase" | "chain" | "bands" | "stationary";
+type Role = "density" | "phase" | "chain" | "bands" | "stationary" | "spectrum" | "energy" | "gap" | "pairing";
 type Evidence = Awaited<ReturnType<typeof quantumStudySelectionEvidence>>;
 
 /** Saved coordinates are shown only after reopening every exact source bundle. */
@@ -19,6 +19,9 @@ export function StudyQuantumSelectionPanel({ project, study, editable, onPin, on
   const [chainIndex, setChainIndex] = useState(0);
   const [bandIndex, setBandIndex] = useState(0);
   const [landauIndex,setLandauIndex]=useState(0);
+  const [bdgIndex, setBdgIndex] = useState(0);
+  const [latticeX, setLatticeX] = useState(0);
+  const [latticeY, setLatticeY] = useState(0);
   useEffect(() => {
     if (!record) { setEvidence(null); return; }
     let active = true;
@@ -32,7 +35,12 @@ export function StudyQuantumSelectionPanel({ project, study, editable, onPin, on
     return () => { active = false; };
   }, [project, study]);
   if (!record) return null;
-  const pin = async (role: "chain" | "bands" | "stationary", index: number, objectId: string) => {
+  const sampleScene = project.workspace.entries.find(entry => entry.checkpoint.format === "math3d.quantum-scene-document" &&
+    entry.checkpoint.source.sceneFingerprint === record.panels[0]?.sceneFingerprint)?.checkpoint;
+  const datasets = sampleScene?.format === "math3d.quantum-scene-document" ? sampleScene.source.datasets : [];
+  const bdgPoints = datasets.find(item => item.id === "positive-positions")?.count ?? 0;
+  const latticeSize = Math.sqrt(datasets.find(item => item.id === "positive-energy-positions")?.count ?? 0);
+  const pin = async (role: "chain" | "bands" | "stationary" | "spectrum" | "energy", index: number, objectId: string) => {
     if (!Number.isSafeInteger(index) || index < 0) { setError("Enter a nonnegative sample index."); return; }
     setError(""); setBusy(true);
     try {
@@ -69,6 +77,25 @@ export function StudyQuantumSelectionPanel({ project, study, editable, onPin, on
       <button type="button" disabled={!editable||busy} data-testid="project-study-pin-landau"
         onClick={()=>void pin("stationary",landauIndex,"stationary")}>Save candidate selection</button>{" "}
       {record.panels[0]?.sampleIndex===null?"No saved candidate":`Saved index ${record.panels[0]?.sampleIndex}`}
+    </div> : record.templateId === "ute2-bdg" ? <div>
+      <p>Reduced constant-gap 2×2 Nambu sector. ξ is a dimensionless dispersion parameter, not crystal momentum. Pairing phase is undefined at zero amplitude; coherence weights are undefined at the sampled zero-energy degeneracy.</p>
+      <label>ξ sample index{" "}<input type="number" min={0} max={bdgPoints - 1}
+        step={1} value={bdgIndex} data-testid="project-study-bdg-index"
+        onChange={event => setBdgIndex(Number(event.target.value))} /></label>{" "}
+      <button type="button" disabled={!editable || busy} data-testid="project-study-pin-bdg"
+        onClick={() => void pin("spectrum", bdgIndex, "positive")}>Save ξ selection</button>{" "}
+      {record.panels[0]?.sampleIndex === null ? "No saved sample" : `Saved index ${record.panels[0]?.sampleIndex}`}
+    </div> : record.templateId === "ute2-lattice" ? <div>
+      <p>Choose one saved kx-major, ky-minor grid point. Energy, gap and complex pairing panes share that point and its validity masks. These finite samples do not qualify a continuous bulk gap or UTe₂ material topology.</p>
+      <label>kx grid index{" "}<input type="number" min={0} max={latticeSize - 1} step={1} value={latticeX}
+          data-testid="project-study-lattice-kx-index" onChange={event => setLatticeX(Number(event.target.value))} /></label>{" "}
+      <label>ky grid index{" "}<input type="number" min={0} max={latticeSize - 1} step={1} value={latticeY}
+            data-testid="project-study-lattice-ky-index" onChange={event => setLatticeY(Number(event.target.value))} /></label>{" "}
+      <button type="button" disabled={!editable || busy || !Number.isSafeInteger(latticeSize) || latticeSize < 1 ||
+        latticeX < 0 || latticeX >= latticeSize || latticeY < 0 || latticeY >= latticeSize}
+        data-testid="project-study-pin-lattice" onClick={() => void pin("energy", latticeX * latticeSize + latticeY, "positive-energy")}>
+        Save linked grid point</button>{" "}
+      {record.panels[0]?.sampleIndex === null ? "No saved point" : `Saved index ${record.panels[0]?.sampleIndex}`}
     </div> : record.templateId === "hydrogen" ? <p>Click a grid point in either density or phase preview. The same exact grid point is saved for both panes when you save the Project.</p> :
       <div>
         <p>Chain and band samples are independent source qualified selections. No edge or bulk classification is inferred.</p>

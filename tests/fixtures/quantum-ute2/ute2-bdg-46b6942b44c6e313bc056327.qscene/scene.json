@@ -1,0 +1,186 @@
+{
+  "schema": "quantum-scene/v1",
+  "id": "ute2-bdg-46b6942b44c6e313bc056327",
+  "title": "Reduced BdG saved samples",
+  "provenance": {
+    "kind": "numerical-result",
+    "runId": "run-c29cadb6d5124bd79269eda9f2596573",
+    "jobId": "reduced-gapped",
+    "model": "reduced_bdg_2x2",
+    "engine": "quantum-python",
+    "engineVersion": "0.1.0",
+    "computedAt": "2026-11-27T13:30:41.508450+00:00",
+    "resultSha256": "46b6942b44c6e313bc056327baa64f4cf7913cf8561714adde5bd5d91887ee4e",
+    "adapter": "qvis/1",
+    "parameters": {
+      "extent": 2,
+      "delta": 0.5,
+      "phaseRad": 0.3,
+      "points": 51
+    }
+  },
+  "coordinates": {
+    "handedness": "right",
+    "axes": [
+      "xi",
+      "energy",
+      "display z"
+    ],
+    "units": [
+      "dimensionless",
+      "dimensionless",
+      "dimensionless"
+    ]
+  },
+  "camera": {
+    "position": [
+      0,
+      -3,
+      7
+    ],
+    "target": [
+      0,
+      0,
+      0
+    ],
+    "up": [
+      0,
+      1,
+      0
+    ]
+  },
+  "datasets": [
+    {
+      "id": "negative-positions",
+      "path": "negative-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 51,
+      "unit": "xi, energy, display z",
+      "bytes": 1224,
+      "sha256": "880664ca571f55d282f2da5987f68e4b93efa9c95bc91a527691046e4a96241c"
+    },
+    {
+      "id": "positive-positions",
+      "path": "positive-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 51,
+      "unit": "xi, energy, display z",
+      "bytes": 1224,
+      "sha256": "f9ee4f1b4fd3554bbfe1f2ea83e6c1a02ffa252756a60fe644bc631c80558911"
+    },
+    {
+      "id": "electron-weight-positions",
+      "path": "electron-weight-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 51,
+      "unit": "xi, energy, display z",
+      "bytes": 1224,
+      "sha256": "f9ee4f1b4fd3554bbfe1f2ea83e6c1a02ffa252756a60fe644bc631c80558911"
+    },
+    {
+      "id": "electron-weight-scalars",
+      "path": "electron-weight-scalars.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 51,
+      "unit": "probability",
+      "bytes": 408,
+      "sha256": "c543d7cbc37e8d696942db077dd12c42a54b47e8ce129c08748358d9cc65eb8d"
+    },
+    {
+      "id": "hole-weight-positions",
+      "path": "hole-weight-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 51,
+      "unit": "xi, energy, display z",
+      "bytes": 1224,
+      "sha256": "f9ee4f1b4fd3554bbfe1f2ea83e6c1a02ffa252756a60fe644bc631c80558911"
+    },
+    {
+      "id": "hole-weight-scalars",
+      "path": "hole-weight-scalars.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 51,
+      "unit": "probability",
+      "bytes": 408,
+      "sha256": "51afe7a0e2e4017737d350052dde0befbea9fb6f2c3314d2663f5b74dcc839bf"
+    }
+  ],
+  "objects": [
+    {
+      "id": "negative",
+      "label": "negative BdG branch",
+      "kind": "polyline",
+      "positions": "negative-positions",
+      "visible": true,
+      "style": {
+        "color": "#8ca7ff",
+        "opacity": 1,
+        "size": 1
+      }
+    },
+    {
+      "id": "positive",
+      "label": "positive BdG branch",
+      "kind": "polyline",
+      "positions": "positive-positions",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 1
+      }
+    },
+    {
+      "id": "electron-weight",
+      "label": "Defined positive-branch electron weights",
+      "kind": "point-cloud",
+      "positions": "electron-weight-positions",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 0.15
+      },
+      "scalars": "electron-weight-scalars"
+    },
+    {
+      "id": "hole-weight",
+      "label": "Defined positive-branch hole weights",
+      "kind": "point-cloud",
+      "positions": "hole-weight-positions",
+      "visible": true,
+      "style": {
+        "color": "#bca0ff",
+        "opacity": 1,
+        "size": 0.15
+      },
+      "scalars": "hole-weight-scalars"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "scope",
+      "text": "Reduced constant-gap 2x2 Nambu sector. xi is not momentum; sampled nodes and weights do not define a bulk topological phase or UTe2 pairing symmetry.",
+      "position": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "phase",
+      "text": "Pairing phase = 0.3 rad; undefined weights at a zero-energy degeneracy are omitted.",
+      "position": [
+        0,
+        0,
+        1
+      ]
+    }
+  ]
+}
