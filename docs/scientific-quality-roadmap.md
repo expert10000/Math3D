@@ -101,11 +101,15 @@ Use deterministic structural assertions where exact counts are promised; compare
 
 **Acceptance:** The suite manifest links every scene to its fixture, oracle, tolerance, backend, tests, and owner. Fast unit cases run on PRs and code pushes in the existing CI; bounded Electron/browser journeys cover visible gaps, diagnostics, and parameter changes. Heavy native/worker cases run in their scoped workflows with explicit capability status. Where a scene crosses modules, source generation and numerical qualifications survive the applicable Graph/Field/Project save/reopen path. No placeholder DOI, version, or unsupported exactness claim is used as evidence.
 
+**UI helper:** The Graphs toolbar exposes Scientific Benchmarks with the ten canonical cases, their analytical expectations, six bounded Graphs checks, and editable examples. The remaining cross-module cases are explicitly guided until their algorithm and handoff gates exist; they cannot show an automated pass from an uncomputed formula.
+
 ### F2. Publish an existing Surface section into Graphs (P1)
 
 Build on the Surface viewers' existing plane, section polyline, 2D inset, and CSV/SVG export, plus the verified Graph handoff and Project relation model. First publish a bounded analytic height-surface horizontal section as a Graph object or point-series with an explicit math-to-viewer coordinate transform. Retain the plane parameter, source generation, physical frame, units, sampling method/budget, and ambiguous/empty-section status. Link navigation in both directions; changing the existing plane-offset slider should update the preview and request a guarded Graph refresh.
 
 **Acceptance:** For mathematical `z=5-x^2-y^2`, `c=1` produces a radius-2 circle in Graphs within declared tolerance; `c>5` yields an explicit empty section. The existing viewer may store height on its world `y` axis, so the saved transform must be verified. Slider motion updates the existing 3D/inset preview and Graph view without publishing stale samples. Save/reopen retains the linked intent; editing the Surface withholds the old curve until an explicit verified refresh. Arbitrary rotated-plane Graph publication is a later, separately qualified extension; the viewer already supports more than horizontal planes.
+
+**Research follow-on:** Add a general level-curve tool for `z=f(x,y)` at user-selected levels, displayed in the XY plane and linked to the 3D surface. Reuse the existing section and contour machinery where its frame and convergence are verified; VTK is an implementation option, not an exactness requirement. Extend linked views to show the 3D surface, its 2D section, and an optional 1D parameter/profile plot simultaneously, with shared source generation, level value, and selection.
 
 ### F3. Connected analysis views, not duplicate solvers (P1)
 
@@ -124,6 +128,40 @@ Extend the existing frozen Graph publication snapshot and Project/scientific-sce
 For each new shared capability, use existing desktop/web/mobile acceptance paths and record actual native-device evidence where required by the canonical roadmaps. Check third-party license compatibility before adding dependencies; describe CGAL exactness only for operations that actually use an exact kernel.
 
 **Acceptance:** The corresponding Graph/SCI release gate identifies supported platforms, performance budgets, accessibility evidence, and any withheld capability. Documentation does not turn a software test into a physical-device signoff or a numerical result into a proof.
+
+## Differentiating research features: implementation commit slices
+
+Each research feature below is a separate roadmap subchapter. The bullets are proposed, reviewable commit slices, not claims that those commits already exist. Land each slice with the relevant numerical and UI evidence before marking it complete.
+
+### R1. Scientific visualization
+
+- Commit slice 1: general level curves `f(x,y)=c` linked to the existing 3D height surface and plotted in the XY plane, with frame, unit, and sampling metadata.
+- Commit slice 2: curvature graph from supported Mesh/Surface results, including radius and sign convention; retain incomplete or invalid regions.
+- Commit slice 3: link the existing Graph and Field vector displays, preserving vector scale, coordinates, and source generation.
+
+### R2. Adaptive numerics and diagnostics
+
+- Commit slice 1: show root-finding failure and unresolved sampling gaps in Graphs with source interval and stop reason.
+- Commit slice 2: compare selected benchmark outputs against analytic or high-precision references with a declared tolerance and convergence check.
+- Commit slice 3: keep incomplete diagnostics visible through export and save/reopen, never silently recasting them as exact results.
+
+### R3. Reproducible workflows
+
+- Commit slice 1: export a declarative JSON scene recipe with ordered graphing steps, parameter values, source hashes, methods, and view state.
+- Commit slice 2: provide a bounded Python reader/export path for verified data where it adds reproducibility, without executing project-supplied code on open.
+- Commit slice 3: round-trip a Graph + Surface + section publication and detect tampered or missing sources.
+
+### R4. Linked multiple views
+
+- Commit slice 1: publish a Surface section into Graphs with bidirectional selection and guarded refresh.
+- Commit slice 2: show 3D surface, 2D section, and optional 1D parameter/profile plot simultaneously; synchronize plane level and source generation.
+- Commit slice 3: verify slider changes, stale-source handling, and save/reopen across the three views.
+
+### R5. Licensing and extensibility
+
+- Commit slice 1: inventory license compatibility of new libraries before dependency changes and document mixed-license boundaries.
+- Commit slice 2: run the existing license/SBOM gates on added dependencies and record GPL-3.0-or-later compatibility evidence.
+- Commit slice 3: document extension contracts and contribution guidance with accurate numerical and CGAL kernel qualifications.
 
 ## Suggested first implementation slice
 
