@@ -46,6 +46,13 @@ const quantum = (model: "qwz" | "ssh" | "hydrogen", question: string, objects: s
 
 /** Curated journeys are a subset of working starters plus explicit external-scene entry points. */
 export const CURATED_STUDIES: readonly CuratedStudy[] = Object.freeze([
+  project("catenoid-evidence", "Geometry", "Which curvature claims have saved evidence?",
+    "Catenoid Surface, saved Mesh, Workbook and Notes", "Follow the Study, Curvature, Comparison and Workbook tabs",
+    "A Workbook ties a scalar statement to a recorded generation.",
+    "Mesh curvature is discrete; it does not prove analytic minimality.",
+    { platforms: ["desktop"], prerequisites: "Desktop source build; built-in Mesh computation on first open.",
+      approximateAssets: "Generated Mesh sidecar; size depends on the built-in sampling resolution.",
+      firstOpen: "Prepares a saved Mesh and Workbook, then opens the four-step Catenoid journey; first open may take longer than lightweight starters." }),
   project("catenary-study", "Geometry", "How does a catenary generate a catenoid?",
     "Graph profile, Curve snapshot, revolution Surface", "Inspect the derivative and exact source relations",
     "The saved construction connects three representations.",
@@ -62,13 +69,6 @@ export const CURATED_STUDIES: readonly CuratedStudy[] = Object.freeze([
     "Parabola, Curve snapshot, numerical result", "Inspect and edit the source Graph",
     "The result keeps the original source generation.",
     "The recorded derivative is numerical and local, not a symbolic identity."),
-  project("catenoid-evidence", "Geometry", "Which curvature claims have saved evidence?",
-    "Catenoid Surface, saved Mesh, Workbook and Notes", "Follow the Study, Curvature, Comparison and Workbook tabs",
-    "A Workbook ties a scalar statement to a recorded generation.",
-    "Mesh curvature is discrete; it does not prove analytic minimality.",
-    { platforms: ["desktop"], prerequisites: "Desktop source build; built-in Mesh computation on first open.",
-      approximateAssets: "Generated Mesh sidecar; size depends on the built-in sampling resolution.",
-      firstOpen: "Prepares a saved Mesh and Workbook, then opens the four-step Catenoid journey; first open may take longer than lightweight starters." }),
   project("edge-path-evidence", "Analysis", "Can a Mesh path claim be traced to exact edges?",
     "Saved Mesh, edge path result, Workbook", "Inspect edge IDs, path length and cited source",
     "The claim is qualified by the saved result and its Mesh generation.",

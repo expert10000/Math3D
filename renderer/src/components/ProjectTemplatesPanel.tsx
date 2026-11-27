@@ -94,6 +94,7 @@ export const ProjectTemplatesPanel: React.FC<{ onPreview: (id: ProjectStarterId)
   const guided = CURATED_STUDIES.filter(item => {
     const starterId = curatedStarterId(item);
     const haystack = [item.question, item.objects, item.operations, item.insight, item.field,
+      item.id === "catenoid-evidence" ? "Catenoid evidence journey" : "",
       starterId ? starters.find(starter => starter.id === starterId)?.title : item.route.kind === "verified-quantum-import" ? item.route.model : "CAS algebra examples"].join(" ").toLowerCase();
     return (moduleFilter === "All modules" || item.field === moduleFilter || moduleFilter === "Quantum scene" && item.field === "Quantum" ||
       starterId !== null && PROJECT_STARTER_MODULES[starterId].includes(moduleFilter)) &&
@@ -155,17 +156,20 @@ export const CuratedStudyCard: React.FC<{ item: CuratedStudy; starterTitle?: str
   ({ item, starterTitle, hasCopy, busy, qualification, casProvenance, quantumImportAvailable, onImportQuantumScene, onOpenCasGallery, onOpen, onPreview, onNewCopy }) => {
     const starter = item.route.kind === "project" ? item.route.starterId : null;
     const quantum = item.route.kind === "verified-quantum-import";
-    const title = starterTitle ?? (quantum ? item.route.model.toUpperCase() : item.route.kind === "cas-gallery" ? "Algebra structures" : item.question);
+    const catenoidJourney = item.id === "catenoid-evidence";
+    const title = catenoidJourney ? "Catenoid evidence journey" :
+      starterTitle ?? (quantum ? item.route.model.toUpperCase() : item.route.kind === "cas-gallery" ? "Algebra structures" : item.question);
     return <article className="curated-study-card" data-testid={`curated-study-card-${item.id}`}
       aria-labelledby={`curated-study-title-${item.id}`}>
       <div className="curated-study-art">{starter ? <StarterArtwork id={starter} /> :
         <div className="curated-study-quantum-art" aria-hidden="true">{quantum ? "ψ" : "𝔄"}</div>}</div>
       <div className="curated-study-content">
         <div className="curated-study-badges"><span>{item.field}</span><span>{qualification ? `${qualification.mode} on this host` : item.platforms.join(" · ")}</span>
-          <span>{starter ? curatedStudyHasLayout(starter) ? "Saved Study layout" : "Built-in Project" : quantum ? "External verified scene" : "Built-in algebra examples"}</span></div>
+          <span>{catenoidJourney ? "4-step guided journey" : starter ? curatedStudyHasLayout(starter) ? "Saved Study layout" : "Built-in Project" : quantum ? "External verified scene" : "Built-in algebra examples"}</span></div>
         {qualification?.reason && <p role="status" data-testid={`curated-study-limit-${item.id}`}>{qualification.reason}</p>}
         <h4 id={`curated-study-title-${item.id}`}>{title}</h4>
         <p className="curated-study-question">{item.question}</p>
+        {catenoidJourney && <p>Separate guided copy of the Catenoid Evidence Notebook. Open it for the Study → Curvature → Comparison → Workbook tabs.</p>}
         {item.route.kind === "cas-gallery" && casProvenance && <div data-testid="curated-study-cas-provenance">
           <strong>Saved in {casProvenance.projectTitle}</strong>
           <p>{casProvenance.definitions.length} exact definitions · {casProvenance.results} saved computation records</p>
@@ -184,7 +188,7 @@ export const CuratedStudyCard: React.FC<{ item: CuratedStudy; starterTitle?: str
           <p><strong>Reset:</strong> {item.reset}</p><p><strong>Limit:</strong> {item.limitation}</p>
         </details>
         <div className="curated-study-actions">{starter ? <>
-          <button type="button" data-testid={`curated-study-open-${item.id}`} aria-label={`${hasCopy ? "Resume" : "Open"} ${title} Project`} disabled={busy || qualification?.mode !== undefined && qualification.mode !== "open"} onClick={() => onOpen(starter)}>{hasCopy ? "Resume Project" : "Open Project"}</button>
+          <button type="button" data-testid={`curated-study-open-${item.id}`} aria-label={catenoidJourney ? `${hasCopy ? "Continue" : "Open"} ${title}` : `${hasCopy ? "Resume" : "Open"} ${title} Project`} disabled={busy || qualification?.mode !== undefined && qualification.mode !== "open"} onClick={() => onOpen(starter)}>{catenoidJourney ? hasCopy ? "Continue journey" : "Open journey" : hasCopy ? "Resume Project" : "Open Project"}</button>
           <button type="button" data-testid={`curated-study-preview-${item.id}`} aria-label={`Preview ${title}`} disabled={busy || qualification?.mode === "unavailable"} onClick={() => onPreview(starter)}>Preview</button>
           {hasCopy && <button type="button" data-testid={`curated-study-reset-${item.id}`} aria-label={`Create new ${title} Project copy`} disabled={busy || qualification?.mode !== undefined && qualification.mode !== "open"} onClick={() => onNewCopy(starter)}>New copy</button>}
         </> : quantum ? <button type="button" data-testid={`curated-study-import-${item.id}`}

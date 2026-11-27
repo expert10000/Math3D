@@ -15,7 +15,7 @@ test("guided release journeys have distinct actions, Project focus and reduced m
     await expect(projects).toBeVisible();
     await projects.getByRole("button", { name: "Starter projects", exact: true }).click();
     await projects.getByTestId("project-gallery-guided").click();
-    await expect(projects.getByRole("article", { name: "Catenoid Evidence Notebook" })).toBeVisible();
+    await expect(projects.getByRole("article", { name: "Catenoid evidence journey" })).toBeVisible();
     await expect(projects.getByRole("article", { name: "QWZ" })).toBeVisible();
     await expect(projects.getByRole("article", { name: "Algebra structures" })).toBeVisible();
     await expect(projects.getByRole("article", { name: "Field Line Profile Study" })).toBeVisible();
@@ -35,7 +35,7 @@ test("guided release journeys have distinct actions, Project focus and reduced m
     await expect(projects.getByRole("button", { name: "Open Algebra structures CAS examples" })).toBeEnabled();
     await expect(projects.getByRole("button", { name: "Open Field Line Profile Study Project" })).toBeEnabled();
     const open = projects.getByTestId("curated-study-open-catenoid-evidence");
-    await expect(open).toHaveAccessibleName("Open Catenoid Evidence Notebook Project");
+    await expect(open).toHaveAccessibleName("Open Catenoid evidence journey");
     await open.focus();
     await page.keyboard.press("Enter");
     await expect(projects.getByTestId("project-message")).toContainText("Opened supported project");

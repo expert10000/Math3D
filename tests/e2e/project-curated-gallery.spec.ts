@@ -68,6 +68,10 @@ test("Catenoid Notebook links directly to its distinct guided journey", async ()
     await expect(panel.getByTestId("project-library-search")).toHaveValue("catenoid evidence");
     await expect(panel.locator(".curated-study-card")).toHaveCount(1);
     await expect(panel.getByTestId("curated-study-card-catenoid-evidence")).toBeVisible();
+    await expect(panel.getByTestId("curated-study-card-catenoid-evidence"))
+      .toContainText("Catenoid evidence journey");
+    await expect(panel.getByTestId("curated-study-open-catenoid-evidence"))
+      .toHaveText("Open journey");
     await panel.getByTestId("curated-study-open-catenoid-evidence").click();
     await expect(panel.getByTestId("catenoid-journey-flow")).toBeVisible({ timeout: 60_000 });
     await expect(panel.getByTestId("catenoid-flow-tab-curvature")).toBeVisible();

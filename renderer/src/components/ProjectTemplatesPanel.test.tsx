@@ -7,6 +7,18 @@ describe("curated Gallery platform actions", () => {
   const noop = () => undefined;
   const common = { hasCopy: false, busy: false, onOpen: noop, onPreview: noop, onNewCopy: noop };
 
+  it("names the guided Catenoid journey separately from its ordinary Notebook", () => {
+    const item = curatedStudy("catenoid-evidence")!;
+    const open = renderToStaticMarkup(<CuratedStudyCard {...common} item={item}
+      starterTitle="Catenoid Evidence Notebook" quantumImportAvailable />);
+    expect(open).toContain("Catenoid evidence journey");
+    expect(open).toContain("Separate guided copy of the Catenoid Evidence Notebook");
+    expect(open).toContain("Open journey");
+    const saved = renderToStaticMarkup(<CuratedStudyCard {...common} item={item} hasCopy
+      starterTitle="Catenoid Evidence Notebook" quantumImportAvailable />);
+    expect(saved).toContain("Continue journey");
+  });
+
   it("withholds quantum scene import when the desktop verified chooser is absent", () => {
     const item = curatedStudy("quantum-qwz")!;
     const unavailable = renderToStaticMarkup(<CuratedStudyCard {...common} item={item}
