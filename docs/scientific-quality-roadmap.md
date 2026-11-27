@@ -36,6 +36,98 @@ The feature review could not access the earlier review/ZIP and describes several
 | Publication-quality export and scriptable reproduction | Graphs has SVG/PNG/CSV/offline HTML publication snapshots; Projects and scientific scenes have versioned persistence and Python publication paths. | Qualify direct PDF only if needed; specify a bounded, declarative replay recipe for exact saved sources before offering general Python/Jupyter execution. Preserve editable Project data separately from frozen exports. |
 | Licensing and metadata | License/distribution work is already documented; worker dependency versions are pinned. | Review each new dependency against the existing distribution policy, and use only verified authors, release dates, and DOI metadata. Do not repeat the review's broad licensing or CGAL exactness claims without checking the chosen runtime/kernel. |
 
+## Feature review's eleven proposed commit chapters
+
+These chapters map the PDF's numbered *Phased Roadmap and Suggested Commits* to the current repository. “Existing” identifies a code baseline, not a claim that every platform or acceptance gate is complete. Each **Next commit** is a future, reviewable slice; the PDF's suggested commit labels are not historical Git commits.
+
+### 1. Graph2D core and safe parser
+
+**Existing:** The portable Graph2D document, bounded mathematical AST parser/evaluator, source identity, and core tests already exist. The graph is not a new universal 2D/3D dependency runtime.
+
+**Next commit:** Add a source-linked cross-module relation only for a verified Graph-to-Surface or Surface-to-Graph case; strengthen rejection tests if a specific parser gap is found. Reuse the current versioned schema and undo/redo path.
+
+**Acceptance:** An explicit `y=x^2` document evaluates correctly, forbidden code constructs and input-budget violations are rejected, and the linked source changes invalidate dependent results without executing arbitrary code.
+
+### 2. 2D viewport and basic plotting
+
+**Existing:** Graphs has a 2D viewport with axes, sampling, pan, zoom, and explicit plotting on supported app surfaces.
+
+**Next commit:** Close any measured viewport or platform acceptance gap found in the Graph2D roadmap, using the current renderer.
+
+**Acceptance:** `y=x` plots with correctly scaled axes through pan/zoom and save/reopen; a focused UI test verifies the visible curve and reports rendering failure rather than relying on absence of console errors alone.
+
+### 3. Sliders and live updates
+
+**Existing:** Named parameters, sliders, animation, and parameter-driven plot previews are implemented.
+
+**Next commit:** Refresh supported intersections and other analyses during parameter preview, with transient/incomplete labels and a guarded committed result.
+
+**Acceptance:** Changing `a` in `y=a*x` updates the visible line and dependent analyses; stale source-linked results cannot be presented as current after the change.
+
+### 4. Implicit, parametric, and polar curves
+
+**Existing:** All three Graph object kinds have bounded samplers, authoring, diagnostics, and gallery examples.
+
+**Next commit:** Add independent geometry oracles and UI checks for a radius-2 implicit circle, a parameterized circle, and a four-petal polar rose. Preserve parameter identity in probes and exports.
+
+**Acceptance:** Circle residuals and contour closure, parametric start/end behavior, rose symmetry, and any unresolved cells meet declared tolerances at two bounded resolutions.
+
+### 5. Inequalities and region shading
+
+**Existing:** Graphs supports inequality objects, grid-based fills, boundary styling, and bounded sampling.
+
+**Next commit:** Qualify `y≥x²` fill orientation, adjustable appearance, strict versus inclusive boundaries, and performance on supported devices.
+
+**Acceptance:** The region above the parabola is filled, `<` and `≤` display their distinct boundaries, and any exceeded sampling budget is visible rather than silently dropping cells.
+
+### 6. Piecewise functions and point series
+
+**Existing:** Piecewise plots and CSV/TSV-backed point series are implemented, including explicit missing data behavior.
+
+**Next commit:** Extend a canonical fixture and focused UI path to cover two pieces, imported point rows, missing values, and save/reopen of table identity.
+
+**Acceptance:** Domain endpoints and gaps remain distinct, missing values never create a joining segment, and the restored data source matches the imported rows.
+
+### 7. Algebra view and inspector
+
+**Existing:** Graphs has an object list, authoring controls, visibility, canvas selection, and an inspector.
+
+**Next commit:** Close measured keyboard, focus, selection, and platform accessibility gaps in the existing panels rather than adding duplicate panes.
+
+**Acceptance:** Rename, show/hide, and selection update the list and canvas together; keyboard users can reach and understand those states.
+
+### 8. Synchronized 3D/2D cross-sections
+
+**Existing:** Surface viewers show a plane, a 2D section inset, and section CSV/SVG export; a saved source-linked Graph curve from a Surface section is still planned.
+
+**Next commit:** Publish a bounded horizontal section of `z=5-x²-y²` to Graphs with explicit math-to-viewer transform, source generation, units, and guarded slider refresh (F2).
+
+**Acceptance:** Level `z=1` yields a radius-2 circle, `z>5` yields an explicit empty result, and moving the level updates both views without preserving a stale Graph curve as current.
+
+### 9. Advanced analytic tools
+
+**Existing:** Graphs has bounded derivative and integral analysis, saved derivative curves, and method/diagnostic metadata. This is not a full symbolic CAS.
+
+**Next commit:** Qualify a linked derivative/integral workflow through parameter changes, with optional symbolic-worker extension only for an identified unsupported rule.
+
+**Acceptance:** `d/dx sin(x²)=2x cos(x²)` and `d/dx x³=3x²` agree at reference points within stated tolerance; unsupported or incomplete symbolic/numeric results are labeled and cannot masquerade as exact.
+
+### 10. Curvature and vector fields
+
+**Existing:** Graphs has curvature constructions and 2D phase/vector displays; Field Explorer has 3D vector layers and Mesh has differential-geometry tests.
+
+**Next commit:** Connect a curvature plot and rotational vector-field example to their existing numerics and provenance, then qualify a linked 3D view where supported (F3/R1).
+
+**Acceptance:** Curvature of `y=x²` follows the declared formula and units; `F=(-y,x)` glyphs rotate correctly under zoom without changing vector values. Incomplete geometry, frame changes, and scaling limits remain visible.
+
+### 11. Export and reproducibility
+
+**Existing:** Graphs exports SVG/PNG/CSV/offline HTML and frozen publication snapshots; Projects and scientific scenes have versioned persistence. Direct PDF, 3D model export, and a replay recipe require separate capability checks.
+
+**Next commit:** Add a declarative, source-hashed Graph + Surface + section recipe; qualify PDF or 3D export only after the supported workflow and consumer are specified (F4/R3).
+
+**Acceptance:** SVG contains the expected axes and curve, project/replay save and reopen preserve parameters and declared history semantics, and changed or missing source bytes are rejected or visibly marked unavailable. Compare rendering and numerical data with explicit tolerances, not an unsupported byte-identical image promise.
+
 ## Quality delivery order
 
 ### 1. Establish a reproducible numerical baseline (P0)
