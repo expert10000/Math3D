@@ -1,0 +1,31 @@
+{
+  "schema": "math3d/ute2-upgrade-continuity-summary/v1",
+  "status": "passed-for-published-project-backup-route",
+  "workflowRun": "https://github.com/expert10000/Math3D/actions/runs/46081807431",
+  "candidateSourceCommit": "d4860de35fe19476979537fef18dc2ce5025b5df",
+  "sourceEvidenceSchema": "math3d/release20-unsigned-dev-upgrade-rehearsal/v1",
+  "sourceEvidenceSha256": "025751d136128f392911553b1a4989c66e1960937d858789a0fd3cf7e4331cdc",
+  "oldVersion": "1.7.0",
+  "devVersion": "2.0.0",
+  "installMode": "same-directory-dev-overlay",
+  "stableIdentityUpgrade": false,
+  "oldInstallerSha256": "eacffc903e988a15636f556b36d12621b9918f4cec69e5c8b19e7daa512222db",
+  "devInstallerSha256": "0d73a62b28b4aa2971067f37b846d698955d75474d65059c02dd9a05577f591b",
+  "devSignatureStatus": "NotSigned",
+  "oldExecutableSha256": "ff9ec3b9ea65f2d97ab79aeb8a8e52d4ed78d73319d4b69690a6f6c5c144afea",
+  "devExecutableSha256": "df61d7f2633f8813bb30048ee8d8a05de377d6646647c37c62aceffd04bff830",
+  "publishedProjectCheckpointSha256": "fe02478b9833325ebbb26e381289da4b7985d4be773274fd54136d4bdd11285c",
+  "preUpgradeProfileInventorySha256": "432363842a539a4c86138eaceca74e7565478c503904bb993c3ed1fba8670d62",
+  "preUpgradeProfileFileCount": 43,
+  "phases": {
+    "published17Seed": "passed",
+    "dev20ReopenProjectAndSetting": "passed",
+    "published17ReopenExactBackup": "passed"
+  },
+  "limits": [
+    "This candidate differs from the exact Dev installer in the earlier UTe2 installed-pair receipt.",
+    "The pre-upgrade Project is a Graph Project; the old build was not asked to open a new UTe2 Project.",
+    "The rollback route restores the exact pre-upgrade profile backup, not an in-place downgrade of new Project data.",
+    "This is an unsigned Dev overlay, not a stable-identity or signed release upgrade, and it does not qualify installed retained memory."
+  ]
+}
