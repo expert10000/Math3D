@@ -54,7 +54,7 @@ The feature review could not access the earlier review/ZIP and describes several
 
 ### 3. Wire the new checks into existing CI (P0)
 
-**Work:** Extend `ci-build-and-worker-smoke.yml` with a bounded, fast numerical test target and direct Python worker tests where needed. Reuse `npm --prefix renderer run test`, `npm run typecheck:noemit`, and the existing worker smoke path. If a dedicated test runner or lint gate is useful, add its script before invoking it in CI. Keep heavyweight native/performance checks in their existing specialized workflows unless they fit the PR runtime budget.
+**Work:** Extend `ci-build-and-worker-smoke.yml` with a bounded, fast numerical test target and direct Python worker tests where needed. Reuse `npm --prefix renderer run test`, `npm run typecheck:noemit`, and the existing worker smoke path. Run the fast scientific corpus on pushes and pull requests through this existing workflow. If a dedicated test runner or lint gate is useful, add its script before invoking it in CI. Keep heavyweight native/performance checks in their existing specialized workflows unless they fit the PR runtime budget.
 
 **Acceptance:** The relevant PR workflow runs the new tests and fails on a deliberately broken numerical assertion. The check is visible in CI logs; optional native capability is reported explicitly. No duplicate general CI workflow is introduced.
 
@@ -80,11 +80,26 @@ The feature review could not access the earlier review/ZIP and describes several
 
 These slices start after the relevant P0 baseline in stages 1-3. They reuse the canonical Graph2D, Field Explorer, Project, and kernel contracts; their identifiers here are priorities, not replacement G2D/GF/SCI milestones.
 
-### F1. Cross-module scientific scene corpus (P0)
+### F1. Extended benchmark suite of scientific scenes (P0)
 
-Extend the P0 numerical matrix with `sin(x)/x` zeros away from zero, the `1/x` discontinuity, an implicit circle, a paraboloid horizontal slice, and rotational field `F=(-y,x,0)`. Record analytic expectations, domain exclusions, approximation tolerances, source units, method/version, and the UI/result path. Reuse existing fixtures and tests; add only missing assertions.
+Inventory existing Graph, Surface, Mesh, and Field tests first; several cases already have focused coverage. Add missing assertions and shared scene fixtures instead of duplicating tests. Every case declares the mathematical source, domain, expected result or invariant, absolute/relative or pixel tolerance, numerical method, backend, dependency versions, and whether the result is approximate, refined, or unavailable. A fixture may exercise more than one module, but a UI screenshot alone is not a mathematical oracle.
 
-**Acceptance:** Each scene has an independent oracle and at least one failing negative case. Where a scene crosses modules, its source generation and numerical qualifications survive the applicable Graph/Field/Project save and reopen path. Existing CI runs a bounded subset; slower native checks remain in scoped workflows.
+| Scene | Independent oracle and required failure check | Intended gate |
+| --- | --- | --- |
+| `sin(x)/x` on a bounded domain excluding zero | Zeros at nonzero integer multiples of `pi` in range; `x=0` is undefined unless a documented removable-limit rule applies. Verify positions/residuals and no fabricated zero at the exclusion. | Fast Graph unit; focused Graph UI smoke. |
+| Implicit circle `x^2+y^2=4` | One closed radius-2 contour; sampled points have small equation residual and bounded radial error. Reject an open, truncated, or false extra component. | Fast contour test; browser rendering check. |
+| Gerono lemniscate `x=sin(t), y=sin(t)cos(t)` for `0<=t<=2pi` | Two lobes meet at the origin; independent parameter samples satisfy the defining equations. Detect an omitted lobe or an invented bridge near the crossing. | Fast parametric sampler; focused visual check. |
+| Semicubical cusp `x=t^2, y=t^3` for `-1<=t<=1` | `y^2=x^3`, `x>=0`, and the origin is a singular cusp. Do not label the cusp as a regular smooth point or connect through an out-of-domain segment. | Fast sampler/diagnostic test; optional UI check. |
+| Reciprocal `y=1/x` across zero | Two branches, no segment across `x=0`, explicit undefined-domain diagnostic, and stable behavior under zoom. Fail if the renderer joins the asymptote. | Fast Graph sampler; existing Playwright path. |
+| Area under `y=x` for `0<=x<=1` | Numerical integral is `1/2` within stated tolerance; reversing bounds changes sign under the selected convention. Fail on a missing/incorrect domain or silent incomplete result. | Fast Graph analysis test; focused Inspector check. |
+| Revolution of `y=x`, `0<=x<=1`, about the x-axis | Expected cone volume `pi/3` and bounded radius/profile geometry. Check the existing Graph-to-Surface revolution path; compare a scalar volume only where a supported volume operation exists, otherwise record it as an unmet capability rather than inventing a result. | Scoped Surface/Project test; worker gate if volume is backend-computed. |
+| Height surface `z=5-x^2-y^2` cut by `z=c` | At `c=1`, the section is a radius-2 circle; for `c>5`, it is empty. Verify the math-to-viewer frame transform, contour residual, and stale-source refusal through the F2 handoff. | Scoped Surface/Graph/Project test after F2. |
+| Rotational field `F=(-y,x,0)` | At `(1,0,0)` the vector is `(0,1,0)`; on a unit circle speed is 1, divergence is 0, and z-curl is 2 under Cartesian units. Check glyph direction, scaling, and undefined/changed-source behavior. | Fast Field numerics; scoped 3D view. |
+| Plane, sphere, and invalid mesh inputs | Plane curvature is zero in the supported interior; sphere curvature follows the declared sign/radius convention. Degenerate and non-finite triangles are diagnosed instead of contaminating outputs. | Reuse current Mesh tests; add missing scale/worker checks from stages 1-2. |
+
+Use deterministic structural assertions where exact counts are promised; compare approximate geometry with declared tolerances and convergence at two resolutions. Record a negative or mutation case for each algorithm family so the gate would catch a broken implementation. CGAL exact predicates/constructions count as an exactness claim only when the tested operation actually selects the exact kernel; ordinary sampling, VTK, and rendered curves remain numerical approximations.
+
+**Acceptance:** The suite manifest links every scene to its fixture, oracle, tolerance, backend, tests, and owner. Fast unit cases run on PRs and code pushes in the existing CI; bounded Electron/browser journeys cover visible gaps, diagnostics, and parameter changes. Heavy native/worker cases run in their scoped workflows with explicit capability status. Where a scene crosses modules, source generation and numerical qualifications survive the applicable Graph/Field/Project save/reopen path. No placeholder DOI, version, or unsupported exactness claim is used as evidence.
 
 ### F2. Publish an existing Surface section into Graphs (P1)
 
