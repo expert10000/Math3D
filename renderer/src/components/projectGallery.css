@@ -204,13 +204,18 @@ body:has(#project-gallery-host:not(:empty)) :is([data-testid="projects-quick-tog
 .catenoid-journey-step { display:inline-flex;align-items:center;gap:7px;white-space:nowrap; }
 .catenoid-journey-tabs .catenoid-journey-clear { margin-left:12px;border-color:#a8c5e8;background:#fff;color:#45617d;font-weight:600; }
 .catenoid-journey-arrow { color:#94a3b8;font-size:13px; }
+.catenoid-context-subflow { display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:4px 12px;padding:8px 12px;border:1px solid #d5e3f4;border-radius:10px;background:#f8fbff;color:#334155;font:12px/1.4 system-ui,sans-serif; }
+.catenoid-context-subflow > strong { color:#1d4ed8;white-space:nowrap; }
+.catenoid-context-subflow-steps { display:inline-flex;flex-wrap:wrap;gap:0 4px;font-weight:650; }
+.catenoid-context-subflow-steps [aria-hidden="true"] { color:#94a3b8; }
+.catenoid-context-subflow > p { flex-basis:100%;margin:0;text-align:center;color:#52657b; }
 .catenoid-document-workflow { display:grid;gap:4px; }
 .catenoid-surface-subflow { display:grid;gap:3px; }
 .catenoid-surface-steps { display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:7px;padding:5px 10px;border:1px solid #d5e3f4;border-radius:10px;background:#f8fbff; }
 .catenoid-surface-label { margin-right:3px;color:#45617d;font-size:12px; }
 .catenoid-surface-steps button { min-height:30px;padding:4px 10px;border:1px solid #cbd5e1;border-radius:999px;background:#fff;color:#334155;font-size:12px;white-space:nowrap;cursor:pointer; }
-.catenoid-surface-steps button[aria-current="step"] { border-color:#0a66c2;background:#dbeafe;color:#0a66c2;font-weight:700; }
 .catenoid-surface-steps button[data-testid="catenoid-surface-step-compute"] { border-color:#7aa9e3;color:#0b57a3;font-weight:700; }
+.catenoid-surface-steps button[aria-current="step"] { border-color:#0a66c2;background:linear-gradient(180deg,#dbeafe,#bfdbfe);color:#0a4f9c;font-weight:700;box-shadow:0 0 0 2px #1e3a8a; }
 .catenoid-surface-steps button:disabled { opacity:.55;cursor:not-allowed; }
 .catenoid-surface-footer { display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:6px 10px; }
 .catenoid-document-workflow .catenoid-surface-status { margin:0;color:#45617d;font:600 12px/1.35 system-ui,sans-serif;text-align:center; }

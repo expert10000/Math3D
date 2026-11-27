@@ -78253,6 +78253,7 @@ case "mobius":
     SURFACE_MESH_PRESETS[1]?.id ??
     meshNewPresetId;
   const [projectsOpen, setProjectsOpen] = useState(false);
+  const [catenoidSurfaceSelectedStep, setCatenoidSurfaceSelectedStep] = useState<CatenoidSurfaceStep>("curvature");
   const [clearedCatenoidJourneyId, setClearedCatenoidJourneyId] = useState<string | null>(null);
   useEffect(() => {
     const clear = (event: Event) => setClearedCatenoidJourneyId((event as CustomEvent<{ projectId?: string }>).detail?.projectId ?? null);
@@ -80479,7 +80480,10 @@ case "mobius":
         if (journeySurface) skipSurfacesAutoBrowseOnModeChangeRef.current = true;
         setDatasetKind("surface"); setSurfaceViewerKind("param");
         setSurfacesPanelState(journeySurface ? "work" : "browse");
-        if (journeySurface) { setSurfacesLeftTab("analysis"); setActiveSurfaceComputation("curvature-field"); }
+        if (journeySurface) {
+          setSurfacesLeftTab("analysis"); setActiveSurfaceComputation("curvature-field");
+          setCatenoidSurfaceSelectedStep("curvature");
+        }
         setSurfacesWorkGalleryOpen(false);
         setDisplayMode("workspace"); setShowRightPanel(true); setRightPanelTab("inspector");
         setSurfacePreviewFocusMode(false); setCleanScreenshotActive(false); setSurfaceDrawerPanel("left");
@@ -80985,9 +80989,6 @@ case "mobius":
     surfaceCurvatureExecution === "failed" || surfaceCurvatureExecution === "stale" ||
     surfaceCurvatureExecution === "cancelled" ? "failed" :
     activeSurfaceCurvatureField ? "computed" : "ready";
-  const catenoidSurfaceStep: CatenoidSurfaceStep = surfacesLeftTab === "scene" || surfacesLeftTab === "object" ? "surface" :
-    activeSurfaceComputation !== "curvature-field" ? "analysis" :
-    catenoidSurfaceComputeState === "computed" ? "compute" : "curvature";
   const catenoidSavedMesh = savedSurfaceMeshChoices.find(choice => choice.current) ?? savedSurfaceMeshChoices[0];
   const workspaceHeaderContext = activeProjectDocumentId ? "Project document" : headerContextLabel;
   const navigateProjectBack = () => { const location = projectNavigationRef.current.back(); if (location) navigateRestoredDocument(location.id, location.module); };
@@ -82559,7 +82560,7 @@ case "mobius":
                   )}
                 </div>
               </div>
-              {catenoidJourneySurfaceActive && <div className="catenoid-document-workflow">
+              {catenoidJourneySurfaceActive && !projectsOpen && <div className="catenoid-document-workflow">
                 <CatenoidJourneyWorkflow activeStep="curvature" documentView
                   onClear={() => window.dispatchEvent(new CustomEvent("math3d:catenoid-journey-clear", {
                     detail: { projectId: catenoidJourneyProject!.identity.id },
@@ -82573,19 +82574,21 @@ case "mobius":
                     setSurfaceDrawerPanel("left");
                     setActiveSurfaceComputation("curvature-field");
                     setSurfaceCurvatureVisible(true);
+                    setCatenoidSurfaceSelectedStep("curvature");
                     return;
                   }
                   window.dispatchEvent(new CustomEvent("math3d:catenoid-journey-navigate", {
                     detail: { projectId: catenoidJourneyProject!.identity.id, step },
                   }));
                 }} />
-                <CatenoidSurfaceSubflow activeStep={catenoidSurfaceStep}
+                <CatenoidSurfaceSubflow activeStep={catenoidSurfaceSelectedStep}
                   computeState={catenoidSurfaceComputeState}
                   onRetrySamples={() => setSavedSurfaceSampleRefreshToken(token => token + 1)}
                   savedMesh={catenoidSavedMesh ? { title: catenoidSavedMesh.title,
                     count: savedSurfaceMeshChoices.length,
                     onOpen: () => navigateRestoredDocument(catenoidSavedMesh.id, "mesh") } : undefined}
                   onSelect={step => {
+                    setCatenoidSurfaceSelectedStep(step);
                     setProjectsOpen(false);
                     setSurfacesPanelState("work");
                     setSurfacesWorkGalleryOpen(false);
@@ -82596,7 +82599,9 @@ case "mobius":
                     if (step === "analysis") { handleSelectSurfaceComputation("differential-geometry"); return; }
                     handleSelectSurfaceComputation("curvature-field");
                     setSurfaceCurvatureVisible(true);
-                    if (step === "compute") void handleComputeSurfaceCurvature();
+                    if (step === "compute" && (catenoidSurfaceComputeState === "ready" ||
+                      catenoidSurfaceComputeState === "computed" || catenoidSurfaceComputeState === "failed"))
+                      void handleComputeSurfaceCurvature();
                   }} />
               </div>}
               <div

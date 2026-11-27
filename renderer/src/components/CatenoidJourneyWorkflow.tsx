@@ -7,6 +7,30 @@ export const CATENOID_JOURNEY_STEPS = [
 
 export type CatenoidJourneyStep = typeof CATENOID_JOURNEY_STEPS[number][0];
 
+const JOURNEY_SUBFLOWS: Record<CatenoidJourneyStep, Readonly<{
+  title: string; steps: readonly string[]; outcome: string;
+}>> = {
+  study: { title: "Study path", steps: ["Open saved Study", "Inspect source panes"],
+    outcome: "Opens the saved layout so you can check the exact Surface and Mesh references." },
+  curvature: { title: "Surface path", steps: ["Open Surface", "Analysis", "Curvature field", "Compute"],
+    outcome: "Opens the catenoid viewer and calculates a visible curvature field from its saved source." },
+  comparison: { title: "Comparison path", steps: ["Inspect Surface and Mesh", "Choose ridge", "Publish"],
+    outcome: "Checks the source pair and records the ridge, Mesh curvature error, Curve and Workbook." },
+  workbook: { title: "Workbook path", steps: ["Open Workbook", "Save Project"],
+    outcome: "Reviews the recorded citation and saves the staged evidence in the Project." },
+};
+
+export function CatenoidJourneySubflowSummary({ mainStep }: { mainStep: CatenoidJourneyStep }) {
+  const subflow = JOURNEY_SUBFLOWS[mainStep];
+  return <section className="catenoid-context-subflow" data-testid="catenoid-context-subflow"
+    data-main-step={mainStep} aria-label={`${subflow.title} subflow`}>
+    <strong>{subflow.title}</strong>
+    <span className="catenoid-context-subflow-steps">{subflow.steps.map((step, index) =>
+      <span key={step}>{index > 0 && <span aria-hidden="true"> → </span>}{step}</span>)}</span>
+    <p>{subflow.outcome}</p>
+  </section>;
+}
+
 type Props = Readonly<{
   activeStep: CatenoidJourneyStep;
   onSelect: (step: CatenoidJourneyStep) => void;
@@ -90,7 +114,6 @@ export function CatenoidSurfaceSubflow({ activeStep, computeState, onSelect, onR
           {index > 0 && <span className="catenoid-journey-arrow" aria-hidden="true">→</span>}
           <button type="button" data-testid={`catenoid-surface-step-${id}`}
             aria-current={activeStep === id ? "step" : undefined}
-            disabled={id === "compute" && (computeState === "preparing" || computeState === "unavailable" || computeState === "running")}
             onClick={() => onSelect(id)}>
             {index + 1} {id === "compute" ? computeLabel : label}
           </button>

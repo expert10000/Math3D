@@ -23,7 +23,7 @@ import { volumeMeshJourneyOptions } from "../projects/volumeMeshStudy";
 import { hydrogenGridIndex, pinQuantumStudySample, quantumStudyRecord,
   quantumStudySelectionEvidence } from "../projects/quantumStudySelection";
 import { StudyQuantumSelectionPanel } from "./StudyQuantumSelectionPanel";
-import { CatenoidJourneyWorkflow, type CatenoidJourneyStep } from "./CatenoidJourneyWorkflow";
+import { CatenoidJourneySubflowSummary, CatenoidJourneyWorkflow, type CatenoidJourneyStep } from "./CatenoidJourneyWorkflow";
 
 const StudyPanePreview = lazy(() => import("./StudyPanePreview").then(module => ({ default: module.StudyPanePreview })));
 const CatenoidJourneySourceComparison = lazy(() => import("./CatenoidJourneySourceComparison").then(module => ({ default: module.CatenoidJourneySourceComparison })));
@@ -161,6 +161,7 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
       <div className="catenoid-journey-heading"><strong>Catenoid evidence journey</strong>
         <span>{ridgeResult ? "Comparison recorded" : "Continue the saved Study"}</span></div>
       <CatenoidJourneyWorkflow activeStep={catenoidStep} onSelect={selectCatenoidStep} />
+      <CatenoidJourneySubflowSummary mainStep={catenoidStep} />
       <div role="tabpanel" id="catenoid-flow-panel" aria-labelledby={`catenoid-flow-tab-${catenoidStep}`}
         data-testid={`catenoid-flow-panel-${catenoidStep}`}>
         {catenoidStep === "study" && <><h5>Inspect the saved Study</h5>

@@ -73,12 +73,28 @@ test("Projects Journeys lists the Catenoid flow and opens its step tabs", async 
     await expect(panel.getByTestId("catenoid-flow-tab-study")).toBeInViewport();
     await expect(panel.getByTestId("catenoid-flow-tab-study")).toBeFocused();
     const workflow = panel.getByRole("tablist", { name: "Catenoid journey workflow" });
+    const subflow = panel.getByTestId("catenoid-context-subflow");
+    await expect(subflow).toHaveAttribute("data-main-step", "study");
+    await expect(subflow).toContainText("Inspect source panes");
     await expect(workflow).toContainText("Workflow");
     await expect(workflow.locator(".catenoid-journey-arrow")).toHaveCount(3);
     await expect(workflow.getByRole("tab")).toHaveText(["1 Study", "2 Curvature", "3 Comparison", "4 Workbook"]);
+    await workflow.getByRole("tab", { name: "3 Comparison" }).click();
+    await expect(subflow).toHaveAttribute("data-main-step", "comparison");
+    await expect(subflow).toContainText("Choose ridge");
+    await workflow.getByRole("tab", { name: "4 Workbook" }).click();
+    await expect(subflow).toHaveAttribute("data-main-step", "workbook");
+    await expect(subflow).toContainText("Save Project");
+    await workflow.getByRole("tab", { name: "1 Study" }).click();
+    await expect(subflow).toHaveAttribute("data-main-step", "study");
     await workflow.getByRole("tab", { name: "1 Study" }).press("ArrowRight");
+    await expect(panel).toBeHidden();
+    await expect(page.getByTestId("catenoid-document-step-curvature"))
+      .toHaveAttribute("aria-current", "step");
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByRole("button", { name: "View current project" }).click();
+    await panel.getByTestId("project-detail-tab-journey").click();
     await expect(workflow.getByRole("tab", { name: "2 Curvature" })).toHaveAttribute("aria-selected", "true");
-    await expect(workflow.getByRole("tab", { name: "2 Curvature" })).toBeFocused();
     await expect(panel.getByTestId("project-study-create")).toBeHidden();
     await panel.getByTestId("project-detail-tab-overview").click();
     await expect(panel.locator(".project-dashboard-documents")).toBeVisible();
@@ -119,6 +135,8 @@ test("Catenoid workflow stays visible on its Surface and returns to the selected
     await expect(page.getByTestId("surface-viewer-canvas-host").locator("canvas")).toBeVisible();
     await expect(surfaceFlow.getByRole("status")).toContainText("Curvature field open", { timeout: 10_000 });
     await surfaceFlow.getByTestId("catenoid-surface-step-surface").click();
+    await expect(surfaceFlow.getByTestId("catenoid-surface-step-surface"))
+      .toHaveAttribute("aria-current", "step");
     await expect(page.getByTestId("surfaces-left-tab-object")).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByTestId("saved-surface-module-source")).toBeVisible();
     await expect(surfaceFlow.getByRole("status")).toContainText("Saved catenoid source open");
@@ -130,8 +148,12 @@ test("Catenoid workflow stays visible on its Surface and returns to the selected
     await expect(page.getByTestId("surface-curvature-compute")).toHaveCount(0);
     await expect(surfaceFlow.getByRole("status")).toContainText("Differential geometry tools open");
     await surfaceFlow.getByTestId("catenoid-surface-step-curvature").click();
+    await expect(surfaceFlow.getByTestId("catenoid-surface-step-curvature"))
+      .toHaveAttribute("aria-current", "step");
     await expect(page.getByTestId("surface-curvature-compute")).toBeVisible();
     await surfaceFlow.getByTestId("catenoid-surface-step-compute").click();
+    await expect(surfaceFlow.getByTestId("catenoid-surface-step-compute"))
+      .toHaveAttribute("aria-current", "step");
     await expect(surfaceFlow.getByRole("status"))
       .toHaveText("Curvature result ready. Continue with 3 Comparison.", { timeout: 30_000 });
     await expect(page.locator('[data-curvature-display-scalar="K"]')).toBeVisible();
@@ -151,8 +173,11 @@ test("Catenoid workflow stays visible on its Surface and returns to the selected
     ]);
     const comparisonStart = Date.now();
     await inherited.getByTestId("catenoid-document-step-comparison").click();
+    await expect(inherited).toHaveCount(0);
     await expect(panel.getByTestId("project-detail-tab-journey"))
       .toHaveAttribute("aria-current", "page");
+    await expect(panel.getByTestId("catenoid-context-subflow"))
+      .toHaveAttribute("data-main-step", "comparison");
     await expect(panel.getByTestId("catenoid-flow-tab-comparison"))
       .toHaveAttribute("aria-selected", "true");
     await expect(panel.getByTestId("catenoid-flow-panel-comparison")).toBeVisible();
