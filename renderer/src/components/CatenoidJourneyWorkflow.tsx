@@ -48,3 +48,43 @@ export function CatenoidJourneyWorkflow({ activeStep, onSelect, documentView = f
       </span>)}
   </Tag>;
 }
+
+export type CatenoidSurfaceStep = "surface" | "analysis" | "curvature" | "compute";
+
+type SurfaceSubflowProps = Readonly<{
+  activeStep: CatenoidSurfaceStep;
+  computeState: "unavailable" | "ready" | "running" | "computed" | "failed";
+  onSelect: (step: CatenoidSurfaceStep) => void;
+}>;
+
+const SURFACE_STEPS: ReadonlyArray<readonly [CatenoidSurfaceStep, string]> = [
+  ["surface", "Surface"], ["analysis", "Analysis"],
+  ["curvature", "Curvature field"], ["compute", "Compute"],
+];
+
+export function CatenoidSurfaceSubflow({ activeStep, computeState, onSelect }: SurfaceSubflowProps) {
+  const computeLabel = computeState === "running" ? "Computing…" :
+    computeState === "computed" ? "Recompute" :
+    computeState === "failed" ? "Retry Compute" : "Compute";
+  const status = computeState === "computed" ? "Curvature result ready. Continue with 3 Comparison." :
+    computeState === "running" ? "Curvature computation in progress." :
+    computeState === "unavailable" ? "This Surface source is unavailable for curvature computation." :
+    computeState === "failed" ? "Curvature computation failed. Review the Surface result and retry." :
+    "Compute curvature, then continue with 3 Comparison.";
+  return <div className="catenoid-surface-subflow" data-testid="catenoid-surface-subflow">
+    <nav className="catenoid-surface-steps" aria-label="Surface curvature subflow">
+      <strong className="catenoid-surface-label" aria-hidden="true">Surface flow</strong>
+      {SURFACE_STEPS.map(([id, label], index) =>
+        <span className="catenoid-journey-step" key={id}>
+          {index > 0 && <span className="catenoid-journey-arrow" aria-hidden="true">→</span>}
+          <button type="button" data-testid={`catenoid-surface-step-${id}`}
+            aria-current={activeStep === id ? "step" : undefined}
+            disabled={id === "compute" && (computeState === "unavailable" || computeState === "running")}
+            onClick={() => onSelect(id)}>
+            {index + 1} {id === "compute" ? computeLabel : label}
+          </button>
+        </span>)}
+    </nav>
+    <p className="catenoid-surface-status" role="status">{status}</p>
+  </div>;
+}

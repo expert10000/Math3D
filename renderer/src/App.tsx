@@ -139,7 +139,7 @@ import type { QuantumStudySelectionTarget } from "./projects/quantumStudyWorkboo
 import { GeometryPickReadout } from "./components/GeometryPickReadout";
 import { GeometryAnalysisInspectorPanel } from "./components/GeometryAnalysisInspectorPanel";
 import { KernelWorkspacePanel } from "./components/KernelWorkspacePanel";
-import { CatenoidJourneyWorkflow } from "./components/CatenoidJourneyWorkflow";
+import { CatenoidJourneyWorkflow, CatenoidSurfaceSubflow, type CatenoidSurfaceStep } from "./components/CatenoidJourneyWorkflow";
 import { ProjectWorkbookMiddleView } from "./components/ProjectWorkbookMiddleView";
 import { ProjectDetailMiddleView } from "./components/ProjectDetailMiddleView";
 import { PROJECT_STORAGE_KEY, projectPayloadKey, saveLibraryProject } from "./projects/projectLibrary";
@@ -80955,6 +80955,15 @@ case "mobius":
       entry.module === "surface" && entry.expected.id === activeProjectDocumentId &&
       catenoidJourneyProject.workspace.studies?.[0]?.members.some(member =>
         member.documentId === activeProjectDocumentId)));
+  const catenoidSurfaceComputeState = !surfaceCurvatureSource ? "unavailable" :
+    surfaceCurvatureExecution === "queued" || surfaceCurvatureExecution === "running" ||
+    surfaceCurvatureExecution === "progressive" ? "running" :
+    surfaceCurvatureExecution === "failed" || surfaceCurvatureExecution === "stale" ||
+    surfaceCurvatureExecution === "cancelled" ? "failed" :
+    activeSurfaceCurvatureField ? "computed" : "ready";
+  const catenoidSurfaceStep: CatenoidSurfaceStep = surfacesLeftTab === "scene" ? "surface" :
+    activeSurfaceComputation !== "curvature-field" ? "analysis" :
+    catenoidSurfaceComputeState === "computed" ? "compute" : "curvature";
   const workspaceHeaderContext = activeProjectDocumentId ? "Project document" : headerContextLabel;
   const navigateProjectBack = () => { const location = projectNavigationRef.current.back(); if (location) navigateRestoredDocument(location.id, location.module); };
   const navigateProjectForward = () => { const location = projectNavigationRef.current.forward(); if (location) navigateRestoredDocument(location.id, location.module); };
@@ -82535,7 +82544,15 @@ case "mobius":
                     detail: { projectId: catenoidJourneyProject!.identity.id, step },
                   }));
                 }} />
-                <p>Analysis → Curvature field → Compute, then choose 3 Comparison.</p>
+                <CatenoidSurfaceSubflow activeStep={catenoidSurfaceStep}
+                  computeState={catenoidSurfaceComputeState} onSelect={step => {
+                    setSurfacesPanelState("work");
+                    if (step === "surface") { setSurfacesLeftTab("scene"); return; }
+                    setSurfacesLeftTab("analysis");
+                    if (step === "analysis") { handleSelectSurfaceComputation("differential-geometry"); return; }
+                    handleSelectSurfaceComputation("curvature-field");
+                    if (step === "compute") void handleComputeSurfaceCurvature();
+                  }} />
               </div>}
               <div
                 data-testid="surface-context-actions-row"

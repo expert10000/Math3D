@@ -204,11 +204,19 @@ body:has(#project-gallery-host:not(:empty)) :is([data-testid="projects-quick-tog
 .catenoid-journey-step { display:inline-flex;align-items:center;gap:7px;white-space:nowrap; }
 .catenoid-journey-arrow { color:#94a3b8;font-size:13px; }
 .catenoid-document-workflow { display:grid;gap:4px; }
-.catenoid-document-workflow p { margin:0;color:#45617d;font:600 12px/1.35 system-ui,sans-serif;text-align:center; }
+.catenoid-surface-subflow { display:grid;gap:3px; }
+.catenoid-surface-steps { display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:7px;padding:5px 10px;border:1px solid #d5e3f4;border-radius:10px;background:#f8fbff; }
+.catenoid-surface-label { margin-right:3px;color:#45617d;font-size:12px; }
+.catenoid-surface-steps button { min-height:30px;padding:4px 10px;border:1px solid #cbd5e1;border-radius:999px;background:#fff;color:#334155;font-size:12px;white-space:nowrap;cursor:pointer; }
+.catenoid-surface-steps button[aria-current="step"] { border-color:#0a66c2;background:#dbeafe;color:#0a66c2;font-weight:700; }
+.catenoid-surface-steps button[data-testid="catenoid-surface-step-compute"] { border-color:#7aa9e3;color:#0b57a3;font-weight:700; }
+.catenoid-surface-steps button:disabled { opacity:.55;cursor:not-allowed; }
+.catenoid-document-workflow .catenoid-surface-status { margin:0;color:#45617d;font:600 12px/1.35 system-ui,sans-serif;text-align:center; }
 :is(.project-gallery-page,.catenoid-document-workflow) .catenoid-journey-tabs button { min-height:32px;padding:4px 10px;border-radius:999px;border-color:#cbd5e1;background:#fff;color:#334155;font-size:13px;text-align:center;white-space:nowrap; }
 :is(.project-gallery-page,.catenoid-document-workflow) .catenoid-journey-tabs button:is([aria-selected="true"],[aria-current="step"]) { border-color:#0a66c2;background:linear-gradient(180deg,#dbeafe 0%,#bfdbfe 100%);color:#0a66c2;font-weight:700;box-shadow:0 4px 10px rgba(37,99,235,.2); }
 .project-gallery-page .catenoid-journey-tabs button[aria-selected="true"]:hover { background:linear-gradient(180deg,#dbeafe 0%,#bfdbfe 100%); }
 @media(max-width:520px) { :is(.project-gallery-page,.catenoid-document-workflow) .catenoid-journey-tabs button { min-height:44px; } }
+@media(max-width:520px) { .catenoid-surface-steps button { min-height:44px; } }
 .catenoid-journey-flow [role="tabpanel"] { padding:12px;border:1px solid #d5e3f4;border-radius:8px;background:#fff; }
 .catenoid-journey-flow [role="tabpanel"] h5 { margin:0 0 6px;font-size:15px; }
 .catenoid-journey-flow [role="tabpanel"] p { margin:0 0 10px; }

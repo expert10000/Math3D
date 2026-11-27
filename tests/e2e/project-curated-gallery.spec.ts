@@ -107,12 +107,27 @@ test("Catenoid workflow stays visible on its Surface and returns to the selected
     const inherited = page.getByTestId("catenoid-document-workflow");
     await expect(inherited).toBeVisible();
     await expect(inherited.locator("xpath=ancestor::header")).toHaveCount(1);
-    await expect(page.getByText("Analysis → Curvature field → Compute, then choose 3 Comparison."))
-      .toBeVisible();
+    const surfaceFlow = page.getByTestId("catenoid-surface-subflow");
+    await expect(surfaceFlow).toBeVisible();
+    await expect(surfaceFlow.locator("nav")).toHaveAttribute("aria-label", "Surface curvature subflow");
+    await expect(surfaceFlow.getByRole("button")).toHaveText([
+      "1 Surface", "2 Analysis", "3 Curvature field", "4 Compute",
+    ]);
     await expect(inherited.getByTestId("catenoid-document-step-curvature"))
       .toHaveAttribute("aria-current", "step");
     await expect(page.getByTestId("surfaces-left-tab-analysis")).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByTestId("surface-curvature-compute")).toBeVisible();
+    await surfaceFlow.getByTestId("catenoid-surface-step-surface").click();
+    await expect(page.getByTestId("surfaces-left-tab-scene")).toHaveAttribute("aria-pressed", "true");
+    await surfaceFlow.getByTestId("catenoid-surface-step-analysis").click();
+    await expect(page.getByTestId("surfaces-left-tab-analysis")).toHaveAttribute("aria-pressed", "true");
+    await expect(surfaceFlow.getByTestId("catenoid-surface-step-analysis"))
+      .toHaveAttribute("aria-current", "step");
+    await surfaceFlow.getByTestId("catenoid-surface-step-curvature").click();
+    await expect(page.getByTestId("surface-curvature-compute")).toBeVisible();
+    await surfaceFlow.getByTestId("catenoid-surface-step-compute").click();
+    await expect(surfaceFlow.getByRole("status"))
+      .toHaveText("Curvature result ready. Continue with 3 Comparison.", { timeout: 30_000 });
     await expect(inherited.getByRole("button")).toHaveText([
       "1 Study", "2 Curvature", "3 Comparison", "4 Workbook",
     ]);
