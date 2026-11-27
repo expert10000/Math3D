@@ -93,6 +93,32 @@ test("Projects Journeys lists the Catenoid flow and opens its step tabs", async 
   } finally { await closeSurfaceApp(ctx); }
 });
 
+test("Catenoid workflow stays visible on its Surface and returns to the selected journey step", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByRole("button", { name: "Journeys", exact: true }).click();
+    await panel.getByTestId("curated-study-open-catenoid-evidence").click();
+    await panel.getByTestId("catenoid-flow-tab-curvature").click();
+    await panel.getByTestId("catenoid-flow-open-surface").click();
+    const inherited = page.getByTestId("catenoid-document-workflow");
+    await expect(inherited).toBeVisible();
+    await expect(inherited.getByTestId("catenoid-document-step-curvature"))
+      .toHaveAttribute("aria-current", "step");
+    await expect(inherited.getByRole("button")).toHaveText([
+      "1 Study", "2 Curvature", "3 Comparison", "4 Workbook",
+    ]);
+    await inherited.getByTestId("catenoid-document-step-comparison").click();
+    await expect(panel.getByTestId("project-detail-tab-journey"))
+      .toHaveAttribute("aria-current", "page");
+    await expect(panel.getByTestId("catenoid-flow-tab-comparison"))
+      .toHaveAttribute("aria-selected", "true");
+    await expect(panel.getByTestId("catenoid-flow-panel-comparison")).toBeVisible();
+  } finally { await closeSurfaceApp(ctx); }
+});
+
 test("Catenoid Notebook links directly to its distinct guided journey", async () => {
   let ctx: LaunchedSurfaceApp | null = null;
   try {

@@ -51,6 +51,7 @@ import { ProjectDependenciesPanel } from "./ProjectDependenciesPanel";
 import { ProjectRelationshipMap } from "./ProjectRelationshipMap";
 import { ProjectCursorInspector } from "./ProjectCursorInspector";
 import { ProjectStudiesPanel } from "./ProjectStudiesPanel";
+import type { CatenoidJourneyStep } from "./CatenoidJourneyWorkflow";
 import { buildResearchCommands, type ResearchCommand } from "../projects/researchCommands";
 import { addQualifiedStudyGraphCurveLink } from "../projects/studyGraphCurveLink";
 import { addQualifiedStudyCurveSurfaceLink } from "../projects/studyCurveSurfaceLink";
@@ -213,6 +214,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [quick, setQuick] = useState(false), [detailView, setDetailView] = useState(false), [viewerCompanion, setViewerCompanion] = useState(false), [collection, setCollection] = useState("All projects");
   const [starterView, setStarterView] = useState<"starters" | "studies">("starters");
   const [detailPage, setDetailPage] = useState<"journey" | "overview" | "documents" | "relations" | "results" | "history" | "settings" | "transfer">("overview");
+  const [catenoidStep, setCatenoidStep] = useState<CatenoidJourneyStep>("study");
   const [resultFocus, setResultFocus] = useState<{ id: string; token: number } | null>(null);
   const [studyFocus, setStudyFocus] = useState<{ id: string; token: number; selectionId?: string;
     quantumSelectionHash?: string } | null>(null);
@@ -1816,6 +1818,28 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     }));
   };
   useEffect(() => {
+    const navigate = (event: Event) => {
+      const { projectId, step } = (event as CustomEvent<{
+        projectId: string; step: CatenoidJourneyStep;
+      }>).detail ?? {};
+      const current = projectStateRef.current;
+      if (!current || current.identity.id !== projectId ||
+        !current.metadata.tags?.includes("curated-study-v1") ||
+        !current.metadata.tags.includes("catenoid-evidence") ||
+        !(["study", "curvature", "comparison", "workbook"] as string[]).includes(step)) return;
+      setCatenoidStep(step);
+      setQuick(false); setViewerCompanion(false); setDetailView(true);
+      setDetailPage("journey"); onOpenChange(true);
+      window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+        document.getElementById(`catenoid-flow-tab-${step}`)?.focus({ preventScroll: true });
+        document.querySelector<HTMLElement>('[data-testid="catenoid-journey-flow"]')
+          ?.scrollIntoView({ block: "start" });
+      }));
+    };
+    window.addEventListener("math3d:catenoid-journey-navigate", navigate);
+    return () => window.removeEventListener("math3d:catenoid-journey-navigate", navigate);
+  }, [onOpenChange]);
+  useEffect(() => {
     if (hasOpenProject && project && !preview && !managed && activeProjectDocumentId)
       rememberProjectDocument(localStorage, project, activeProjectDocumentId);
   }, [hasOpenProject, project, preview, managed, activeProjectDocumentId]);
@@ -2592,6 +2616,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
             </aside>
             <ProjectCursorInspector project={project} />
             <ProjectStudiesPanel project={project} documents={dashboardDocuments} resources={resourceSession.current}
+              catenoidStep={catenoidStep} onCatenoidStepChange={setCatenoidStep}
               focusStudy={studyFocus}
               workbookBytes={projectWorkbookBytes}
               onOpenWorkbookBlock={busy ? undefined : (id, stageId, blockId) => {

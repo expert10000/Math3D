@@ -139,6 +139,7 @@ import type { QuantumStudySelectionTarget } from "./projects/quantumStudyWorkboo
 import { GeometryPickReadout } from "./components/GeometryPickReadout";
 import { GeometryAnalysisInspectorPanel } from "./components/GeometryAnalysisInspectorPanel";
 import { KernelWorkspacePanel } from "./components/KernelWorkspacePanel";
+import { CatenoidJourneyWorkflow } from "./components/CatenoidJourneyWorkflow";
 import { ProjectWorkbookMiddleView } from "./components/ProjectWorkbookMiddleView";
 import { ProjectDetailMiddleView } from "./components/ProjectDetailMiddleView";
 import { PROJECT_STORAGE_KEY, projectPayloadKey, saveLibraryProject } from "./projects/projectLibrary";
@@ -80939,6 +80940,14 @@ case "mobius":
   const savedMeshActive = activeKernelModule === "mesh" && !additionalActiveId && Boolean(activeProjectDocumentId && meshDocumentAdapterRef.current && activeProjectDocumentId === meshDocumentAdapterRef.current.document().identity.id && restoredProjectRef.current?.meshes.has(activeProjectDocumentId));
   const savedMeshModuleActive = savedMeshActive && savedMeshModuleView;
   const hasSavedDocumentViewport = (Boolean(additionalActiveId) && !savedSurfaceModuleActive) || (savedMeshActive && !savedMeshModuleView);
+  const catenoidJourneyProject = activeNotebookProjectRef.current;
+  const catenoidJourneySurfaceActive = Boolean(activeProjectDocumentId && catenoidJourneyProject &&
+    catenoidJourneyProject.metadata.tags?.includes("curated-study-v1") &&
+    catenoidJourneyProject.metadata.tags.includes("catenoid-evidence") &&
+    catenoidJourneyProject.workspace.entries.some(entry =>
+      entry.module === "surface" && entry.expected.id === activeProjectDocumentId &&
+      catenoidJourneyProject.workspace.studies?.[0]?.members.some(member =>
+        member.documentId === activeProjectDocumentId)));
   const workspaceHeaderContext = activeProjectDocumentId ? "Project document" : headerContextLabel;
   const navigateProjectBack = () => { const location = projectNavigationRef.current.back(); if (location) navigateRestoredDocument(location.id, location.module); };
   const navigateProjectForward = () => { const location = projectNavigationRef.current.forward(); if (location) navigateRestoredDocument(location.id, location.module); };
@@ -83923,6 +83932,13 @@ case "mobius":
         </div>}
       </header>
       <div id="project-gallery-host" data-testid="project-gallery-host" />
+      {catenoidJourneySurfaceActive && <div className="catenoid-document-workflow">
+        <CatenoidJourneyWorkflow activeStep="curvature" documentView onSelect={step => {
+          window.dispatchEvent(new CustomEvent("math3d:catenoid-journey-navigate", {
+            detail: { projectId: catenoidJourneyProject!.identity.id, step },
+          }));
+        }} />
+      </div>}
       {additionalActiveId && !savedSurfaceModuleActive && restoredProjectRef.current?.additional.get(additionalActiveId) && <SavedDocumentWorkbench customView={savedSurfaceCustomView} onSelectView={view => setSavedSurfaceCustomView(view === "custom")}
         onVerifyScientificPathline={async curve => {
           verifiedCurveTemporalTransfersRef.current = undefined;

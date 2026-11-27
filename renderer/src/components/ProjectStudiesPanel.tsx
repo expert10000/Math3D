@@ -23,6 +23,7 @@ import { volumeMeshJourneyOptions } from "../projects/volumeMeshStudy";
 import { hydrogenGridIndex, pinQuantumStudySample, quantumStudyRecord,
   quantumStudySelectionEvidence } from "../projects/quantumStudySelection";
 import { StudyQuantumSelectionPanel } from "./StudyQuantumSelectionPanel";
+import { CatenoidJourneyWorkflow, type CatenoidJourneyStep } from "./CatenoidJourneyWorkflow";
 
 const StudyPanePreview = lazy(() => import("./StudyPanePreview").then(module => ({ default: module.StudyPanePreview })));
 
@@ -31,6 +32,8 @@ type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoi
   resources?: VerifiedProjectResources;
   focusStudy?: Readonly<{ id: string; token: number; selectionId?: string;
     quantumSelectionHash?: string }> | null;
+  catenoidStep: CatenoidJourneyStep;
+  onCatenoidStepChange: (step: CatenoidJourneyStep) => void;
   onCreate: (title: string, ids: readonly string[]) => void; onRename: (id: string, title: string) => void;
   onFork: (id: string, title: string) => void; onLink: (id: string) => void;
   onLinkCurveSurface: (id: string) => void;
@@ -57,7 +60,8 @@ type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoi
   onOpenDocument: (id: string, module: KernelWorkspaceModule) => void }>;
 
 /** A Study is a saved layout of references; opening a pane delegates to its owning document. */
-export function ProjectStudiesPanel({ project, documents, editable, resources, focusStudy, onCreate, onRename, onFork, onConfigure,
+export function ProjectStudiesPanel({ project, documents, editable, resources, focusStudy,
+  catenoidStep, onCatenoidStepChange, onCreate, onRename, onFork, onConfigure,
   onLink, onLinkCurveSurface, onLinkSurfaceMesh, onCreateQwz, onPinQwz, onUnpinQwz, onDeriveQwzProfile,
   onPinQuantumSample, onPublishQuantumWorkbook,
   onPublishSurfaceRidge, onSaveProject, onOpenWorkbook,
@@ -74,7 +78,7 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
   const [paneOrder, setPaneOrder] = useState<string[]>([]);
   const [visiblePaneId, setVisiblePaneId] = useState<string | null>(null);
   const [quantumSelectionMessage, setQuantumSelectionMessage] = useState("");
-  const [catenoidStep, setCatenoidStep] = useState<"study" | "curvature" | "comparison" | "workbook">("study");
+  const setCatenoidStep = onCatenoidStepChange;
   const quantumSelectionSerial = useRef(0);
   const viewRef = useRef<HTMLDivElement>(null);
   const studies = project.workspace.studies ?? [];
@@ -145,26 +149,7 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
       aria-label="Catenoid evidence journey">
       <div className="catenoid-journey-heading"><strong>Catenoid evidence journey</strong>
         <span>{ridgeResult ? "Comparison recorded" : "Continue the saved Study"}</span></div>
-      <div className="catenoid-journey-tabs" role="tablist" aria-label="Catenoid journey workflow">
-        <strong className="catenoid-journey-workflow-label" aria-hidden="true">Workflow</strong>
-        {([ ["study", "Study"], ["curvature", "Curvature"],
-          ["comparison", "Comparison"], ["workbook", "Workbook"] ] as const).map(([id, label], index) =>
-          <span className="catenoid-journey-step" key={id}>
-            {index > 0 && <span className="catenoid-journey-arrow" aria-hidden="true">→</span>}
-            <button type="button" role="tab" id={`catenoid-flow-tab-${id}`}
-            data-testid={`catenoid-flow-tab-${id}`} aria-selected={catenoidStep === id}
-            aria-controls="catenoid-flow-panel" tabIndex={catenoidStep === id ? 0 : -1}
-            onClick={() => setCatenoidStep(id)} onKeyDown={event => {
-              const order = ["study", "curvature", "comparison", "workbook"] as const;
-              const index = order.indexOf(id);
-              const next = event.key === "ArrowRight" ? order[(index + 1) % order.length] :
-                event.key === "ArrowLeft" ? order[(index + order.length - 1) % order.length] :
-                event.key === "Home" ? order[0] : event.key === "End" ? order[order.length - 1] : null;
-              if (next) { event.preventDefault(); setCatenoidStep(next);
-                document.getElementById(`catenoid-flow-tab-${next}`)?.focus(); }
-            }}>{index + 1} {label}</button>
-          </span>)}
-      </div>
+      <CatenoidJourneyWorkflow activeStep={catenoidStep} onSelect={setCatenoidStep} />
       <div role="tabpanel" id="catenoid-flow-panel" aria-labelledby={`catenoid-flow-tab-${catenoidStep}`}
         data-testid={`catenoid-flow-panel-${catenoidStep}`}>
         {catenoidStep === "study" && <><h5>Inspect the saved Study</h5>
