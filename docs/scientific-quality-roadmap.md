@@ -1,12 +1,12 @@
-# Math3D scientific quality roadmap
+# Math3D scientific quality and feature roadmap
 
-Date: 2026-11-26
+Updated: 2026-11-27
 
-Input: *Przegląd projektu Math3D.pdf* (project review, 5 pages)
+Inputs: *Przegląd projektu Math3D.pdf* (quality review, 5 pages) and *Math3D Feature Roadmap and Scientific Enhancements.pdf* (feature review, 7 pages).
 
-Scope: reproducibility, numerical correctness, documentation, and publication metadata for the current 2.0.0 codebase.
+Scope: reproducibility, numerical correctness, documentation, publication metadata, and scientific feature integration for the current 2.0.0 codebase.
 
-This is a plan based on the review, not an instruction to apply its sample diffs. Validate each change against the current repository before implementation. Keep this plan separate from the product roadmaps in `project-master-roadmap.md` and `math3d-ui-roadmap.md`.
+The reviews are design inputs, not instructions to apply sample diffs or restart completed work. Validate each change against the current repository before implementation. This document prioritizes work across modules; the [Graph2D roadmap](math3d-graph2d-desktop-mobile-roadmap.md), [Graph/Field convergence roadmap](graph-field-explorer-convergence-roadmap-2026-11-03.md), and [Scientific Field Explorer roadmap](scientific-field-explorer-roadmap.md) own detailed feature status, contracts, and release gates. The Project and UI roadmaps remain separate.
 
 ## What the repository already has
 
@@ -21,7 +21,22 @@ This is a plan based on the review, not an instruction to apply its sample diffs
 
 The review's example `npm run lint`, root `npm test`, root `requirements.txt`, and Python 3.10 worker command do not match this repository's present scripts or worker setup. Use the actual commands below.
 
-## Delivery order
+## Reconciliation of the feature review
+
+The feature review could not access the earlier review/ZIP and describes several implemented Graph2D features as missing. The status below is bounded by the cited repository roadmaps and code; it does not imply every platform or physical-device gate has passed.
+
+| Feature review proposal | Existing Math3D baseline | Remaining work to plan |
+| --- | --- | --- |
+| Common safe expression graph and 2D viewport | `packages/core/src/graph2dDocument.ts`, `graph2dExpression.ts`, and `graph2dSceneSampling.ts` provide portable intent, bounded AST evaluation, and sampling. Graphs already has a desktop/web/mobile workspace and uses the existing kernel for commands/history. | Consolidate compatible AST and cross-module source relations where the Graph2D and Graph/Field roadmaps identify a specific gap; do not create a second universal graph or command runtime. |
+| Explicit, parametric, polar, implicit, inequality, piecewise, and data plotting | All seven core Graph kinds, bounded sampling, diagnostics, authoring, and CSV/TSV data paths are documented as implemented. | Refine known numerical limits and platform acceptance. Use the existing samplers and fixtures rather than scheduling a new basic plotter. |
+| Sliders, animation, algebra list, inspector, and graph tools | G2D38/G2D42 and current Graph UI already cover parameter controls, animation, object authoring/visibility, selection, tools, and analysis. | Extend *analysis refresh during parameter preview* and complete outstanding physical/accessibility gates; do not rebuild the panels. |
+| Derivatives, integrals, curvature, and vector plots | Graph calculus, source-linked derivative curves/constructions, curvature constructions, 2D phase/vector views, and Scientific Field Explorer glyphs/slices have bounded implementations. | Extend only the documented gaps: additional linked derivative/integral views, 3D field rendering/validation, and clear method/uncertainty labels. Avoid claiming a complete CAS or exact geometry from numerical results. |
+| Synchronized 2D/3D cross-sections and multiple views | `SurfaceViewer.tsx` and `ParamSurfaceViewer.tsx` already draw a slicing plane and a 2D section preview; the Surface viewer exports section CSV/SVG. Verified Field Explorer slices/profiles also hand off to Graphs, while Project comparison and Graph → Curve/Surface promotion exist. | Promote a Surface section into a **saved, source-linked Graph curve** with frame/units/provenance and verified refresh. Reuse the existing section sampler and preview; do not rebuild slicing or export. |
+| Scientific diagnostics and canonical scenes | Graphs already labels approximate/refined/incomplete results and unresolved intervals; numerical tests and CI exist. | Expand independent analytic oracles and source-linked diagnostics across a small 2D/3D scene corpus, then run it in existing CI. |
+| Publication-quality export and scriptable reproduction | Graphs has SVG/PNG/CSV/offline HTML publication snapshots; Projects and scientific scenes have versioned persistence and Python publication paths. | Qualify direct PDF only if needed; specify a bounded, declarative replay recipe for exact saved sources before offering general Python/Jupyter execution. Preserve editable Project data separately from frozen exports. |
+| Licensing and metadata | License/distribution work is already documented; worker dependency versions are pinned. | Review each new dependency against the existing distribution policy, and use only verified authors, release dates, and DOI metadata. Do not repeat the review's broad licensing or CGAL exactness claims without checking the chosen runtime/kernel. |
+
+## Quality delivery order
 
 ### 1. Establish a reproducible numerical baseline (P0)
 
@@ -61,9 +76,43 @@ The review's example `npm run lint`, root `npm test`, root `requirements.txt`, a
 
 **Acceptance:** A reproducible benchmark identifies a measured bottleneck and a target. A proposed optimization has an explicit numerical and memory regression gate. No GPU or parallelism work is scheduled solely from the review's speculation.
 
+## Feature follow-on sequence
+
+These slices start after the relevant P0 baseline in stages 1-3. They reuse the canonical Graph2D, Field Explorer, Project, and kernel contracts; their identifiers here are priorities, not replacement G2D/GF/SCI milestones.
+
+### F1. Cross-module scientific scene corpus (P0)
+
+Extend the P0 numerical matrix with `sin(x)/x` zeros away from zero, the `1/x` discontinuity, an implicit circle, a paraboloid horizontal slice, and rotational field `F=(-y,x,0)`. Record analytic expectations, domain exclusions, approximation tolerances, source units, method/version, and the UI/result path. Reuse existing fixtures and tests; add only missing assertions.
+
+**Acceptance:** Each scene has an independent oracle and at least one failing negative case. Where a scene crosses modules, its source generation and numerical qualifications survive the applicable Graph/Field/Project save and reopen path. Existing CI runs a bounded subset; slower native checks remain in scoped workflows.
+
+### F2. Publish an existing Surface section into Graphs (P1)
+
+Build on the Surface viewers' existing plane, section polyline, 2D inset, and CSV/SVG export, plus the verified Graph handoff and Project relation model. First publish a bounded analytic height-surface horizontal section as a Graph object or point-series with an explicit math-to-viewer coordinate transform. Retain the plane parameter, source generation, physical frame, units, sampling method/budget, and ambiguous/empty-section status. Link navigation in both directions; changing the existing plane-offset slider should update the preview and request a guarded Graph refresh.
+
+**Acceptance:** For mathematical `z=5-x^2-y^2`, `c=1` produces a radius-2 circle in Graphs within declared tolerance; `c>5` yields an explicit empty section. The existing viewer may store height on its world `y` axis, so the saved transform must be verified. Slider motion updates the existing 3D/inset preview and Graph view without publishing stale samples. Save/reopen retains the linked intent; editing the Surface withholds the old curve until an explicit verified refresh. Arbitrary rotated-plane Graph publication is a later, separately qualified extension; the viewer already supports more than horizontal planes.
+
+### F3. Connected analysis views, not duplicate solvers (P1)
+
+Use existing Graph derivative/integral results and overlays, saved derivative curves, curvature constructions, 2D vector/phase displays, and Field Explorer vector layers. Prioritize the documented gap in refreshing intersections and other analyses during parameter previews, with method, units, domain gaps, completeness, and transient status visible. For a 3D vector workflow, route through Field Explorer's existing glyph/streamline view and define component/frame semantics before linking a planar Graph field to it.
+
+**Acceptance:** `d/dx sin(x^2)` and the integral of `x` on a bounded interval agree with analytic values within stated tolerances, including after a supported parameter change. Unsupported symbolic rules or incomplete scans remain labelled and cannot silently become exact. A linked 3D field view reports vector scale/units and stop reasons; zoom or camera changes do not alter underlying field values.
+
+### F4. Reproducible publication path (P2)
+
+Extend the existing frozen Graph publication snapshot and Project/scientific-scene contracts. Evaluate direct vector PDF export against SVG plus print-to-PDF before adding a new renderer. Specify a declarative scene recipe containing document IDs, exact source hashes, parameters, view state, algorithm versions, tolerances, and required capabilities. A Python/JSON reader may recreate verified data, but saved documents must never execute untrusted code on open.
+
+**Acceptance:** Export/reopen reproduces the same source-linked scene and marks changed or missing source bytes as unavailable. SVG/PNG/CSV/HTML outputs retain the same declared numerical qualifications; any added PDF output passes visual and text checks. The recipe round-trips a Graph + Surface + slice example and refuses an unsupported capability or tampered source.
+
+### F5. Platform and licensing gates (P2)
+
+For each new shared capability, use existing desktop/web/mobile acceptance paths and record actual native-device evidence where required by the canonical roadmaps. Check third-party license compatibility before adding dependencies; describe CGAL exactness only for operations that actually use an exact kernel.
+
+**Acceptance:** The corresponding Graph/SCI release gate identifies supported platforms, performance budgets, accessibility evidence, and any withheld capability. Documentation does not turn a software test into a physical-device signoff or a numerical result into a proof.
+
 ## Suggested first implementation slice
 
-Begin with stages 1 and 2 for one vertical path: implicit sphere generation through the selected backend, followed by mesh validity checks and an analytic size/topology check. Record the pinned environment and tolerance, then add the resulting fast check to stage 3 CI. This gives a concrete scientific correctness gate before metadata and documentation polish.
+Begin with stages 1 and 2 for one vertical path: implicit sphere generation through the selected backend, followed by mesh validity checks and an analytic size/topology check. Record the pinned environment and tolerance, then add the resulting fast check to stage 3 CI. In parallel, inventory which F1 scene oracles already pass so the later Surface/Graph slice is built on measured numerical behavior.
 
 ## Decisions needed before publication metadata
 
