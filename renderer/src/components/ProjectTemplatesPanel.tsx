@@ -9,6 +9,8 @@ import type { ProjectLibraryEntry } from "../projects/projectLibrary";
 export type ProjectStarterId = Math3DProjectTemplateId | NotebookStarterId;
 const curatedStarterId = (item: CuratedStudy): ProjectStarterId | null =>
   item.route.kind === "project" ? item.route.starterId : null;
+// List only entries with a dedicated, navigable in-app step flow.
+const STEP_JOURNEY_IDS = new Set(["catenoid-evidence"]);
 const starters = [...MATH3D_PROJECT_TEMPLATES, ...NOTEBOOK_STARTERS.map(item => ({ ...item,
   steps: [item.id === "ripple-wave-study" ? "Open Surface first, then choose Graph, Mesh or Geometry from the Project tree. Find its Workbook citations and Notes in Project details → Documents." :
     item.id === "mesh-comparison-study" ? "In Projects, open Saved Mesh analysis results → View saved result trend. Pin two points to compare their recorded values." :
@@ -94,6 +96,7 @@ export const ProjectTemplatesPanel: React.FC<{ onPreview: (id: ProjectStarterId)
   const matches = starters.filter(item => (moduleFilter === "All modules" || PROJECT_STARTER_MODULES[item.id].includes(moduleFilter)) &&
     `${item.title} ${item.description} ${PROJECT_STARTER_MODULES[item.id].join(" ")}`.toLowerCase().includes(query.trim().toLowerCase()));
   const guided = CURATED_STUDIES.filter(item => {
+    if (journeysOnly && !STEP_JOURNEY_IDS.has(item.id)) return false;
     const starterId = curatedStarterId(item);
     const haystack = [item.question, item.objects, item.operations, item.insight, item.field,
       item.id === "catenoid-evidence" ? "Catenoid evidence journey" : "",
@@ -106,12 +109,14 @@ export const ProjectTemplatesPanel: React.FC<{ onPreview: (id: ProjectStarterId)
   const galleryJourney = host ? resolvePlatformJourneys(host).gallery : null;
   const canCreateCopy = !galleryJourney || galleryJourney.mode === "open";
   return <section data-testid="project-templates" className="project-starters">
-    {journeysOnly ? <h3>Guided journeys</h3> : <div className="curated-study-switch" role="group" aria-label="Gallery view">
+    {journeysOnly ? <h3>Journeys ({guided.length})</h3> : <div className="curated-study-switch" role="group" aria-label="Gallery view">
       <button type="button" data-testid="project-gallery-guided" aria-pressed={activeView === "studies"} onClick={() => onViewChange("studies")}>Guided Studies ({guided.length})</button>
       <button type="button" data-testid="project-gallery-all-starters" aria-pressed={activeView === "starters"} onClick={() => onViewChange("starters")}>All starters ({matches.length})</button>
     </div>}
     {activeView === "studies" && <>
-      <p className="curated-study-intro">Choose a scientific question, inspect its saved sources, and follow the stated limitations. Quantum cards require your own verified scene bundle; CAS examples save into a named Project.</p>
+      <p className="curated-study-intro">{journeysOnly ?
+        "Open a connected step-by-step flow. Other guided examples remain under Starter projects → Guided Studies." :
+        "Choose a scientific question, inspect its saved sources, and follow the stated limitations. Quantum cards require your own verified scene bundle; CAS examples save into a named Project."}</p>
       {!guided.length && <p className="project-gallery-empty">No guided Studies match. Try another search or module.</p>}
       <div className="curated-study-grid">{guided.map(item => <CuratedStudyCard key={item.id} item={item}
         starterTitle={curatedStarterId(item) ? starters.find(starter => starter.id === curatedStarterId(item))?.title : undefined}

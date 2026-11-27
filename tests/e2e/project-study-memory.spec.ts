@@ -38,6 +38,7 @@ test("source Project and Study navigation releases previews over 80 cycles", asy
     for (let cycle = 1; cycle <= cycles; cycle++) {
       if (!await projects.getByTestId("project-studies-panel").count())
         await click(projects.getByTestId("project-gallery-layout-toggle").first());
+      await click(projects.getByTestId("project-detail-tab-overview"));
       const studies = projects.getByTestId("project-studies-panel");
       if (!await studies.getByTestId("project-study-panes").count())
         await click(studies.getByTestId(`project-study-open-${study.id}`));

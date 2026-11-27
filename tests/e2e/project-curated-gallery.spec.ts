@@ -59,7 +59,8 @@ test("Projects Journeys lists the Catenoid flow and opens its step tabs", async 
     await page.getByTestId("projects-toggle").click();
     await panel.getByRole("button", { name: "Journeys", exact: true }).click();
     await expect(panel.getByTestId("project-explorer-header").locator("h2")).toHaveText("Journeys");
-    await expect(panel.getByRole("heading", { name: "Guided journeys" })).toBeVisible();
+    await expect(panel.getByRole("heading", { name: "Journeys (1)" })).toBeVisible();
+    await expect(panel.locator(".curated-study-card")).toHaveCount(1);
     await expect(panel.locator(".curated-study-card").first())
       .toHaveAttribute("data-testid", "curated-study-card-catenoid-evidence");
     await expect(panel.locator(".project-gallery-workspace")).toBeHidden();
@@ -71,10 +72,17 @@ test("Projects Journeys lists the Catenoid flow and opens its step tabs", async 
     await expect(panel.getByTestId("project-detail-tab-journey")).toHaveAttribute("aria-current", "page");
     await expect(panel.getByTestId("catenoid-flow-tab-study")).toBeInViewport();
     await expect(panel.getByTestId("catenoid-flow-tab-study")).toBeFocused();
+    await expect(panel.getByTestId("project-study-create")).toBeHidden();
     await panel.getByTestId("project-detail-tab-overview").click();
     await expect(panel.locator(".project-dashboard-documents")).toBeVisible();
     await panel.getByTestId("project-detail-tab-journey").click();
     await expect(panel.getByTestId("catenoid-flow-tab-curvature")).toBeVisible();
+    await panel.getByTestId("project-research-nav-journeys").click();
+    await expect(panel.getByTestId("curated-study-open-catenoid-evidence"))
+      .toHaveText("Continue journey");
+    await panel.getByTestId("curated-study-open-catenoid-evidence").click();
+    await expect(panel.getByTestId("project-detail-tab-journey")).toHaveAttribute("aria-current", "page");
+    await expect(panel.getByTestId("catenoid-flow-tab-study")).toBeInViewport();
   } finally { await closeSurfaceApp(ctx); }
 });
 
@@ -104,6 +112,16 @@ test("Catenoid Notebook links directly to its distinct guided journey", async ()
     await expect(panel.getByTestId("catenoid-journey-flow")).toBeVisible({ timeout: 60_000 });
     await expect(panel.getByTestId("project-detail-tab-journey")).toHaveAttribute("aria-current", "page");
     await expect(panel.getByTestId("catenoid-flow-tab-curvature")).toBeVisible();
+    await panel.getByTestId("project-research-nav-gallery").click();
+    await panel.getByTestId("project-template-open-catenoid-evidence").click();
+    await expect(panel.getByTestId("project-explorer-header").locator("h2"))
+      .toHaveText("Catenoid Evidence Notebook");
+    await panel.getByTestId("project-open-guided-catenoid").click();
+    await expect(panel.getByTestId("curated-study-open-catenoid-evidence"))
+      .toHaveText("Continue journey");
+    await panel.getByTestId("curated-study-open-catenoid-evidence").click();
+    await expect(panel.getByTestId("project-detail-tab-journey")).toHaveAttribute("aria-current", "page");
+    await expect(panel.getByTestId("catenoid-flow-tab-study")).toBeInViewport();
   } finally { await closeSurfaceApp(ctx); }
 });
 
@@ -210,6 +228,7 @@ test("guided Catenoid Study opens its saved Mesh curvature result after a cold r
     expect(first.workbooks.some((book: { title: string }) => book.title.endsWith("Research"))).toBe(true);
     if (!await panel.getByTestId("project-studies-panel").count())
       await panel.getByTestId("project-gallery-layout-toggle").click();
+    await panel.getByTestId("project-detail-tab-overview").click();
     if (!await panel.getByTestId("project-study-panes").count())
       await panel.getByTestId("project-studies-panel").locator('[data-testid^="project-study-open-"]').click();
     const comparison = panel.getByTestId("project-catenoid-waist-evidence");

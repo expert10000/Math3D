@@ -656,8 +656,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const starterCopies = useMemo(() => {
     let activeId: string | null = null;
     try { activeId = readActiveProjectId(); } catch { /* Open reports invalid saved bytes without replacing them. */ }
+    const ordinaryLibrary = { ...library, entries: library.entries.filter(entry => !entry.tags.includes("curated-study-v1")) };
     return Object.fromEntries([...MATH3D_PROJECT_TEMPLATES, ...NOTEBOOK_STARTERS].flatMap(item => {
-      const copy = findProjectStarterCopy(library, item.id, activeId);
+      const copy = findProjectStarterCopy(ordinaryLibrary, item.id, activeId);
       return copy ? [[item.id, copy]] : [];
     }));
   }, [library, project]);
@@ -1797,7 +1798,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     const study = next.workspace.studies?.[0];
     if (!study) return;
     const catenoidJourney = next.metadata.tags?.includes("catenoid-evidence") ?? false;
-    if (catenoidJourney) setStudyFocus(null);
+    if (catenoidJourney) { setStudyFocus(null); setViewingDocumentId(null); }
     else setStudyFocus(previous => ({ id: study.id, token: (previous?.token ?? 0) + 1 }));
     setQuick(false); setViewerCompanion(false); setDetailView(true);
     setDetailPage(catenoidJourney ? "journey" : "overview");
@@ -1852,8 +1853,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     const sequence = ++importSequence.current;
     try {
       const available = parseProjectLibrary(localStorage.getItem(PROJECT_LIBRARY_KEY));
-      const copy = findProjectStarterCopy(curated ? { ...available, entries: available.entries.filter(entry => entry.tags.includes("curated-study-v1")) } :
-        available, id, readActiveProjectId());
+      const scoped = { ...available, entries: available.entries.filter(entry =>
+        entry.tags.includes("curated-study-v1") === curated) };
+      const copy = findProjectStarterCopy(scoped, id, readActiveProjectId());
       if (copy) {
         const next = loadLibraryProject(localStorage, copy.id), resources = await loadProjectResources(next);
         if (sequence !== importSequence.current) return;
@@ -1888,16 +1890,20 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     try {
       if (!newCopy) {
         const activeId = readActiveProjectId(), available = parseProjectLibrary(localStorage.getItem(PROJECT_LIBRARY_KEY));
-        const copy = findProjectStarterCopy(curated ? { ...available, entries: available.entries.filter(entry => entry.tags.includes("curated-study-v1")) } :
-          available, id, activeId);
+        const scoped = { ...available, entries: available.entries.filter(entry =>
+          entry.tags.includes("curated-study-v1") === curated) };
+        const copy = findProjectStarterCopy(scoped, id, activeId);
         if (copy) {
           const savedCopy = loadLibraryProject(localStorage, copy.id);
           if (hasOpenProject && copy.id === activeId && !preview && !managed && project?.identity.id === copy.id) {
-            const first = (["geometry", "surface", "mesh", "volume", "curve", "graph2d"] as const)
-              .map(module => project.workspace.entries.find(entry => entry.module === module)).find(Boolean) ?? project.workspace.entries[0];
-            if (first) { onNavigateDocument?.(first.expected.id, first.module); setViewingDocumentId(first.expected.id); }
-            placeProject("left"); onOpenChange(true); // Keep the active edited Project; do not restore an older saved snapshot.
-            if (curated) focusGuidedStudy(project);
+            if (curated && id === "catenoid-evidence") focusGuidedStudy(project);
+            else {
+              const first = (["geometry", "surface", "mesh", "volume", "curve", "graph2d"] as const)
+                .map(module => project.workspace.entries.find(entry => entry.module === module)).find(Boolean) ?? project.workspace.entries[0];
+              if (first) { onNavigateDocument?.(first.expected.id, first.module); setViewingDocumentId(first.expected.id); }
+              placeProject("left"); onOpenChange(true); // Keep the active edited Project; do not restore an older saved snapshot.
+              if (curated) focusGuidedStudy(project);
+            }
           } else {
             const opened = await openLibraryProject(copy.id, true);
             if (curated && opened) focusGuidedStudy(savedCopy);

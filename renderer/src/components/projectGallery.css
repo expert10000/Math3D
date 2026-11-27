@@ -61,6 +61,10 @@ body:has(#project-gallery-host:not(:empty)) :is([data-testid="projects-quick-tog
 .project-gallery-page .project-gallery-layout-detail[data-detail-page="journey"] .project-workspace-summary > .project-dashboard-grid { display:grid; }
 .project-gallery-page .project-gallery-layout-detail[data-detail-page="journey"] .project-dashboard-grid > :not([data-testid="project-studies-panel"]),
 .project-gallery-page .project-gallery-layout-detail[data-detail-page="journey"] .project-scene-shortcuts { display:none; }
+.project-gallery-page .project-gallery-layout-detail[data-detail-page="journey"] [data-testid="project-studies-panel"] { padding:0;border:0;background:transparent; }
+.project-gallery-page .project-gallery-layout-detail[data-detail-page="journey"] [data-testid="project-studies-panel"] > :not(.catenoid-journey-flow),
+.project-gallery-page .project-gallery-layout-detail[data-detail-page="journey"] .project-workspace-summary > :is(.project-workspace-eyebrow,.project-workspace-description) { display:none; }
+.project-gallery-page .project-gallery-layout-detail[data-detail-page="journey"] .catenoid-journey-flow { margin:0; }
 .project-gallery-page .project-gallery-layout-detail[data-detail-page="overview"] .project-workspace-summary > .project-dashboard-grid { display:grid; }
 .project-gallery-page .project-gallery-layout-detail[data-detail-page="overview"] .project-workspace-summary > .project-relationship-map,
 .project-gallery-page .project-gallery-layout-detail[data-detail-page="relations"] .project-workspace-summary > .project-relationship-map,

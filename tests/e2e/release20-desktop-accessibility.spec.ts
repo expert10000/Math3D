@@ -49,6 +49,7 @@ test("guided release journeys have distinct actions, Project focus and reduced m
       .toBeLessThan(0.001);
     if (!await projects.getByTestId("project-studies-panel").count())
       await projects.getByTestId("project-gallery-layout-toggle").click();
+    await projects.getByTestId("project-detail-tab-overview").click();
     const studies = projects.getByTestId("project-studies-panel");
     await studies.locator("[data-testid^='project-study-open-']").first().click();
     await studies.getByTestId("project-study-open-source-pane-1").click();
