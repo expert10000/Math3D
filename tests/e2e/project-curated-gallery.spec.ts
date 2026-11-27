@@ -110,7 +110,7 @@ test("Catenoid workflow stays visible on its Surface and returns to the selected
     const surfaceFlow = page.getByTestId("catenoid-surface-subflow");
     await expect(surfaceFlow).toBeVisible();
     await expect(surfaceFlow.locator("nav")).toHaveAttribute("aria-label", "Surface curvature subflow");
-    await expect(surfaceFlow.getByRole("button")).toHaveText([
+    await expect(surfaceFlow.locator("nav").getByRole("button")).toHaveText([
       "1 Surface", "2 Analysis", "3 Curvature field", "4 Compute",
     ]);
     await expect(inherited.getByTestId("catenoid-document-step-curvature"))
@@ -128,6 +128,11 @@ test("Catenoid workflow stays visible on its Surface and returns to the selected
     await surfaceFlow.getByTestId("catenoid-surface-step-compute").click();
     await expect(surfaceFlow.getByRole("status"))
       .toHaveText("Curvature result ready. Continue with 3 Comparison.", { timeout: 30_000 });
+    await expect(surfaceFlow.getByTestId("catenoid-surface-open-mesh")).toBeVisible();
+    await surfaceFlow.getByTestId("catenoid-surface-open-mesh").click();
+    await expect(page.getByRole("button", { name: "Back to catenoid" })).toBeVisible();
+    await page.getByRole("button", { name: "Back to catenoid" }).click();
+    await expect(surfaceFlow).toBeVisible();
     await expect(inherited.getByRole("button")).toHaveText([
       "1 Study", "2 Curvature", "3 Comparison", "4 Workbook",
     ]);

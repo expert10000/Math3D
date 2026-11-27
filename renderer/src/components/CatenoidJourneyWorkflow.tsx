@@ -53,8 +53,10 @@ export type CatenoidSurfaceStep = "surface" | "analysis" | "curvature" | "comput
 
 type SurfaceSubflowProps = Readonly<{
   activeStep: CatenoidSurfaceStep;
-  computeState: "unavailable" | "ready" | "running" | "computed" | "failed";
+  computeState: "preparing" | "unavailable" | "ready" | "running" | "computed" | "failed";
   onSelect: (step: CatenoidSurfaceStep) => void;
+  onRetrySamples?: () => void;
+  savedMesh?: Readonly<{ title: string; count: number; onOpen: () => void }>;
 }>;
 
 const SURFACE_STEPS: ReadonlyArray<readonly [CatenoidSurfaceStep, string]> = [
@@ -62,12 +64,14 @@ const SURFACE_STEPS: ReadonlyArray<readonly [CatenoidSurfaceStep, string]> = [
   ["curvature", "Curvature field"], ["compute", "Compute"],
 ];
 
-export function CatenoidSurfaceSubflow({ activeStep, computeState, onSelect }: SurfaceSubflowProps) {
+export function CatenoidSurfaceSubflow({ activeStep, computeState, onSelect, onRetrySamples, savedMesh }: SurfaceSubflowProps) {
   const computeLabel = computeState === "running" ? "Computing…" :
+    computeState === "preparing" ? "Preparing…" :
     computeState === "computed" ? "Recompute" :
     computeState === "failed" ? "Retry Compute" : "Compute";
   const status = computeState === "computed" ? "Curvature result ready. Continue with 3 Comparison." :
     computeState === "running" ? "Curvature computation in progress." :
+    computeState === "preparing" ? "Preparing Surface samples for curvature. Retry if this does not finish." :
     computeState === "unavailable" ? "This Surface source is unavailable for curvature computation." :
     computeState === "failed" ? "Curvature computation failed. Review the Surface result and retry." :
     "Compute curvature, then continue with 3 Comparison.";
@@ -79,12 +83,18 @@ export function CatenoidSurfaceSubflow({ activeStep, computeState, onSelect }: S
           {index > 0 && <span className="catenoid-journey-arrow" aria-hidden="true">→</span>}
           <button type="button" data-testid={`catenoid-surface-step-${id}`}
             aria-current={activeStep === id ? "step" : undefined}
-            disabled={id === "compute" && (computeState === "unavailable" || computeState === "running")}
+            disabled={id === "compute" && (computeState === "preparing" || computeState === "unavailable" || computeState === "running")}
             onClick={() => onSelect(id)}>
             {index + 1} {id === "compute" ? computeLabel : label}
           </button>
         </span>)}
     </nav>
-    <p className="catenoid-surface-status" role="status">{status}</p>
+    <div className="catenoid-surface-footer">
+      <p className="catenoid-surface-status" role="status">{status}</p>
+      {(computeState === "preparing" || computeState === "unavailable") && onRetrySamples &&
+        <button type="button" data-testid="catenoid-surface-retry-samples" onClick={onRetrySamples}>Retry Surface samples</button>}
+      {savedMesh && <button type="button" data-testid="catenoid-surface-open-mesh"
+        title={savedMesh.title} onClick={savedMesh.onOpen}>Open saved Mesh{savedMesh.count > 1 ? ` (${savedMesh.count})` : ""}</button>}
+    </div>
   </div>;
 }

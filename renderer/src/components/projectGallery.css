@@ -211,7 +211,9 @@ body:has(#project-gallery-host:not(:empty)) :is([data-testid="projects-quick-tog
 .catenoid-surface-steps button[aria-current="step"] { border-color:#0a66c2;background:#dbeafe;color:#0a66c2;font-weight:700; }
 .catenoid-surface-steps button[data-testid="catenoid-surface-step-compute"] { border-color:#7aa9e3;color:#0b57a3;font-weight:700; }
 .catenoid-surface-steps button:disabled { opacity:.55;cursor:not-allowed; }
+.catenoid-surface-footer { display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:6px 10px; }
 .catenoid-document-workflow .catenoid-surface-status { margin:0;color:#45617d;font:600 12px/1.35 system-ui,sans-serif;text-align:center; }
+.catenoid-surface-footer button { min-height:28px;padding:3px 10px;border:1px solid #a8c5e8;border-radius:999px;background:#fff;color:#0b57a3;font:700 12px system-ui,sans-serif;cursor:pointer; }
 :is(.project-gallery-page,.catenoid-document-workflow) .catenoid-journey-tabs button { min-height:32px;padding:4px 10px;border-radius:999px;border-color:#cbd5e1;background:#fff;color:#334155;font-size:13px;text-align:center;white-space:nowrap; }
 :is(.project-gallery-page,.catenoid-document-workflow) .catenoid-journey-tabs button:is([aria-selected="true"],[aria-current="step"]) { border-color:#0a66c2;background:linear-gradient(180deg,#dbeafe 0%,#bfdbfe 100%);color:#0a66c2;font-weight:700;box-shadow:0 4px 10px rgba(37,99,235,.2); }
 .project-gallery-page .catenoid-journey-tabs button[aria-selected="true"]:hover { background:linear-gradient(180deg,#dbeafe 0%,#bfdbfe 100%); }

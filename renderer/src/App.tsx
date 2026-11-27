@@ -41788,6 +41788,7 @@ const App: React.FC = () => {
   }, [datasetKind]);
   const [gaussHoverIndex, setGaussHoverIndex] = useState<number | null>(null);
   const [surfaceSampleSet, setSurfaceSampleSet] = useState<SurfaceSampleSet | null>(null);
+  const [savedSurfaceSampleRefreshToken, setSavedSurfaceSampleRefreshToken] = useState(0);
   const lastSurfaceSampleSetRef = useRef<{ sourceKey: string; set: SurfaceSampleSet } | null>(null);
   const [deferredSurfaceSampleSetInfo, setDeferredSurfaceSampleSetInfo] = useState<DeferredSurfaceSampleSetInfo | null>(null);
   const deferredSurfaceSampleSetRef = useRef<SurfaceSampleSet | null>(null);
@@ -50858,7 +50859,10 @@ case "mobius":
   }, [calculusVectorFields, meshDataset?.fields?.vectors, meshFieldSourceRegistry, surfaceMeshCurvatures, workbookVectorFields]);
 
   const surfaceCurvatureSource = useMemo(() => {
-    const curvatures = surfaceSampleSet?.curvatures ?? graphCurvatures ?? surfaceMeshCurvatures;
+    const curvatures = activeSavedSurfaceBinding
+      ? lastSurfaceSampleSetRef.current?.sourceKey === activeCanonicalSurfaceDefinition.identity.key
+        ? surfaceSampleSet?.curvatures : null
+      : surfaceSampleSet?.curvatures ?? graphCurvatures ?? surfaceMeshCurvatures;
     if (!curvatures?.K?.length || curvatures.H.length !== curvatures.K.length || curvatures.k1.length !== curvatures.K.length || curvatures.k2.length !== curvatures.K.length) return null;
     const sampleCount = curvatures.K.length;
     let positions: Float64Array | Float32Array | undefined;
@@ -50886,7 +50890,8 @@ case "mobius":
       uncertaintyMask: meshSource ? Uint8Array.from(meshSource.warningMask, (flag) => Number(flag !== 0)) : undefined,
       directionValidityMask: meshSource?.directionValidMask,
     };
-  }, [graphCurvatures, surfaceMeshCurvatures, surfaceMeshData?.positions, surfaceSampleSet]);
+  }, [activeCanonicalSurfaceDefinition.identity.key, activeSavedSurfaceBinding, graphCurvatures,
+    surfaceMeshCurvatures, surfaceMeshData?.positions, surfaceSampleSet]);
 
   activeSurfaceCurvatureIdentityRef.current = activeCanonicalSurfaceDefinition.identity.key;
   const previousSurfaceCurvatureIdentityRef = useRef(activeCanonicalSurfaceDefinition.identity.key);
@@ -56749,6 +56754,7 @@ case "mobius":
     (set: SurfaceSampleSet | null) => {
       if (!set) {
         const previous = lastSurfaceSampleSetRef.current;
+        if (previous && previous.sourceKey !== activeCanonicalSurfaceDefinition.identity.key) return;
         if (previous) releaseSurfaceSampleSet(previous.set);
         lastSurfaceSampleSetRef.current = null;
       }
@@ -80955,7 +80961,10 @@ case "mobius":
       entry.module === "surface" && entry.expected.id === activeProjectDocumentId &&
       catenoidJourneyProject.workspace.studies?.[0]?.members.some(member =>
         member.documentId === activeProjectDocumentId)));
-  const catenoidSurfaceComputeState = !surfaceCurvatureSource ? "unavailable" :
+  const catenoidSurfaceComputeState = !surfaceCurvatureSource
+    ? activeSavedSurfaceBinding && (!surfaceSampleSet ||
+      lastSurfaceSampleSetRef.current?.sourceKey !== activeCanonicalSurfaceDefinition.identity.key)
+      ? "preparing" : "unavailable" :
     surfaceCurvatureExecution === "queued" || surfaceCurvatureExecution === "running" ||
     surfaceCurvatureExecution === "progressive" ? "running" :
     surfaceCurvatureExecution === "failed" || surfaceCurvatureExecution === "stale" ||
@@ -80964,6 +80973,7 @@ case "mobius":
   const catenoidSurfaceStep: CatenoidSurfaceStep = surfacesLeftTab === "scene" ? "surface" :
     activeSurfaceComputation !== "curvature-field" ? "analysis" :
     catenoidSurfaceComputeState === "computed" ? "compute" : "curvature";
+  const catenoidSavedMesh = savedSurfaceMeshChoices.find(choice => choice.current) ?? savedSurfaceMeshChoices[0];
   const workspaceHeaderContext = activeProjectDocumentId ? "Project document" : headerContextLabel;
   const navigateProjectBack = () => { const location = projectNavigationRef.current.back(); if (location) navigateRestoredDocument(location.id, location.module); };
   const navigateProjectForward = () => { const location = projectNavigationRef.current.forward(); if (location) navigateRestoredDocument(location.id, location.module); };
@@ -81060,7 +81070,7 @@ case "mobius":
                     } : null}
                   />);
   const renderNativeParamSurfaceViewer = () => (<ParamSurfaceViewer
-                            key={activeSavedSurfaceBinding?.generation.structuralHash}
+                            key={`${activeSavedSurfaceBinding?.generation.structuralHash ?? "unsaved"}:${savedSurfaceSampleRefreshToken}`}
                             documentBinding={activeSavedSurfaceBinding ?? undefined}
                             surfaceId={activeSavedSurfaceBinding ? "custom" : primaryParamId}
                             renderQuality={surfaceRenderQuality}
@@ -82545,7 +82555,12 @@ case "mobius":
                   }));
                 }} />
                 <CatenoidSurfaceSubflow activeStep={catenoidSurfaceStep}
-                  computeState={catenoidSurfaceComputeState} onSelect={step => {
+                  computeState={catenoidSurfaceComputeState}
+                  onRetrySamples={() => setSavedSurfaceSampleRefreshToken(token => token + 1)}
+                  savedMesh={catenoidSavedMesh ? { title: catenoidSavedMesh.title,
+                    count: savedSurfaceMeshChoices.length,
+                    onOpen: () => navigateRestoredDocument(catenoidSavedMesh.id, "mesh") } : undefined}
+                  onSelect={step => {
                     setSurfacesPanelState("work");
                     if (step === "surface") { setSurfacesLeftTab("scene"); return; }
                     setSurfacesLeftTab("analysis");
