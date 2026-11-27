@@ -3,7 +3,7 @@ import type { Math3DProject, StudyRecordV1 } from "@math3d/core";
 import { downloadStudyBlob } from "../projects/studyComparisonExport";
 import { pinQuantumStudySample, quantumStudyRecord, quantumStudySelectionEvidence } from "../projects/quantumStudySelection";
 
-type Role = "density" | "phase" | "chain" | "bands" | "stationary" | "spectrum" | "energy" | "gap" | "pairing";
+type Role = "density" | "phase" | "chain" | "bands" | "stationary" | "spectrum" | "energy" | "gap" | "pairing" | "receipt";
 type Evidence = Awaited<ReturnType<typeof quantumStudySelectionEvidence>>;
 
 /** Saved coordinates are shown only after reopening every exact source bundle. */
@@ -40,7 +40,7 @@ export function StudyQuantumSelectionPanel({ project, study, editable, onPin, on
   const datasets = sampleScene?.format === "math3d.quantum-scene-document" ? sampleScene.source.datasets : [];
   const bdgPoints = datasets.find(item => item.id === "positive-positions")?.count ?? 0;
   const latticeSize = Math.sqrt(datasets.find(item => item.id === "positive-energy-positions")?.count ?? 0);
-  const pin = async (role: "chain" | "bands" | "stationary" | "spectrum" | "energy", index: number, objectId: string) => {
+  const pin = async (role: "chain" | "bands" | "stationary" | "spectrum" | "energy" | "receipt", index: number, objectId: string) => {
     if (!Number.isSafeInteger(index) || index < 0) { setError("Enter a nonnegative sample index."); return; }
     setError(""); setBusy(true);
     try {
@@ -70,7 +70,12 @@ export function StudyQuantumSelectionPanel({ project, study, editable, onPin, on
   };
   return <section data-testid="project-study-quantum-selection" aria-label="Saved quantum Study selection">
     <h6>Saved selection and evidence</h6>
-    {record.templateId === "ute2-landau" ? <div>
+    {record.templateId === "ute2-topology" ? <div>
+      <p>Select the producer-supplied class-D bulk receipt. Its continuous gap and two-mesh diagnostics are rechecked against the exact saved scene. The toy Chern value is shown only when the full gap is open and the convergence checks agree. No UTe₂ material or Majorana claim follows.</p>
+      <button type="button" disabled={!editable || busy} data-testid="project-study-pin-topology"
+        onClick={() => void pin("receipt", 0, "bulk-receipt")}>Save bulk receipt</button>{" "}
+      {record.panels[0]?.sampleIndex === null ? "No saved receipt" : "Bulk receipt selected"}
+    </div> : record.templateId === "ute2-landau" ? <div>
       <p>Choose one producer-supplied stationary candidate. Its free energy, local-stability role and global-minimum role are rechecked against the exact scene bundle before display. This dimensionless toy does not map a measured UTe₂ phase boundary.</p>
       <label>Stationary candidate index{" "}<input type="number" min={0} max={3} step={1} value={landauIndex}
         data-testid="project-study-landau-index" onChange={event=>setLandauIndex(Number(event.target.value))}/></label>{" "}

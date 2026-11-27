@@ -805,6 +805,22 @@ declare global {
         sampledNode: boolean; grid: { size: number; order: "kx-major/ky-minor"; domain: "[-pi,pi)" };
         qualification: "producer-supplied finite-grid spinless lattice toy sample";
       }>;
+      ute2TopologyReceipt: (request: { fingerprint: string }) => Promise<{
+        fingerprint: string; runId: string; resultSha256: string; model: "square_lattice_class_d";
+        parameters: { mu: number; delta: number; mesh: number };
+        status: "defined" | "gap_closed" | "mesh_unresolved"; chern: -1 | 0 | 1 | null;
+        orientation: string; bulkMinimumEnergy: number; bulkGap: number; sampledMinimumEnergy: number;
+        diagnostics: { coarseMesh: number; fineMesh: number; coarseLinkChern: number | null;
+          fineLinkChern: number | null; coarseMinimumLink: number | null; fineMinimumLink: number | null;
+          curvatureIntegralCoarse: number | null; curvatureIntegralFine: number | null };
+        qualification: string;
+      }>;
+      ute2EdgeReceipt: (request: { fingerprint: string }) => Promise<{
+        fingerprint: string; runId: string; resultSha256: string;
+        source: { bulkRunId: string; bulkResultSha256: string; bulkChern: -1 | 0 | 1 };
+        ky: number; status: "localized_in_gap" | "not_resolved";
+        widths: readonly { width: number; centralPairDensity: number[] }[]; qualification: string;
+      }>;
       topologySample: (request: { fingerprint: string; quantityId: string; sampleIndex: number }) => Promise<
         { quantityId: string; quantityLabel: string; kind: string; objectId: string; sampleIndex: number; sampleId: string;
           position: [number, number, number]; positionDatasetId: string; coordinateAxes: [string, string, string];

@@ -1,0 +1,132 @@
+{
+  "schema": "quantum-scene/v1",
+  "id": "ute2-topology-36afb5533e86e41cb5f62e02",
+  "title": "Conditional class-D toy bulk receipt",
+  "provenance": {
+    "kind": "numerical-result",
+    "runId": "run-6f5e1dfb462d434db25a4fd520cca441",
+    "jobId": "topology-closed",
+    "model": "square_lattice_class_d",
+    "engine": "quantum-python",
+    "engineVersion": "0.1.0",
+    "computedAt": "2026-11-27T22:18:33.916866+00:00",
+    "resultSha256": "36afb5533e86e41cb5f62e02e4f98faeb866462c24d5ee1f29d93f3ca24dffc8",
+    "adapter": "qvis/1",
+    "parameters": {
+      "mu": 0,
+      "delta": 0.8,
+      "mesh": 12,
+      "bulkMinimumEnergy": 0,
+      "bulkGap": 0,
+      "sampledMinimumEnergy": 9.797174393178826e-17,
+      "coarseMesh": 12,
+      "fineMesh": 24,
+      "invariantStatus": "gap_closed",
+      "orientation": "occupied band; kx then ky; x-major half-open torus",
+      "gapClosed": "true"
+    }
+  },
+  "coordinates": {
+    "handedness": "right",
+    "axes": [
+      "mu/t",
+      "pairing amplitude delta/t",
+      "continuous bulk gap"
+    ],
+    "units": [
+      "t=1",
+      "t=1",
+      "t=1"
+    ]
+  },
+  "camera": {
+    "position": [
+      5,
+      -6,
+      5
+    ],
+    "target": [
+      0,
+      0,
+      0
+    ],
+    "up": [
+      0,
+      0,
+      1
+    ]
+  },
+  "datasets": [
+    {
+      "id": "bulk-receipt-positions",
+      "path": "bulk-receipt-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 1,
+      "unit": "mu/t, delta/t, bulk gap",
+      "bytes": 24,
+      "sha256": "610a8b38feecc26374b03dc97fc3506c6af2abc28e2de320aba13f6dd1453631"
+    },
+    {
+      "id": "bulk-receipt-scalars",
+      "path": "bulk-receipt-scalars.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 1,
+      "unit": "t=1",
+      "bytes": 8,
+      "sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc"
+    }
+  ],
+  "objects": [
+    {
+      "id": "bulk-receipt",
+      "label": "Exact saved bulk qualification point",
+      "kind": "point-cloud",
+      "positions": "bulk-receipt-positions",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 0.15
+      },
+      "scalars": "bulk-receipt-scalars"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "gap",
+      "text": "Exact continuous-BZ gap 0; sampled E+ minimum 9.797174393178826e-17. gap_closed.",
+      "position": [
+        0,
+        0.8,
+        0
+      ]
+    },
+    {
+      "id": "convergence",
+      "text": "Link meshes 12/24; Chern withheld/withheld; curvature withheld/withheld.",
+      "position": [
+        0,
+        0.8,
+        1
+      ]
+    }
+  ],
+  "topology": {
+    "quantities": [],
+    "invariants": [
+      {
+        "id": "occupied-chern",
+        "label": "Conditional occupied-band toy Chern",
+        "value": null,
+        "status": "undefined",
+        "method": "continuous bulk gap; coarse/fine link meshes; independent curvature and geometric degree"
+      }
+    ],
+    "limitations": [
+      "One parameter-space receipt point, not a momentum grid or Berry-curvature surface.",
+      "Toy spinless class-D Hamiltonian, not a UTe2 material phase or Majorana observation."
+    ]
+  }
+}

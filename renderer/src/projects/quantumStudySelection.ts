@@ -3,7 +3,7 @@ import { createMixedWorkspaceDocument, normalizeQuantumStudyDocument, replaceMat
 import { openVerifiedStudyQuantumScene } from "./studyQuantumSource";
 
 type QuantumApi = NonNullable<Window["quantumScenes"]>;
-type Role = "density" | "phase" | "chain" | "bands" | "stationary" | "spectrum" | "energy" | "gap" | "pairing";
+type Role = "density" | "phase" | "chain" | "bands" | "stationary" | "spectrum" | "energy" | "gap" | "pairing" | "receipt";
 const sceneDocument = (project: Math3DProject, fingerprint: string) => project.workspace.entries
   .find(entry => entry.checkpoint.format === "math3d.quantum-scene-document" &&
     entry.checkpoint.source.sceneFingerprint === fingerprint)?.checkpoint as QuantumSceneDocument | undefined;
@@ -11,7 +11,7 @@ export const quantumStudyRecord = (project: Math3DProject, study: StudyRecordV1)
   const documents = study.members.map(member => project.workspace.entries
     .find(entry => entry.expected.id === member.documentId)?.checkpoint);
   return project.workspace.quantumStudies?.find(item => {
-    if (["ute2-landau", "ute2-bdg", "ute2-lattice"].includes(String(item.templateId))) return (
+    if (["ute2-landau", "ute2-bdg", "ute2-lattice", "ute2-topology"].includes(String(item.templateId))) return (
       documents.length === 1 && item.panels.length === (item.templateId === "ute2-lattice" ? 3 : 1) &&
       documents[0]?.format === "math3d.quantum-scene-document" &&
       item.panels.every(panel => documents[0]?.format === "math3d.quantum-scene-document" &&
@@ -51,7 +51,8 @@ export function pinQuantumStudySample(project: Math3DProject, study: StudyRecord
       record.templateId === "ssh" && !["chain", "bands"].includes(role) ||
       record.templateId === "ute2-landau" && (role !== "stationary" || objectId !== "stationary") ||
       record.templateId === "ute2-bdg" && (role !== "spectrum" || objectId !== "positive") ||
-      record.templateId === "ute2-lattice" && (role !== "energy" || objectId !== "positive-energy"))
+      record.templateId === "ute2-lattice" && (role !== "energy" || objectId !== "positive-energy") ||
+      record.templateId === "ute2-topology" && (role !== "receipt" || objectId !== "bulk-receipt" || index !== 0))
     throw new TypeError("Study selection role differs from the saved template.");
   const latticeObjects: Record<string, string> = { energy: "positive-energy", gap: "gap-magnitude", pairing: "pairing-real" };
   const panels = record.panels.map(panel => record.templateId === "hydrogen" || record.templateId === "ute2-lattice" || panel.role === role ?
@@ -128,6 +129,42 @@ export async function quantumStudySelectionEvidence(project: Math3DProject, stud
         if (!sample.coherence.defined) omissions.push("Coherence weights are undefined at this sampled zero-energy node.");
       }
       omissions.push("Spinless finite-grid lattice toy; samples have no interpolation or continuous bulk-gap qualification, and no UTe2 material topology is inferred.");
+    } else if (record.templateId === "ute2-topology") {
+      const panel = record.panels[0]!;
+      if (panel.sampleIndex !== 0 || panel.selectedObjectId !== "bulk-receipt")
+        omissions.push("No saved class-D bulk receipt is selected.");
+      else {
+        const receipt = await api.ute2TopologyReceipt({ fingerprint: panel.sceneFingerprint });
+        if (receipt.fingerprint !== panel.sceneFingerprint || receipt.runId !== record.source.runId ||
+            receipt.resultSha256 !== record.source.resultSha256)
+          throw new TypeError("Class-D receipt differs from its verified source.");
+        values.receipt = receipt;
+        if (receipt.status !== "defined")
+          omissions.push(`Toy Chern invariant withheld: ${receipt.status === "gap_closed" ? "continuous bulk gap closed" : "two-mesh convergence unresolved"}.`);
+        const strips = project.workspace.entries.filter(entry => entry.checkpoint.format === "math3d.quantum-scene-document" &&
+          entry.checkpoint.source.provenance.model === "square_lattice_class_d" &&
+          entry.checkpoint.source.objects.some(object => /^density-\d+$/.test(object.id)))
+          .map(entry => entry.checkpoint as QuantumSceneDocument);
+        if (strips.length > 1) omissions.push("Optional finite strip is ambiguous; attach one exact strip source.");
+        else if (strips.length === 1 && receipt.chern !== null) {
+          const strip = strips[0]!;
+          try {
+            await openVerifiedStudyQuantumScene(project, strip);
+            const edge = await api.ute2EdgeReceipt({ fingerprint: strip.source.sceneFingerprint });
+            if (edge.fingerprint !== strip.source.sceneFingerprint ||
+                edge.runId !== strip.source.provenance.runId ||
+                edge.resultSha256 !== strip.source.provenance.resultSha256 ||
+                edge.source.bulkRunId !== receipt.runId ||
+                edge.source.bulkResultSha256 !== receipt.resultSha256 ||
+                edge.source.bulkChern !== receipt.chern)
+              throw new TypeError("Finite strip parent does not match the qualified bulk receipt.");
+            values.edge = edge;
+          } catch (error) {
+            omissions.push(`Optional finite strip withheld: ${String((error as Error).message)}`);
+          }
+        } else if (strips.length === 1) omissions.push("Optional finite strip withheld without a defined bulk invariant.");
+      }
+      omissions.push("Spinless class-D lattice toy; the supplied conditional invariant and finite-width strip make no UTe₂ material, pairing-symmetry, infinite-edge, or Majorana claim.");
     } else if (record.templateId === "hydrogen") {
       const field = project.workspace.entries.find(entry => entry.checkpoint.format === "math3d.quantum-field-document" &&
         entry.checkpoint.source.scene.sceneFingerprint === record.panels[0]!.sceneFingerprint)?.checkpoint as QuantumFieldDocument | undefined;

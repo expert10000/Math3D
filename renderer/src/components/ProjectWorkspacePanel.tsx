@@ -1002,7 +1002,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       const workspace = createMixedWorkspaceDocument({ ...current.workspace,
         quantumStudies: [...(current.workspace.quantumStudies ?? []).filter(item => item.id !== study.id), study] });
       let next = replaceMath3DProjectWorkspace(current, workspace);
-      if(["ute2-landau", "ute2-bdg", "ute2-lattice"].includes(templateId) && !next.workspace.studies?.some(item =>
+      if(["ute2-landau", "ute2-bdg", "ute2-lattice", "ute2-topology"].includes(templateId) && !next.workspace.studies?.some(item =>
         item.members.length === 1 && item.members[0]?.documentId === anchor.identity.id &&
         item.title === study.title))
         next = createProjectStudyFromDocuments(next,
@@ -2968,7 +2968,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                   entry.checkpoint.source.sceneFingerprint === item.sceneFingerprint).map(entry => {
                     const document = entry.checkpoint as QuantumSceneDocument;
                     const templateId = (Object.entries(QUANTUM_STUDY_TEMPLATES) as [QuantumStudyTemplateId, typeof QUANTUM_STUDY_TEMPLATES[QuantumStudyTemplateId]][])
-                      .find(([, template]) => template.model === document.source.provenance.model)?.[0];
+                      .find(([id, template]) => template.model === document.source.provenance.model &&
+                        (id !== "ute2-topology" || document.source.objects.length === 1 &&
+                          document.source.objects[0]?.id === "bulk-receipt"))?.[0];
                     return templateId ? <button type="button" key="template" data-testid={`quantum-study-template-${item.sceneFingerprint}`}
                       disabled={busy || preview || !!managed} onClick={() => stageQuantumStudyTemplate(document, templateId)}>
                       Build {QUANTUM_STUDY_TEMPLATES[templateId].label} Study</button> : null;

@@ -15,7 +15,7 @@ export type QuantumStudyDocument = Readonly<{
 }>;
 
 export type QuantumStudyTemplateId = "qwz" | "ssh" | "rice-mele" | "hofstadter" | "hydrogen" |
-  "ute2-landau" | "ute2-bdg" | "ute2-lattice";
+  "ute2-landau" | "ute2-bdg" | "ute2-lattice" | "ute2-topology";
 export const QUANTUM_STUDY_TEMPLATES: Readonly<Record<QuantumStudyTemplateId,
   Readonly<{ label: string; model: string; roles: readonly string[]; layout: "columns" | "rows" }>>> = {
   qwz: { label: "QWZ bands and curvature", model: "qwz", roles: ["curvature", "bands"], layout: "columns" },
@@ -27,6 +27,8 @@ export const QUANTUM_STUDY_TEMPLATES: Readonly<Record<QuantumStudyTemplateId,
   "ute2-bdg": { label: "Reduced BdG spectrum and weights", model: "reduced_bdg_2x2", roles: ["spectrum"], layout: "columns" },
   "ute2-lattice": { label: "Lattice BdG energy, gap and pairing", model: "square_lattice_px_py",
     roles: ["energy", "gap", "pairing"], layout: "columns" },
+  "ute2-topology": { label: "Class-D conditional bulk receipt", model: "square_lattice_class_d",
+    roles: ["receipt"], layout: "columns" },
 };
 function templateSceneRole(templateId: QuantumStudyTemplateId, document: QuantumSceneDocument, desiredRole?: string): string | null {
   const ids = new Set(document.source.objects.map(object => object.id));
@@ -45,6 +47,9 @@ function templateSceneRole(templateId: QuantumStudyTemplateId, document: Quantum
       "phase-defined-mask", "node-mask", "coherence-defined-mask"].every(id => ids.has(id)) &&
     document.source.coordinates.axes.join("|") === "kx|ky|energy or display plane" &&
     document.source.coordinates.units.join("|") === "rad/a|rad/a|t=1" ? desiredRole! : null;
+  if (templateId === "ute2-topology") return ids.size === 1 && ids.has("bulk-receipt") &&
+    document.source.coordinates.axes.join("|") === "mu/t|pairing amplitude delta/t|continuous bulk gap" &&
+    document.source.coordinates.units.join("|") === "t=1|t=1|t=1" ? "receipt" : null;
   if (templateId === "qwz") return ids.has("berry-curvature") ? "curvature" : ids.has("band-0") ? "bands" : null;
   if (templateId === "ssh") return ids.has("edge-density") ? "chain" : ids.has("band-0") ? "bands" : null;
   if (templateId === "rice-mele") return /-finite-pump$|-open-chain-pump$/.test(sceneId) ? "finite" :
@@ -68,7 +73,7 @@ export function normalizeQuantumStudyDocument(value: unknown,
       typeof value.source.runId !== "string" || !token.test(value.source.runId) ||
       typeof value.source.model !== "string" || !token.test(value.source.model) ||
       typeof value.source.resultSha256 !== "string" || !hash.test(value.source.resultSha256) ||
-      !Array.isArray(value.panels) || value.panels.length < (["ute2-landau", "ute2-bdg"].includes(String(value.templateId)) ? 1 : 2) || value.panels.length > 8)
+      !Array.isArray(value.panels) || value.panels.length < (["ute2-landau", "ute2-bdg", "ute2-topology"].includes(String(value.templateId)) ? 1 : 2) || value.panels.length > 8)
     return { ok: false, errors: ["Invalid quantum study document."] };
   const template = value.templateId === undefined ? null : QUANTUM_STUDY_TEMPLATES[value.templateId as QuantumStudyTemplateId];
   if (value.templateId !== undefined && (!template || template.model !== value.source.model ||

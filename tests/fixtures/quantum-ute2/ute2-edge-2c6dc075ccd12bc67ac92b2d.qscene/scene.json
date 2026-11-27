@@ -1,0 +1,124 @@
+{
+  "schema": "quantum-scene/v1",
+  "id": "ute2-edge-2c6dc075ccd12bc67ac92b2d",
+  "title": "Class-D finite-strip saved density",
+  "provenance": {
+    "kind": "numerical-result",
+    "runId": "run-366aa2d66c5b42b5819118d680a7b99e",
+    "jobId": "topology-linked-edge",
+    "model": "square_lattice_class_d",
+    "engine": "quantum-python",
+    "engineVersion": "0.1.0",
+    "computedAt": "2026-11-27T22:18:33.882352+00:00",
+    "resultSha256": "2c6dc075ccd12bc67ac92b2dd5b7f5ecab6a14187c5b83607980587b8f9df480",
+    "adapter": "qvis/1",
+    "parameters": {
+      "mu": -2,
+      "delta": 0.8,
+      "mesh": 12,
+      "bulkRunId": "run-35526fee14e342e99a2e6356d7a6092d",
+      "bulkResultSha256": "e01f7946b06ec3b8c1cdc9f260ddb785ec2b1d8f906dd2e8a98922b53306904c",
+      "bulkChern": -1,
+      "ky": 0,
+      "edgeStatus": "localized_in_gap"
+    }
+  },
+  "coordinates": {
+    "handedness": "right",
+    "axes": [
+      "open-x cell index",
+      "display width row",
+      "central-pair density"
+    ],
+    "units": [
+      "cell index",
+      "categorical width",
+      "probability per x cell"
+    ]
+  },
+  "camera": {
+    "position": [
+      12,
+      -24,
+      3
+    ],
+    "target": [
+      12,
+      0,
+      0
+    ],
+    "up": [
+      0,
+      0,
+      1
+    ]
+  },
+  "datasets": [
+    {
+      "id": "density-12-positions",
+      "path": "density-12-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 12,
+      "unit": "cell index, categorical width, probability per x cell",
+      "bytes": 288,
+      "sha256": "41027f81b1439e019be75abc2977972a3ccf2b1d363f5b46dd93bb4fc61ac43a"
+    },
+    {
+      "id": "density-24-positions",
+      "path": "density-24-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 24,
+      "unit": "cell index, categorical width, probability per x cell",
+      "bytes": 576,
+      "sha256": "e0dddb03bd528569fef2aafa84e7e8f7d9c14180c8f42a3351104de55172c19f"
+    }
+  ],
+  "objects": [
+    {
+      "id": "density-12",
+      "label": "Exact central-pair density · 12 cells",
+      "kind": "polyline",
+      "positions": "density-12-positions",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 1
+      }
+    },
+    {
+      "id": "density-24",
+      "label": "Exact central-pair density · 24 cells",
+      "kind": "polyline",
+      "positions": "density-24-positions",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 1
+      }
+    }
+  ],
+  "annotations": [
+    {
+      "id": "scope",
+      "text": "Open-x, periodic-y finite strip at ky=0 rad/a. Status localized_in_gap; toy bulk Chern -1. No exact zero mode, infinite-width or UTe2 Majorana claim.",
+      "position": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "source",
+      "text": "Qualified bulk run-35526fee14e342e99a2e6356d7a6092d · SHA-256 e01f7946b06ec3b8c1cdc9f260ddb785ec2b1d8f906dd2e8a98922b53306904c",
+      "position": [
+        0,
+        0,
+        1
+      ]
+    }
+  ]
+}

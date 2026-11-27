@@ -8,6 +8,7 @@ import type { QwzCursorProjection, QwzCursorProjectionRequest } from "./main/qua
 import type { ScalarSample, ScalarSampleRequest } from "./main/quantumScene/scalarSelection";
 import type { Ute2LandauSample, Ute2LandauSampleRequest } from "./main/quantumScene/ute2LandauSample";
 import type { Ute2BdgSampleRequest, Ute2ReducedBdgSample, Ute2LatticeBdgSample } from "./main/quantumScene/ute2BdgSample";
+import type { Ute2TopologyRequest, Ute2TopologyReceipt, Ute2EdgeReceipt } from "./main/quantumScene/ute2TopologyReceipt";
 import type { StudySourceRunRequest } from "./main/quantumScene/studySourceRun";
 import type { FluxSourceRunRequest } from "./main/quantumScene/fluxSourceRun";
 import type { QuantumSceneExampleSummary } from "./main/quantumScene/examples";
@@ -612,6 +613,10 @@ contextBridge.exposeInMainWorld("quantumScenes", Object.freeze({
     ipcRenderer.invoke("quantumScenes:ute2ReducedBdgSample", request),
   ute2LatticeBdgSample: (request: Ute2BdgSampleRequest): Promise<Ute2LatticeBdgSample> =>
     ipcRenderer.invoke("quantumScenes:ute2LatticeBdgSample", request),
+  ute2TopologyReceipt: (request: Ute2TopologyRequest): Promise<Ute2TopologyReceipt> =>
+    ipcRenderer.invoke("quantumScenes:ute2TopologyReceipt", request),
+  ute2EdgeReceipt: (request: Ute2TopologyRequest): Promise<Ute2EdgeReceipt> =>
+    ipcRenderer.invoke("quantumScenes:ute2EdgeReceipt", request),
   topologySample: (request: TopologySampleRequest): Promise<TopologySample> => ipcRenderer.invoke("quantumScenes:topologySample", request),
   projectQwzCursor: (request: QwzCursorProjectionRequest): Promise<QwzCursorProjection> =>
     ipcRenderer.invoke("quantumScenes:projectQwzCursor", request),

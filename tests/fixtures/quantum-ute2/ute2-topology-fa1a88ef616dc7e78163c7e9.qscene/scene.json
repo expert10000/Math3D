@@ -1,0 +1,139 @@
+{
+  "schema": "quantum-scene/v1",
+  "id": "ute2-topology-fa1a88ef616dc7e78163c7e9",
+  "title": "Conditional class-D toy bulk receipt",
+  "provenance": {
+    "kind": "numerical-result",
+    "runId": "run-5ff37bd7e47745d899d22a8ac97e6629",
+    "jobId": "topology-unresolved",
+    "model": "square_lattice_class_d",
+    "engine": "quantum-python",
+    "engineVersion": "0.1.0",
+    "computedAt": "2026-11-27T22:18:33.927649+00:00",
+    "resultSha256": "fa1a88ef616dc7e78163c7e9b2d6b2809844541830cf6b2db89410174e9f2bb9",
+    "adapter": "qvis/1",
+    "parameters": {
+      "mu": 0.001,
+      "delta": 0.8,
+      "mesh": 12,
+      "bulkMinimumEnergy": 0.001,
+      "bulkGap": 0.002,
+      "sampledMinimumEnergy": 0.001,
+      "coarseMesh": 12,
+      "fineMesh": 24,
+      "invariantStatus": "mesh_unresolved",
+      "orientation": "occupied band; kx then ky; x-major half-open torus",
+      "gapClosed": "false",
+      "coarseLinkChern": 1,
+      "fineLinkChern": 1,
+      "coarseMinimumLink": 0.4716424180419227,
+      "fineMinimumLink": 0.5880114148499129,
+      "curvatureIntegralCoarse": 0.02489035421028228,
+      "curvatureIntegralFine": 0.05006124801706421,
+      "analyticExpectedChern": 1
+    }
+  },
+  "coordinates": {
+    "handedness": "right",
+    "axes": [
+      "mu/t",
+      "pairing amplitude delta/t",
+      "continuous bulk gap"
+    ],
+    "units": [
+      "t=1",
+      "t=1",
+      "t=1"
+    ]
+  },
+  "camera": {
+    "position": [
+      5,
+      -6,
+      5
+    ],
+    "target": [
+      0,
+      0,
+      0
+    ],
+    "up": [
+      0,
+      0,
+      1
+    ]
+  },
+  "datasets": [
+    {
+      "id": "bulk-receipt-positions",
+      "path": "bulk-receipt-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 1,
+      "unit": "mu/t, delta/t, bulk gap",
+      "bytes": 24,
+      "sha256": "e9e4803b2453bf9d4d06fd53787936fa58bafbc09d6f0130e097f38e5c057f82"
+    },
+    {
+      "id": "bulk-receipt-scalars",
+      "path": "bulk-receipt-scalars.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 1,
+      "unit": "t=1",
+      "bytes": 8,
+      "sha256": "378f8d281b7a6851936c3e99fb635127734bfa39142515e347d0c3f5412de1ef"
+    }
+  ],
+  "objects": [
+    {
+      "id": "bulk-receipt",
+      "label": "Exact saved bulk qualification point",
+      "kind": "point-cloud",
+      "positions": "bulk-receipt-positions",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 0.15
+      },
+      "scalars": "bulk-receipt-scalars"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "gap",
+      "text": "Exact continuous-BZ gap 0.002; sampled E+ minimum 0.001. mesh_unresolved.",
+      "position": [
+        0.001,
+        0.8,
+        0.002
+      ]
+    },
+    {
+      "id": "convergence",
+      "text": "Link meshes 12/24; Chern 1/1; curvature 0.02489035421028228/0.05006124801706421.",
+      "position": [
+        0.001,
+        0.8,
+        1.002
+      ]
+    }
+  ],
+  "topology": {
+    "quantities": [],
+    "invariants": [
+      {
+        "id": "occupied-chern",
+        "label": "Conditional occupied-band toy Chern",
+        "value": null,
+        "status": "unresolved",
+        "method": "continuous bulk gap; coarse/fine link meshes; independent curvature and geometric degree"
+      }
+    ],
+    "limitations": [
+      "One parameter-space receipt point, not a momentum grid or Berry-curvature surface.",
+      "Toy spinless class-D Hamiltonian, not a UTe2 material phase or Majorana observation."
+    ]
+  }
+}

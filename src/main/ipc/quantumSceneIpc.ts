@@ -13,6 +13,8 @@ import { inspectVerifiedScalarSample, type ScalarSampleRequest } from "../quantu
 import { inspectVerifiedUte2LandauSample, type Ute2LandauSampleRequest } from "../quantumScene/ute2LandauSample";
 import { inspectVerifiedUte2ReducedBdgSample, inspectVerifiedUte2LatticeBdgSample,
   type Ute2BdgSampleRequest } from "../quantumScene/ute2BdgSample";
+import { inspectVerifiedUte2TopologyReceipt, inspectVerifiedUte2EdgeReceipt,
+  type Ute2TopologyRequest } from "../quantumScene/ute2TopologyReceipt";
 import { resolveStudySourceRun, type StudySourceRunRequest } from "../quantumScene/studySourceRun";
 import { resolveFluxSourceRun, type FluxSourceRunRequest } from "../quantumScene/fluxSourceRun";
 import { inspectVerifiedTopologySample, inspectVerifiedVectorSample,
@@ -374,6 +376,20 @@ export function registerQuantumSceneIpc(initialDirectory: string | null = null, 
     const reopened = await reopenActive(active);
     if (verifiedBySender.get(event.sender) !== active) throw new Error("Quantum scene changed during BdG selection");
     return inspectVerifiedUte2LatticeBdgSample(reopened.imported, args[0] as Ute2BdgSampleRequest);
+  });
+  ipcMain.handle("quantumScenes:ute2TopologyReceipt", async (event, ...args: unknown[]) => {
+    if (args.length !== 1) throw new TypeError("Class-D bulk receipt requires one request");
+    const active = activeField(event, args[0]);
+    const reopened = await reopenActive(active);
+    if (verifiedBySender.get(event.sender) !== active) throw new Error("Quantum scene changed during bulk receipt verification");
+    return inspectVerifiedUte2TopologyReceipt(reopened.imported, args[0] as Ute2TopologyRequest);
+  });
+  ipcMain.handle("quantumScenes:ute2EdgeReceipt", async (event, ...args: unknown[]) => {
+    if (args.length !== 1) throw new TypeError("Class-D strip receipt requires one request");
+    const active = activeField(event, args[0]);
+    const reopened = await reopenActive(active);
+    if (verifiedBySender.get(event.sender) !== active) throw new Error("Quantum scene changed during strip receipt verification");
+    return inspectVerifiedUte2EdgeReceipt(reopened.imported, args[0] as Ute2TopologyRequest);
   });
   ipcMain.handle("quantumScenes:topologySample", async (event, ...args: unknown[]) => {
     if (args.length !== 1) throw new TypeError("Topology selection requires one request");

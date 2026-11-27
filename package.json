@@ -54,6 +54,7 @@
     "test:quantum:flux-source": "npm run build:main && node scripts/test-quantum-flux-source.mjs",
     "test:quantum:ute2-landau": "npm run build:core && node scripts/test-ute2-landau-import.mjs && npm --prefix renderer test -- src/projects/ute2LandauStudy.test.ts && playwright test tests/e2e/quantum-ute2-landau-study.spec.ts --reporter=list",
     "test:quantum:ute2-bdg": "npm run build:core && node scripts/test-ute2-bdg-import.mjs && npm --prefix renderer test -- src/projects/ute2BdgStudy.test.ts && playwright test tests/e2e/quantum-ute2-bdg-study.spec.ts --reporter=list",
+    "test:quantum:ute2-topology": "npm run build:core && node scripts/test-ute2-topology-import.mjs && npm --prefix renderer test -- src/projects/ute2TopologyStudy.test.ts && playwright test tests/e2e/quantum-ute2-topology-study.spec.ts --reporter=list",
     "quantum:artifact-gc": "npm run build:main && node scripts/quantum-artifact-gc.mjs",
     "test:quantum:qwz-baseline": "npm run build:main && node scripts/test-qwz-baseline.mjs",
     "test:quantum:release:math3d": "npm run build:main && npm run build:renderer && node scripts/quantum-release-matrix.mjs --check && node scripts/test-qwz-baseline.mjs && node scripts/test-quantum-qec-baseline.mjs && node scripts/test-quantum-scene-import.mjs && playwright test tests/e2e/quantum-qi01-baseline.spec.ts tests/e2e/quantum-qi06-portable-project.spec.ts tests/e2e/quantum-field-explorer.spec.ts tests/e2e/quantum-qi08-study-handoff.spec.ts tests/e2e/quantum-qi40-inspector.spec.ts --reporter=list",

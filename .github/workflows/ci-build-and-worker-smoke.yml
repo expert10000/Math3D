@@ -169,6 +169,9 @@ jobs:
       - name: Verify Theory Lab reduced and lattice BdG Study consumers
         run: node scripts/test-ute2-bdg-import.mjs && npm --prefix renderer test -- src/projects/ute2BdgStudy.test.ts && npx playwright test tests/e2e/quantum-ute2-bdg-study.spec.ts --reporter=list
 
+      - name: Verify Theory Lab conditional class-D bulk and strip receipts
+        run: node scripts/test-ute2-topology-import.mjs && npm --prefix renderer test -- src/projects/ute2TopologyStudy.test.ts && npx playwright test tests/e2e/quantum-ute2-topology-study.spec.ts --reporter=list
+
       - name: Verify QWZ, SSH and Kitaev study profiles
         run: npx playwright test tests/e2e/quantum-qwz-study.spec.ts tests/e2e/quantum-ssh-study.spec.ts tests/e2e/quantum-kitaev-study.spec.ts --reporter=list
 

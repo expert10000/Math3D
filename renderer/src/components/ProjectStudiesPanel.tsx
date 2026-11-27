@@ -43,7 +43,7 @@ type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoi
   onCreateQwz: (quantumStudyId: string) => void;
   onPinQwz: (studyId: string, sampleIndex: number) => void;
   onPinQuantumSample: (studyId: string, role: "density" | "phase" | "chain" | "bands" | "stationary" |
-    "spectrum" | "energy" | "gap" | "pairing", index: number,
+    "spectrum" | "energy" | "gap" | "pairing" | "receipt", index: number,
     objectId: string | null) => void;
   onPublishQuantumWorkbook?: (studyId: string) => Promise<void>;
   onUnpinQwz: (studyId: string) => void;
