@@ -72,12 +72,16 @@ export function CatenoidSurfaceSubflow({ activeStep, computeState, onSelect, onR
     computeState === "preparing" ? "Preparing…" :
     computeState === "computed" ? "Recompute" :
     computeState === "failed" ? "Retry Compute" : "Compute";
-  const status = computeState === "computed" ? "Curvature result ready. Continue with 3 Comparison." :
+  const computeStatus = computeState === "computed" ? "Curvature result ready. Continue with 3 Comparison." :
     computeState === "running" ? "Curvature computation in progress." :
-    computeState === "preparing" ? "Preparing Surface samples for curvature. Retry if this does not finish." :
+    computeState === "preparing" ? "Sampling the saved Surface for curvature. The 3D Surface remains available; retry samples if this does not finish." :
     computeState === "unavailable" ? "This Surface source is unavailable for curvature computation." :
     computeState === "failed" ? "Curvature computation failed. Review the Surface result and retry." :
     "Compute curvature, then continue with 3 Comparison.";
+  const status = activeStep === "surface" ? "Saved catenoid source open in the left panel; the 3D Surface is in the viewer. Choose Analysis next." :
+    activeStep === "analysis" ? "Differential geometry tools open in the left panel. Choose Curvature field next." :
+    activeStep === "curvature" && computeState === "ready" ? "Curvature field open in the left panel. Choose Compute to calculate and display K." :
+    computeStatus;
   return <div className="catenoid-surface-subflow" data-testid="catenoid-surface-subflow">
     <nav className="catenoid-surface-steps" aria-label="Surface curvature subflow">
       <strong className="catenoid-surface-label" aria-hidden="true">Surface flow</strong>

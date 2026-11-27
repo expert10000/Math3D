@@ -117,13 +117,18 @@ test("Catenoid workflow stays visible on its Surface and returns to the selected
     await expect(page.getByTestId("surfaces-left-tab-analysis")).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByTestId("surface-curvature-compute")).toBeVisible();
     await expect(page.getByTestId("surface-viewer-canvas-host").locator("canvas")).toBeVisible();
-    await expect(surfaceFlow.getByRole("status")).toContainText("Compute curvature", { timeout: 10_000 });
+    await expect(surfaceFlow.getByRole("status")).toContainText("Curvature field open", { timeout: 10_000 });
     await surfaceFlow.getByTestId("catenoid-surface-step-surface").click();
-    await expect(page.getByTestId("surfaces-left-tab-scene")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("surfaces-left-tab-object")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("saved-surface-module-source")).toBeVisible();
+    await expect(surfaceFlow.getByRole("status")).toContainText("Saved catenoid source open");
     await surfaceFlow.getByTestId("catenoid-surface-step-analysis").click();
     await expect(page.getByTestId("surfaces-left-tab-analysis")).toHaveAttribute("aria-pressed", "true");
     await expect(surfaceFlow.getByTestId("catenoid-surface-step-analysis"))
       .toHaveAttribute("aria-current", "step");
+    await expect(page.getByTestId("surface-analysis-computation-panel")).toBeVisible();
+    await expect(page.getByTestId("surface-curvature-compute")).toHaveCount(0);
+    await expect(surfaceFlow.getByRole("status")).toContainText("Differential geometry tools open");
     await surfaceFlow.getByTestId("catenoid-surface-step-curvature").click();
     await expect(page.getByTestId("surface-curvature-compute")).toBeVisible();
     await surfaceFlow.getByTestId("catenoid-surface-step-compute").click();

@@ -80985,7 +80985,7 @@ case "mobius":
     surfaceCurvatureExecution === "failed" || surfaceCurvatureExecution === "stale" ||
     surfaceCurvatureExecution === "cancelled" ? "failed" :
     activeSurfaceCurvatureField ? "computed" : "ready";
-  const catenoidSurfaceStep: CatenoidSurfaceStep = surfacesLeftTab === "scene" ? "surface" :
+  const catenoidSurfaceStep: CatenoidSurfaceStep = surfacesLeftTab === "scene" || surfacesLeftTab === "object" ? "surface" :
     activeSurfaceComputation !== "curvature-field" ? "analysis" :
     catenoidSurfaceComputeState === "computed" ? "compute" : "curvature";
   const catenoidSavedMesh = savedSurfaceMeshChoices.find(choice => choice.current) ?? savedSurfaceMeshChoices[0];
@@ -82566,9 +82566,13 @@ case "mobius":
                   }))}
                   onSelect={step => {
                   if (step === "curvature") {
+                    setProjectsOpen(false);
                     setSurfacesPanelState("work");
                     setSurfacesLeftTab("analysis");
+                    setSurfacesWorkGalleryOpen(false);
+                    setSurfaceDrawerPanel("left");
                     setActiveSurfaceComputation("curvature-field");
+                    setSurfaceCurvatureVisible(true);
                     return;
                   }
                   window.dispatchEvent(new CustomEvent("math3d:catenoid-journey-navigate", {
@@ -82582,11 +82586,16 @@ case "mobius":
                     count: savedSurfaceMeshChoices.length,
                     onOpen: () => navigateRestoredDocument(catenoidSavedMesh.id, "mesh") } : undefined}
                   onSelect={step => {
+                    setProjectsOpen(false);
                     setSurfacesPanelState("work");
-                    if (step === "surface") { setSurfacesLeftTab("scene"); return; }
+                    setSurfacesWorkGalleryOpen(false);
+                    setSurfaceDrawerPanel("left");
+                    resetSurfaceLeftPanelScroll();
+                    if (step === "surface") { setSurfacesLeftTab("object"); return; }
                     setSurfacesLeftTab("analysis");
                     if (step === "analysis") { handleSelectSurfaceComputation("differential-geometry"); return; }
                     handleSelectSurfaceComputation("curvature-field");
+                    setSurfaceCurvatureVisible(true);
                     if (step === "compute") void handleComputeSurfaceCurvature();
                   }} />
               </div>}
