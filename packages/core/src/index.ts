@@ -264,6 +264,8 @@ export * from "./validation";
 export * from "./viewerTypes";
 export * from "./workerContracts";
 export * from "./workerOperationRegistry";
+export * from "./scientificCapabilityRegistry";
+export * from "./platformDiscovery";
 export * from "./m3dBinaryResources";
 export * from "./graph2dTools";
 export * from "./graph2dStatus";

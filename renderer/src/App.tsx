@@ -421,7 +421,8 @@ import {
 } from "./surfaceAnalysis/persistence";
 import { SurfaceDocumentAdapter, surfaceDocumentFromLegacyDefinition } from "./surfaceAnalysis/surfaceDocumentAdapter";
 import { SurfaceMeshKernelHandoff } from "./surfaceAnalysis/surfaceMeshKernelHandoff";
-import { createSurfaceCurvatureField, createSurfaceCurvaturePayload, surfaceCurvatureRegionIndices } from "./surfaceAnalysis/surfaceCurvature";
+import { createSurfaceCurvaturePayload, surfaceCurvatureRegionIndices } from "./surfaceAnalysis/surfaceCurvature";
+import { surfaceCurvatureOperation } from "./surfaceAnalysis/surfaceCurvatureOperation";
 import {
   SurfaceAnalysisScheduler,
   createSurfaceAnalysisCacheKey,
@@ -50961,7 +50962,7 @@ case "mobius":
       compute: (signal, progress) => {
         if (!runInWorker || typeof Worker === "undefined") {
           progress(0.25);
-          const field = createSurfaceCurvatureField(surfaceCurvatureSource, options);
+          const field = surfaceCurvatureOperation.execute({ source: surfaceCurvatureSource, options });
           progress(0.9);
           return field;
         }

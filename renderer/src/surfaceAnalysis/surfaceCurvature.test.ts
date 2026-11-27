@@ -7,6 +7,7 @@ import { presentSurfaceAnalysisResult } from "./surfaceResultPresentation";
 import { createSurfaceCurvatureEvidence, surfaceCurvatureEvidenceCsv,
   surfaceCurvatureEvidenceJson } from "./surfaceCurvatureEvidence";
 import { analyzeExactSurfaceDifferentialPoint, adaptMeshDifferentialPoint } from "./differentialGeometry";
+import { surfaceCurvatureOperation } from "./surfaceCurvatureOperation";
 import {
   classifySurfaceCurvature,
   createSurfaceCurvatureField,
@@ -16,6 +17,16 @@ import {
 } from "./surfaceCurvature";
 
 describe("Surface canonical curvature result", () => {
+  it("executes through the registered operation used by the UI and worker", () => {
+    expect(surfaceCurvatureOperation.definition.id).toBe("surface.curvature.compute");
+    const field = surfaceCurvatureOperation.execute({
+      source: { sampleCount: 1, K: [-1], H: [0], k1: [1], k2: [-1] },
+      options: { histogramBins: 2 },
+    });
+    expect(field.gaussianCurvature[0]).toBe(-1);
+    expect(field.statistics.K?.count).toBe(1);
+  });
+
   it("classifies elliptic, hyperbolic, parabolic, flat and umbilic points with scale-aware tolerances", () => {
     expect(classifySurfaceCurvature({ k1: 2, k2: 1 })).toBe("elliptic");
     expect(classifySurfaceCurvature({ k1: 2, k2: -1 })).toBe("hyperbolic");
