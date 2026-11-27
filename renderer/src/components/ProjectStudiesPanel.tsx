@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { migrateLegacyStudyPaneResearchReference, inspectResearchReference, inspectProjectNoteAnchor,
   inspectProjectStudyMembers, qualifyProjectQwzPair, qualifyProjectQwzQuadStudy, structuralHash,
   type KernelWorkspaceModule, type Math3DProject, type ProjectQuantumSceneReference,
@@ -23,7 +23,8 @@ import { volumeMeshJourneyOptions } from "../projects/volumeMeshStudy";
 import { hydrogenGridIndex, pinQuantumStudySample, quantumStudyRecord,
   quantumStudySelectionEvidence } from "../projects/quantumStudySelection";
 import { StudyQuantumSelectionPanel } from "./StudyQuantumSelectionPanel";
-import { CatenoidJourneySubflowSummary, CatenoidJourneyWorkflow, type CatenoidJourneyStep } from "./CatenoidJourneyWorkflow";
+import { CatenoidJourneySubflowTabs, CatenoidJourneyWorkflow, type CatenoidJourneyStep,
+  type CatenoidJourneySubstep, type CatenoidSurfaceStep } from "./CatenoidJourneyWorkflow";
 
 const StudyPanePreview = lazy(() => import("./StudyPanePreview").then(module => ({ default: module.StudyPanePreview })));
 const CatenoidJourneySourceComparison = lazy(() => import("./CatenoidJourneySourceComparison").then(module => ({ default: module.CatenoidJourneySourceComparison })));
@@ -59,7 +60,10 @@ type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoi
   onOpenNote?: (id: string) => void;
   onOpenQuantumSource?: (reference: ProjectQuantumSceneReference) => Promise<void>;
   onInspectResult?: (resultId: string) => void;
-  onOpenJourneySurface: (id: string) => void;
+  onOpenJourneySurface: (id: string, step?: CatenoidSurfaceStep) => void;
+  onOpenSavedStudy: (id: string, focusSources?: boolean) => void;
+  catenoidSubsteps: Record<CatenoidJourneyStep, CatenoidJourneySubstep>;
+  onCatenoidSubstepsChange: Dispatch<SetStateAction<Record<CatenoidJourneyStep, CatenoidJourneySubstep>>>;
   canOpenJourneySurface: (id: string) => boolean;
   onOpenDocument: (id: string, module: KernelWorkspaceModule) => void }>;
 
@@ -72,7 +76,9 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
   onPublishVolumeMesh,
   onPinScientificSelection, workbookBytes, onOpenWorkbookBlock,
   onCapturePinnedNote, onOpenNote,
-  onOpenQuantumSource, onInspectResult, onOpenJourneySurface, canOpenJourneySurface, onOpenDocument }: Props) {
+  onOpenQuantumSource, onInspectResult, onOpenJourneySurface, onOpenSavedStudy,
+  catenoidSubsteps, onCatenoidSubstepsChange,
+  canOpenJourneySurface, onOpenDocument }: Props) {
   const [selected, setSelected] = useState<string[]>([]);
   const [title, setTitle] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
@@ -93,11 +99,16 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
   const catenoidSurfaceStatus = catenoidStudy && catenoidSurface && inspectProjectStudyMembers(project, catenoidStudy)
     .find(member => member.documentId === catenoidSurface.expected.id)?.status;
   const catenoidSurfaceCanOpen = !!catenoidSurface && canOpenJourneySurface(catenoidSurface.expected.id);
-  const selectCatenoidStep = (step: CatenoidJourneyStep) => {
-    setCatenoidStep(step);
-    if (step === "curvature" && editable && catenoidSurface &&
-        catenoidSurfaceStatus === "current-reference" && catenoidSurfaceCanOpen)
-      onOpenJourneySurface(catenoidSurface.expected.id);
+  const selectCatenoidStep = (step: CatenoidJourneyStep) => setCatenoidStep(step);
+  const catenoidSubstep = catenoidSubsteps[catenoidStep];
+  const canOpenCatenoidSurface = editable && !!catenoidSurface &&
+    catenoidSurfaceStatus === "current-reference" && catenoidSurfaceCanOpen;
+  const selectCatenoidSubstep = (substep: CatenoidJourneySubstep) => {
+    onCatenoidSubstepsChange(previous => ({ ...previous, [catenoidStep]: substep }));
+    if (catenoidStep === "curvature" && canOpenCatenoidSurface && catenoidSurface)
+      onOpenJourneySurface(catenoidSurface.expected.id, substep as CatenoidSurfaceStep);
+    if (catenoidStep === "study" && catenoidStudy)
+      onOpenSavedStudy(catenoidStudy.id, substep === "sources");
   };
   const ridgeResult = project.workspace.results.find(result =>
     result.provenance.operation.type === SURFACE_RIDGE_COMPARISON_OPERATION);
@@ -111,7 +122,6 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
     setOpenId(study.id); setEditTitle(study.title); setDescription(study.description ?? "");
     setLayoutMode(study.layout.mode); setPaneOrder(study.layout.panes.map(pane => pane.paneId));
     setVisiblePaneId(null);
-    if (project.metadata.tags?.includes("catenoid-evidence")) setCatenoidStep("study");
     window.requestAnimationFrame(() => viewRef.current?.scrollIntoView({ block: "nearest" }));
   }, [focusStudy?.token, project.identity.id]);
   const open = studies.find(study => study.id === openId) ?? null;
@@ -161,44 +171,55 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
       <div className="catenoid-journey-heading"><strong>Catenoid evidence journey</strong>
         <span>{ridgeResult ? "Comparison recorded" : "Continue the saved Study"}</span></div>
       <CatenoidJourneyWorkflow activeStep={catenoidStep} onSelect={selectCatenoidStep} />
-      <CatenoidJourneySubflowSummary mainStep={catenoidStep} />
+      <CatenoidJourneySubflowTabs mainStep={catenoidStep} activeSubstep={catenoidSubstep}
+        onSelect={selectCatenoidSubstep} />
       <div role="tabpanel" id="catenoid-flow-panel" aria-labelledby={`catenoid-flow-tab-${catenoidStep}`}
         data-testid={`catenoid-flow-panel-${catenoidStep}`}>
-        {catenoidStep === "study" && <><h5>Inspect the saved Study</h5>
+        {catenoidStep === "study" && catenoidSubstep === "open" && <><h5>Open the saved Study</h5>
           <p>Review the exact Surface and retained Mesh before running a new curvature computation.</p>
-          <button type="button" data-testid="catenoid-flow-open-study" onClick={() => {
-            setOpenId(catenoidStudy.id); setEditTitle(catenoidStudy.title);
-            setDescription(catenoidStudy.description ?? ""); setLayoutMode(catenoidStudy.layout.mode);
-            setPaneOrder(catenoidStudy.layout.panes.map(pane => pane.paneId)); setVisiblePaneId(null);
-          }}>Open saved Study</button>{" "}
+          <button type="button" data-testid="catenoid-flow-open-study"
+            onClick={() => onOpenSavedStudy(catenoidStudy.id)}>Open saved Study</button>{" "}
+          <button type="button" onClick={() => selectCatenoidSubstep("sources")}>Next: Source panes</button></>}
+        {catenoidStep === "study" && catenoidSubstep === "sources" && <><h5>Inspect source panes</h5>
+          <p>Check the Study's saved source references and their current status.</p>
+          <button type="button" data-testid="catenoid-flow-open-sources"
+            onClick={() => onOpenSavedStudy(catenoidStudy.id, true)}>Show source panes</button>{" "}
           <button type="button" onClick={() => selectCatenoidStep("curvature")}>Next: Curvature</button></>}
         {catenoidStep === "curvature" && <><h5>Compute Surface curvature</h5>
-          <p>Open the saved Surface curvature analysis, compute the field, then choose 3 Comparison in the workflow above.</p>
+          <p>Choose a substep above to open that part of the saved Surface. Compute waits for its source samples, then displays the field.</p>
           <button type="button" data-testid="catenoid-flow-open-surface"
-            disabled={!editable || !catenoidSurface || catenoidSurfaceStatus !== "current-reference" || !catenoidSurfaceCanOpen}
-            onClick={() => { if (catenoidSurface) onOpenJourneySurface(catenoidSurface.expected.id); }}>
-            Open Surface curvature analysis</button>{" "}
+            disabled={!canOpenCatenoidSurface}
+            onClick={() => { if (catenoidSurface) onOpenJourneySurface(catenoidSurface.expected.id, catenoidSubstep as CatenoidSurfaceStep); }}>
+            Open {catenoidSubstep === "curvature" ? "Curvature field" : catenoidSubstep === "compute" ? "Compute" : catenoidSubstep === "analysis" ? "Analysis" : "Surface"}</button>{" "}
           <button type="button" onClick={() => setCatenoidStep("comparison")}>Next: Comparison</button>
           {catenoidSurfaceStatus !== "current-reference" && <p role="status">Saved Surface source changed or is missing; reopen a current source before computing.</p>}
           {catenoidSurfaceStatus === "current-reference" && !catenoidSurfaceCanOpen && <p role="status">The saved Surface cannot open in this workspace. Reopen the saved Project before continuing.</p>}</>}
-        {catenoidStep === "comparison" && <><h5>Publish the comparison</h5>
-          <p>Choose a sampled ridge and its retained Mesh. The action checks exact sources, records local curvature error, and stages a Curve and Workbook.</p>
+        {catenoidStep === "comparison" && catenoidSubstep === "inspect" && <><h5>Inspect the source pair</h5>
+          <p>View the exact saved Surface and retained Mesh before publishing a ridge comparison.</p>
           <Suspense fallback={<p role="status">Loading saved Surface and Mesh…</p>}>
             <CatenoidJourneySourceComparison project={project} resources={resources} />
-          </Suspense>
+          </Suspense>{" "}
+          <button type="button" onClick={() => selectCatenoidSubstep("publish")}>Next: Publish ridge</button></>}
+        {catenoidStep === "comparison" && catenoidSubstep === "publish" && <><h5>Publish the comparison</h5>
+          <p>Choose a sampled ridge and its retained Mesh. The action checks exact sources, records local curvature error, and stages a Curve and Workbook.</p>
           <SurfaceRidgePublicationPanel project={project} resources={resources} editable={editable}
             onPublish={onPublishSurfaceRidge} />
           {ridgeResult && <button type="button" onClick={() => setCatenoidStep("workbook")}>Next: Workbook</button>}</>}
-        {catenoidStep === "workbook" && <><h5>Save and review evidence</h5>
+        {catenoidStep === "workbook" && catenoidSubstep === "review" && <><h5>Review the Workbook</h5>
           <p>{ridgeWorkbook ? "The comparison Workbook is recorded. Save the Project, then inspect its source-qualified citation." :
             "Publish a current Surface–Mesh comparison to stage its Workbook."}</p>
-          <button type="button" data-testid="catenoid-flow-save-project" disabled={!editable || !onSaveProject || !ridgeWorkbook}
-            onClick={() => { void onSaveProject?.(); }}>Save Project</button>{" "}
           <button type="button" data-testid="catenoid-flow-open-workbook"
             disabled={!ridgeWorkbook || !onOpenWorkbook} onClick={() => {
               if (ridgeWorkbook) onOpenWorkbook?.(ridgeWorkbook.id);
-            }}>Open comparison Workbook</button>
+            }}>Open comparison Workbook</button>{" "}
+          <button type="button" onClick={() => selectCatenoidSubstep("save")}>Next: Save Project</button>
           {!ridgeWorkbook && <button type="button" onClick={() => setCatenoidStep("comparison")}>Back to comparison</button>}</>}
+        {catenoidStep === "workbook" && catenoidSubstep === "save" && <><h5>Save the Project</h5>
+          <p>{ridgeWorkbook ? "Save the staged ridge Curve, comparison result and Workbook together." :
+            "Publish a current Surface–Mesh comparison before saving its Workbook."}</p>
+          <button type="button" data-testid="catenoid-flow-save-project" disabled={!editable || !onSaveProject || !ridgeWorkbook}
+            onClick={() => { void onSaveProject?.(); }}>Save Project</button>{" "}
+          <button type="button" onClick={() => selectCatenoidSubstep("review")}>Back to Workbook</button></>}
       </div>
     </section>}
     <p>Save a question and pane layout using existing Project documents.</p>

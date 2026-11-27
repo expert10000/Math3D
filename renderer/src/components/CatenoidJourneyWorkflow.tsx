@@ -7,27 +7,49 @@ export const CATENOID_JOURNEY_STEPS = [
 
 export type CatenoidJourneyStep = typeof CATENOID_JOURNEY_STEPS[number][0];
 
+export type CatenoidJourneySubstep = "open" | "sources" | "surface" | "analysis" | "curvature" | "compute" |
+  "inspect" | "publish" | "review" | "save";
+
 const JOURNEY_SUBFLOWS: Record<CatenoidJourneyStep, Readonly<{
-  title: string; steps: readonly string[]; outcome: string;
+  title: string; steps: readonly Readonly<{ id: CatenoidJourneySubstep; label: string; detail: string }>[];
 }>> = {
-  study: { title: "Study path", steps: ["Open saved Study", "Inspect source panes"],
-    outcome: "Opens the saved layout so you can check the exact Surface and Mesh references." },
-  curvature: { title: "Surface path", steps: ["Open Surface", "Analysis", "Curvature field", "Compute"],
-    outcome: "Opens the catenoid viewer and calculates a visible curvature field from its saved source." },
-  comparison: { title: "Comparison path", steps: ["Inspect Surface and Mesh", "Choose ridge", "Publish"],
-    outcome: "Checks the source pair and records the ridge, Mesh curvature error, Curve and Workbook." },
-  workbook: { title: "Workbook path", steps: ["Open Workbook", "Save Project"],
-    outcome: "Reviews the recorded citation and saves the staged evidence in the Project." },
+  study: { title: "Study subflow", steps: [
+    { id: "open", label: "Open Study", detail: "Open the saved Study layout and its linked documents." },
+    { id: "sources", label: "Source panes", detail: "Inspect the exact Surface and Mesh references in the Study." },
+  ] },
+  curvature: { title: "Curvature subflow", steps: [
+    { id: "surface", label: "Surface", detail: "Open the saved catenoid source and 3D viewer." },
+    { id: "analysis", label: "Analysis", detail: "Open differential geometry tools on the saved Surface." },
+    { id: "curvature", label: "Curvature field", detail: "Choose the field and show its compute controls." },
+    { id: "compute", label: "Compute", detail: "Calculate and display curvature when Surface samples are ready." },
+  ] },
+  comparison: { title: "Comparison subflow", steps: [
+    { id: "inspect", label: "Inspect pair", detail: "View the saved Surface and Mesh together before publication." },
+    { id: "publish", label: "Publish ridge", detail: "Choose a ridge and Mesh to record checked comparison evidence." },
+  ] },
+  workbook: { title: "Workbook subflow", steps: [
+    { id: "review", label: "Review", detail: "Open the Workbook created by the checked comparison." },
+    { id: "save", label: "Save Project", detail: "Keep the staged Curve, result and Workbook in the Project." },
+  ] },
 };
 
-export function CatenoidJourneySubflowSummary({ mainStep }: { mainStep: CatenoidJourneyStep }) {
+export function CatenoidJourneySubflowTabs({ mainStep, activeSubstep, onSelect }: {
+  mainStep: CatenoidJourneyStep; activeSubstep: CatenoidJourneySubstep;
+  onSelect: (substep: CatenoidJourneySubstep) => void;
+}) {
   const subflow = JOURNEY_SUBFLOWS[mainStep];
-  return <section className="catenoid-context-subflow" data-testid="catenoid-context-subflow"
-    data-main-step={mainStep} aria-label={`${subflow.title} subflow`}>
-    <strong>{subflow.title}</strong>
-    <span className="catenoid-context-subflow-steps">{subflow.steps.map((step, index) =>
-      <span key={step}>{index > 0 && <span aria-hidden="true"> → </span>}{step}</span>)}</span>
-    <p>{subflow.outcome}</p>
+  const selected = subflow.steps.find(step => step.id === activeSubstep) ?? subflow.steps[0]!;
+  return <section className="catenoid-context-subflow" data-testid="catenoid-context-subflow" data-main-step={mainStep}>
+    <nav className="catenoid-context-subflow-steps" aria-label={subflow.title}>
+      <strong>{subflow.title}</strong>
+      {subflow.steps.map((step, index) => <span className="catenoid-journey-step" key={step.id}>
+        {index > 0 && <span className="catenoid-journey-arrow" aria-hidden="true">→</span>}
+        <button type="button" data-testid={`catenoid-project-substep-${step.id}`}
+          aria-current={selected.id === step.id ? "step" : undefined}
+          onClick={() => onSelect(step.id)}>{index + 1} {step.label}</button>
+      </span>)}
+    </nav>
+    <p role="status">{selected.detail}</p>
   </section>;
 }
 

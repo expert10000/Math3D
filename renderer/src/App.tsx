@@ -78254,6 +78254,7 @@ case "mobius":
     meshNewPresetId;
   const [projectsOpen, setProjectsOpen] = useState(false);
   const [catenoidSurfaceSelectedStep, setCatenoidSurfaceSelectedStep] = useState<CatenoidSurfaceStep>("curvature");
+  const [pendingCatenoidComputeDocumentId, setPendingCatenoidComputeDocumentId] = useState<string | null>(null);
   const [clearedCatenoidJourneyId, setClearedCatenoidJourneyId] = useState<string | null>(null);
   useEffect(() => {
     const clear = (event: Event) => setClearedCatenoidJourneyId((event as CustomEvent<{ projectId?: string }>).detail?.projectId ?? null);
@@ -80989,6 +80990,20 @@ case "mobius":
     surfaceCurvatureExecution === "failed" || surfaceCurvatureExecution === "stale" ||
     surfaceCurvatureExecution === "cancelled" ? "failed" :
     activeSurfaceCurvatureField ? "computed" : "ready";
+  useEffect(() => {
+    if (!pendingCatenoidComputeDocumentId) return;
+    if (activeProjectDocumentId !== pendingCatenoidComputeDocumentId) {
+      setPendingCatenoidComputeDocumentId(null); return;
+    }
+    if (!catenoidJourneySurfaceActive) return;
+    if (catenoidSurfaceComputeState === "ready" || catenoidSurfaceComputeState === "failed") {
+      setPendingCatenoidComputeDocumentId(null);
+      void handleComputeSurfaceCurvature();
+    } else if (["computed", "running", "unavailable"].includes(catenoidSurfaceComputeState)) {
+      setPendingCatenoidComputeDocumentId(null);
+    }
+  }, [pendingCatenoidComputeDocumentId, activeProjectDocumentId, catenoidJourneySurfaceActive,
+    catenoidSurfaceComputeState, handleComputeSurfaceCurvature]);
   const catenoidSavedMesh = savedSurfaceMeshChoices.find(choice => choice.current) ?? savedSurfaceMeshChoices[0];
   const workspaceHeaderContext = activeProjectDocumentId ? "Project document" : headerContextLabel;
   const navigateProjectBack = () => { const location = projectNavigationRef.current.back(); if (location) navigateRestoredDocument(location.id, location.module); };
@@ -81908,10 +81923,22 @@ case "mobius":
           field: scientificFieldDocuments.find(item => item.identity.id === id)?.identity.id,
           quantum: restoredProjectRef.current?.workspace.entries.find((entry) => entry.module === "quantum" && entry.expected.id === id)?.expected.id,
         }[module] === id)}
-        onNavigateDocument={(id, module) => {
+        onNavigateDocument={(id, module, options) => {
           setProjectGraphAnalysisRequest(null);
           setProjectVolumeAnalysisRequest(null);
-          if (navigateRestoredDocument(id, module)) return;
+          if (navigateRestoredDocument(id, module)) {
+            const step = module === "surface" ? options?.catenoidSurfaceStep : undefined;
+            if (step) {
+              setCatenoidSurfaceSelectedStep(step);
+              setSurfacesPanelState("work"); setSurfacesWorkGalleryOpen(false);
+              setSurfaceDrawerPanel("left");
+              setSurfacesLeftTab(step === "surface" ? "object" : "analysis");
+              if (step !== "surface") handleSelectSurfaceComputation(step === "analysis" ? "differential-geometry" : "curvature-field");
+              if (step === "curvature" || step === "compute") setSurfaceCurvatureVisible(true);
+              setPendingCatenoidComputeDocumentId(step === "compute" ? id : null);
+            }
+            return;
+          }
           const target = graph2dPromotions.find((item) => item.document.identity.id === id);
           if (target) {
             navigateRestoredDocument(target.trace.sourceDocumentId, "graph2d"); openGraph2DTarget(id);

@@ -58,7 +58,8 @@ export type KernelWorkspacePanelProps = {
   artifactAvailable?: (artifactId: string, hash?: string | null) => boolean;
   onNavigateModule?: (module: KernelWorkspaceModule) => void;
   onOpenCasGallery?: () => void;
-  onNavigateDocument?: (id: string, module: KernelWorkspaceModule) => void;
+  onNavigateDocument?: (id: string, module: KernelWorkspaceModule,
+    options?: { catenoidSurfaceStep?: import("./CatenoidJourneyWorkflow").CatenoidSurfaceStep }) => void;
   onOpenAlgebra?: (projectId: string, target: AlgebraObjectRef, contentHash: string,
     evidence?: ProjectAlgebraLocusReturn) => void;
   onOpenAnalysis?: (id: string, module: KernelWorkspaceModule, route: ProjectAnalysisRoute, workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources) => void;

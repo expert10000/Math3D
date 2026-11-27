@@ -27,6 +27,7 @@ test("selected Surface ridge publishes Mesh error and Workbook evidence across r
     const flow = panel.getByTestId("catenoid-journey-flow");
     await expect(flow.getByRole("tab", { name: "1 Study" })).toHaveAttribute("aria-selected", "true");
     await flow.getByRole("tab", { name: "2 Curvature" }).click();
+    await flow.getByTestId("catenoid-project-substep-curvature").click();
     await expect(panel).toBeHidden();
     // The real worker computes quickly; hold only its result delivery so Cancel remains actionable.
     await page.evaluate(() => {
@@ -64,6 +65,7 @@ test("selected Surface ridge publishes Mesh error and Workbook evidence across r
     await page.getByTestId("projects-toggle").click();
     await panel.getByRole("button", { name: "View current project" }).click();
     await flow.getByRole("tab", { name: "3 Comparison" }).click();
+    await flow.getByTestId("catenoid-project-substep-publish").click();
     const ridge = panel.getByTestId("project-surface-ridge-publication");
     await expect(ridge).toBeVisible();
     await ridge.locator("[data-testid^='project-publish-ridge-']").first().click();
@@ -71,6 +73,7 @@ test("selected Surface ridge publishes Mesh error and Workbook evidence across r
     await expect(ridge.getByTestId("project-surface-ridge-status")).toContainText("Workbook staged");
     await flow.getByRole("tab", { name: "4 Workbook" }).click();
     await expect(flow.getByTestId("catenoid-flow-open-workbook")).toBeEnabled();
+    await flow.getByTestId("catenoid-project-substep-save").click();
     await flow.getByTestId("catenoid-flow-save-project").click();
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     const comparison = saved.workspace.results.find((item: { provenance: { operation: { type: string } } }) =>
@@ -106,6 +109,7 @@ test("selected Surface ridge publishes Mesh error and Workbook evidence across r
     panel = page.getByTestId("project-explorer-panel");
     await showProjectStudies(panel);
     await panel.getByTestId("catenoid-flow-tab-comparison").click();
+    await panel.getByTestId("catenoid-project-substep-publish").click();
     await expect(panel.getByTestId("project-surface-ridge-evidence")).toContainText("spatial offset");
     const core = require(resolve("packages/core/src/index.ts"));
     const current = core.parseMath3DProject(await page.evaluate(() => localStorage.getItem("math3d.project.v1")));
@@ -127,6 +131,7 @@ test("selected Surface ridge publishes Mesh error and Workbook evidence across r
     panel = page.getByTestId("project-explorer-panel");
     await showProjectStudies(panel);
     await panel.getByTestId("catenoid-flow-tab-comparison").click();
+    await panel.getByTestId("catenoid-project-substep-publish").click();
     await expect(panel.getByTestId("project-surface-ridge-withheld")).toContainText("changed");
     await closeSurfaceApp(app);
     app = await launchSurfaceApp(); await resetSurfaceAppState(app.page);
@@ -161,6 +166,7 @@ test("selected Surface ridge publishes Mesh error and Workbook evidence across r
     await page.context().setOffline(true);
     await showProjectStudies(panel);
     await panel.getByTestId("catenoid-flow-tab-comparison").click();
+    await panel.getByTestId("catenoid-project-substep-publish").click();
     await expect(panel.getByTestId("project-surface-ridge-evidence")).toContainText("absolute error");
     await expect(panel.getByTestId("project-surface-ridge-export")).toBeEnabled();
   } finally { await closeSurfaceApp(app); }

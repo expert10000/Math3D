@@ -51,7 +51,7 @@ import { ProjectDependenciesPanel } from "./ProjectDependenciesPanel";
 import { ProjectRelationshipMap } from "./ProjectRelationshipMap";
 import { ProjectCursorInspector } from "./ProjectCursorInspector";
 import { ProjectStudiesPanel } from "./ProjectStudiesPanel";
-import type { CatenoidJourneyStep } from "./CatenoidJourneyWorkflow";
+import type { CatenoidJourneyStep, CatenoidJourneySubstep, CatenoidSurfaceStep } from "./CatenoidJourneyWorkflow";
 import { buildResearchCommands, type ResearchCommand } from "../projects/researchCommands";
 import { addQualifiedStudyGraphCurveLink } from "../projects/studyGraphCurveLink";
 import { addQualifiedStudyCurveSurfaceLink } from "../projects/studyCurveSurfaceLink";
@@ -181,7 +181,8 @@ type Props = {
   captureProjectThumbnail?: () => Promise<string>;
   capture: () => MixedWorkspaceDocument;
   canNavigateDocument?: (id: string, module: KernelWorkspaceModule) => boolean;
-  onNavigateDocument?: (id: string, module: KernelWorkspaceModule) => void;
+  onNavigateDocument?: (id: string, module: KernelWorkspaceModule,
+    options?: { catenoidSurfaceStep?: CatenoidSurfaceStep }) => void;
   onOpenAlgebra?: (projectId: string, target: AlgebraObjectRef, contentHash: string,
     evidence?: ProjectAlgebraLocusReturn) => void;
   onOpenAnalysis?: (id: string, module: KernelWorkspaceModule, route: ProjectAnalysisRoute, workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources) => void;
@@ -215,8 +216,14 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [starterView, setStarterView] = useState<"starters" | "studies">("starters");
   const [detailPage, setDetailPage] = useState<"journey" | "overview" | "documents" | "relations" | "results" | "history" | "settings" | "transfer">("overview");
   const [catenoidStep, setCatenoidStep] = useState<CatenoidJourneyStep>("study");
+  const [catenoidSubsteps, setCatenoidSubsteps] = useState<Record<CatenoidJourneyStep, CatenoidJourneySubstep>>({
+    study: "open", curvature: "surface", comparison: "inspect", workbook: "review",
+  });
   useEffect(() => {
-    const clear = () => { setCatenoidStep("study"); setDetailPage("overview"); };
+    const clear = () => {
+      setCatenoidStep("study"); setDetailPage("overview");
+      setCatenoidSubsteps({ study: "open", curvature: "surface", comparison: "inspect", workbook: "review" });
+    };
     window.addEventListener("math3d:catenoid-journey-clear", clear);
     return () => window.removeEventListener("math3d:catenoid-journey-clear", clear);
   }, []);
@@ -1985,8 +1992,11 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       setTimeout(() => URL.revokeObjectURL(url), 1000); setMessage(withResources ? "Exported project with verified source resources and undo/redo buffers. Optional analysis caches and thumbnails remain local." : checkpointOnly ? "Exported verified document checkpoints. Scientific identities and records are retained; undo history is not transferred. Mobile editing supports one Graph with Curve/Surface companions; sidecars transfer separately." : "Exported verified project JSON with original identities and replay. Sidecar bytes and thumbnails transfer separately.");
     } catch (error) { setMessage(`Project export failed: ${(error as Error).message}`); }
   };
-  const navigate = (id: string, module: KernelWorkspaceModule) => {
-    if (!preview && canNavigateDocument?.(id, module)) { onNavigateDocument?.(id, module); onOpenChange(false); }
+  const navigate = (id: string, module: KernelWorkspaceModule, catenoidSurfaceStep?: CatenoidSurfaceStep) => {
+    if (!preview && canNavigateDocument?.(id, module)) {
+      onNavigateDocument?.(id, module, catenoidSurfaceStep ? { catenoidSurfaceStep } : undefined);
+      onOpenChange(false);
+    }
   };
   const viewBesideProject = (id: string, module: KernelWorkspaceModule) => {
     if (preview || !canNavigateDocument?.(id, module)) return;
@@ -2639,6 +2649,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
             <ProjectCursorInspector project={project} />
             <ProjectStudiesPanel project={project} documents={dashboardDocuments} resources={resourceSession.current}
               catenoidStep={catenoidStep} onCatenoidStepChange={setCatenoidStep}
+              catenoidSubsteps={catenoidSubsteps} onCatenoidSubstepsChange={setCatenoidSubsteps}
               focusStudy={studyFocus}
               workbookBytes={projectWorkbookBytes}
               onOpenWorkbookBlock={busy ? undefined : (id, stageId, blockId) => {
@@ -2686,7 +2697,14 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               onOpenQuantumSource={openLinkedQuantumScene}
               onInspectResult={id => { setResultFocus(previous => ({ id, token: (previous?.token ?? 0) + 1 }));
                 openDetailPage("results"); }}
-              onOpenJourneySurface={id => navigate(id, "surface")}
+              onOpenJourneySurface={(id, step) => navigate(id, "surface", step)}
+              onOpenSavedStudy={(id, focusSources) => {
+                setStudyFocus(previous => ({ id, token: (previous?.token ?? 0) + 1 }));
+                openDetailPage("overview");
+                if (focusSources) window.requestAnimationFrame(() => window.requestAnimationFrame(() =>
+                  document.querySelector<HTMLElement>('[data-testid="project-study-panes"]')
+                    ?.scrollIntoView({ block: "start" })));
+              }}
               canOpenJourneySurface={id => !!canNavigateDocument?.(id, "surface")}
               onOpenDocument={(id, module) => viewBesideProject(id, module)} />
           </div>}
