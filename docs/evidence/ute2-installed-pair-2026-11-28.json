@@ -1,0 +1,56 @@
+{
+  "schema": "ute2/installed-two-app-acceptance/v1",
+  "status": "passed",
+  "checkedAtUtc": "2026-11-27T23:04:06.970Z",
+  "scope": "unsigned installed Theory Lab and Math3D Dev pair; source and artifact hashes; toy class-D only",
+  "theoryLab": {
+    "sourceCommit": "83dceca479bb718cf3c7905ec633f5bb0997387d",
+    "installerSha256": "bf859b7ae2f3b061ee9111f2de283ac1dde19cf3578368d3e3dba4fc1eacdd47",
+    "executableSha256": "ae3c39805e66d06ad2103fe2a7c20eaf787a75354c0159b7bda83ccff8a84ebe",
+    "workerSha256": "d2bef33d5c49249d315cb084fa7118016d7a9ebdb299ca1283bb6a56ff173447",
+    "appAsarSha256": "5f0e776029ea0870f98f0e12ef718b9c471f0ebac73a586f60b1a61528af8692",
+    "signature": "NotSigned"
+  },
+  "math3d": {
+    "sourceCommit": "f96c77b9953cdadc9ec776ec35848c97a35d0a9e",
+    "installerSha256": "fd73984e0f209615c276e26d25923c0b1e40c81aaa0c115b629338e53d5af13d",
+    "executableSha256": "6dbd021e2e52b76082854982509ffffbcefd1ec9e395afadf7dc17329573e89a",
+    "workerSha256": "b46138c17019660492a9dbeaf9d8cddd916787da5849346c667aa78200f6686e",
+    "appAsarSha256": "16db59ced2330a261307014b14ac3a96df20463298081f53cd4b473ded059beb",
+    "signature": "NotSigned"
+  },
+  "runId": "run-5305c6161b2b481aa3d33d95e8ddecd8",
+  "resultSha256": "4af7381ad095539f4668b3fe094ab920321e7cbd1a61fbc02d0b570be9631b10",
+  "bulkSceneSha256": "4e86837994557fdfda8197a5c5c18ccf37acd4aee4091eabf959ff471a2377e0",
+  "edgeSceneSha256": "01f379ad365bb2168659413f6a23c643fe6e76926344d75240cdaa88d7c4882a",
+  "sceneFingerprint": "a638eb42df1c03aa442f32a03b25b10a596b0faa0c1b1bdc0f20d7631ae268db",
+  "projectId": "math3d:project:9eaeea18dd3dfe627871cf56c0d1e217",
+  "workbookId": "math3d:workbook:86d569500ecdff77bc445b42566a94b5",
+  "studyEvidenceSha256": "695bcf23ff1597a5874cc090bbf3e49ef7b521c82c26a34e3e3bd2f46b923ba2",
+  "portableProjectSha256": "d4c1cf6bc3efd403afa8db68705d5c987186975ed165256b2b89ce6162c05d8d",
+  "portableManifestSha256": "ca56039b70c5c8bcfed939bb7f78ad35f1b94a9a2258257d0c7fe50d499ac333",
+  "retained": {
+    "producerSha256": "9f52923b3c10e85c163741ef69a814412015bc656475e38bb0c0aa91a6cf004f",
+    "consumerSha256": "99aaaeb9895069f82a3efd0cdee47248c260b4e201da2986c19838efdc91573d",
+    "mutationSha256": "8192fed0860f06e08179b17b4a1637d4ff1827e73929997a6fd82c48d13d4dbc",
+    "labScreenshotSha256": "5429a9a6f062ed20ce0c35140ea0aa4ab6bab1e6f6acf77fa4394f8a95ac4867",
+    "math3dScreenshotSha256": "96b99edea3247690155a91f2041c61db7ffbde0a638bffdde8c021f50b6af5cd"
+  },
+  "checks": [
+    "fresh installed producer",
+    "installed result restart",
+    "source-bound bulk and strip export",
+    "installed consumer receipt",
+    "Project save and restart",
+    "Workbook citation and evidence JSON",
+    "portable Project transfer",
+    "changed Math3D scene withheld",
+    "changed Lab bulk and dependent strip withheld",
+    "visible toy and material claim limits"
+  ],
+  "open": [
+    "same-product upgrade and rollback",
+    "publisher signing",
+    "installed memory qualification"
+  ]
+}
