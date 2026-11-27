@@ -187,6 +187,15 @@ body:has(#project-gallery-host:not(:empty)) :is([data-testid="projects-quick-tog
 .project-dashboard-grid { display:grid;grid-template-columns:minmax(0,1.65fr) minmax(270px,.85fr);gap:16px;margin-top:18px; }
 .project-dashboard-card { min-width:0;padding:16px;border:1px solid #d5e3f4;border-radius:11px;background:#fff; }
 [data-testid="project-studies-panel"] { container-type:inline-size;grid-column:1/-1; }
+.catenoid-journey-flow { display:grid;gap:10px;padding:14px;margin:0 0 16px;border:1px solid #a8c5e8;border-radius:10px;background:#f5f9ff; }
+.catenoid-journey-heading { display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px;color:#183a5c; }
+.catenoid-journey-heading span { color:#52657b;font-size:12px; }
+.catenoid-journey-tabs { display:flex;flex-wrap:wrap;gap:6px; }
+.catenoid-journey-tabs button { flex:1 1 130px;text-align:center; }
+.catenoid-journey-tabs button[aria-selected="true"] { border-color:#2563eb;background:#e4f0ff;color:#124d91;font-weight:700; }
+.catenoid-journey-flow [role="tabpanel"] { padding:12px;border:1px solid #d5e3f4;border-radius:8px;background:#fff; }
+.catenoid-journey-flow [role="tabpanel"] h5 { margin:0 0 6px;font-size:15px; }
+.catenoid-journey-flow [role="tabpanel"] p { margin:0 0 10px; }
 .project-study-view { min-width:0;overflow-wrap:anywhere; }
 .project-study-jump { display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 14px; }
 .project-study-panes { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;min-width:0;scroll-margin-top:12px; }

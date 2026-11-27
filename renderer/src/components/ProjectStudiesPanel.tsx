@@ -16,6 +16,7 @@ import { StudyCurveSurfaceControl } from "./StudyCurveSurfaceControl";
 import { StudySurfaceMeshControl } from "./StudySurfaceMeshControl";
 import { CatenoidWaistEvidencePanel } from "./CatenoidWaistEvidencePanel";
 import { SurfaceRidgePublicationPanel } from "./SurfaceRidgePublicationPanel";
+import { SURFACE_RIDGE_COMPARISON_OPERATION } from "../projects/surfaceRidgePublication";
 import { StudyQwzCursorControl } from "./StudyQwzCursorControl";
 import { qualifyStudyScientificSelectionPin } from "../projects/projectStudyNoteAnchor";
 import { volumeMeshJourneyOptions } from "../projects/volumeMeshStudy";
@@ -43,6 +44,8 @@ type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoi
   onUnpinQwz: (studyId: string) => void;
   onDeriveQwzProfile?: (studyId: string) => Promise<{ graphId: string; resultId: string }>;
   onPublishSurfaceRidge?: (surfaceId: string, meshId: string, ridgeIndex: number) => Promise<void>;
+  onSaveProject?: () => Promise<void>;
+  onOpenWorkbook?: (id: string) => void;
   onPublishVolumeMesh?: (resultId: string) => void;
   onPinScientificSelection: (studyId: string, selectionId: string) => void;
   workbookBytes?: (id: string) => Uint8Array | null;
@@ -57,7 +60,7 @@ type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoi
 export function ProjectStudiesPanel({ project, documents, editable, resources, focusStudy, onCreate, onRename, onFork, onConfigure,
   onLink, onLinkCurveSurface, onLinkSurfaceMesh, onCreateQwz, onPinQwz, onUnpinQwz, onDeriveQwzProfile,
   onPinQuantumSample, onPublishQuantumWorkbook,
-  onPublishSurfaceRidge,
+  onPublishSurfaceRidge, onSaveProject, onOpenWorkbook,
   onPublishVolumeMesh,
   onPinScientificSelection, workbookBytes, onOpenWorkbookBlock,
   onCapturePinnedNote, onOpenNote,
@@ -71,9 +74,20 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
   const [paneOrder, setPaneOrder] = useState<string[]>([]);
   const [visiblePaneId, setVisiblePaneId] = useState<string | null>(null);
   const [quantumSelectionMessage, setQuantumSelectionMessage] = useState("");
+  const [catenoidStep, setCatenoidStep] = useState<"study" | "curvature" | "comparison" | "workbook">("study");
   const quantumSelectionSerial = useRef(0);
   const viewRef = useRef<HTMLDivElement>(null);
   const studies = project.workspace.studies ?? [];
+  const catenoidStudy = project.metadata.tags?.includes("curated-study-v1") &&
+    project.metadata.tags.includes("catenoid-evidence") ? studies[0] : null;
+  const catenoidSurface = catenoidStudy && project.workspace.entries.find(entry => entry.module === "surface" &&
+    catenoidStudy.members.some(member => member.documentId === entry.expected.id));
+  const catenoidSurfaceStatus = catenoidStudy && catenoidSurface && inspectProjectStudyMembers(project, catenoidStudy)
+    .find(member => member.documentId === catenoidSurface.expected.id)?.status;
+  const ridgeResult = project.workspace.results.find(result =>
+    result.provenance.operation.type === SURFACE_RIDGE_COMPARISON_OPERATION);
+  const ridgeWorkbook = project.workbooks?.find(book =>
+    book.title === "Surface ridge and discrete curvature comparison");
   useEffect(() => {
     const study = studies.find(item => item.id === focusStudy?.id);
     if (!study) return;
@@ -82,6 +96,7 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
     setOpenId(study.id); setEditTitle(study.title); setDescription(study.description ?? "");
     setLayoutMode(study.layout.mode); setPaneOrder(study.layout.panes.map(pane => pane.paneId));
     setVisiblePaneId(null);
+    if (project.metadata.tags?.includes("catenoid-evidence")) setCatenoidStep("study");
     window.requestAnimationFrame(() => viewRef.current?.scrollIntoView({ block: "nearest" }));
   }, [focusStudy?.token, project.identity.id]);
   const open = studies.find(study => study.id === openId) ?? null;
@@ -126,6 +141,61 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
   };
   return <section className="project-dashboard-card" data-testid="project-studies-panel" aria-label="Project Studies">
     <div className="project-dashboard-card-heading"><h4>Studies</h4><span>{studies.length}</span></div>
+    {catenoidStudy && <section className="catenoid-journey-flow" data-testid="catenoid-journey-flow"
+      aria-label="Catenoid evidence journey">
+      <div className="catenoid-journey-heading"><strong>Catenoid evidence journey</strong>
+        <span>{ridgeResult ? "Comparison recorded" : "Continue the saved Study"}</span></div>
+      <div className="catenoid-journey-tabs" role="tablist" aria-label="Catenoid journey steps">
+        {([ ["study", "1 · Study"], ["curvature", "2 · Curvature"],
+          ["comparison", "3 · Comparison"], ["workbook", "4 · Workbook"] ] as const).map(([id, label]) =>
+          <button key={id} type="button" role="tab" id={`catenoid-flow-tab-${id}`}
+            data-testid={`catenoid-flow-tab-${id}`} aria-selected={catenoidStep === id}
+            aria-controls="catenoid-flow-panel" tabIndex={catenoidStep === id ? 0 : -1}
+            onClick={() => setCatenoidStep(id)} onKeyDown={event => {
+              const order = ["study", "curvature", "comparison", "workbook"] as const;
+              const index = order.indexOf(id);
+              const next = event.key === "ArrowRight" ? order[(index + 1) % order.length] :
+                event.key === "ArrowLeft" ? order[(index + order.length - 1) % order.length] :
+                event.key === "Home" ? order[0] : event.key === "End" ? order[order.length - 1] : null;
+              if (next) { event.preventDefault(); setCatenoidStep(next);
+                document.getElementById(`catenoid-flow-tab-${next}`)?.focus(); }
+            }}>{label}</button>)}
+      </div>
+      <div role="tabpanel" id="catenoid-flow-panel" aria-labelledby={`catenoid-flow-tab-${catenoidStep}`}
+        data-testid={`catenoid-flow-panel-${catenoidStep}`}>
+        {catenoidStep === "study" && <><h5>Inspect the saved Study</h5>
+          <p>Review the exact Surface and retained Mesh before running a new curvature computation.</p>
+          <button type="button" data-testid="catenoid-flow-open-study" onClick={() => {
+            setOpenId(catenoidStudy.id); setEditTitle(catenoidStudy.title);
+            setDescription(catenoidStudy.description ?? ""); setLayoutMode(catenoidStudy.layout.mode);
+            setPaneOrder(catenoidStudy.layout.panes.map(pane => pane.paneId)); setVisiblePaneId(null);
+          }}>Open saved Study</button>{" "}
+          <button type="button" onClick={() => setCatenoidStep("curvature")}>Next: Curvature</button></>}
+        {catenoidStep === "curvature" && <><h5>Compute Surface curvature</h5>
+          <p>Open the saved Surface, then choose Analysis → Curvature field → Compute. Return to Projects when the result is ready.</p>
+          <button type="button" data-testid="catenoid-flow-open-surface"
+            disabled={!editable || !catenoidSurface || catenoidSurfaceStatus !== "current-reference"}
+            onClick={() => { if (catenoidSurface) onOpenDocument(catenoidSurface.expected.id, "surface"); }}>
+            Open Surface</button>{" "}
+          <button type="button" onClick={() => setCatenoidStep("comparison")}>Next: Comparison</button>
+          {catenoidSurfaceStatus !== "current-reference" && <p role="status">Saved Surface source changed or is missing; reopen a current source before computing.</p>}</>}
+        {catenoidStep === "comparison" && <><h5>Publish the comparison</h5>
+          <p>Choose a sampled ridge and its retained Mesh. The action checks exact sources, records local curvature error, and stages a Curve and Workbook.</p>
+          <SurfaceRidgePublicationPanel project={project} resources={resources} editable={editable}
+            onPublish={onPublishSurfaceRidge} />
+          {ridgeResult && <button type="button" onClick={() => setCatenoidStep("workbook")}>Next: Workbook</button>}</>}
+        {catenoidStep === "workbook" && <><h5>Save and review evidence</h5>
+          <p>{ridgeWorkbook ? "The comparison Workbook is recorded. Save the Project, then inspect its source-qualified citation." :
+            "Publish a current Surface–Mesh comparison to stage its Workbook."}</p>
+          <button type="button" data-testid="catenoid-flow-save-project" disabled={!editable || !onSaveProject || !ridgeWorkbook}
+            onClick={() => { void onSaveProject?.(); }}>Save Project</button>{" "}
+          <button type="button" data-testid="catenoid-flow-open-workbook"
+            disabled={!ridgeWorkbook || !onOpenWorkbook} onClick={() => {
+              if (ridgeWorkbook) onOpenWorkbook?.(ridgeWorkbook.id);
+            }}>Open comparison Workbook</button>
+          {!ridgeWorkbook && <button type="button" onClick={() => setCatenoidStep("comparison")}>Back to comparison</button>}</>}
+      </div>
+    </section>}
     <p>Save a question and pane layout using existing Project documents.</p>
     {editable && <div data-testid="project-study-create">
       <label>Study title <input aria-label="Study title" value={title} maxLength={160}
@@ -143,8 +213,8 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
       qualifyProjectQwzPair(project, item.id)).map(item => <button type="button" key={item.id}
         data-testid={`project-study-create-qwz-${item.id}`} onClick={() => onCreateQwz(item.id)}>
         Create four-view QWZ Study from {item.title}</button>)}
-    <SurfaceRidgePublicationPanel project={project} resources={resources} editable={editable}
-      onPublish={onPublishSurfaceRidge} />
+    {!catenoidStudy && <SurfaceRidgePublicationPanel project={project} resources={resources} editable={editable}
+      onPublish={onPublishSurfaceRidge} />}
     {!!onPublishVolumeMesh && volumeMeshOptions.length > 0 && <div data-testid="project-volume-mesh-journeys">
       <strong>Volume → isosurface → Mesh</strong>
       <p>Pin a current extraction, its retained Mesh, and a Workbook citation in one Study.</p>

@@ -24,9 +24,11 @@ test("selected Surface ridge publishes Mesh error and Workbook evidence across r
     await panel.getByTestId("curated-study-open-catenoid-evidence").click();
     await expect(panel.getByTestId("project-message")).toContainText("Opened supported project", { timeout: 60_000 });
     await showProjectStudies(panel);
-    const sourceStudy = panel.getByTestId("project-studies-panel");
-    await sourceStudy.locator("[data-testid^='project-study-open-']").first().click();
-    await sourceStudy.getByTestId("project-study-open-source-pane-1").click();
+    const flow = panel.getByTestId("catenoid-journey-flow");
+    await expect(flow.getByRole("tab", { name: "1 · Study" })).toHaveAttribute("aria-selected", "true");
+    await flow.getByRole("tab", { name: "2 · Curvature" }).click();
+    await expect(flow.getByTestId("catenoid-flow-panel-curvature")).toContainText("Analysis → Curvature field → Compute");
+    await flow.getByTestId("catenoid-flow-open-surface").click();
     // The real worker computes quickly; hold only its result delivery so Cancel remains actionable.
     await page.evaluate(() => {
       const NativeWorker = window.Worker;
@@ -62,12 +64,15 @@ test("selected Surface ridge publishes Mesh error and Workbook evidence across r
     await expect(page.getByTestId("surface-curvature-result")).toBeVisible();
     await page.getByTestId("projects-toggle").click();
     await panel.getByRole("button", { name: "View current project" }).click();
+    await flow.getByRole("tab", { name: "3 · Comparison" }).click();
     const ridge = panel.getByTestId("project-surface-ridge-publication");
     await expect(ridge).toBeVisible();
     await ridge.locator("[data-testid^='project-publish-ridge-']").first().click();
     await expect(ridge.getByTestId("project-surface-ridge-evidence")).toContainText("absolute error", { timeout: 60_000 });
     await expect(ridge.getByTestId("project-surface-ridge-status")).toContainText("Workbook staged");
-    await panel.getByTestId("project-save").click();
+    await flow.getByRole("tab", { name: "4 · Workbook" }).click();
+    await expect(flow.getByTestId("catenoid-flow-open-workbook")).toBeEnabled();
+    await flow.getByTestId("catenoid-flow-save-project").click();
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     const comparison = saved.workspace.results.find((item: { provenance: { operation: { type: string } } }) =>
       item.provenance.operation.type === "surface.revolution-ridge-comparison");
@@ -101,6 +106,7 @@ test("selected Surface ridge publishes Mesh error and Workbook evidence across r
     await openLastSavedProject(page);
     panel = page.getByTestId("project-explorer-panel");
     await showProjectStudies(panel);
+    await panel.getByTestId("catenoid-flow-tab-comparison").click();
     await expect(panel.getByTestId("project-surface-ridge-evidence")).toContainText("spatial offset");
     const core = require(resolve("packages/core/src/index.ts"));
     const current = core.parseMath3DProject(await page.evaluate(() => localStorage.getItem("math3d.project.v1")));
@@ -121,6 +127,7 @@ test("selected Surface ridge publishes Mesh error and Workbook evidence across r
     await openLastSavedProject(page);
     panel = page.getByTestId("project-explorer-panel");
     await showProjectStudies(panel);
+    await panel.getByTestId("catenoid-flow-tab-comparison").click();
     await expect(panel.getByTestId("project-surface-ridge-withheld")).toContainText("changed");
     await closeSurfaceApp(app);
     app = await launchSurfaceApp(); await resetSurfaceAppState(app.page);
@@ -154,6 +161,7 @@ test("selected Surface ridge publishes Mesh error and Workbook evidence across r
       .toEqual(comparison);
     await page.context().setOffline(true);
     await showProjectStudies(panel);
+    await panel.getByTestId("catenoid-flow-tab-comparison").click();
     await expect(panel.getByTestId("project-surface-ridge-evidence")).toContainText("absolute error");
     await expect(panel.getByTestId("project-surface-ridge-export")).toBeEnabled();
   } finally { await closeSurfaceApp(app); }

@@ -2586,6 +2586,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                 "QWZ k selection removed from Study.")}
               onDeriveQwzProfile={stageQwzBandProfile}
               onPublishSurfaceRidge={stageSurfaceRidgeComparison}
+              onSaveProject={save}
+              onOpenWorkbook={id => { void openProjectWorkbook(id, true); }}
               onPublishVolumeMesh={stageVolumeMeshStudy}
               onPinScientificSelection={(id, selectionId) => stageStudy(source =>
                 pinProjectStudyScientificSelection(source, id, selectionId), "Scientific selection pinned in Study.")}
