@@ -80,15 +80,15 @@ export const StarterArtwork: React.FC<{ id: ProjectStarterId }> = ({ id }) => <s
 
 export const ProjectTemplatesPanel: React.FC<{ onPreview: (id: ProjectStarterId) => void; onOpen: (id: ProjectStarterId) => void; onNewCopy: (id: ProjectStarterId) => void;
   onPreviewCurated: (id: ProjectStarterId) => void; onOpenCurated: (id: ProjectStarterId) => void; onNewCuratedCopy: (id: ProjectStarterId) => void;
+  view: "starters" | "studies"; onViewChange: (view: "starters" | "studies") => void;
   onImportQuantumScene?: () => void; quantumImportAvailable?: boolean; onOpenCasGallery?: () => void;
   casProvenance?: Readonly<{ projectTitle: string; definitions: readonly Readonly<{ label: string; revision: number }>[]; results: number }> | null;
   copies: Partial<Record<ProjectStarterId, ProjectLibraryEntry>>; guidedCopies: Partial<Record<ProjectStarterId, ProjectLibraryEntry>>;
   busy: boolean; query?: string; moduleFilter?: string; host?: PlatformCapabilitySnapshot;
   assetBytes?: Readonly<Record<string, number>>; guidedLimits?: Readonly<Record<string, string | null>> }> = ({ onPreview, onOpen, onNewCopy,
     onPreviewCurated, onOpenCurated, onNewCuratedCopy, onImportQuantumScene, quantumImportAvailable = false,
-    onOpenCasGallery, casProvenance, copies, guidedCopies, busy, query = "", moduleFilter = "All modules", host, assetBytes = {}, guidedLimits = {} }) => {
+    onOpenCasGallery, casProvenance, copies, guidedCopies, view, onViewChange, busy, query = "", moduleFilter = "All modules", host, assetBytes = {}, guidedLimits = {} }) => {
   const [id, setId] = useState<ProjectStarterId>("catenary-study");
-  const [view, setView] = useState<"starters" | "studies">("starters");
   const matches = starters.filter(item => (moduleFilter === "All modules" || PROJECT_STARTER_MODULES[item.id].includes(moduleFilter)) &&
     `${item.title} ${item.description} ${PROJECT_STARTER_MODULES[item.id].join(" ")}`.toLowerCase().includes(query.trim().toLowerCase()));
   const guided = CURATED_STUDIES.filter(item => {
@@ -104,8 +104,8 @@ export const ProjectTemplatesPanel: React.FC<{ onPreview: (id: ProjectStarterId)
   const canCreateCopy = !galleryJourney || galleryJourney.mode === "open";
   return <section data-testid="project-templates" className="project-starters">
     <div className="curated-study-switch" role="group" aria-label="Gallery view">
-      <button type="button" data-testid="project-gallery-guided" aria-pressed={view === "studies"} onClick={() => setView("studies")}>Guided Studies ({guided.length})</button>
-      <button type="button" data-testid="project-gallery-all-starters" aria-pressed={view === "starters"} onClick={() => setView("starters")}>All starters ({matches.length})</button>
+      <button type="button" data-testid="project-gallery-guided" aria-pressed={view === "studies"} onClick={() => onViewChange("studies")}>Guided Studies ({guided.length})</button>
+      <button type="button" data-testid="project-gallery-all-starters" aria-pressed={view === "starters"} onClick={() => onViewChange("starters")}>All starters ({matches.length})</button>
     </div>
     {view === "studies" && <>
       <p className="curated-study-intro">Choose a scientific question, inspect its saved sources, and follow the stated limitations. Quantum cards require your own verified scene bundle; CAS examples save into a named Project.</p>

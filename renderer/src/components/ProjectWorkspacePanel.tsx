@@ -211,6 +211,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const resourceSessionId = useRef<string | null>(null);
   const [resourceVersion, setResourceVersion] = useState(0);
   const [quick, setQuick] = useState(false), [detailView, setDetailView] = useState(false), [viewerCompanion, setViewerCompanion] = useState(false), [collection, setCollection] = useState("All projects");
+  const [starterView, setStarterView] = useState<"starters" | "studies">("starters");
   const [detailPage, setDetailPage] = useState<"overview" | "documents" | "relations" | "results" | "history" | "settings" | "transfer">("overview");
   const [resultFocus, setResultFocus] = useState<{ id: string; token: number } | null>(null);
   const [studyFocus, setStudyFocus] = useState<{ id: string; token: number; selectionId?: string;
@@ -2223,6 +2224,12 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     openDetailPage(section === "results" ? "results" : section === "workbooks" ? "documents" : "overview",
       section === "workbooks" ? contentsSection : undefined);
   };
+  const browseGuidedCatenoid = () => {
+    setNotesOpen(false); setQuick(false); setViewerCompanion(false); setDetailView(false);
+    setCollection("Starter projects"); setStarterView("studies");
+    setQuery("catenoid evidence"); setModuleFilter("All modules");
+    workspacePanel.current?.scrollTo({ top: 0 });
+  };
   const returnToSource = () => {
     const entry = project?.workspace.entries.find(item => item.expected.id === viewingDocumentId);
     if (entry && canNavigateDocument?.(entry.expected.id, entry.module))
@@ -2272,6 +2279,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     window.dispatchEvent(new CustomEvent("math3d:research-command-index", { detail: researchCommands }));
   }, [project, library, busy, preview, resourceVersion]);
   const fullDetails = !quick && detailView;
+  const ordinaryCatenoid = !!project?.metadata.tags?.includes("catenoid-evidence") &&
+    !project.metadata.tags.includes("curated-study-v1");
   useEffect(() => {
     if (!hasOpenProject || busy || preview || managed || !project?.metadata.tags?.includes("ripple-wave-study") ||
       project.workbooks?.some(item => item.title === "Ripple Wave Research") ||
@@ -2309,6 +2318,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               <button type="button" onClick={() => openDetailPage("transfer", transferSection)}>Import / export</button>
             </div></details>
           </> : <>
+            {quick && ordinaryCatenoid && <button type="button" data-testid="project-open-guided-catenoid" onClick={browseGuidedCatenoid}>Find guided Catenoid journey</button>}
             {!quick && <button type="button" data-testid="project-detail-toggle" aria-pressed={detailView} onClick={() => { setNotesOpen(false); workspacePanel.current?.scrollTo({ top: 0 }); setDetailView(value => !value); }}>{detailView ? "Browse projects" : "View current project"}</button>}
             <button data-testid="project-gallery-layout-toggle" aria-label={viewerCompanion && quick ? "Project details" : undefined} title={viewerCompanion && quick ? "Project details" : undefined} onClick={() => { if (!viewerCompanion) setNotesOpen(false); if (viewerCompanion) setDetailPage("overview"); setQuick(value => !value); setViewerCompanion(false); }}>{quick ? viewerCompanion ? "⋯" : "Full gallery" : "Quick panel"}</button>
           </>}
@@ -2340,6 +2350,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               ((section === "studies" && detailPage === "overview") || (section === "results" && detailPage === "results") ||
                 (section === "workbooks" && detailPage === "documents") || (section === "notes" && notesOpen)) ? "page" : undefined}
             onClick={() => openResearchSection(section)}>{section[0].toUpperCase() + section.slice(1)}</button>)}
+        {ordinaryCatenoid && <button type="button" data-testid="project-open-guided-catenoid" onClick={browseGuidedCatenoid}>Find guided Catenoid journey</button>}
         <button type="button" data-testid="project-research-nav-source" disabled={!viewingDocumentId} onClick={returnToSource}>Back to source</button>
       </nav>}
       {hasOpenProject && !preview && viewingDocumentId && !fullDetails && <nav className="project-context-breadcrumb" data-testid="project-breadcrumb" aria-label="Project breadcrumb">
@@ -2381,7 +2392,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
             {(query || moduleFilter !== "All modules") && <button type="button" onClick={() => { setQuery(""); setModuleFilter("All modules"); }}>Clear filters</button>}
           </div>
         </div>
-        {(collection === "All projects" || collection === "Starter projects") && <ProjectTemplatesPanel query={query} moduleFilter={moduleFilter} copies={starterCopies} guidedCopies={guidedCopies} host={galleryHost} assetBytes={galleryAssetBytes} guidedLimits={guidedLimits} onPreview={id => { void previewTemplate(id); }} onOpen={(id) => { void openTemplate(id); }} onNewCopy={id => { void openTemplate(id, true); }}
+        {(collection === "All projects" || collection === "Starter projects") && <ProjectTemplatesPanel query={query} moduleFilter={moduleFilter} view={starterView} onViewChange={setStarterView} copies={starterCopies} guidedCopies={guidedCopies} host={galleryHost} assetBytes={galleryAssetBytes} guidedLimits={guidedLimits} onPreview={id => { void previewTemplate(id); }} onOpen={(id) => { void openTemplate(id); }} onNewCopy={id => { void openTemplate(id, true); }}
           onPreviewCurated={id => { void previewTemplate(id, true); }} onOpenCurated={id => { void openTemplate(id, false, true); }}
           onNewCuratedCopy={id => { void openTemplate(id, true, true); }}
           onImportQuantumScene={onImportQuantumScene} quantumImportAvailable={!!window.quantumScenes?.open}

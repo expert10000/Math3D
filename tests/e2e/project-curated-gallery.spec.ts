@@ -51,6 +51,29 @@ test("guided Study Gallery explains real Project and external-scene routes witho
   } finally { await closeSurfaceApp(ctx); }
 });
 
+test("Catenoid Notebook links directly to its distinct guided journey", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-template-open-catenoid-evidence").click();
+    await panel.getByTestId("project-gallery-layout-toggle").click();
+    await expect(panel.getByTestId("project-explorer-header").locator("h2"))
+      .toHaveText("Catenoid Evidence Notebook");
+    const guide = panel.getByTestId("project-open-guided-catenoid");
+    await expect(guide).toBeVisible({ timeout: 60_000 });
+    await guide.click();
+    await expect(panel.getByTestId("project-gallery-guided")).toHaveAttribute("aria-pressed", "true");
+    await expect(panel.getByTestId("project-library-search")).toHaveValue("catenoid evidence");
+    await expect(panel.locator(".curated-study-card")).toHaveCount(1);
+    await expect(panel.getByTestId("curated-study-card-catenoid-evidence")).toBeVisible();
+    await panel.getByTestId("curated-study-open-catenoid-evidence").click();
+    await expect(panel.getByTestId("catenoid-journey-flow")).toBeVisible({ timeout: 60_000 });
+    await expect(panel.getByTestId("catenoid-flow-tab-curvature")).toBeVisible();
+  } finally { await closeSurfaceApp(ctx); }
+});
+
 test("Algebra Gallery route saves a validated structure into the active Project", async () => {
   let ctx: LaunchedSurfaceApp | null = null;
   try {
