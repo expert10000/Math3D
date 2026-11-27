@@ -2501,7 +2501,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         </nav>}
         {projectNotesView && <div className="project-notes-workspace"><p className="project-workspace-eyebrow">PROJECT / NOTES</p>{renderNotesPanel("page")}</div>}
         <div className="project-workspace-main">
-        {project && !preview && !managed && <section aria-label="Project comparison" data-testid="project-composition-entry" style={{ padding: 12, border: "1px solid #cbd5e1", borderRadius: 8, margin: "12px 0" }}>
+        {project && !preview && !managed && detailPage !== "journey" && <section aria-label="Project comparison" data-testid="project-composition-entry" style={{ padding: 12, border: "1px solid #cbd5e1", borderRadius: 8, margin: "12px 0" }}>
           <h4 style={{ margin: "0 0 4px" }}>Compare saved documents</h4>
           <p style={{ margin: "0 0 8px" }}>View two saved Mesh, Geometry or bounded Surface documents without copying their sources. {project.compositions?.length ?? 0} saved compositions.</p>
           <button type="button" data-testid="project-open-composition" disabled={busy ||

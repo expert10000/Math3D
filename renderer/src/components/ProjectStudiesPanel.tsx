@@ -26,6 +26,7 @@ import { StudyQuantumSelectionPanel } from "./StudyQuantumSelectionPanel";
 import { CatenoidJourneyWorkflow, type CatenoidJourneyStep } from "./CatenoidJourneyWorkflow";
 
 const StudyPanePreview = lazy(() => import("./StudyPanePreview").then(module => ({ default: module.StudyPanePreview })));
+const CatenoidJourneySourceComparison = lazy(() => import("./CatenoidJourneySourceComparison").then(module => ({ default: module.CatenoidJourneySourceComparison })));
 
 type DocumentChoice = Readonly<{ id: string; title: string; module: KernelWorkspaceModule }>;
 type Props = Readonly<{ project: Math3DProject; documents: readonly DocumentChoice[]; editable: boolean;
@@ -171,6 +172,9 @@ export function ProjectStudiesPanel({ project, documents, editable, resources, f
           {catenoidSurfaceStatus !== "current-reference" && <p role="status">Saved Surface source changed or is missing; reopen a current source before computing.</p>}</>}
         {catenoidStep === "comparison" && <><h5>Publish the comparison</h5>
           <p>Choose a sampled ridge and its retained Mesh. The action checks exact sources, records local curvature error, and stages a Curve and Workbook.</p>
+          <Suspense fallback={<p role="status">Loading saved Surface and Mesh…</p>}>
+            <CatenoidJourneySourceComparison project={project} resources={resources} />
+          </Suspense>
           <SurfaceRidgePublicationPanel project={project} resources={resources} editable={editable}
             onPublish={onPublishSurfaceRidge} />
           {ridgeResult && <button type="button" onClick={() => setCatenoidStep("workbook")}>Next: Workbook</button>}</>}

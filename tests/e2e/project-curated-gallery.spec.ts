@@ -130,6 +130,10 @@ test("Catenoid workflow stays visible on its Surface and returns to the selected
       .toHaveText("Curvature result ready. Continue with 3 Comparison.", { timeout: 30_000 });
     await expect(surfaceFlow.getByTestId("catenoid-surface-open-mesh")).toBeVisible();
     await surfaceFlow.getByTestId("catenoid-surface-open-mesh").click();
+    await expect(page.getByTestId("saved-mesh-toolbar")).toBeVisible();
+    await expect(page.getByTestId("project-source-editor")).toHaveAttribute("data-document-module", "mesh");
+    await expect(page.getByTestId("workspace-nav-mesh")).toHaveAttribute("aria-pressed", "true");
+    await expect(surfaceFlow).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Back to catenoid" })).toBeVisible();
     await page.getByRole("button", { name: "Back to catenoid" }).click();
     await expect(surfaceFlow).toBeVisible();
@@ -142,6 +146,13 @@ test("Catenoid workflow stays visible on its Surface and returns to the selected
     await expect(panel.getByTestId("catenoid-flow-tab-comparison"))
       .toHaveAttribute("aria-selected", "true");
     await expect(panel.getByTestId("catenoid-flow-panel-comparison")).toBeVisible();
+    await expect(panel.getByTestId("project-composition-entry")).toHaveCount(0);
+    const comparisonSources = panel.getByTestId("catenoid-comparison-sources");
+    await expect(comparisonSources).toBeVisible();
+    await expect(comparisonSources.locator("section[aria-label^='Surface ·']")).toBeVisible();
+    await expect(comparisonSources.locator("section[aria-label^='Mesh ·']")).toBeVisible();
+    await expect(comparisonSources.locator("section[aria-label^='Surface ·'] canvas").first()).toBeVisible();
+    await expect(comparisonSources.locator("section[aria-label^='Mesh ·'] canvas").first()).toBeVisible();
   } finally { await closeSurfaceApp(ctx); }
 });
 
