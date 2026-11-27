@@ -3,7 +3,7 @@ import { createMixedWorkspaceDocument, normalizeQuantumStudyDocument, replaceMat
 import { openVerifiedStudyQuantumScene } from "./studyQuantumSource";
 
 type QuantumApi = NonNullable<Window["quantumScenes"]>;
-type Role = "density" | "phase" | "chain" | "bands";
+type Role = "density" | "phase" | "chain" | "bands" | "stationary";
 const sceneDocument = (project: Math3DProject, fingerprint: string) => project.workspace.entries
   .find(entry => entry.checkpoint.format === "math3d.quantum-scene-document" &&
     entry.checkpoint.source.sceneFingerprint === fingerprint)?.checkpoint as QuantumSceneDocument | undefined;
@@ -11,6 +11,9 @@ export const quantumStudyRecord = (project: Math3DProject, study: StudyRecordV1)
   const documents = study.members.map(member => project.workspace.entries
     .find(entry => entry.expected.id === member.documentId)?.checkpoint);
   return project.workspace.quantumStudies?.find(item => {
+    if(item.templateId === "ute2-landau")return documents.length===1 && item.panels.length===1 &&
+      documents[0]?.format === "math3d.quantum-scene-document" &&
+      documents[0].source.sceneFingerprint === item.panels[0]?.sceneFingerprint;
     if (documents.length !== 2 || item.panels.length !== 2) return false;
     if (item.templateId === "hydrogen") return documents.some(document =>
       document?.format === "math3d.quantum-scene-document" &&
@@ -43,7 +46,8 @@ export function pinQuantumStudySample(project: Math3DProject, study: StudyRecord
   if (!record || !Number.isSafeInteger(index) || index < 0 || index > 1_000_000)
     throw new TypeError("Study selection is outside the saved quantum result.");
   if (record.templateId === "hydrogen" && !["density", "phase"].includes(role) ||
-      record.templateId === "ssh" && !["chain", "bands"].includes(role))
+      record.templateId === "ssh" && !["chain", "bands"].includes(role) ||
+      record.templateId === "ute2-landau" && (role !== "stationary" || objectId !== "stationary"))
     throw new TypeError("Study selection role differs from the saved template.");
   const panels = record.panels.map(panel => record.templateId === "hydrogen" || panel.role === role ?
     { ...panel, selectedObjectId: record.templateId === "hydrogen" ? null : objectId,
@@ -60,7 +64,7 @@ export function pinQuantumStudySample(project: Math3DProject, study: StudyRecord
 export async function quantumStudySelectionEvidence(project: Math3DProject, study: StudyRecordV1,
   api: QuantumApi | undefined = typeof window === "undefined" ? undefined : window.quantumScenes) {
   const record = quantumStudyRecord(project, study);
-  if (!record) throw new TypeError("A saved hydrogen or SSH Study is required.");
+  if (!record) throw new TypeError("A saved supported quantum Study is required.");
   const sources = record.panels.map(panel => ({ role: panel.role, sceneFingerprint: panel.sceneFingerprint,
     datasets: sceneDocument(project, panel.sceneFingerprint)?.source.datasets.map(dataset =>
       ({ id: dataset.id, sha256: dataset.sha256, unit: dataset.unit })) ?? [] }));
@@ -74,7 +78,19 @@ export async function quantumStudySelectionEvidence(project: Math3DProject, stud
       if (!document) throw new TypeError(`${panel.role} source document is missing.`);
       await openVerifiedStudyQuantumScene(project, document);
     }
-    if (record.templateId === "hydrogen") {
+    if (record.templateId === "ute2-landau") {
+      const panel=record.panels[0]!;
+      if(panel.sampleIndex===null || panel.selectedObjectId!=="stationary")
+        omissions.push("No saved Landau stationary candidate is selected.");
+      else {
+        const sample=await api.ute2LandauSample({fingerprint:panel.sceneFingerprint,sampleIndex:panel.sampleIndex});
+        if(sample.fingerprint!==panel.sceneFingerprint||sample.sampleIndex!==panel.sampleIndex||
+            sample.runId!==record.source.runId||sample.resultSha256!==record.source.resultSha256)
+          throw new TypeError("Landau candidate differs from its verified source.");
+        values.stationary=sample;
+      }
+      omissions.push("Uniform dimensionless producer result; no fitted UTe2 phase boundary or material topology is inferred.");
+    } else if (record.templateId === "hydrogen") {
       const field = project.workspace.entries.find(entry => entry.checkpoint.format === "math3d.quantum-field-document" &&
         entry.checkpoint.source.scene.sceneFingerprint === record.panels[0]!.sceneFingerprint)?.checkpoint as QuantumFieldDocument | undefined;
       const index = record.panels[0]!.sampleIndex;

@@ -6,6 +6,7 @@ import type { FieldVolume, FieldVolumeRequest } from "./main/quantumScene/fieldV
 import type { BandSample, BandSampleRequest } from "./main/quantumScene/bandSelection";
 import type { QwzCursorProjection, QwzCursorProjectionRequest } from "./main/quantumScene/cursorProjection";
 import type { ScalarSample, ScalarSampleRequest } from "./main/quantumScene/scalarSelection";
+import type { Ute2LandauSample, Ute2LandauSampleRequest } from "./main/quantumScene/ute2LandauSample";
 import type { StudySourceRunRequest } from "./main/quantumScene/studySourceRun";
 import type { FluxSourceRunRequest } from "./main/quantumScene/fluxSourceRun";
 import type { QuantumSceneExampleSummary } from "./main/quantumScene/examples";
@@ -605,6 +606,7 @@ contextBridge.exposeInMainWorld("quantumScenes", Object.freeze({
   verifyActive: (fingerprint: string): Promise<boolean> => ipcRenderer.invoke("quantumScenes:verifyActive", fingerprint),
   bandSample: (request: BandSampleRequest): Promise<BandSample> => ipcRenderer.invoke("quantumScenes:bandSample", request),
   scalarSample: (request: ScalarSampleRequest): Promise<ScalarSample> => ipcRenderer.invoke("quantumScenes:scalarSample", request),
+  ute2LandauSample: (request: Ute2LandauSampleRequest): Promise<Ute2LandauSample> => ipcRenderer.invoke("quantumScenes:ute2LandauSample",request),
   topologySample: (request: TopologySampleRequest): Promise<TopologySample> => ipcRenderer.invoke("quantumScenes:topologySample", request),
   projectQwzCursor: (request: QwzCursorProjectionRequest): Promise<QwzCursorProjection> =>
     ipcRenderer.invoke("quantumScenes:projectQwzCursor", request),

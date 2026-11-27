@@ -375,7 +375,7 @@ export type WorkbookQuantumStudyEvidence = Readonly<{
   snapshot: Readonly<{
     schema: "math3d.quantum-study-selection-evidence/v1";
     studyId: string;
-    templateId: "hydrogen" | "ssh";
+    templateId: "hydrogen" | "ssh" | "ute2-landau";
     runId: string;
     resultSha256: string;
     sources: readonly Readonly<{ role: string; sceneFingerprint: string;

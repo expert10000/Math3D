@@ -14,14 +14,15 @@ export type QuantumStudyDocument = Readonly<{
   link: Readonly<{ selection: "same-result-and-coordinate" }>;
 }>;
 
-export type QuantumStudyTemplateId = "qwz" | "ssh" | "rice-mele" | "hofstadter" | "hydrogen";
+export type QuantumStudyTemplateId = "qwz" | "ssh" | "rice-mele" | "hofstadter" | "hydrogen" | "ute2-landau";
 export const QUANTUM_STUDY_TEMPLATES: Readonly<Record<QuantumStudyTemplateId,
-  Readonly<{ label: string; model: string; roles: readonly [string, string]; layout: "columns" | "rows" }>>> = {
+  Readonly<{ label: string; model: string; roles: readonly string[]; layout: "columns" | "rows" }>>> = {
   qwz: { label: "QWZ bands and curvature", model: "qwz", roles: ["curvature", "bands"], layout: "columns" },
   ssh: { label: "SSH chain and bands", model: "ssh", roles: ["chain", "bands"], layout: "columns" },
   "rice-mele": { label: "Rice–Mele pump and finite response", model: "rice_mele_pump", roles: ["periodic", "finite"], layout: "rows" },
   hofstadter: { label: "Hofstadter bulk and strip", model: "hofstadter", roles: ["bands", "strip"], layout: "columns" },
   hydrogen: { label: "Hydrogen density and phase", model: "hydrogenic", roles: ["density", "phase"], layout: "columns" },
+  "ute2-landau": { label: "Two-order Landau candidates", model: "two_order_landau", roles: ["stationary"], layout: "columns" },
 };
 function templateSceneRole(templateId: QuantumStudyTemplateId, document: QuantumSceneDocument): string | null {
   const ids = new Set(document.source.objects.map(object => object.id));
@@ -29,6 +30,9 @@ function templateSceneRole(templateId: QuantumStudyTemplateId, document: Quantum
   if (templateId === "hydrogen") return ids.size === 0 &&
     document.source.datasets.some(item => item.id === "psi-real") &&
     document.source.datasets.some(item => item.id === "psi-imaginary") ? "density" : null;
+  if (templateId === "ute2-landau") return ids.has("stationary") && ids.has("stable") && ids.has("global") &&
+    document.source.coordinates.axes.join("|") === "order amplitude r1|order amplitude r2|free energy F" &&
+    document.source.coordinates.units.every(unit => unit === "dimensionless") ? "stationary" : null;
   if (templateId === "qwz") return ids.has("berry-curvature") ? "curvature" : ids.has("band-0") ? "bands" : null;
   if (templateId === "ssh") return ids.has("edge-density") ? "chain" : ids.has("band-0") ? "bands" : null;
   if (templateId === "rice-mele") return /-finite-pump$|-open-chain-pump$/.test(sceneId) ? "finite" :
@@ -52,7 +56,7 @@ export function normalizeQuantumStudyDocument(value: unknown,
       typeof value.source.runId !== "string" || !token.test(value.source.runId) ||
       typeof value.source.model !== "string" || !token.test(value.source.model) ||
       typeof value.source.resultSha256 !== "string" || !hash.test(value.source.resultSha256) ||
-      !Array.isArray(value.panels) || value.panels.length < 2 || value.panels.length > 8)
+      !Array.isArray(value.panels) || value.panels.length < (value.templateId === "ute2-landau" ? 1 : 2) || value.panels.length > 8)
     return { ok: false, errors: ["Invalid quantum study document."] };
   const template = value.templateId === undefined ? null : QUANTUM_STUDY_TEMPLATES[value.templateId as QuantumStudyTemplateId];
   if (value.templateId !== undefined && (!template || template.model !== value.source.model ||
@@ -105,7 +109,7 @@ export function createQuantumStudyFromTemplate(templateId: QuantumStudyTemplateI
     if (!document) throw new TypeError(`Missing verified ${panelRole} template scene`);
     return document;
   });
-  if (templateId !== "hydrogen" && selected[0].source.sceneFingerprint === selected[1].source.sceneFingerprint)
+  if (selected.length>1 && templateId !== "hydrogen" && selected[0].source.sceneFingerprint === selected[1].source.sceneFingerprint)
     throw new TypeError("Template needs two distinct verified scene views");
   const study = createQuantumStudyDocument(`${template.label} · ${provenance.runId}`,
     { model: provenance.model, runId: provenance.runId, resultSha256: provenance.resultSha256 },

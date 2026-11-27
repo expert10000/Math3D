@@ -3,7 +3,7 @@ import type { Math3DProject, StudyRecordV1 } from "@math3d/core";
 import { downloadStudyBlob } from "../projects/studyComparisonExport";
 import { pinQuantumStudySample, quantumStudyRecord, quantumStudySelectionEvidence } from "../projects/quantumStudySelection";
 
-type Role = "density" | "phase" | "chain" | "bands";
+type Role = "density" | "phase" | "chain" | "bands" | "stationary";
 type Evidence = Awaited<ReturnType<typeof quantumStudySelectionEvidence>>;
 
 /** Saved coordinates are shown only after reopening every exact source bundle. */
@@ -18,6 +18,7 @@ export function StudyQuantumSelectionPanel({ project, study, editable, onPin, on
   const [error, setError] = useState("");
   const [chainIndex, setChainIndex] = useState(0);
   const [bandIndex, setBandIndex] = useState(0);
+  const [landauIndex,setLandauIndex]=useState(0);
   useEffect(() => {
     if (!record) { setEvidence(null); return; }
     let active = true;
@@ -31,7 +32,7 @@ export function StudyQuantumSelectionPanel({ project, study, editable, onPin, on
     return () => { active = false; };
   }, [project, study]);
   if (!record) return null;
-  const pin = async (role: "chain" | "bands", index: number, objectId: string) => {
+  const pin = async (role: "chain" | "bands" | "stationary", index: number, objectId: string) => {
     if (!Number.isSafeInteger(index) || index < 0) { setError("Enter a nonnegative sample index."); return; }
     setError(""); setBusy(true);
     try {
@@ -61,7 +62,14 @@ export function StudyQuantumSelectionPanel({ project, study, editable, onPin, on
   };
   return <section data-testid="project-study-quantum-selection" aria-label="Saved quantum Study selection">
     <h6>Saved selection and evidence</h6>
-    {record.templateId === "hydrogen" ? <p>Click a grid point in either density or phase preview. The same exact grid point is saved for both panes when you save the Project.</p> :
+    {record.templateId === "ute2-landau" ? <div>
+      <p>Choose one producer-supplied stationary candidate. Its free energy, local-stability role and global-minimum role are rechecked against the exact scene bundle before display. This dimensionless toy does not map a measured UTe₂ phase boundary.</p>
+      <label>Stationary candidate index{" "}<input type="number" min={0} max={3} step={1} value={landauIndex}
+        data-testid="project-study-landau-index" onChange={event=>setLandauIndex(Number(event.target.value))}/></label>{" "}
+      <button type="button" disabled={!editable||busy} data-testid="project-study-pin-landau"
+        onClick={()=>void pin("stationary",landauIndex,"stationary")}>Save candidate selection</button>{" "}
+      {record.panels[0]?.sampleIndex===null?"No saved candidate":`Saved index ${record.panels[0]?.sampleIndex}`}
+    </div> : record.templateId === "hydrogen" ? <p>Click a grid point in either density or phase preview. The same exact grid point is saved for both panes when you save the Project.</p> :
       <div>
         <p>Chain and band samples are independent source qualified selections. No edge or bulk classification is inferred.</p>
         {(["chain", "bands"] as const).map(role => {

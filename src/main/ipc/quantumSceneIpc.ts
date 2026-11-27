@@ -10,6 +10,7 @@ import { isAbsolute, join, resolve } from "node:path";
 import { chooseTheoryLabTarget, configureTheoryLabTarget, launchTheoryLab, theoryLabTargetStatus } from "../quantumScene/theoryLabLaunch";
 import { inspectVerifiedBandSample, type BandSampleRequest } from "../quantumScene/bandSelection";
 import { inspectVerifiedScalarSample, type ScalarSampleRequest } from "../quantumScene/scalarSelection";
+import { inspectVerifiedUte2LandauSample, type Ute2LandauSampleRequest } from "../quantumScene/ute2LandauSample";
 import { resolveStudySourceRun, type StudySourceRunRequest } from "../quantumScene/studySourceRun";
 import { resolveFluxSourceRun, type FluxSourceRunRequest } from "../quantumScene/fluxSourceRun";
 import { inspectVerifiedTopologySample, inspectVerifiedVectorSample,
@@ -350,6 +351,13 @@ export function registerQuantumSceneIpc(initialDirectory: string | null = null, 
       selectedFluxPoint.set(event.sender, { fingerprint: active.fingerprint,
         objectId: sample.objectId, sampleIndex: sample.sampleIndex });
     return sample;
+  });
+  ipcMain.handle("quantumScenes:ute2LandauSample", async (event, ...args: unknown[]) => {
+    if(args.length!==1)throw new TypeError("Landau selection requires one request");
+    const active=activeField(event,args[0]);
+    const reopened=await reopenActive(active);
+    if(verifiedBySender.get(event.sender)!==active)throw new Error("Quantum scene changed during Landau selection");
+    return inspectVerifiedUte2LandauSample(reopened.imported,args[0] as Ute2LandauSampleRequest);
   });
   ipcMain.handle("quantumScenes:topologySample", async (event, ...args: unknown[]) => {
     if (args.length !== 1) throw new TypeError("Topology selection requires one request");

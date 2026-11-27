@@ -1,0 +1,143 @@
+{
+  "schema": "quantum-scene/v1",
+  "id": "ute2-landau-385f86e1c78131452a2ea145",
+  "title": "Two-order Landau stationary points",
+  "provenance": {
+    "kind": "numerical-result",
+    "runId": "run-dc342346df6946d4b9624dc4ac868d0a",
+    "jobId": "gl-math3d-fixture",
+    "model": "two_order_landau",
+    "engine": "quantum-python",
+    "engineVersion": "0.1.0",
+    "computedAt": "2026-11-27T12:24:42.813508+00:00",
+    "resultSha256": "385f86e1c78131452a2ea14523024ddccc2074db9d0e8cfb2b8337ab0b271bc1",
+    "adapter": "qvis/1",
+    "parameters": {
+      "a1": -0.7,
+      "a2": -0.5,
+      "b1": 1,
+      "b2": 1,
+      "g": 0.4
+    }
+  },
+  "coordinates": {
+    "handedness": "right",
+    "axes": [
+      "order amplitude r1",
+      "order amplitude r2",
+      "free energy F"
+    ],
+    "units": [
+      "dimensionless",
+      "dimensionless",
+      "dimensionless"
+    ]
+  },
+  "camera": {
+    "position": [
+      5,
+      -6,
+      5
+    ],
+    "target": [
+      0,
+      0,
+      0
+    ],
+    "up": [
+      0,
+      0,
+      1
+    ]
+  },
+  "datasets": [
+    {
+      "id": "stationary-positions",
+      "path": "stationary-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 4,
+      "unit": "r1, r2, F",
+      "bytes": 96,
+      "sha256": "eeef8c5d19b9f437f283ea48849aed0bdc54d67a68e46a3f03e5c684764b6341"
+    },
+    {
+      "id": "stable-positions",
+      "path": "stable-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 1,
+      "unit": "r1, r2, F",
+      "bytes": 24,
+      "sha256": "2523cc8973fd56ac6fbd3493d3ecff142b5d3e2990c88cf29bfe1292cb2c2bf0"
+    },
+    {
+      "id": "global-positions",
+      "path": "global-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 1,
+      "unit": "r1, r2, F",
+      "bytes": 24,
+      "sha256": "2523cc8973fd56ac6fbd3493d3ecff142b5d3e2990c88cf29bfe1292cb2c2bf0"
+    }
+  ],
+  "objects": [
+    {
+      "id": "stationary",
+      "label": "All saved stationary points",
+      "kind": "point-cloud",
+      "positions": "stationary-positions",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 0.15
+      }
+    },
+    {
+      "id": "stable",
+      "label": "Locally stable stationary points",
+      "kind": "point-cloud",
+      "positions": "stable-positions",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 0.15
+      }
+    },
+    {
+      "id": "global",
+      "label": "Tied global minima",
+      "kind": "point-cloud",
+      "positions": "global-positions",
+      "visible": true,
+      "style": {
+        "color": "#ffffff",
+        "opacity": 1,
+        "size": 0.15
+      }
+    }
+  ],
+  "annotations": [
+    {
+      "id": "scope",
+      "text": "Uniform dimensionless two-order Landau example; stationary and stability results are saved worker values. No UTe2 material fit or measured phase boundary.",
+      "position": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "quartic",
+      "text": "b1*b2-g^2 = 0.84; marginal = false. Relative phase, gradients and fluctuations are omitted.",
+      "position": [
+        0,
+        0,
+        -1
+      ]
+    }
+  ]
+}

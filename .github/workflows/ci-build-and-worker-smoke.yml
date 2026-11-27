@@ -163,6 +163,9 @@ jobs:
       - name: Verify frozen quantum scene corpus and import boundary
         run: node scripts/test-quantum-scene-import.mjs
 
+      - name: Verify Theory Lab two-order Landau Study consumer
+        run: node scripts/test-ute2-landau-import.mjs && npm --prefix renderer test -- src/projects/ute2LandauStudy.test.ts && npx playwright test tests/e2e/quantum-ute2-landau-study.spec.ts --reporter=list
+
       - name: Verify QWZ, SSH and Kitaev study profiles
         run: npx playwright test tests/e2e/quantum-qwz-study.spec.ts tests/e2e/quantum-ssh-study.spec.ts tests/e2e/quantum-kitaev-study.spec.ts --reporter=list
 

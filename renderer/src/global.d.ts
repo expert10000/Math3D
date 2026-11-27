@@ -781,6 +781,13 @@ declare global {
         value: number; valueUnit: string; valueDatasetId: string;
         runId: string; resultSha256: string; fingerprint: string;
       }>;
+      ute2LandauSample: (request: { fingerprint: string; sampleIndex: number }) => Promise<{
+        fingerprint: string; runId: string; resultSha256: string; sampleIndex: number;
+        amplitudes: [number, number]; freeEnergy: number; state: "normal" | "order-1" | "order-2" | "mixed";
+        locallyStable: boolean; globalMinimum: boolean;
+        units: { amplitude: "dimensionless"; freeEnergy: "dimensionless" };
+        qualification: "producer-supplied stationary candidate";
+      }>;
       topologySample: (request: { fingerprint: string; quantityId: string; sampleIndex: number }) => Promise<
         { quantityId: string; quantityLabel: string; kind: string; objectId: string; sampleIndex: number; sampleId: string;
           position: [number, number, number]; positionDatasetId: string; coordinateAxes: [string, string, string];

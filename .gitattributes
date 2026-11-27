@@ -18,6 +18,8 @@ tests/fixtures/quantum-qi40-fresh-pair-artifact/**/*.f64 -text -diff
 tests/fixtures/quantum-qi40-fresh-pair-artifact/**/*.png -text -diff
 tests/fixtures/quantum-qec/**/*.json -text
 tests/fixtures/quantum-qec/**/*.f64 -text
+tests/fixtures/quantum-ute2/**/*.json -text
+tests/fixtures/quantum-ute2/**/*.f64 -text
 tests/fixtures/scientific-scene/**/*.json -text
 tests/fixtures/scientific-scene/**/*.f64 -text
 examples/scientific-scenes/**/*.json -text
