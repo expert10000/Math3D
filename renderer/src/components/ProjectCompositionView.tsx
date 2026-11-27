@@ -194,12 +194,13 @@ export const qualifyProjectCameraPair = (members: readonly RenderMember[]): "sha
 };
 
 export const ComparisonPane: React.FC<{ members: RenderMember[]; label: string; onPick: (pick: Pick) => void; height?: number;
+  surfaceResolution?: number;
   captureToken?: number; onCaptureThumbnail?: (dataUrl: string | null) => void;
   linkedUV?: { u: number; v: number } | null; linkedToken?: number;
   curveParameterProbe?: boolean;
   coordinateProbe?: LinkedCoordinateProbe | null;
   onCameraSync?: (state: CameraSyncState) => void; cameraOverride?: CameraSyncState | null; cameraOverrideToken?: number }> =
-  ({ members, label, onPick, height = 520, captureToken, onCaptureThumbnail, linkedUV, linkedToken, curveParameterProbe, coordinateProbe, onCameraSync, cameraOverride, cameraOverrideToken }) => {
+  ({ members, label, onPick, height = 520, surfaceResolution = 48, captureToken, onCaptureThumbnail, linkedUV, linkedToken, curveParameterProbe, coordinateProbe, onCameraSync, cameraOverride, cameraOverrideToken }) => {
   const meshes = useMemo(() => members.flatMap(member => member.meshes), [members]);
   const points = useMemo(() => [...members.flatMap(member => member.points),
     ...(coordinateProbe ? [{ points: [coordinateProbe.point], color: 0xffbd2e, size: 0.2, opacity: 1 }] : [])],
@@ -222,7 +223,7 @@ export const ComparisonPane: React.FC<{ members: RenderMember[]; label: string; 
     </div>}
     {members.length === 1 && members[0]!.param ? <ParamSurfaceViewer surfaceId="custom" documentBinding={members[0]!.param.binding}
       customX={members[0]!.param.x} customY={members[0]!.param.y} customZ={members[0]!.param.z} paramDomain={members[0]!.param.domain}
-      paramResolution={48} materialOpacity={members[0]!.param.opacity} inspectEnabled
+      paramResolution={surfaceResolution} materialOpacity={members[0]!.param.opacity} inspectEnabled
       isCameraLeader={!!onCameraSync} onCameraSync={onCameraSync} cameraOverride={cameraOverride} cameraOverrideToken={cameraOverrideToken}
       paramProbeUV={linkedUV} paramProbeToken={linkedToken}
       overlayPointSets={coordinateProbe ? [{ points: [coordinateProbe.point], color: 0xffbd2e, size: 0.2, opacity: 1 }] : null}

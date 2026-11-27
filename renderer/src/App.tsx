@@ -78253,6 +78253,20 @@ case "mobius":
     SURFACE_MESH_PRESETS[1]?.id ??
     meshNewPresetId;
   const [projectsOpen, setProjectsOpen] = useState(false);
+  const [clearedCatenoidJourneyId, setClearedCatenoidJourneyId] = useState<string | null>(null);
+  useEffect(() => {
+    const clear = (event: Event) => setClearedCatenoidJourneyId((event as CustomEvent<{ projectId?: string }>).detail?.projectId ?? null);
+    const resume = (event: Event) => {
+      const projectId = (event as CustomEvent<{ projectId?: string }>).detail?.projectId;
+      setClearedCatenoidJourneyId(current => current === projectId ? null : current);
+    };
+    window.addEventListener("math3d:catenoid-journey-clear", clear);
+    window.addEventListener("math3d:catenoid-journey-resume", resume);
+    return () => {
+      window.removeEventListener("math3d:catenoid-journey-clear", clear);
+      window.removeEventListener("math3d:catenoid-journey-resume", resume);
+    };
+  }, []);
   useEffect(() => {
     if (projectsOpen || !geometryProjectLayoutBeforeRef.current) return;
     const previous = geometryProjectLayoutBeforeRef.current;
@@ -80955,6 +80969,7 @@ case "mobius":
   const hasSavedDocumentViewport = (Boolean(additionalActiveId) && !savedSurfaceModuleActive) || (savedMeshActive && !savedMeshModuleView);
   const catenoidJourneyProject = activeNotebookProjectRef.current;
   const catenoidJourneySurfaceActive = Boolean(activeProjectDocumentId && catenoidJourneyProject &&
+    clearedCatenoidJourneyId !== catenoidJourneyProject.identity.id &&
     catenoidJourneyProject.metadata.tags?.includes("curated-study-v1") &&
     catenoidJourneyProject.metadata.tags.includes("catenoid-evidence") &&
     catenoidJourneyProject.workspace.entries.some(entry =>
@@ -82543,7 +82558,11 @@ case "mobius":
                 </div>
               </div>
               {catenoidJourneySurfaceActive && <div className="catenoid-document-workflow">
-                <CatenoidJourneyWorkflow activeStep="curvature" documentView onSelect={step => {
+                <CatenoidJourneyWorkflow activeStep="curvature" documentView
+                  onClear={() => window.dispatchEvent(new CustomEvent("math3d:catenoid-journey-clear", {
+                    detail: { projectId: catenoidJourneyProject!.identity.id },
+                  }))}
+                  onSelect={step => {
                   if (step === "curvature") {
                     setSurfacesPanelState("work");
                     setSurfacesLeftTab("analysis");

@@ -215,6 +215,11 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [starterView, setStarterView] = useState<"starters" | "studies">("starters");
   const [detailPage, setDetailPage] = useState<"journey" | "overview" | "documents" | "relations" | "results" | "history" | "settings" | "transfer">("overview");
   const [catenoidStep, setCatenoidStep] = useState<CatenoidJourneyStep>("study");
+  useEffect(() => {
+    const clear = () => { setCatenoidStep("study"); setDetailPage("overview"); };
+    window.addEventListener("math3d:catenoid-journey-clear", clear);
+    return () => window.removeEventListener("math3d:catenoid-journey-clear", clear);
+  }, []);
   const [resultFocus, setResultFocus] = useState<{ id: string; token: number } | null>(null);
   const [studyFocus, setStudyFocus] = useState<{ id: string; token: number; selectionId?: string;
     quantumSelectionHash?: string } | null>(null);
@@ -1805,7 +1810,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     const study = next.workspace.studies?.[0];
     if (!study) return;
     const catenoidJourney = next.metadata.tags?.includes("catenoid-evidence") ?? false;
-    if (catenoidJourney) { setStudyFocus(null); setViewingDocumentId(null); }
+    if (catenoidJourney) {
+      setStudyFocus(null); setViewingDocumentId(null);
+      window.dispatchEvent(new CustomEvent("math3d:catenoid-journey-resume", { detail: { projectId: next.identity.id } }));
+    }
     else setStudyFocus(previous => ({ id: study.id, token: (previous?.token ?? 0) + 1 }));
     setQuick(false); setViewerCompanion(false); setDetailView(true);
     setDetailPage(catenoidJourney ? "journey" : "overview");
@@ -2364,6 +2372,12 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         <div className="project-gallery-heading"><div><p>{viewerCompanion && quick ? "PROJECT" : "MATH3D · PROJECTS"}</p><h2>{quick && !viewerCompanion ? "Quick Projects" : detailView ? catenoidJourney && detailPage === "journey" ? "Catenoid evidence journey" : project?.metadata.title ?? "Project" : collection === "Journeys" ? "Journeys" : "Projects Gallery"}</h2>{fullDetails && catenoidJourney && detailPage === "journey" && <p data-testid="project-journey-source">Saved in Project: {project?.metadata.title}</p>}</div><div className="project-gallery-heading-actions" style={{ display:"flex",gap:8 }}>
           {fullDetails ? <>
             {!preview && viewingDocumentId && <button type="button" data-testid="project-viewer-return" onClick={() => { setViewerCompanion(true); setQuick(true); }}>Open current document</button>}
+            {catenoidJourney && detailPage === "journey" && <button type="button" data-testid="catenoid-clear-journey"
+              title="Close this guide; saved Project evidence is kept." onClick={() => {
+                setCatenoidStep("study"); setDetailPage("overview");
+                window.dispatchEvent(new CustomEvent("math3d:catenoid-journey-clear", { detail: { projectId: project?.identity.id } }));
+                onOpenChange(false);
+              }}>Clear journey</button>}
             <button type="button" data-testid="project-detail-toggle" aria-pressed={detailView} onClick={() => { setNotesOpen(false); workspacePanel.current?.scrollTo({ top: 0 }); setDetailView(false); }}>Browse projects</button>
             <details className="project-header-more"><summary>More</summary><div>
               <button type="button" onClick={() => openDetailPage("settings", detailsSection)}>Project settings</button>
@@ -2536,7 +2550,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         </section>}
         {fullDetails && <nav className="project-detail-tabs" aria-label="Project details sections">
           {([...(catenoidJourney ? ["journey"] as const : []), "overview", "documents", "relations", "results", "history"] as const).map(page => <button key={page} type="button" data-testid={`project-detail-tab-${page}`}
-            aria-current={detailPage === page ? "page" : undefined} onClick={() => openDetailPage(page)}>{page[0].toUpperCase() + page.slice(1)}</button>)}
+            aria-current={detailPage === page ? "page" : undefined} onClick={() => {
+              if (page === "journey" && project) window.dispatchEvent(new CustomEvent("math3d:catenoid-journey-resume", { detail: { projectId: project.identity.id } }));
+              openDetailPage(page);
+            }}>{page[0].toUpperCase() + page.slice(1)}</button>)}
         </nav>}
         <div className="project-workspace-summary">
           <p className="project-workspace-eyebrow">{managed ? "EDITING SAVED COPY" : preview ? "SAVED COPY · PREVIEW" : "CURRENT WORKSPACE"}</p>
@@ -2670,6 +2687,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               onInspectResult={id => { setResultFocus(previous => ({ id, token: (previous?.token ?? 0) + 1 }));
                 openDetailPage("results"); }}
               onOpenJourneySurface={id => navigate(id, "surface")}
+              canOpenJourneySurface={id => !!canNavigateDocument?.(id, "surface")}
               onOpenDocument={(id, module) => viewBesideProject(id, module)} />
           </div>}
           {!quick && detailView && project && <ProjectRelationshipMap project={project} titles={documentTitles}

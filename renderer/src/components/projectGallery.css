@@ -202,6 +202,7 @@ body:has(#project-gallery-host:not(:empty)) :is([data-testid="projects-quick-tog
 .catenoid-journey-tabs { display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:7px;padding:6px 10px;border:1px solid #bfdbfe;border-radius:10px;background:linear-gradient(180deg,#fff 0%,#eff6ff 100%); }
 .catenoid-journey-workflow-label { margin-right:3px;color:#1d4ed8;font-size:13px; }
 .catenoid-journey-step { display:inline-flex;align-items:center;gap:7px;white-space:nowrap; }
+.catenoid-journey-tabs .catenoid-journey-clear { margin-left:12px;border-color:#a8c5e8;background:#fff;color:#45617d;font-weight:600; }
 .catenoid-journey-arrow { color:#94a3b8;font-size:13px; }
 .catenoid-document-workflow { display:grid;gap:4px; }
 .catenoid-surface-subflow { display:grid;gap:3px; }

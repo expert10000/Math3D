@@ -27,8 +27,7 @@ test("selected Surface ridge publishes Mesh error and Workbook evidence across r
     const flow = panel.getByTestId("catenoid-journey-flow");
     await expect(flow.getByRole("tab", { name: "1 Study" })).toHaveAttribute("aria-selected", "true");
     await flow.getByRole("tab", { name: "2 Curvature" }).click();
-    await expect(flow.getByTestId("catenoid-flow-panel-curvature")).toContainText("Analysis → Curvature field → Compute");
-    await flow.getByTestId("catenoid-flow-open-surface").click();
+    await expect(panel).toBeHidden();
     // The real worker computes quickly; hold only its result delivery so Cancel remains actionable.
     await page.evaluate(() => {
       const NativeWorker = window.Worker;

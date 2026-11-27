@@ -40,7 +40,7 @@ export function CatenoidJourneySourceComparison({ project, resources }: {
   return <section data-testid="catenoid-comparison-sources" aria-label="Surface and Mesh sources">
     <h5>Inspect the Surface and retained Mesh</h5>
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 360px), 1fr))", gap: 12 }}>
-      <ComparisonPane members={[preview.surface]} label={`Surface · ${preview.surface.title}`} onPick={() => {}} height={340} />
+      <ComparisonPane members={[preview.surface]} label={`Surface · ${preview.surface.title}`} onPick={() => {}} height={340} surfaceResolution={32} />
       <ComparisonPane members={[preview.mesh]} label={`Mesh · ${preview.mesh.title}`} onPick={() => {}} height={340} />
     </div>
     <p>These are read-only views of the exact saved generations. Publish below to record the curvature comparison.</p>

@@ -11,9 +11,10 @@ type Props = Readonly<{
   activeStep: CatenoidJourneyStep;
   onSelect: (step: CatenoidJourneyStep) => void;
   documentView?: boolean;
+  onClear?: () => void;
 }>;
 
-export function CatenoidJourneyWorkflow({ activeStep, onSelect, documentView = false }: Props) {
+export function CatenoidJourneyWorkflow({ activeStep, onSelect, documentView = false, onClear }: Props) {
   const onStepKeyDown = (event: KeyboardEvent<HTMLButtonElement>, step: CatenoidJourneyStep) => {
     if (documentView) return;
     const order = CATENOID_JOURNEY_STEPS.map(([id]) => id);
@@ -46,6 +47,8 @@ export function CatenoidJourneyWorkflow({ activeStep, onSelect, documentView = f
           {index + 1} {label}
         </button>
       </span>)}
+    {onClear && <button type="button" className="catenoid-journey-clear" data-testid="catenoid-document-clear-journey"
+      title="Close this guide; saved Project evidence is kept." onClick={onClear}>Clear journey</button>}
   </Tag>;
 }
 

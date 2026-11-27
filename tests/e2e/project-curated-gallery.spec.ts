@@ -102,7 +102,6 @@ test("Catenoid workflow stays visible on its Surface and returns to the selected
     await panel.getByRole("button", { name: "Journeys", exact: true }).click();
     await panel.getByTestId("curated-study-open-catenoid-evidence").click();
     await panel.getByTestId("catenoid-flow-tab-curvature").click();
-    await panel.getByTestId("catenoid-flow-open-surface").click();
     await expect(panel).toBeHidden();
     const inherited = page.getByTestId("catenoid-document-workflow");
     await expect(inherited).toBeVisible();
@@ -140,6 +139,7 @@ test("Catenoid workflow stays visible on its Surface and returns to the selected
     await expect(inherited.getByRole("button")).toHaveText([
       "1 Study", "2 Curvature", "3 Comparison", "4 Workbook",
     ]);
+    const comparisonStart = Date.now();
     await inherited.getByTestId("catenoid-document-step-comparison").click();
     await expect(panel.getByTestId("project-detail-tab-journey"))
       .toHaveAttribute("aria-current", "page");
@@ -153,6 +153,51 @@ test("Catenoid workflow stays visible on its Surface and returns to the selected
     await expect(comparisonSources.locator("section[aria-label^='Mesh ·']")).toBeVisible();
     await expect(comparisonSources.locator("section[aria-label^='Surface ·'] canvas").first()).toBeVisible();
     await expect(comparisonSources.locator("section[aria-label^='Mesh ·'] canvas").first()).toBeVisible();
+    console.log(`Comparison pair ${Date.now() - comparisonStart}ms`);
+  } finally { await closeSurfaceApp(ctx); }
+});
+
+test("Catenoid Surface reopens promptly from the journey after viewing its Mesh", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByRole("button", { name: "Journeys", exact: true }).click();
+    await panel.getByTestId("curated-study-open-catenoid-evidence").click();
+    await panel.getByTestId("catenoid-flow-tab-curvature").click();
+    await expect(panel).toBeHidden();
+    await expect(page.getByTestId("catenoid-surface-subflow")).toBeVisible();
+    await page.getByTestId("catenoid-surface-open-mesh").click();
+    await expect(page.getByTestId("saved-mesh-toolbar")).toBeVisible();
+    await page.getByTestId("projects-toggle").click();
+    await expect(panel).toBeVisible();
+    await panel.getByRole("button", { name: "View current project" }).click();
+    const start = Date.now();
+    await panel.getByTestId("catenoid-flow-tab-curvature").click();
+    await expect(panel).toBeHidden({ timeout: 10_000 });
+    await expect(page.getByTestId("catenoid-surface-subflow")).toBeVisible();
+    await expect(page.getByTestId("project-source-editor")).toHaveAttribute("data-document-module", "surface");
+    await expect(page.getByTestId("module-workspace").locator("canvas").first()).toBeVisible();
+    console.log(`Surface return ${Date.now() - start}ms`);
+    await page.getByTestId("catenoid-document-clear-journey").click();
+    await expect(page.getByTestId("catenoid-document-workflow")).toHaveCount(0);
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByRole("button", { name: "View current project" }).click();
+    await panel.getByTestId("project-detail-tab-journey").click();
+    await panel.getByTestId("catenoid-flow-tab-curvature").click();
+    await expect(page.getByTestId("catenoid-surface-subflow")).toBeVisible();
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByRole("button", { name: "View current project" }).click();
+    await panel.getByTestId("catenoid-clear-journey").click();
+    await expect(panel).toBeHidden();
+    await expect(page.getByTestId("catenoid-document-workflow")).toHaveCount(0);
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByRole("button", { name: "View current project" }).click();
+    await panel.getByTestId("project-detail-tab-journey").click();
+    await panel.getByTestId("catenoid-flow-tab-curvature").click();
+    await expect(panel).toBeHidden();
+    await expect(page.getByTestId("catenoid-surface-subflow")).toBeVisible();
   } finally { await closeSurfaceApp(ctx); }
 });
 
