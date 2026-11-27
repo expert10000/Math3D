@@ -1,5 +1,6 @@
 import { createPlatformCapabilitySnapshot, type PlatformCapabilitySnapshot,
-  type PlatformFacility, type PlatformFacilityStatus } from "@math3d/core";
+  type PlatformFacility, type PlatformFacilityStatus,
+  listAvailableScientificOperations, type ScientificOperationDescriptor } from "@math3d/core";
 import { Paths } from "expo-file-system";
 
 export type MobilePlatformProbe = Readonly<{ persistentStorage: boolean; network: boolean; touchInput: boolean }>;
@@ -25,3 +26,9 @@ export const probeMobilePlatformCapabilities = (): PlatformCapabilitySnapshot =>
   network: typeof fetch === "function" && (typeof navigator === "undefined" || navigator.onLine !== false),
   touchInput: true,
 });
+
+/** Only bindings explicitly verified in the mobile adapter may appear as executable operations. */
+export const discoverMobileScientificOperations = (
+  verifiedImplementationIds: readonly string[] = [],
+): readonly ScientificOperationDescriptor[] =>
+  listAvailableScientificOperations({ environment: "mobile", implementations: verifiedImplementationIds });

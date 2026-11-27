@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { ScientificResult } from "@math3d/core";
 import type {
   CanonicalSurfaceDefinition,
   SurfaceAnalysisPayload,
@@ -19,6 +20,7 @@ import { SurfaceAnalysisContractCard } from "./SurfaceAnalysisContractCard";
 import type { SurfaceLayerQualification } from "../surfaceAnalysis/surfaceLayerQualification";
 import type { ResultPublication } from "../results/resultPublication";
 import { ResultPublicationActions } from "../results/ResultPublicationActions";
+import { surfaceCurvatureOperationDescriptor } from "../surfaceAnalysis/surfaceCurvatureOperation";
 
 export type SurfaceComputationId =
   | "differential-geometry"
@@ -68,6 +70,7 @@ export function SurfaceAnalysisComputationPanel({
   surfaceSourceHandoff,
   curvatureState,
   curvatureExecution,
+  scientificResult,
   onComputeCurvature,
   onCancelCurvature,
   probeState,
@@ -120,6 +123,7 @@ export function SurfaceAnalysisComputationPanel({
   } | null;
   curvatureState?: "unavailable" | "ready" | "computed";
   curvatureExecution?: "idle" | SurfaceAnalysisExecutionState;
+  scientificResult?: ScientificResult | null;
   onComputeCurvature?: () => void;
   onCancelCurvature?: () => void;
   probeState?: "unavailable" | "ready" | "active";
@@ -201,7 +205,15 @@ export function SurfaceAnalysisComputationPanel({
       {selected === "curvature-field" && (
         <section data-testid="surface-curvature-compute" style={{ border: "1px solid #bfdbfe", borderRadius: 8, background: "#eff6ff", padding: 8, display: "grid", gap: 6 }}>
           <strong style={{ fontSize: 10.5 }}>Canonical Curvature result</strong>
+          <span data-testid="surface-discovery-operation" style={{ color: "#475467", fontSize: 9.5 }}>
+            {surfaceCurvatureOperationDescriptor.title} · {surfaceCurvatureOperationDescriptor.id} ·
+            {surfaceCurvatureOperationDescriptor.requiredCapabilities.length} registered capabilities
+          </span>
           <span style={{ color: "#475467", fontSize: 9.5 }}>Publishes K, H, k1, k2, shape index, curvedness, principal directions, masks, regions, statistics and provenance together.</span>
+          {scientificResult && <span data-testid="surface-discovery-result" style={{ color: "#475467", fontSize: 9.5 }}>
+            {scientificResult.metrics.find(metric => metric.id === "metric.validSamples")?.value} valid samples ·
+            {scientificResult.artifacts.length} retained field artifact
+          </span>}
           <div data-testid="surface-compute-readiness" style={{ display: "grid", gap: 2, padding: 6, border: "1px solid #bfdbfe", borderRadius: 6, background: "#fff", fontSize: 9.5 }}>
             <strong>Numerical input · {definition.representation}</strong>
             <span>Domain: {domainSummary} · sampling: {samplingSummary}</span>

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { validateDiscoveryJsonValue } from "@math3d/core";
 import { getGeometryExactSurfacePreset } from "../geometry/exactSurfaceAnalysis";
 import { adaptSurfaceDefinition, createSurfaceAnalysisRegistry, createSurfaceAnalysisRequest,
   createSurfaceAnalysisResultStore, getSurfaceAnalysisResult, invalidateSurfaceAnalysisResult,
@@ -7,7 +8,8 @@ import { presentSurfaceAnalysisResult } from "./surfaceResultPresentation";
 import { createSurfaceCurvatureEvidence, surfaceCurvatureEvidenceCsv,
   surfaceCurvatureEvidenceJson } from "./surfaceCurvatureEvidence";
 import { analyzeExactSurfaceDifferentialPoint, adaptMeshDifferentialPoint } from "./differentialGeometry";
-import { surfaceCurvatureOperation } from "./surfaceCurvatureOperation";
+import { surfaceCurvatureOperation, surfaceCurvatureOperationDescriptor } from "./surfaceCurvatureOperation";
+import { adaptSurfaceCurvatureScientificResult } from "./surfaceScientificResult";
 import {
   classifySurfaceCurvature,
   createSurfaceCurvatureField,
@@ -25,6 +27,13 @@ describe("Surface canonical curvature result", () => {
     });
     expect(field.gaussianCurvature[0]).toBe(-1);
     expect(field.statistics.K?.count).toBe(1);
+    const json = JSON.parse(JSON.stringify(field, (_key, value) => ArrayBuffer.isView(value)
+      ? Array.from(value as unknown as ArrayLike<number>) : value));
+    expect(validateDiscoveryJsonValue(surfaceCurvatureOperationDescriptor.outputSchema, json)).toBe(true);
+    expect(validateDiscoveryJsonValue(surfaceCurvatureOperationDescriptor.inputSchema,
+      { surfaceSamples: { sampleCount: 1, K: [-1], H: [0], k1: [1], k2: [-1] } })).toBe(true);
+    expect(validateDiscoveryJsonValue(surfaceCurvatureOperationDescriptor.parameterSchema,
+      { histogramBins: 2 })).toBe(true);
   });
 
   it("classifies elliptic, hyperbolic, parabolic, flat and umbilic points with scale-aware tolerances", () => {
@@ -99,6 +108,14 @@ describe("Surface canonical curvature result", () => {
       request: createSurfaceAnalysisRequest({ requestId: "curvature", kind: "curvature-field",
         definition, domain: "surface", method: "surface-sampling" }), payload, now: 2 });
     const result = getSurfaceAnalysisResult(store, definition.identity, "curvature-field")!;
+    const scientific = adaptSurfaceCurvatureScientificResult(definition, result);
+    expect(scientific).toMatchObject({ operationId: "surface.curvature.compute",
+      capabilityIds: ["surface.curvature.gaussian", "surface.curvature.mean", "surface.curvature.principal"],
+      artifacts: [{ retained: true, type: "SurfaceCurvatureField" }] });
+    expect(scientific?.metrics.find(metric => metric.id === "metric.K.mean"))
+      .toMatchObject({ value: 2.5, units: "m^-2" });
+    expect(adaptSurfaceCurvatureScientificResult(definition, { ...result,
+      payload: { ...payload, units: { ...payload.units, length: "cm" } } })).toBeNull();
     const evidence = createSurfaceCurvatureEvidence({ definition, result,
       qualification: presentSurfaceAnalysisResult(definition, result, store) });
     expect(evidence.publication).toMatchObject({ module: "surface",
@@ -109,6 +126,7 @@ describe("Surface canonical curvature result", () => {
     expect(surfaceCurvatureEvidenceCsv(evidence)).not.toContain("gaussianCurvature");
     store = invalidateSurfaceAnalysisResult(store, definition.identity, "surface-definition", "default", 3);
     const historical = getSurfaceAnalysisResult(store, definition.identity, "curvature-field")!;
+    expect(adaptSurfaceCurvatureScientificResult(definition, historical)).toBeNull();
     const withheld = createSurfaceCurvatureEvidence({ definition, result: historical,
       qualification: presentSurfaceAnalysisResult(definition, historical, store) });
     expect(withheld.field).toBeNull();

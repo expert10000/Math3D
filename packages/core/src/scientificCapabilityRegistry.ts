@@ -1,4 +1,5 @@
 /** Discoverable scientific intent, distinct from a host's executable implementation. */
+import { MATH3D_WORKER_OPERATION_REGISTRY, type Math3DWorkerOperationDefinition } from "./workerOperationRegistry";
 export const SCIENTIFIC_CAPABILITY_SCHEMA_VERSION = 1 as const;
 
 export const SCIENTIFIC_MODULES = [
@@ -6,7 +7,7 @@ export const SCIENTIFIC_MODULES = [
   "topology", "cas", "number-theory", "complex", "field", "quantum",
 ] as const;
 export type ScientificModule = typeof SCIENTIFIC_MODULES[number];
-export type ScientificMethod = "analytic" | "numerical" | "symbolic" | "algorithmic";
+export type ScientificMethod = "analytic" | "numerical" | "symbolic" | "algorithmic" | "exact";
 export type ScientificEnvironment = "browser" | "desktop" | "server" | "mobile";
 
 export type ScientificPort = Readonly<{ name: string; type: string; units?: string }>;
@@ -46,7 +47,7 @@ export type ScientificArtifact = Readonly<{
 }>;
 export type ScientificResult = Readonly<{
   executionId: string;
-  capabilityId: string;
+  capabilityIds: readonly string[];
   operationId: string;
   sourceReference: string;
   metrics: readonly ScientificMetric[];
@@ -150,10 +151,35 @@ const catalogued = (module: ScientificModule, name: string): ScientificCapabilit
   methods: [], validation: [], execution: null,
 });
 
+export const scientificModuleForWorkerOperation = (operation: Math3DWorkerOperationDefinition): ScientificModule => {
+  const head = operation.id.split(".")[0];
+  if (head === "graph2d" || head === "mesh" || head === "surface" || head === "volume" ||
+      head === "curve" || head === "field") return head;
+  if (head === "chain") return "topology";
+  if (["number-theory", "number-field", "elliptic-curve", "finite-field", "galois", "group"].includes(head))
+    return "number-theory";
+  return "cas";
+};
+
+const workerCapabilities: ScientificCapability[] = MATH3D_WORKER_OPERATION_REGISTRY.map(operation => ({
+  schemaVersion: 1, id: `implementation.${operation.id}`, version: "1.0.0",
+  module: scientificModuleForWorkerOperation(operation), title: operation.title,
+  category: "canonical-worker-operation", status: "operation-registered",
+  inputs: [{ name: "request", type: "WorkerRequest" }], parameters: [],
+  outputs: [{ name: "response", type: "WorkerResponse" }],
+  methods: [operation.method], validation: ["worker-request-contract"], execution: null,
+}));
+
+const workerOperations: ScientificOperation[] = MATH3D_WORKER_OPERATION_REGISTRY.map(operation => ({
+  id: operation.id, version: "1.0.0", capabilityIds: [`implementation.${operation.id}`],
+  method: operation.method, environments: operation.environments,
+  implementationId: `worker:${operation.id}`,
+}));
+
 export const SCIENTIFIC_CAPABILITY_REGISTRY = createScientificCapabilityRegistry(
-  SCIENTIFIC_MODULES.flatMap(module => moduleCatalog[module].map(name =>
-    registeredCurvature.get(`${module}.${name}`) ?? catalogued(module, name))),
+  [...SCIENTIFIC_MODULES.flatMap(module => moduleCatalog[module].map(name =>
+    registeredCurvature.get(`${module}.${name}`) ?? catalogued(module, name))), ...workerCapabilities],
   [{ id: "surface.curvature.compute", version: "1.0.0", capabilityIds: [...registeredCurvature.keys()],
     method: "numerical", environments: ["browser", "desktop"],
-    implementationId: "math3d.surface.curvature-field" }],
+    implementationId: "math3d.surface.curvature-field" }, ...workerOperations],
 );

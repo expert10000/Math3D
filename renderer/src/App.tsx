@@ -423,6 +423,10 @@ import { SurfaceDocumentAdapter, surfaceDocumentFromLegacyDefinition } from "./s
 import { SurfaceMeshKernelHandoff } from "./surfaceAnalysis/surfaceMeshKernelHandoff";
 import { createSurfaceCurvaturePayload, surfaceCurvatureRegionIndices } from "./surfaceAnalysis/surfaceCurvature";
 import { surfaceCurvatureOperation } from "./surfaceAnalysis/surfaceCurvatureOperation";
+import { resolveScientificOperationAvailability } from "@math3d/core";
+import type { ScientificModule } from "@math3d/core";
+import { ScientificCapabilitiesPanel } from "./components/ScientificCapabilitiesPanel";
+import { adaptSurfaceCurvatureScientificResult } from "./surfaceAnalysis/surfaceScientificResult";
 import {
   SurfaceAnalysisScheduler,
   createSurfaceAnalysisCacheKey,
@@ -11622,6 +11626,7 @@ const App: React.FC = () => {
     const saved = window.localStorage.getItem(UI_WORKSPACE_MODE_KEY);
     return isAppMode(saved) ? saved : "surfaces";
   });
+  const [scientificCapabilitiesOpen, setScientificCapabilitiesOpen] = useState(false);
   const [topologyMeshSnapshotHandoff, setTopologyMeshSnapshotHandoff] = useState<TopologyMeshSnapshotHandoff | null>(null);
   const [curvePresetCategoryFilter, setCurvePresetCategoryFilter] = useState<CurvePresetCategory | "all">("all");
   const [restoredCurveAdapter, setRestoredCurveAdapter] = useState<CurveDocumentAdapter | null>(null);
@@ -43878,6 +43883,9 @@ const App: React.FC = () => {
     () => getSurfaceAnalysisResult<SurfaceAnalysisPayload>(surfaceAnalysisResultStore, activeCanonicalSurfaceDefinition.identity, "curvature-field"),
     [activeCanonicalSurfaceDefinition.identity, surfaceAnalysisResultStore]
   );
+  const activeSurfaceScientificResult = useMemo(() =>
+    adaptSurfaceCurvatureScientificResult(activeCanonicalSurfaceDefinition, activeSurfaceCurvatureResult),
+    [activeCanonicalSurfaceDefinition, activeSurfaceCurvatureResult]);
   const activeSurfaceProbeResult = useMemo(
     () => getSurfaceAnalysisResult<SurfaceAnalysisPayload>(surfaceAnalysisResultStore, activeCanonicalSurfaceDefinition.identity, "surface-probe"),
     [activeCanonicalSurfaceDefinition.identity, surfaceAnalysisResultStore]
@@ -72545,6 +72553,20 @@ case "mobius":
       { id: "surface:probe-on", title: "Surface command: probe on", keywords: "surface command probe", run: () => handleRunCommand("probe on") },
       { id: "surface:probe-off", title: "Surface command: probe off", keywords: "surface command probe", run: () => handleRunCommand("probe off") },
       { id: "surface:gaussian", title: "Surface command: colorMode gaussian", keywords: "surface command color curvature", run: () => handleRunCommand("colorMode gaussian") },
+      ...((): CommandPaletteItem[] => {
+        const availability = resolveScientificOperationAvailability("surface.curvature.compute", {
+          environment: window.appRuntime ? "desktop" : "browser",
+          implementations: [surfaceCurvatureOperation.definition.implementationId],
+        });
+        return availability.available && availability.descriptor ? [{
+          id: `scientific:${availability.descriptor.id}`,
+          title: availability.descriptor.title,
+          keywords: `${availability.descriptor.module} ${availability.descriptor.category} ${availability.descriptor.requiredCapabilities.join(" ")}`,
+          detail: availability.descriptor.description,
+          unavailableReason: surfaceCurvatureSource ? undefined : "Open a Surface with current curvature samples.",
+          run: () => { if (surfaceCurvatureSource) void handleComputeSurfaceCurvature(); },
+        }] : [];
+      })(),
       {
         id: "view:backend-services-panel",
         title: "Open backend services panel",
@@ -72580,8 +72602,10 @@ case "mobius":
       handleMenuCommand,
       handleRunAllStale,
       handleRunCommand,
+      handleComputeSurfaceCurvature,
       handleRunComputeStage,
       researchCommandItems,
+      surfaceCurvatureSource,
     ]
   );
   const filteredCommandPaletteItems = useMemo(() => {
@@ -78400,6 +78424,13 @@ case "mobius":
   ] as const;
   const activeSectionLabel = casWorkspaceOpen ? "CAS / Algebra" : numberTheoryWorkspaceOpen ? "Number Theory" :
     sectionNavEntries.find((entry) => entry.active)?.label ?? "Viewer";
+  const activeCapabilityModule: ScientificModule = casWorkspaceOpen ? "cas" :
+    numberTheoryWorkspaceOpen ? "number-theory" : mode === "graphs" ? "graph2d" :
+    mode === "curves" ? "curve" : mode === "geometry" ? "geometry" :
+    mode === "topology" ? "topology" : mode === "mobius" ? "complex" :
+    mode === "surfaces" ? datasetKind === "volume" ? "volume" :
+      surfaceViewerKind === "mesh" ? "mesh" : surfaceViewerKind === "complex" ? "complex" : "surface" :
+    "surface";
   const activeDisplayLabel = displayModeEntries.find((entry) => entry.id === displayMode)?.label ?? "Workspace";
   const headerSurfacesFamilyLabel =
     datasetKind === "volume"
@@ -81031,6 +81062,7 @@ case "mobius":
                     onOpenConfiguration={() => setSurfaceLegacyAnalysisOpen(true)}
                     curvatureState={!surfaceCurvatureSource ? "unavailable" : activeSurfaceCurvatureField ? "computed" : "ready"}
                     curvatureExecution={surfaceCurvatureExecution}
+                    scientificResult={activeSurfaceScientificResult}
                     onComputeCurvature={() => void handleComputeSurfaceCurvature()}
                     onCancelCurvature={handleCancelSurfaceCurvature}
                     probeState={!surfaceCurvatureSource ? "unavailable" : canonicalSurfaceProbe ? "active" : "ready"}
@@ -82241,6 +82273,12 @@ case "mobius":
                         </button>
                       );
                     })}
+                    <button type="button" data-testid="scientific-capabilities-toggle"
+                      aria-expanded={scientificCapabilitiesOpen}
+                      onClick={() => setScientificCapabilitiesOpen(open => !open)}
+                      style={topNavButtonStyle(scientificCapabilitiesOpen)}>
+                      Capabilities
+                    </button>
                   </div>
                 </div>
                 <div
@@ -82588,6 +82626,26 @@ case "mobius":
                   )}
                 </div>
               </div>
+              {scientificCapabilitiesOpen && <ScientificCapabilitiesPanel key={activeCapabilityModule}
+                initialModule={activeCapabilityModule}
+                environment={window.appRuntime ? "desktop" : "browser"}
+                implementations={[surfaceCurvatureOperation.definition.implementationId]}
+                onClose={() => setScientificCapabilitiesOpen(false)}
+                onOpenOperation={id => {
+                  if (id !== "surface.curvature.compute") return;
+                  setCasWorkspaceOpen(false);
+                  setNumberTheoryWorkspaceOpen(false);
+                  setProjectsOpen(false);
+                  setMode("surfaces");
+                  setDatasetKind("surface");
+                  if (surfaceViewerKind === "mesh" || surfaceViewerKind === "complex") handleChangeViewerKind("param");
+                  setSurfacesPanelState("work");
+                  setSurfacesLeftTab("analysis");
+                  setSurfacesWorkGalleryOpen(false);
+                  setActiveSurfaceComputation("curvature-field");
+                  setSurfaceCurvatureVisible(true);
+                  setScientificCapabilitiesOpen(false);
+                }} />}
               {catenoidJourneySurfaceActive && !projectsOpen && <div className="catenoid-document-workflow">
                 <CatenoidJourneyWorkflow activeStep="curvature" documentView
                   onClear={() => window.dispatchEvent(new CustomEvent("math3d:catenoid-journey-clear", {

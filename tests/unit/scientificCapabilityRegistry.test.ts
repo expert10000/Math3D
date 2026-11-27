@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { bindScientificOperation, createScientificCapabilityRegistry,
-  SCIENTIFIC_CAPABILITY_REGISTRY, SCIENTIFIC_MODULES } from "@math3d/core";
+  MATH3D_WORKER_OPERATION_REGISTRY, SCIENTIFIC_CAPABILITY_REGISTRY, SCIENTIFIC_MODULES } from "@math3d/core";
 
 describe("scientific capability registry", () => {
   it("catalogues every scientific module without advertising roadmap entries as executable", () => {
@@ -8,7 +8,7 @@ describe("scientific capability registry", () => {
       expect(SCIENTIFIC_CAPABILITY_REGISTRY.forModule(module).length).toBeGreaterThan(0);
     expect(SCIENTIFIC_CAPABILITY_REGISTRY.getCapability("topology.persistent-homology"))
       .toMatchObject({ status: "catalogued", execution: null, methods: [] });
-    expect(SCIENTIFIC_CAPABILITY_REGISTRY.runnableFor("topology", "desktop", () => true)).toEqual([]);
+    expect(SCIENTIFIC_CAPABILITY_REGISTRY.runnableFor("topology", "desktop", () => false)).toEqual([]);
     expect(SCIENTIFIC_CAPABILITY_REGISTRY.runnableFor("surface", "desktop", () => false)).toEqual([]);
   });
 
@@ -22,11 +22,23 @@ describe("scientific capability registry", () => {
     expect(SCIENTIFIC_CAPABILITY_REGISTRY.runnableFor("surface", "desktop",
       id => id === "math3d.surface.curvature-field").map(item => item.id))
       .toEqual(["surface.curvature.gaussian", "surface.curvature.mean", "surface.curvature.principal"]);
-    expect(SCIENTIFIC_CAPABILITY_REGISTRY.runnableFor("surface", "mobile", () => true)).toEqual([]);
+    expect(SCIENTIFIC_CAPABILITY_REGISTRY.runnableFor("surface", "mobile",
+      id => id === "math3d.surface.curvature-field")).toEqual([]);
     expect(bindScientificOperation(SCIENTIFIC_CAPABILITY_REGISTRY, "surface.curvature.compute",
       "math3d.surface.curvature-field", (value: number) => value + 1).execute(2)).toBe(3);
     expect(() => bindScientificOperation(SCIENTIFIC_CAPABILITY_REGISTRY, "surface.curvature.compute",
       "unrelated.implementation", (value: number) => value)).toThrow();
+  });
+
+  it("imports every canonical worker operation without inventing a complete scientific schema", () => {
+    for (const worker of MATH3D_WORKER_OPERATION_REGISTRY) {
+      expect(SCIENTIFIC_CAPABILITY_REGISTRY.getOperation(worker.id)).toMatchObject({
+        id: worker.id, method: worker.method, environments: worker.environments,
+        implementationId: `worker:${worker.id}`,
+      });
+      expect(SCIENTIFIC_CAPABILITY_REGISTRY.getCapability(`implementation.${worker.id}`))
+        .toMatchObject({ status: "operation-registered", category: "canonical-worker-operation" });
+    }
   });
 
   it("rejects duplicate capability IDs and operations without a declared capability", () => {
