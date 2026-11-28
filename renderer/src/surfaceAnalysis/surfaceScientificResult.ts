@@ -1,4 +1,4 @@
-import type { ScientificMetric, ScientificResult } from "@math3d/core";
+import { inspectScientificResult, type ScientificMetric, type ScientificResult } from "@math3d/core";
 import type { CanonicalSurfaceDefinition, SurfaceAnalysisPayload } from "./contracts";
 import type { SurfaceAnalysisResult } from "./infrastructure";
 
@@ -39,7 +39,7 @@ export function adaptSurfaceCurvatureScientificResult(
   if (result.computeTimeMs !== null && Number.isFinite(result.computeTimeMs))
     metrics.push({ id: "metric.computeTimeMs", value: result.computeTimeMs, units: "ms" });
   const reference = `surface-analysis:${identity.key}:curvature-field:${result.parameterHash}:v${result.resultVersion}`;
-  return {
+  const scientific: ScientificResult = {
     executionId: `surface.curvature.compute:${identity.key}:${result.parameterHash}:v${result.resultVersion}`,
     capabilityIds: ["surface.curvature.gaussian", "surface.curvature.mean", "surface.curvature.principal"],
     operationId: "surface.curvature.compute",
@@ -48,4 +48,5 @@ export function adaptSurfaceCurvatureScientificResult(
     artifacts: [{ id: "artifact.surface.curvature-field", type: "SurfaceCurvatureField", reference,
       retained: true }],
   };
+  return inspectScientificResult(scientific) ? scientific : null;
 }

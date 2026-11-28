@@ -15,6 +15,8 @@ test("module capability discovery follows navigation and opens the verified Surf
     await expect(panel).toBeVisible();
     await expect(module).toHaveValue("surface");
     await expect(ctx.page.getByTestId("available-operation-surface.curvature.compute")).toBeVisible();
+    await expect(ctx.page.getByTestId("unavailable-operation-surface.curvature.analytic-reference"))
+      .toBeVisible();
     await expect(ctx.page.getByTestId("workspace-feature-surface.surface-features")).toBeVisible();
     await panel.getByRole("button", { name: /^Create \(/ }).click();
     await expect(ctx.page.getByTestId("workspace-feature-surface.create.explicit")).toBeVisible();
@@ -31,6 +33,7 @@ test("module capability discovery follows navigation and opens the verified Surf
     await expect(panel).toContainText("No verified operation in this app for Graph 3D");
     await ctx.page.getByTestId("workspace-nav-mesh").click();
     await expect(module).toHaveValue("mesh");
+    await expect(ctx.page.getByTestId("available-operation-mesh.normals.compute")).toBeVisible();
     await ctx.page.getByTestId("workspace-nav-surfaces").click();
     await expect(module).toHaveValue("surface");
     await panel.getByRole("button", { name: "Open computation" }).click();
@@ -52,6 +55,24 @@ test("Quantum capability discovery opens the verified examples entry", async () 
     await expect(panel.getByTestId("workspace-feature-quantum.create")).toBeVisible();
     await panel.getByRole("button", { name: "Open verified examples" }).click();
     await expect(ctx.page.getByRole("dialog", { name: "Verified quantum examples" })).toBeVisible();
+  } finally {
+    await closeSurfaceApp(ctx);
+  }
+});
+
+test("verified Mesh normals route opens Mesh analysis", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp();
+    await resetSurfaceAppState(ctx.page);
+    await ctx.page.getByTestId("workspace-nav-mesh").click();
+    await ctx.page.getByTestId("scientific-capabilities-toggle").click();
+    const operation = ctx.page.getByTestId("available-operation-mesh.normals.compute");
+    await expect(operation).toBeVisible();
+    await operation.getByRole("button", { name: "Open computation" }).click();
+    await expect(ctx.page.getByTestId("scientific-capabilities-panel")).toHaveCount(0);
+    await expect(ctx.page.getByTestId("mesh-workspace-left-tab-analyze"))
+      .toHaveAttribute("aria-pressed", "true");
   } finally {
     await closeSurfaceApp(ctx);
   }

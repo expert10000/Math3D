@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import { MATH3D_PLATFORM_DISCOVERY, SCIENTIFIC_CAPABILITY_REGISTRY, SCIENTIFIC_MODULES,
   resolveScientificOperationAvailability,
+  scientificParameterFields,
+  scientificWorkflowNode,
   type ScientificCapability, type ScientificEnvironment, type ScientificModule,
   type ScientificOperationDescriptor } from "@math3d/core";
 import { MODULE_WORKSPACE_ENTRY, MODULE_WORKSPACE_FEATURES,
@@ -25,6 +27,7 @@ export function scientificCapabilityGroups(module: ScientificModule, environment
   return {
     workspaceFeatures: MODULE_WORKSPACE_FEATURES[module],
     available,
+    unavailableOperations: operations.filter(operation => !available.some(item => item.id === operation.id)),
     registered: capabilities.filter(capability => capability.status === "operation-registered" &&
       !availableIds.has(capability.id)),
     planned: capabilities.filter(capability => capability.status === "catalogued"),
@@ -67,6 +70,7 @@ export function ScientificCapabilitiesPanel({ initialModule, environment, implem
   const matchingWorkspace = groups.workspaceFeatures.filter(matches);
   const visibleWorkspace = matchingWorkspace.filter(item =>
     featureGroup === "All" || item.group === featureGroup);
+  const visibleUnavailableOperations = groups.unavailableOperations.filter(matches);
   const visibleRegistered = groups.registered.filter(matches);
   const visiblePlanned = groups.planned.filter(matches);
   return <section data-testid="scientific-capabilities-panel" aria-label="Scientific capabilities"
@@ -120,7 +124,24 @@ export function ScientificCapabilitiesPanel({ initialModule, environment, implem
           data-testid={`available-operation-${operation.id}`}>
           <strong>{operation.title}</strong><small>{operation.id}</small>
           <small>{operation.description}</small>
+          {scientificParameterFields(operation).length > 0 && <small>Parameters: {scientificParameterFields(operation)
+            .map(field => `${field.name}${field.schema.default === undefined ? "" : `=${field.schema.default}`}`)
+            .join(", ")}</small>}
+          {scientificWorkflowNode(operation, { environment, implementations }) &&
+            <small>Workflow node: operation.{operation.id}</small>}
           <button type="button" onClick={() => onOpenOperation(operation.id)}>Open computation</button>
+        </div>)}
+      </div>
+    </div>
+    <div style={{ display: "grid", gap: 8 }}>
+      <strong>Registered operations, unavailable here ({visibleUnavailableOperations.length})</strong>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 8 }}>
+        {visibleUnavailableOperations.map(operation => <div key={operation.id} style={cardStyle}
+          data-testid={`unavailable-operation-${operation.id}`}>
+          <strong>{operation.title}</strong><small>{operation.id}</small>
+          <small>{operation.schemaCompleteness === "complete" ? "Complete contract" : "Operation-specific contract pending"}</small>
+          <small>{resolveScientificOperationAvailability(operation.id,
+            { environment, implementations }).reason}</small>
         </div>)}
       </div>
     </div>

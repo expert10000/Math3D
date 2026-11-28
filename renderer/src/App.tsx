@@ -82629,7 +82629,8 @@ case "mobius":
               {scientificCapabilitiesOpen && <ScientificCapabilitiesPanel key={activeCapabilityModule}
                 initialModule={activeCapabilityModule}
                 environment={window.appRuntime ? "desktop" : "browser"}
-                implementations={[surfaceCurvatureOperation.definition.implementationId]}
+                implementations={[surfaceCurvatureOperation.definition.implementationId,
+                  "worker:mesh.normals.compute"]}
                 onClose={() => setScientificCapabilitiesOpen(false)}
                 onOpenWorkspace={(module, group) => {
                   if (module === "quantum") {
@@ -82660,6 +82661,17 @@ case "mobius":
                   setScientificCapabilitiesOpen(false);
                 }}
                 onOpenOperation={id => {
+                  if (id === "mesh.normals.compute") {
+                    setCasWorkspaceOpen(false);
+                    setNumberTheoryWorkspaceOpen(false);
+                    setProjectsOpen(false);
+                    sectionNavEntries.find(entry => entry.id === "mesh")?.onSelect();
+                    setSurfacesPanelState("work");
+                    setSurfacesWorkGalleryOpen(false);
+                    setMeshWorkspaceLeftTab("analyze");
+                    setScientificCapabilitiesOpen(false);
+                    return;
+                  }
                   if (id !== "surface.curvature.compute") return;
                   setCasWorkspaceOpen(false);
                   setNumberTheoryWorkspaceOpen(false);

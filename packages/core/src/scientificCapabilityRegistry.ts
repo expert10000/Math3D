@@ -126,7 +126,7 @@ const registeredGaussian: ScientificCapability = {
   parameters: [{ name: "histogramBins", type: "integer", default: 16 }],
   outputs: [{ name: "gaussianCurvature", type: "ScalarField", units: "length^-2" },
     { name: "statistics", type: "StatisticalSummary" }],
-  methods: ["numerical"], validation: ["finite-values", "domain-coverage"],
+  methods: ["numerical", "analytic"], validation: ["finite-values", "domain-coverage", "reference-tolerance"],
   execution: { deterministic: true, cancellable: true, supportsProgress: true },
 };
 const registeredMean: ScientificCapability = {
@@ -143,6 +143,15 @@ const registeredCurvature = new Map([
   [registeredGaussian.id, registeredGaussian], [registeredMean.id, registeredMean],
   [registeredPrincipal.id, registeredPrincipal],
 ]);
+const registeredMeshNormals: ScientificCapability = {
+  schemaVersion: 1, id: "mesh.normals", version: "1.0.0", module: "mesh",
+  title: "Mesh vertex normals", category: "mesh-analysis", status: "operation-registered",
+  inputs: [{ name: "mesh", type: "TriangleMesh" }], parameters: [],
+  outputs: [{ name: "normals", type: "VertexNormalField", units: "unit-vector" }],
+  methods: ["numerical"], validation: ["mesh-index-bounds"],
+  execution: { deterministic: true, cancellable: false, supportsProgress: false },
+};
+const registeredCapabilities = new Map([...registeredCurvature, [registeredMeshNormals.id, registeredMeshNormals]]);
 
 const catalogued = (module: ScientificModule, name: string): ScientificCapability => ({
   schemaVersion: 1, id: `${module}.${name}`, version: "0.1.0", module,
@@ -161,7 +170,8 @@ export const scientificModuleForWorkerOperation = (operation: Math3DWorkerOperat
   return "cas";
 };
 
-const workerCapabilities: ScientificCapability[] = MATH3D_WORKER_OPERATION_REGISTRY.map(operation => ({
+const workerCapabilities: ScientificCapability[] = MATH3D_WORKER_OPERATION_REGISTRY
+  .filter(operation => operation.id !== "mesh.normals.compute").map(operation => ({
   schemaVersion: 1, id: `implementation.${operation.id}`, version: "1.0.0",
   module: scientificModuleForWorkerOperation(operation), title: operation.title,
   category: "canonical-worker-operation", status: "operation-registered",
@@ -171,15 +181,19 @@ const workerCapabilities: ScientificCapability[] = MATH3D_WORKER_OPERATION_REGIS
 }));
 
 const workerOperations: ScientificOperation[] = MATH3D_WORKER_OPERATION_REGISTRY.map(operation => ({
-  id: operation.id, version: "1.0.0", capabilityIds: [`implementation.${operation.id}`],
+  id: operation.id, version: "1.0.0", capabilityIds: [operation.id === "mesh.normals.compute"
+    ? "mesh.normals" : `implementation.${operation.id}`],
   method: operation.method, environments: operation.environments,
   implementationId: `worker:${operation.id}`,
 }));
 
 export const SCIENTIFIC_CAPABILITY_REGISTRY = createScientificCapabilityRegistry(
   [...SCIENTIFIC_MODULES.flatMap(module => moduleCatalog[module].map(name =>
-    registeredCurvature.get(`${module}.${name}`) ?? catalogued(module, name))), ...workerCapabilities],
+    registeredCapabilities.get(`${module}.${name}`) ?? catalogued(module, name))), ...workerCapabilities],
   [{ id: "surface.curvature.compute", version: "1.0.0", capabilityIds: [...registeredCurvature.keys()],
     method: "numerical", environments: ["browser", "desktop"],
-    implementationId: "math3d.surface.curvature-field" }, ...workerOperations],
+    implementationId: "math3d.surface.curvature-field" },
+  { id: "surface.curvature.analytic-reference", version: "1.0.0", capabilityIds: [...registeredCurvature.keys()],
+    method: "analytic", environments: ["browser", "desktop"],
+    implementationId: "math3d.surface.curvature-analytic-reference" }, ...workerOperations],
 );

@@ -20,6 +20,7 @@ export type DiscoveryJsonSchema = Readonly<{
   required?: readonly string[];
   additionalProperties?: boolean;
   minimum?: number;
+  maximum?: number;
   minItems?: number;
   maxItems?: number;
   default?: string | number | boolean;
@@ -103,7 +104,8 @@ export function createPlatformDiscovery(entries: readonly DiscoveryEntry[],
     executableOperation: (id: string, environment: ScientificEnvironment,
       implementationAvailable: (id: string) => boolean): ScientificOperationDescriptor | null => {
       const descriptor = registries.get("scientific-operations")!.get(id) as ScientificOperationDescriptor | undefined;
-      return descriptor?.status === "registered" && descriptor.environments.includes(environment) &&
+      return descriptor?.status === "registered" && descriptor.schemaCompleteness === "complete" &&
+        descriptor.environments.includes(environment) &&
         implementationAvailable(descriptor.implementationId) ? descriptor : null;
     },
     generatableOperations: (environment: ScientificEnvironment,
@@ -121,6 +123,11 @@ const entry = (kind: PlatformRegistryKind, id: string, title: string,
   kind, id, version: "0.1.0", title, description: `${title} discovery entry.`,
   status: "catalogued", references,
 });
+const registeredEntry = (kind: PlatformRegistryKind, id: string, title: string): PlatformDescriptor =>
+  ({ ...entry(kind, id, title), status: "registered", version: "1.0.0" });
+const curvatureMetricIds = ["metric.sampleCount", "metric.validSamples", "metric.K.mean",
+  "metric.K.rms", "metric.H.mean", "metric.H.rms", "metric.k1.mean", "metric.k1.rms",
+  "metric.k2.mean", "metric.k2.rms", "metric.computeTimeMs"] as const;
 
 const curvatureOperation = SCIENTIFIC_CAPABILITY_REGISTRY.getOperation("surface.curvature.compute")!;
 const numericValue: DiscoveryJsonSchema = { anyOf: [{ type: "number" }, { type: "null" }] };
@@ -216,6 +223,60 @@ const surfaceCurvatureDescriptor: ScientificOperationDescriptor = {
     workflows: ["flow.surface.curvatureAnalysis"],
     journeys: ["journey.catenoid.study"],
     "runtime-providers": ["runtime.math3d-js"],
+    metrics: curvatureMetricIds,
+  },
+};
+const analyticCurvatureOperation = SCIENTIFIC_CAPABILITY_REGISTRY.getOperation(
+  "surface.curvature.analytic-reference")!;
+const analyticCurvatureDescriptor: ScientificOperationDescriptor = {
+  ...analyticCurvatureOperation, kind: "scientific-operations", status: "registered",
+  title: "Sample analytic Surface curvature reference",
+  description: "Sample an exact derivative Surface preset to produce a curvature reference field.",
+  module: "surface", category: "differential-geometry", schemaCompleteness: "complete",
+  inputSchema: { type: "object", additionalProperties: false,
+    properties: { presetId: { type: "string" } }, required: ["presetId"] },
+  parameterSchema: { type: "object", additionalProperties: false,
+    properties: { resolutionU: { type: "integer", minimum: 2, maximum: 256, default: 17 },
+      resolutionV: { type: "integer", minimum: 2, maximum: 256, default: 17 } } },
+  outputSchema: curvatureOutputSchema,
+  supportedMethods: ["surface.curvature.exact-analytic"],
+  requiredCapabilities: analyticCurvatureOperation.capabilityIds,
+  visualizationIds: ["view.scalarField", "view.histogram"],
+  validatorIds: ["validation.finite-values", "validation.domain-coverage",
+    "validation.referenceTolerance"],
+  headlessSupported: true, cancellable: false, cacheable: true, deterministic: true,
+  references: {
+    "computational-methods": ["surface.curvature.exact-analytic"],
+    visualizations: ["view.scalarField", "view.histogram"],
+    validators: ["validation.finite-values", "validation.domain-coverage",
+      "validation.referenceTolerance"],
+    "runtime-providers": ["runtime.math3d-js"],
+  },
+};
+
+const meshArray: DiscoveryJsonSchema = { type: "array", items: numericValue };
+const meshIndexArray: DiscoveryJsonSchema = { type: "array", items: { type: "integer", minimum: 0 } };
+const meshSchema: DiscoveryJsonSchema = { type: "object", properties: {
+  positions: meshArray, indices: meshIndexArray, normals: meshArray,
+}, required: ["positions"] };
+const meshNormalsOperation = SCIENTIFIC_CAPABILITY_REGISTRY.getOperation("mesh.normals.compute")!;
+const meshNormalsDescriptor: ScientificOperationDescriptor = {
+  ...meshNormalsOperation, kind: "scientific-operations", status: "registered",
+  title: "Compute Mesh vertex normals",
+  description: "Compute area-weighted vertex normals from triangle positions and indices.",
+  module: "mesh", category: "mesh-analysis", schemaCompleteness: "complete",
+  inputSchema: { type: "object", properties: { mesh: meshSchema }, required: ["mesh"],
+    additionalProperties: false },
+  parameterSchema: { type: "object", additionalProperties: false },
+  outputSchema: { ...meshSchema, required: ["positions", "normals"] },
+  supportedMethods: ["mesh.normals.area-weighted"],
+  requiredCapabilities: meshNormalsOperation.capabilityIds,
+  visualizationIds: ["view.meshNormals"], validatorIds: ["validation.mesh-index-bounds"],
+  headlessSupported: true, cancellable: false, cacheable: true, deterministic: true,
+  references: {
+    "computational-methods": ["mesh.normals.area-weighted"],
+    visualizations: ["view.meshNormals"], validators: ["validation.mesh-index-bounds"],
+    "ui-routes": ["workspace.mesh.analysis"], "runtime-providers": ["runtime.math3d-js"],
   },
 };
 
@@ -228,7 +289,8 @@ export function validateDiscoveryJsonValue(schema: DiscoveryJsonSchema, value: u
   if (schema.type === "number" || schema.type === "integer")
     return typeof value === "number" && Number.isFinite(value) &&
       (schema.type !== "integer" || Number.isInteger(value)) &&
-      (schema.minimum === undefined || value >= schema.minimum);
+      (schema.minimum === undefined || value >= schema.minimum) &&
+      (schema.maximum === undefined || value <= schema.maximum);
   if (schema.type === "array") return Array.isArray(value) &&
     (schema.minItems === undefined || value.length >= schema.minItems) &&
     (schema.maxItems === undefined || value.length <= schema.maxItems) &&
@@ -245,7 +307,8 @@ export function validateDiscoveryJsonValue(schema: DiscoveryJsonSchema, value: u
   return false;
 }
 
-const canonicalWorkerDescriptors: ScientificOperationDescriptor[] = MATH3D_WORKER_OPERATION_REGISTRY.map(worker => {
+const canonicalWorkerDescriptors: ScientificOperationDescriptor[] = MATH3D_WORKER_OPERATION_REGISTRY
+  .filter(worker => worker.id !== "mesh.normals.compute").map(worker => {
   const operation = SCIENTIFIC_CAPABILITY_REGISTRY.getOperation(worker.id)!;
   return {
     ...operation, kind: "scientific-operations", status: "registered", title: worker.title,
@@ -262,21 +325,29 @@ const canonicalWorkerDescriptors: ScientificOperationDescriptor[] = MATH3D_WORKE
 });
 
 export const MATH3D_PLATFORM_DISCOVERY = createPlatformDiscovery([
-  surfaceCurvatureDescriptor, ...canonicalWorkerDescriptors,
+  surfaceCurvatureDescriptor, analyticCurvatureDescriptor, meshNormalsDescriptor,
+  ...canonicalWorkerDescriptors,
   entry("mathematical-objects", "surface.catenoid", "Catenoid"),
   entry("mathematical-objects", "curve.helix", "Helix"),
   entry("computational-methods", "surface.curvature.sampled-numerical", "Sampled numerical curvature"),
+  entry("computational-methods", "surface.curvature.exact-analytic", "Exact analytic curvature"),
   entry("computational-methods", "mesh.curvature.angleDefect", "Angle defect curvature"),
+  entry("computational-methods", "mesh.normals.area-weighted", "Area weighted vertex normals"),
   entry("scientific-features", "surface.gaussianCurvature", "Gaussian curvature"),
   entry("visualizations", "view.scalarField", "Scalar field"),
   entry("visualizations", "view.histogram", "Histogram"),
+  entry("visualizations", "view.meshNormals", "Mesh vertex normals"),
   entry("ui-routes", "workspace.surfaces.analysis", "Surface analysis"),
+  entry("ui-routes", "workspace.mesh.analysis", "Mesh analysis"),
   entry("commands", "project.save", "Save Project"),
   entry("commands", "viewer.fit", "Fit viewer"),
   entry("metrics", "metric.rmse", "Root mean square error"),
   entry("metrics", "metric.peakMemory", "Peak memory"),
+  ...curvatureMetricIds.map(id => registeredEntry("metrics", id,
+    id.replace(/^metric\./, "").replaceAll(".", " "))),
   entry("validators", "validation.finite-values", "Finite values"),
   entry("validators", "validation.domain-coverage", "Domain coverage"),
+  entry("validators", "validation.mesh-index-bounds", "Mesh index bounds"),
   entry("validators", "validation.referenceTolerance", "Reference tolerance"),
   entry("workflows", "flow.surface.curvatureAnalysis", "Surface curvature analysis"),
   entry("journeys", "journey.catenoid.study", "Catenoid evidence Study"),
@@ -295,6 +366,8 @@ export function resolveScientificOperationAvailability(id: string, host: Scienti
   const descriptor = entry as ScientificOperationDescriptor;
   if (descriptor.status !== "registered")
     return { available: false, descriptor, reason: "Operation has no registered implementation." };
+  if (descriptor.schemaCompleteness !== "complete")
+    return { available: false, descriptor, reason: "Operation-specific contract is incomplete." };
   if (!descriptor.environments.includes(host.environment))
     return { available: false, descriptor, reason: `Operation does not support ${host.environment}.` };
   if (!host.implementations.includes(descriptor.implementationId))

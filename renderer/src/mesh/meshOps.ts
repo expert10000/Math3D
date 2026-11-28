@@ -1,4 +1,6 @@
 import type { MeshValidation, SurfaceMeshData } from "./surfaceMesh";
+import { bindScientificOperation, MATH3D_PLATFORM_DISCOVERY,
+  SCIENTIFIC_CAPABILITY_REGISTRY } from "@math3d/core";
 
 const isFiniteNumber = (v: number) => Number.isFinite(v);
 
@@ -32,7 +34,7 @@ const triangleIndices = (
   return { a, b, c };
 };
 
-export function computeVertexNormals(mesh: SurfaceMeshData): SurfaceMeshData {
+function computeVertexNormalsImpl(mesh: SurfaceMeshData): SurfaceMeshData {
   const positions = mesh.positions;
   const vertexCount = Math.floor(positions.length / 3);
   const normals = new Float32Array(vertexCount * 3);
@@ -102,6 +104,20 @@ export function computeVertexNormals(mesh: SurfaceMeshData): SurfaceMeshData {
   }
 
   return { ...mesh, normals };
+}
+
+const normalsDescriptor = MATH3D_PLATFORM_DISCOVERY.executableOperation(
+  "mesh.normals.compute", "browser", id => id === "worker:mesh.normals.compute");
+if (!normalsDescriptor || normalsDescriptor.schemaCompleteness !== "complete")
+  throw new Error("Mesh normals operation is missing its verified contract.");
+
+export const meshVertexNormalsOperation = bindScientificOperation(
+  SCIENTIFIC_CAPABILITY_REGISTRY, normalsDescriptor.id, normalsDescriptor.implementationId,
+  ({ mesh }: { mesh: SurfaceMeshData }) => computeVertexNormalsImpl(mesh));
+
+/** All existing Mesh callers use the same registered implementation. */
+export function computeVertexNormals(mesh: SurfaceMeshData): SurfaceMeshData {
+  return meshVertexNormalsOperation.execute({ mesh });
 }
 
 export function computeAdjacency(mesh: SurfaceMeshData): SurfaceMeshData {

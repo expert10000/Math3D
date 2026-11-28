@@ -19,11 +19,12 @@ describe("Math3D platform discovery", () => {
       .map(journey => journey.id)).toEqual(["journey.catenoid.study"]);
   });
 
-  it("discovers each canonical worker operation as a partial contract", () => {
+  it("keeps unverified worker schemas partial and promotes verified Mesh normals", () => {
     const discovered = MATH3D_PLATFORM_DISCOVERY.list("scientific-operations");
     for (const worker of MATH3D_WORKER_OPERATION_REGISTRY)
       expect(discovered.find(entry => entry.id === worker.id))
-        .toMatchObject({ schemaCompleteness: "partial", implementationId: `worker:${worker.id}` });
+        .toMatchObject({ schemaCompleteness: worker.id === "mesh.normals.compute" ? "complete" : "partial",
+          implementationId: `worker:${worker.id}` });
   });
 
   it("does not advertise an API operation without a verified server binding", () => {
@@ -32,8 +33,7 @@ describe("Math3D platform discovery", () => {
     expect(discoverApiScientificOperations()).toEqual([]);
     expect(discoverApiScientificOperations(["math3d.surface.curvature-field"])).toEqual([]);
     const serverWorker = MATH3D_WORKER_OPERATION_REGISTRY.find(item => item.environments.includes("server"))!;
-    expect(discoverApiScientificOperations([`worker:${serverWorker.id}`]).map(item => item.id))
-      .toEqual([serverWorker.id]);
+    expect(discoverApiScientificOperations([`worker:${serverWorker.id}`])).toEqual([]);
   });
 
   it("checks runtime availability and does not generate forms from incomplete schemas", () => {
@@ -42,7 +42,8 @@ describe("Math3D platform discovery", () => {
     expect(MATH3D_PLATFORM_DISCOVERY.executableOperation("surface.curvature.compute", "mobile", () => true)).toBeNull();
     expect(MATH3D_PLATFORM_DISCOVERY.executableOperation("surface.curvature.compute", "desktop", () => false)).toBeNull();
     expect(MATH3D_PLATFORM_DISCOVERY.generatableOperations("desktop", () => true).map(item => item.id))
-      .toEqual(["surface.curvature.compute"]);
+      .toEqual(["surface.curvature.compute", "surface.curvature.analytic-reference",
+        "mesh.normals.compute"]);
   });
 
   it("rejects dangling cross references and duplicate identifiers", () => {

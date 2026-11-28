@@ -20,6 +20,11 @@ describe("module scientific capabilities", () => {
     expect(surfaces.registered.some(capability => capability.id === "surface.curvature.gaussian")).toBe(false);
     expect(scientificCapabilityGroups("surface", "mobile", ["math3d.surface.curvature-field"]).available)
       .toHaveLength(0);
+    expect(scientificCapabilityGroups("mesh", "browser", ["worker:mesh.normals.compute"]).available
+      .map(operation => operation.id)).toContain("mesh.normals.compute");
+    expect(scientificCapabilityGroups("surface", "browser", ["math3d.surface.curvature-field"])
+      .unavailableOperations.map(operation => operation.id))
+      .toContain("surface.curvature.analytic-reference");
     for (const [module, definitions] of [
       ["curve", DEFAULT_CURVE_ANALYSIS_DEFINITIONS],
       ["surface", DEFAULT_SURFACE_ANALYSIS_DEFINITIONS],
