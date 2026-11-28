@@ -11,7 +11,9 @@ param(
   [string]$ExpectedDevExecutableSha256 = '',
   [string]$ExpectedDevAsarSha256 = '',
   [string]$ExpectedDevWorkerSha256 = '',
-  [switch]$TemporarilyUnregisterForDisposableTest
+  [switch]$TemporarilyUnregisterForDisposableTest,
+  [switch]$RetainOldRegistrationForDev,
+  [ValidateRange(30, 900)][int]$InstallerTimeoutSeconds = 180
 )
 
 $ErrorActionPreference = 'Stop'
@@ -28,9 +30,10 @@ if (-not $root.StartsWith($temp, [StringComparison]::OrdinalIgnoreCase) -or $roo
 if (Test-Path -LiteralPath $root) { throw "WorkRoot already exists: $root" }
 $registered = @(Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' -ErrorAction SilentlyContinue |
   ForEach-Object { Get-ItemProperty -LiteralPath $_.PSPath -ErrorAction SilentlyContinue } |
-  Where-Object { $_.DisplayName -eq 'Math3D' })
-if ($registered.Count -and -not $PreserveLocalRegistration -and -not ($OldPortableZip -and $DevInstalledDirectory)) {
-  throw 'A stable Math3D installation is registered; use a clean Windows runner.'
+  Where-Object { $_.DisplayName -in @('Math3D', 'Math3D Dev') })
+if ($registered.Count -and -not $TemporarilyUnregisterForDisposableTest -and
+    -not ($OldPortableZip -and $DevInstalledDirectory)) {
+  throw 'Another Math3D/Dev installation is registered outside the fresh WorkRoot. Seed 1.7 on a clean runner or use the guarded disposable registration setup.'
 }
 if ($DevInstalledDirectory -and (-not $OldPortableZip -or @($ExpectedDevExecutableSha256,
       $ExpectedDevAsarSha256, $ExpectedDevWorkerSha256 | Where-Object { $_ -notmatch '^[0-9a-fA-F]{64}$' }).Count)) {
@@ -38,6 +41,9 @@ if ($DevInstalledDirectory -and (-not $OldPortableZip -or @($ExpectedDevExecutab
 }
 if ($TemporarilyUnregisterForDisposableTest -and (-not $PreserveLocalRegistration -or $OldPortableZip -or $DevInstalledDirectory)) {
   throw 'Temporary registration isolation requires the installer route and preserved local registration.'
+}
+if ($RetainOldRegistrationForDev -and -not $TemporarilyUnregisterForDisposableTest) {
+  throw 'Retaining the old registration requires a disposable registration-isolated baseline.'
 }
 
 $registryRoot = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall'
@@ -85,6 +91,9 @@ $evidence = [ordered]@{
   oldPayloadMode = if ($OldPortableZip) { 'published-portable-extraction' } else { 'published-installer' }
   devPayloadMode = if ($DevInstalledDirectory) { 'previously-installed-payload-copy' } else { 'installer' }
   registrationIsolated = [bool]$TemporarilyUnregisterForDisposableTest
+  oldRegistrationRetainedForDev = [bool]$RetainOldRegistrationForDev
+  installerTimeoutSeconds = $InstallerTimeoutSeconds
+  installerPhases = [ordered]@{}
   oldVersion = '1.7.0'; devVersion = '2.0.0'; oldInstallerSha256 = $null
   devInstallerSha256 = $null; oldInstalledExecutableSha256 = $null
   devInstalledExecutableSha256 = $null; checkpointSha256 = $null
@@ -95,8 +104,27 @@ $evidence = [ordered]@{
   failure = $null
 }
 function Invoke-Installer([string]$file, [string]$phase, [string]$expectedExe) {
+  $started = Get-Date
   $process = Start-Process -FilePath $file -ArgumentList @('/S', '/CURRENTUSER', "/D=$install") -WindowStyle Hidden -PassThru
-  if (-not $process.WaitForExit(180000)) { Stop-Process -Id $process.Id -Force; throw "$phase installer exceeded 180 seconds." }
+  $timedOut = -not $process.WaitForExit($InstallerTimeoutSeconds * 1000)
+  $elapsed = [math]::Round(((Get-Date) - $started).TotalSeconds, 1)
+  $running = Get-Process -Id $process.Id -ErrorAction SilentlyContinue
+  $payload = @(Get-ChildItem -LiteralPath $install -Recurse -File -ErrorAction SilentlyContinue)
+  $evidence.installerPhases[$phase] = [ordered]@{
+    processId = $process.Id
+    startedAtUtc = $started.ToUniversalTime().ToString('o')
+    elapsedSeconds = $elapsed; timedOut = $timedOut
+    exitCode = if ($timedOut) { $null } else { $process.ExitCode }
+    cpuSeconds = if ($running) { [math]::Round($running.CPU, 1) } else { $null }
+    workingSetBytes = if ($running) { $running.WorkingSet64 } else { $null }
+    threadCount = if ($running) { $running.Threads.Count } else { $null }
+    waitReasons = if ($running) { @($running.Threads | Group-Object WaitReason | ForEach-Object {
+      [ordered]@{ reason = [string]$_.Name; count = $_.Count }
+    }) } else { @() }
+    payloadFileCount = $payload.Count
+    payloadBytes = [long]($payload | Measure-Object Length -Sum).Sum
+  }
+  if ($timedOut) { Stop-Process -Id $process.Id -Force; throw "$phase installer exceeded $InstallerTimeoutSeconds seconds." }
   if ($process.ExitCode -ne 0) { throw "$phase installer exited with code $($process.ExitCode)." }
   if (-not (Test-Path -LiteralPath (Join-Path $install $expectedExe) -PathType Leaf)) { throw "$phase installed executable missing." }
 }
@@ -194,6 +222,13 @@ try {
   }
   $evidence.checks.profileBackup = 'passed'
 
+  if ($RetainOldRegistrationForDev) {
+    $oldRegistration = @(Get-ChildItem $registryRoot | ForEach-Object { Get-ItemProperty -LiteralPath $_.PSPath } |
+      Where-Object { $_.DisplayName -eq 'Math3D' -and $_.DisplayVersion -eq '1.7.0' -and
+        $_.UninstallString -like "*$install*" })
+    if ($oldRegistration.Count -ne 1) { throw 'Published 1.7 registration does not point to the disposable install.' }
+    $evidence.oldRegistrationBeforeDev = 'verified'
+  }
   if ($DevInstalledDirectory) {
     $devPayload = (Resolve-Path -LiteralPath $DevInstalledDirectory).Path
     $files = @(
@@ -214,7 +249,7 @@ try {
     $evidence.checks.sameDirectoryDevInstall = 'not-run'
     $evidence.checks.sameDirectoryDevPayload = 'passed'
   } else {
-    if ($TemporarilyUnregisterForDisposableTest) {
+    if ($TemporarilyUnregisterForDisposableTest -and -not $RetainOldRegistrationForDev) {
       $temporaryRegistrations = @(Get-ChildItem $registryRoot | ForEach-Object { Get-ItemProperty -LiteralPath $_.PSPath } |
         Where-Object { $_.DisplayName -in @('Math3D', 'Math3D Dev') })
       foreach ($item in $temporaryRegistrations) {
@@ -260,8 +295,25 @@ try {
         }
       }
       foreach ($item in $registrationBefore) {
-        & reg.exe import (Join-Path $root "registration-$($item.PSChildName).reg") | Out-Null
+        $saved = Join-Path $root "registration-$($item.PSChildName).reg"
+        $keyPath = Join-Path $registryRoot $item.PSChildName
+        $registryName = "HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\$($item.PSChildName)"
+        & reg.exe import $saved | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "Could not restore registration $($item.PSChildName)" }
+        $check = Join-Path $root "registration-restored-$($item.PSChildName).reg"
+        & reg.exe export $registryName $check /y | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "Could not check registration $($item.PSChildName)" }
+        if ((Get-FileHash -LiteralPath $check).Hash -ne (Get-FileHash -LiteralPath $saved).Hash) {
+          # A new installer may have left extra values under the same product key.
+          # Replace only this backed-up key, then verify its exact export.
+          Remove-Item -LiteralPath $keyPath -Recurse -Force
+          & reg.exe import $saved | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "Could not replace registration $($item.PSChildName)" }
+          & reg.exe export $registryName $check /y | Out-Null
+          if ($LASTEXITCODE -ne 0 -or (Get-FileHash -LiteralPath $check).Hash -ne (Get-FileHash -LiteralPath $saved).Hash) {
+            throw "Registration still differs after restore: $($item.PSChildName)"
+          }
+        }
       }
       $shortcutRoots = @([Environment]::GetFolderPath('Programs'), [Environment]::GetFolderPath('Desktop'))
       $shortcutsAfter = @(foreach ($directory in $shortcutRoots) {

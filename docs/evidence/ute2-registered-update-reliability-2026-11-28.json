@@ -1,0 +1,59 @@
+{
+  "schema": "math3d/ute2-registered-update-reliability-summary/v1",
+  "status": "passed-bounded-local-dev-overlay",
+  "date": "2026-11-28",
+  "hostCount": 1,
+  "passedTransitions": 7,
+  "installerTimeoutSeconds": 180,
+  "mode": "Exact published 1.7 installer seeded a disposable directory after isolating unrelated pre-existing registrations; its own 1.7 uninstall registration remained present during the exact unsigned Dev 2.0 installer in that same directory.",
+  "stableIdentityUpgrade": false,
+  "oldInstallerSha256": "eacffc903e988a15636f556b36d12621b9918f4cec69e5c8b19e7daa512222db",
+  "devInstallerSha256": "fd73984e0f209615c276e26d25923c0b1e40c81aaa0c115b629338e53d5af13d",
+  "devPayloadSourceCommit": "f96c77b9953cdadc9ec776ec35848c97a35d0a9e",
+  "oldInstalledExecutableSha256": "ff9ec3b9ea65f2d97ab79aeb8a8e52d4ed78d73319d4b69690a6f6c5c144afea",
+  "devInstalledExecutableSha256": "6dbd021e2e52b76082854982509ffffbcefd1ec9e395afadf7dc17329573e89a",
+  "devSignatureStatus": "NotSigned",
+  "trials": [
+    { "number": 2, "oldInstallerSeconds": 65.9, "devInstallerSeconds": 64.3, "checkpointSha256": "75d6c399318f2e1726cb943155fdbeae18062a92fc28e38585ae42906e2f2304", "localReceiptSha256": "11411d02d29a8e67461a31a2a736302d45a722ed5a3e24af90acdc09de29ae60" },
+    { "number": 3, "oldInstallerSeconds": 43.3, "devInstallerSeconds": 67.1, "checkpointSha256": "4d140bf5c2a0fdc83785066228c319971d01e399c3094b453268d908f7c1ea93", "localReceiptSha256": "20fb601f078c5568bcbe55c300348b75b2bef3be6638e2590d9fcd99503c828c" },
+    { "number": 4, "oldInstallerSeconds": 60.1, "devInstallerSeconds": 55.9, "checkpointSha256": "b90e53b56fbd69bc1240532fad2f678c94b18141f5065dd7abf30881584678cf", "localReceiptSha256": "fa7b4d7d5fe730b1913e1858f7fc81f3395539d18f8cf627ee901682915fb61c" },
+    { "number": 5, "oldInstallerSeconds": 67.3, "devInstallerSeconds": 80.6, "checkpointSha256": "3ea71f33230dce1a315dda83207f7d0dee9531a6a635e7615a9d2d29f6703ba1", "localReceiptSha256": "ff53e8483db0565a297da51f6ebc4c94ab570126ac0a3f4c069d8692bf8ea27a" },
+    { "number": 6, "oldInstallerSeconds": 75.1, "devInstallerSeconds": 74.8, "checkpointSha256": "a02a338636dd0a44f81ac449f4bfb24db36fbdc8bef1fb94724cbbf15c48c0d3", "localReceiptSha256": "dd33bd0a9aae393e8c023fabfbf0e72eda354dcaacfc9db4824de8029717c440" },
+    { "number": 7, "oldInstallerSeconds": 68.1, "devInstallerSeconds": 74.3, "checkpointSha256": "e2d9d9f3e25af48da9a2590d00a126826e0eeda6784751f7c37bd1cc8529f32a", "localReceiptSha256": "86d95dd2b54507b94f10947f18134c52ef33c0195f0a946e17a4c11105a079ec" },
+    { "number": 8, "oldInstallerSeconds": 74.2, "devInstallerSeconds": 88.0, "checkpointSha256": "7d7e5c428036f798abb3871552054419487074d398265236c948e9f617b45f44", "localReceiptSha256": "1f11699de48b7f9b249c7c7380c44763fef38da002b3f4055ed7945628868d00" }
+  ],
+  "checksAllSeven": {
+    "publishedAndDevInstallerHashes": "passed",
+    "published17RegisteredBeforeDev": "passed",
+    "bothInstallersExitZeroWithinBound": "passed",
+    "retainedLegacyGraphCheckpointAndSetting": "passed",
+    "exactPreUpgradeBackupReopenedByPublishedExecutableCopy": "passed",
+    "originalUserRegistrationsAndShortcutsRestored": "passed"
+  },
+  "additionalExactInstalledPairCheck": {
+    "trial": 2,
+    "installedLabProducerSha256": "9f52923b3c10e85c163741ef69a814412015bc656475e38bb0c0aa91a6cf004f",
+    "toyBulkRunId": "run-5305c6161b2b481aa3d33d95e8ddecd8",
+    "toyBulkResultSha256": "4af7381ad095539f4668b3fe094ab920321e7cbd1a61fbc02d0b570be9631b10",
+    "projectId": "math3d:project:a5238d5e4ebfbd4515c5c571df547d40",
+    "workbookId": "math3d:workbook:635d02dbffb0d4c7e50c6550d894f317",
+    "studyEvidenceSha256": "1cf3ffe300d86351f42d04417437217cd77dd39d742f6ed64c763c3b2b3bfd3d",
+    "localConsumerReceiptSha256": "57629fc7175989c4f4b4737216bd2450305bd8234f7825d244e357a30d19e5c1",
+    "restartPortableTransferAndChangedSourceWithholding": "passed"
+  },
+  "hostRegistrationRestore": {
+    "stableKeyExportSha256": "ea264d5dae1ab35c98d656152ba0c7c9c4aeec3a152ccac64645dde3e67163ae",
+    "devKeyExportSha256": "a3d2c11a7793bf6092cddd9d04fbb8fead6e8115351f43d6308e89e4671c5e56",
+    "finalTrialSavedAndRestoredExportsByteEqual": true
+  },
+  "excludedSetupCases": [
+    "With an unrelated registered stable 1.4.9 and Dev 2.0 install present, the old 1.7 installer displayed a file-removal error and exited 2; this is not an observed failure of the seeded 1.7-to-Dev transition. The harness now rejects this conflicting setup before launch.",
+    "One final-trial invocation supplied a release asset map instead of the required candidate manifest and was refused before installation. The corrected invocation passed as trial 8."
+  ],
+  "limits": [
+    "All seven registered transitions ran on one Windows host, not independent machines or a signed GA candidate.",
+    "The Dev installer has a separate product identity. After overlay, the 1.7 and Dev uninstall entries both point into the shared directory; uninstall order and cleanup are not qualified.",
+    "Rollback uses a copied published executable and exact pre-upgrade profile backup, not an in-place downgrade or a request for the old build to read a new UTe2 Project.",
+    "Installed retained-memory qualification and any UTe2 material/topology claim remain outside this result."
+  ]
+}
