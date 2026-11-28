@@ -28,7 +28,8 @@ test("module capability discovery follows navigation and opens the verified Surf
     await expect(ctx.page.getByTestId("surfaces-left-tab-analysis")).toHaveAttribute("aria-pressed", "true");
     await ctx.page.getByTestId("scientific-capabilities-toggle").click();
     await module.selectOption("graph3d");
-    await expect(panel).toContainText("Critical Points");
+    await expect(ctx.page.getByTestId("available-operation-graph3d.critical.diagonal-quadratic"))
+      .toBeVisible();
     await expect(panel).toContainText("No dedicated workspace feature");
     await expect(ctx.page.getByTestId("available-operation-graph3d.gradient.quadratic")).toBeVisible();
     await ctx.page.getByTestId("workspace-nav-mesh").click();
@@ -138,6 +139,27 @@ test("a module operation opens the workflow editor and computes", async () => {
       "step1 · number-theory.modular-inverse.compute · completed", { timeout: 30_000 });
     await editor.getByText("step1 · number-theory.modular-inverse.compute · completed").click();
     await expect(editor).toContainText('"inverse": 4');
+  } finally {
+    await closeSurfaceApp(ctx);
+  }
+});
+
+test("a newly catalogued Graph 2D capability executes from the panel", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp();
+    await resetSurfaceAppState(ctx.page);
+    await ctx.page.getByTestId("scientific-capabilities-toggle").click();
+    await ctx.page.getByTestId("scientific-capabilities-module").selectOption("graph2d");
+    await ctx.page.getByTestId("available-operation-graph2d.extrema.quadratic")
+      .getByRole("button", { name: "Add to workflow" }).click();
+    const editor = ctx.page.getByTestId("scientific-workflow-editor");
+    await expect(editor).toHaveAttribute("open", "");
+    await editor.getByRole("button", { name: "Run workflow" }).click();
+    await expect(editor.getByRole("status")).toContainText(
+      "step1 · graph2d.extrema.quadratic · completed", { timeout: 30_000 });
+    await editor.getByText("step1 · graph2d.extrema.quadratic · completed").click();
+    await expect(editor).toContainText('"kind": "minimum"');
   } finally {
     await closeSurfaceApp(ctx);
   }

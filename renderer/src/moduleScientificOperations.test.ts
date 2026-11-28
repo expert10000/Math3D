@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MATH3D_PLATFORM_DISCOVERY, MODULE_SCIENTIFIC_OPERATIONS, SCIENTIFIC_MODULES,
-  validateDiscoveryJsonValue, runScientificWorkflow } from "@math3d/core";
+  SCIENTIFIC_CAPABILITY_REGISTRY, validateDiscoveryJsonValue, runScientificWorkflow } from "@math3d/core";
 import { SCIENTIFIC_OPERATION_BINDINGS } from "./scientificOperationBindings";
 
 const cases: readonly [string, object, object][] = [
@@ -25,14 +25,18 @@ const cases: readonly [string, object, object][] = [
     { density: [0.5, 0.5], normBeforeNormalization: 2 }],
 ];
 
-describe("one verified scientific operation per module", () => {
-  it("has a complete executable descriptor in each of the 13 modules", () => {
-    expect(MODULE_SCIENTIFIC_OPERATIONS).toHaveLength(11);
+describe("scientific module operation coverage", () => {
+  it("has a bounded complete operation for every catalogued capability in all 13 modules", () => {
+    expect(MODULE_SCIENTIFIC_OPERATIONS).toHaveLength(73);
+    expect(SCIENTIFIC_CAPABILITY_REGISTRY.capabilities.filter(item =>
+      item.status === "catalogued")).toHaveLength(0);
     const modules = new Set(MATH3D_PLATFORM_DISCOVERY.list("scientific-operations")
       .filter(item => item.kind === "scientific-operations" &&
         item.schemaCompleteness === "complete" && item.id in SCIENTIFIC_OPERATION_BINDINGS)
       .map(item => item.kind === "scientific-operations" ? item.module : ""));
     expect([...modules].sort()).toEqual([...SCIENTIFIC_MODULES].sort());
+    expect(MATH3D_PLATFORM_DISCOVERY.list("scientific-operations").filter(item =>
+      item.kind === "scientific-operations" && item.schemaCompleteness === "complete")).toHaveLength(77);
   });
 
   it.each(cases)("executes %s and matches its result contract", async (id, input, expected) => {

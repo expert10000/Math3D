@@ -90,7 +90,7 @@
     "build:core": "npm run build:main && npm run build:renderer && node scripts/write-build-identity.mjs",
     "build:scientific-api": "node scripts/build-scientific-api.mjs",
     "start:scientific-api": "node output/scientific-api/server.mjs",
-    "test:scientific-api": "npm run build:scientific-api && npx vitest run services/scientific-api/server.test.ts renderer/src/scientificWorkflow.test.ts renderer/src/moduleScientificOperations.test.ts --maxWorkers=1 && python -m unittest discover -s integrations/python -p test_scientific_operations.py",
+    "test:scientific-api": "npm run build:scientific-api && npx vitest run services/scientific-api/server.test.ts renderer/src/scientificWorkflow.test.ts renderer/src/moduleScientificOperations.test.ts renderer/src/cataloguedCapabilityValidation.test.ts --maxWorkers=1 && python -m unittest discover -s integrations/python -p test_scientific_operations.py",
     "typecheck:noemit": "tsc -p tsconfig.scientific.json --noEmit && tsc -p tsconfig.node.json --noEmit && tsc -p renderer/tsconfig.app.json --noEmit && tsc -p tests/e2e/tsconfig.json --noEmit",
     "build": "npm run build:core && electron .",
     "dist": "npm run build:python-worker && npm run build:core && npm run build:web && set MATH3D_CHANNEL=stable&& electron-builder -w --config electron-builder.config.cjs",

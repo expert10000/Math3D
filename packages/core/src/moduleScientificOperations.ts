@@ -1,8 +1,10 @@
 import type { DiscoveryJsonSchema } from "./platformDiscovery";
 import type { ScientificMethod, ScientificModule } from "./scientificCapabilityRegistry";
+import { EXTENDED_SCIENTIFIC_OPERATIONS_A } from "./moduleScientificOperationsExtendedA";
+import { EXTENDED_SCIENTIFIC_OPERATIONS_B } from "./moduleScientificOperationsExtendedB";
 
 type RecordValue = Record<string, unknown>;
-type ModuleOperation = Readonly<{
+export type ModuleOperation = Readonly<{
   id: string; module: ScientificModule; capability: string; title: string;
   description: string; method: ScientificMethod;
   inputSchema: DiscoveryJsonSchema; outputSchema: DiscoveryJsonSchema;
@@ -30,7 +32,7 @@ const finite = (value: number, label: string): number => {
 };
 
 /** Small, bounded reference operations that establish one complete contract per module. */
-export const MODULE_SCIENTIFIC_OPERATIONS: readonly ModuleOperation[] = [
+const BASE_MODULE_SCIENTIFIC_OPERATIONS: readonly ModuleOperation[] = [
   { id: "graph2d.roots.quadratic", module: "graph2d", capability: "roots",
     title: "Real roots of a quadratic", description: "Solve ax² + bx + c = 0 for distinct real roots.",
     method: "analytic", inputSchema: withExample(coefficients, { a: 1, b: 0, c: -1 }),
@@ -200,6 +202,12 @@ export const MODULE_SCIENTIFIC_OPERATIONS: readonly ModuleOperation[] = [
         normBeforeNormalization: norm };
     } },
 ] as const;
+
+export const MODULE_SCIENTIFIC_OPERATIONS: readonly ModuleOperation[] = Object.freeze([
+  ...BASE_MODULE_SCIENTIFIC_OPERATIONS,
+  ...EXTENDED_SCIENTIFIC_OPERATIONS_A,
+  ...EXTENDED_SCIENTIFIC_OPERATIONS_B,
+]);
 
 export const moduleScientificOperationBindings = Object.freeze(Object.fromEntries(
   MODULE_SCIENTIFIC_OPERATIONS.map(operation => [operation.id, {

@@ -21,7 +21,7 @@ describe("Scientific API verified server execution", () => {
     const response = await fetch(`${origin}/v1/operations`);
     expect(response.status).toBe(200);
     const report = await response.json();
-    expect(report.operations).toHaveLength(15);
+    expect(report.operations).toHaveLength(77);
     expect(report.operations.map((item: { id: string }) => item.id)).toEqual(expect.arrayContaining([
       "surface.curvature.compute", "surface.curvature.parametric",
       "surface.curvature.analytic-reference", "mesh.normals.compute",
