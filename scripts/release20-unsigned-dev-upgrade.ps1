@@ -10,7 +10,8 @@ param(
   [string]$DevInstalledDirectory = '',
   [string]$ExpectedDevExecutableSha256 = '',
   [string]$ExpectedDevAsarSha256 = '',
-  [string]$ExpectedDevWorkerSha256 = ''
+  [string]$ExpectedDevWorkerSha256 = '',
+  [switch]$TemporarilyUnregisterForDisposableTest
 )
 
 $ErrorActionPreference = 'Stop'
@@ -34,6 +35,9 @@ if ($registered.Count -and -not $PreserveLocalRegistration -and -not ($OldPortab
 if ($DevInstalledDirectory -and (-not $OldPortableZip -or @($ExpectedDevExecutableSha256,
       $ExpectedDevAsarSha256, $ExpectedDevWorkerSha256 | Where-Object { $_ -notmatch '^[0-9a-fA-F]{64}$' }).Count)) {
   throw 'Payload overlay requires a published portable baseline and three expected payload SHA-256 values.'
+}
+if ($TemporarilyUnregisterForDisposableTest -and (-not $PreserveLocalRegistration -or $OldPortableZip -or $DevInstalledDirectory)) {
+  throw 'Temporary registration isolation requires the installer route and preserved local registration.'
 }
 
 $registryRoot = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall'
@@ -80,6 +84,7 @@ $evidence = [ordered]@{
   installMode = 'same-directory-dev-overlay'; stableIdentityUpgrade = $false
   oldPayloadMode = if ($OldPortableZip) { 'published-portable-extraction' } else { 'published-installer' }
   devPayloadMode = if ($DevInstalledDirectory) { 'previously-installed-payload-copy' } else { 'installer' }
+  registrationIsolated = [bool]$TemporarilyUnregisterForDisposableTest
   oldVersion = '1.7.0'; devVersion = '2.0.0'; oldInstallerSha256 = $null
   devInstallerSha256 = $null; oldInstalledExecutableSha256 = $null
   devInstalledExecutableSha256 = $null; checkpointSha256 = $null
@@ -154,6 +159,11 @@ try {
   $evidence.checks.unsignedDevBytes = 'passed'
 
   if (-not (Test-Path -LiteralPath $root)) { New-Item -ItemType Directory -Path $root | Out-Null }
+  if ($TemporarilyUnregisterForDisposableTest) {
+    foreach ($item in $registrationBefore) {
+      Remove-Item -LiteralPath (Join-Path $registryRoot $item.PSChildName) -Recurse -Force
+    }
+  }
   if ($OldPortableZip) {
     New-Item -ItemType Directory -Path $install | Out-Null
     & 'C:\Program Files\7-Zip\7z.exe' x -y "-o$install" $portable | ForEach-Object { Write-Host $_ }
@@ -204,6 +214,13 @@ try {
     $evidence.checks.sameDirectoryDevInstall = 'not-run'
     $evidence.checks.sameDirectoryDevPayload = 'passed'
   } else {
+    if ($TemporarilyUnregisterForDisposableTest) {
+      $temporaryRegistrations = @(Get-ChildItem $registryRoot | ForEach-Object { Get-ItemProperty -LiteralPath $_.PSPath } |
+        Where-Object { $_.DisplayName -in @('Math3D', 'Math3D Dev') })
+      foreach ($item in $temporaryRegistrations) {
+        Remove-Item -LiteralPath (Join-Path $registryRoot $item.PSChildName) -Recurse -Force
+      }
+    }
     Invoke-Installer $dev 'Unsigned Dev 2.0.0 overlay' 'Math3D Dev.exe'
     $evidence.checks.sameDirectoryDevInstall = 'passed'
     $evidence.checks.sameDirectoryDevPayload = 'not-applicable'

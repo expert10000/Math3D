@@ -1,0 +1,39 @@
+{
+  "schema": "math3d/ute2-exact-installer-rehearsal-summary/v1",
+  "status": "passed-with-registration-isolation",
+  "mode": "published 1.7 installer then exact unsigned Dev 2.0 installer in one disposable directory; installer registrations temporarily isolated and restored",
+  "oldInstallerSha256": "eacffc903e988a15636f556b36d12621b9918f4cec69e5c8b19e7daa512222db",
+  "devInstallerSha256": "fd73984e0f209615c276e26d25923c0b1e40c81aaa0c115b629338e53d5af13d",
+  "oldExecutableSha256": "ff9ec3b9ea65f2d97ab79aeb8a8e52d4ed78d73319d4b69690a6f6c5c144afea",
+  "devExecutableSha256": "6dbd021e2e52b76082854982509ffffbcefd1ec9e395afadf7dc17329573e89a",
+  "devAsarSha256": "16db59ced2330a261307014b14ac3a96df20463298081f53cd4b473ded059beb",
+  "devWorkerSha256": "b46138c17019660492a9dbeaf9d8cddd916787da5849346c667aa78200f6686e",
+  "devSignatureStatus": "NotSigned",
+  "devPayloadSourceCommit": "f96c77b9953cdadc9ec776ec35848c97a35d0a9e",
+  "legacyGraphCheckpointSha256": "ea08dc408e03669d79b07b4586c2826f4fc6312a45b04e249777ff48db5b4e0c",
+  "preUpgradeProfileInventorySha256": "5dd2eefae59d143dea07456d6b8771a7132257100d0c04fe215e45c8ccc95f8c",
+  "installedLabProducerSha256": "9f52923b3c10e85c163741ef69a814412015bc656475e38bb0c0aa91a6cf004f",
+  "toyBulkRunId": "run-5305c6161b2b481aa3d33d95e8ddecd8",
+  "toyBulkResultSha256": "4af7381ad095539f4668b3fe094ab920321e7cbd1a61fbc02d0b570be9631b10",
+  "projectId": "math3d:project:916d77542c4359da30ed1bd8920e6e67",
+  "workbookId": "math3d:workbook:b0a997a9dcd75c741cb7dd1b7e74a2a3",
+  "studyEvidenceSha256": "ec2155ce362d6e83ee7f5f44dd97265fa248c69c6fe45e2b6eaaa9b6b0561099",
+  "checks": {
+    "published17InstallAndProjectSeed": "passed",
+    "sameDirectoryExactDevInstaller": "passed",
+    "legacyProjectAndSettingReopen": "passed",
+    "newUte2StudyWorkbookRestartAndTransfer": "passed",
+    "changedSourceWithheld": "passed",
+    "legacyCheckpointAfterUte2Study": "passed",
+    "oldExecutableCopyWithPreUpgradeBackup": "passed",
+    "originalUserRegistrationAndShortcutsRestored": "passed"
+  },
+  "localUpgradeEvidenceSha256": "23b4cd9c0ca72d1aecf17edbf7310184033a1f47ecd6513d6fadca473a4f1912",
+  "localUte2ConsumerEvidenceSha256": "7e222055ca2f17d04ab53967023852065df3d5d5652c4be46832a25ed2995afd",
+  "limits": [
+    "The installer registrations were removed temporarily between installs and restored afterward. This does not test an in-place registered-product update.",
+    "Two earlier local attempts with existing registrations reached the 180-second timeout; intermittent installer reliability remains open.",
+    "Rollback reopened the old Graph Project from an exact pre-upgrade profile backup using a copied published executable. The old build was not asked to read the new UTe2 Project.",
+    "This is an unsigned Dev qualification; signing, installed retained memory, and a UTe2 material-topology claim remain outside this result."
+  ]
+}
