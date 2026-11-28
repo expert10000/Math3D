@@ -84,7 +84,17 @@ class ScientificOperationClient:
         if not steps or any(step.get("operationId") not in self._available for step in steps):
             raise ValueError("Workflow contains an unverified operation")
         result = self._workflow_transport(steps)
-        if not isinstance(result.get("steps"), list):
+        completed = result.get("steps")
+        if not isinstance(completed, list) or len(completed) != len(steps) or any(
+            not isinstance(item, Mapping)
+            or item.get("id") != requested.get("id")
+            or item.get("operationId") != requested.get("operationId")
+            or not _valid_schema(
+                self._available[requested["operationId"]].get("outputSchema", {}),
+                item.get("output"),
+            )
+            for requested, item in zip(steps, completed)
+        ):
             raise ValueError("Math3D scientific API returned an invalid workflow result")
         return result
 

@@ -97,6 +97,10 @@ class ScientificOperationDiscoveryTest(unittest.TestCase):
             self.assertEqual(client.run_workflow([{"id": "step1",
                 "operationId": "number-theory.gcd", "input": {"a": 18, "b": 12},
                 "parameters": {}}])["steps"][0]["output"], {"gcd": 6})
+            client._workflow_transport = lambda _steps: {"steps": [{
+                "id": "step1", "operationId": "number-theory.gcd", "output": {"gcd": "wrong"}}]}
+            with self.assertRaisesRegex(ValueError, "invalid workflow result"):
+                client.run_workflow([{"id": "step1", "operationId": "number-theory.gcd"}])
         finally:
             server.shutdown()
             server.server_close()

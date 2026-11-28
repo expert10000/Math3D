@@ -80,6 +80,11 @@ describe("Scientific API verified server execution", () => {
       positions: [0, 0, 0, 1, 0, 0, 0, 1, 0], indices: [0, 1, 2],
     } }) as { normals: number[] };
     expect(result.normals[2]).toBe(1);
+    const workflow = await client.runWorkflow([{ id: "normals",
+      operationId: "mesh.normals.compute", input: { mesh: {
+        positions: [0, 0, 0, 1, 0, 0, 0, 1, 0], indices: [0, 1, 2],
+      } }, parameters: {} }]) as { steps: { output: { normals: number[] } }[] };
+    expect(workflow.steps[0].output.normals[2]).toBe(1);
     await expect(client.execute("curve.analyze", {})).rejects.toThrow(/verified server operation/);
   });
 });

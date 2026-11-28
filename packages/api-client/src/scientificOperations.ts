@@ -65,7 +65,15 @@ export async function connectApiScientificOperations(baseUrl: string,
       const response = await fetcher(`${endpoint}/v1/workflows/execute`, { method: "POST",
         headers: { "Content-Type": "application/json" }, body: JSON.stringify({ steps }) });
       if (!response.ok) throw new Error(`Scientific API workflow failed: ${response.status}`);
-      return response.json();
+      const result = await response.json() as { steps?: {
+        id?: string; operationId?: string; output?: unknown }[] };
+      if (!Array.isArray(result.steps) || result.steps.length !== steps.length ||
+          result.steps.some((completed, index) => completed.id !== steps[index].id ||
+            completed.operationId !== steps[index].operationId ||
+            !validateDiscoveryJsonValue(byId.get(steps[index].operationId)!.outputSchema,
+              completed.output)))
+        throw new TypeError("Scientific API returned an invalid workflow result.");
+      return result;
     },
   });
 }
