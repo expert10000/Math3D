@@ -15,8 +15,19 @@ test("module capability discovery follows navigation and opens the verified Surf
     await expect(panel).toBeVisible();
     await expect(module).toHaveValue("surface");
     await expect(ctx.page.getByTestId("available-operation-surface.curvature.compute")).toBeVisible();
+    await expect(ctx.page.getByTestId("workspace-feature-surface.surface-features")).toBeVisible();
+    await panel.getByRole("button", { name: /^Create \(/ }).click();
+    await expect(ctx.page.getByTestId("workspace-feature-surface.create.explicit")).toBeVisible();
+    await expect(ctx.page.getByTestId("workspace-feature-surface.surface-features")).toHaveCount(0);
+    await panel.getByRole("button", { name: /^Analyze \(/ }).click();
+    await expect(ctx.page.getByTestId("workspace-feature-surface.surface-features")).toBeVisible();
+    await panel.getByRole("button", { name: "Open workspace" }).click();
+    await expect(panel).toHaveCount(0);
+    await expect(ctx.page.getByTestId("surfaces-left-tab-analysis")).toHaveAttribute("aria-pressed", "true");
+    await ctx.page.getByTestId("scientific-capabilities-toggle").click();
     await module.selectOption("graph3d");
     await expect(panel).toContainText("Critical Points");
+    await expect(panel).toContainText("No dedicated workspace feature");
     await expect(panel).toContainText("No verified operation in this app for Graph 3D");
     await ctx.page.getByTestId("workspace-nav-mesh").click();
     await expect(module).toHaveValue("mesh");
@@ -25,6 +36,22 @@ test("module capability discovery follows navigation and opens the verified Surf
     await panel.getByRole("button", { name: "Open computation" }).click();
     await expect(panel).toHaveCount(0);
     await expect(ctx.page.getByTestId("surface-module-actions")).toBeVisible();
+  } finally {
+    await closeSurfaceApp(ctx);
+  }
+});
+
+test("Quantum capability discovery opens the verified examples entry", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp();
+    await resetSurfaceAppState(ctx.page);
+    await ctx.page.getByTestId("scientific-capabilities-toggle").click();
+    const panel = ctx.page.getByTestId("scientific-capabilities-panel");
+    await ctx.page.getByTestId("scientific-capabilities-module").selectOption("quantum");
+    await expect(panel.getByTestId("workspace-feature-quantum.create")).toBeVisible();
+    await panel.getByRole("button", { name: "Open verified examples" }).click();
+    await expect(ctx.page.getByRole("dialog", { name: "Verified quantum examples" })).toBeVisible();
   } finally {
     await closeSurfaceApp(ctx);
   }

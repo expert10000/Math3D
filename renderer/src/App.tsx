@@ -82631,6 +82631,34 @@ case "mobius":
                 environment={window.appRuntime ? "desktop" : "browser"}
                 implementations={[surfaceCurvatureOperation.definition.implementationId]}
                 onClose={() => setScientificCapabilitiesOpen(false)}
+                onOpenWorkspace={(module, group) => {
+                  if (module === "quantum") {
+                    setShowQuantumSceneExamples(true);
+                    setScientificCapabilitiesOpen(false);
+                    return;
+                  }
+                  const navigationId = ({ graph2d: "graphs", field: "graphs", curve: "curves", surface: "surfaces",
+                    mesh: "mesh", geometry: "geometry", volume: "volume", topology: "topology",
+                    cas: "cas", "number-theory": "number_theory", complex: "complex_analysis" } as
+                    Partial<Record<ScientificModule, string>>)[module];
+                  if (!navigationId) return;
+                  setProjectsOpen(false);
+                  setCasWorkspaceOpen(false);
+                  setNumberTheoryWorkspaceOpen(false);
+                  sectionNavEntries.find(entry => entry.id === navigationId)?.onSelect();
+                  if ((group === "All" || group === "Analyze") &&
+                    (module === "surface" || module === "mesh" || module === "volume")) {
+                    setSurfacesPanelState("work");
+                    setSurfacesLeftTab("analysis");
+                    setSurfacesWorkGalleryOpen(false);
+                    if (module === "mesh") setMeshWorkspaceLeftTab("analyze");
+                  } else if ((group === "All" || group === "Analyze") && module === "curve") setCurveWorkspaceTab("analysis");
+                  else if ((group === "All" || group === "Analyze") && module === "geometry") {
+                    setGeometryMode("procedural");
+                    setGeometryProceduralPanelTab("analysis");
+                  }
+                  setScientificCapabilitiesOpen(false);
+                }}
                 onOpenOperation={id => {
                   if (id !== "surface.curvature.compute") return;
                   setCasWorkspaceOpen(false);

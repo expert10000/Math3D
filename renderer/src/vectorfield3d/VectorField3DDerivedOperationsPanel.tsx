@@ -2,7 +2,7 @@ import { useState } from "react";
 import { projectDerivedFieldsForDocument, type DerivedFieldOperation,
   type Math3DProject, type VectorField3DDocument } from "@math3d/core";
 
-const operations = ["vector-magnitude", "scalar-gradient", "scalar-hessian",
+export const VECTOR_FIELD_DERIVED_OPERATIONS = ["vector-magnitude", "scalar-gradient", "scalar-hessian",
   "directional-derivative", "vector-jacobian", "jacobian-symmetric",
   "jacobian-antisymmetric", "vector-dot", "vector-cross", "vector-difference",
   "vorticity", "helicity", "enstrophy", "q-criterion", "lambda2",
@@ -14,7 +14,7 @@ export function VectorField3DDerivedOperationsPanel({ document, project, onAppen
     options: { stableKey: string; title: string; secondaryInputId?: string }) => void }) {
   const [inputId, setInputId] = useState<string>(document.identity.id);
   const [secondaryId, setSecondaryId] = useState<string>(document.identity.id);
-  const [kind, setKind] = useState<typeof operations[number]>("vector-magnitude");
+  const [kind, setKind] = useState<typeof VECTOR_FIELD_DERIVED_OPERATIONS[number]>("vector-magnitude");
   const [direction, setDirection] = useState("1, 0, 0");
   const [message, setMessage] = useState("");
   const fields = project ? projectDerivedFieldsForDocument(project, document.identity.id,
@@ -44,7 +44,7 @@ export function VectorField3DDerivedOperationsPanel({ document, project, onAppen
     </select></label>
     <label>Operation <select value={kind} onChange={event =>
       setKind(event.target.value as typeof kind)}>
-      {operations.map(item => <option key={item} value={item}>{item.replaceAll("-", " ")}</option>)}
+      {VECTOR_FIELD_DERIVED_OPERATIONS.map(item => <option key={item} value={item}>{item.replaceAll("-", " ")}</option>)}
     </select></label>
     {kind === "directional-derivative" && <label>Unit direction (x, y, z)
       <input value={direction} onChange={event => setDirection(event.target.value)} /></label>}

@@ -3,6 +3,8 @@ import { MATH3D_PLATFORM_DISCOVERY, SCIENTIFIC_CAPABILITY_REGISTRY, SCIENTIFIC_M
   resolveScientificOperationAvailability,
   type ScientificCapability, type ScientificEnvironment, type ScientificModule,
   type ScientificOperationDescriptor } from "@math3d/core";
+import { MODULE_WORKSPACE_ENTRY, MODULE_WORKSPACE_FEATURES,
+  type ModuleWorkspaceFeature } from "./moduleWorkspaceFeatures";
 
 const MODULE_LABELS: Record<ScientificModule, string> = {
   graph2d: "Graph 2D", graph3d: "Graph 3D", curve: "Curves", surface: "Surfaces",
@@ -21,6 +23,7 @@ export function scientificCapabilityGroups(module: ScientificModule, environment
     resolveScientificOperationAvailability(operation.id, { environment, implementations }).available);
   const availableIds = new Set(available.flatMap(operation => operation.capabilityIds));
   return {
+    workspaceFeatures: MODULE_WORKSPACE_FEATURES[module],
     available,
     registered: capabilities.filter(capability => capability.status === "operation-registered" &&
       !availableIds.has(capability.id)),
@@ -43,19 +46,27 @@ function CapabilityCard({ capability }: { capability: ScientificCapability }) {
 }
 
 export function ScientificCapabilitiesPanel({ initialModule, environment, implementations, onOpenOperation,
-  onClose }: {
+  onOpenWorkspace, onClose }: {
   initialModule: ScientificModule;
   environment: ScientificEnvironment;
   implementations: readonly string[];
   onOpenOperation: (id: string) => void;
+  onOpenWorkspace: (module: ScientificModule, group: ModuleWorkspaceFeature["group"] | "All") => void;
   onClose: () => void;
 }) {
   const [module, setModule] = useState(initialModule);
   const [query, setQuery] = useState("");
+  const [featureGroup, setFeatureGroup] = useState<ModuleWorkspaceFeature["group"] | "All">("All");
   const groups = scientificCapabilityGroups(module, environment, implementations);
-  const matches = (item: { id: string; title: string }) =>
-    `${item.id} ${item.title}`.toLowerCase().includes(query.trim().toLowerCase());
+  const matches = (item: { id: string; title: string; detail?: string; group?: string }) =>
+    `${item.id} ${item.title} ${item.detail ?? ""} ${item.group ?? ""}`
+      .toLowerCase().includes(query.trim().toLowerCase());
   const visibleAvailable = groups.available.filter(matches);
+  const groupOrder: readonly ModuleWorkspaceFeature["group"][] =
+    ["Create", "Edit", "View", "Analyze", "Export", "Study"];
+  const matchingWorkspace = groups.workspaceFeatures.filter(matches);
+  const visibleWorkspace = matchingWorkspace.filter(item =>
+    featureGroup === "All" || item.group === featureGroup);
   const visibleRegistered = groups.registered.filter(matches);
   const visiblePlanned = groups.planned.filter(matches);
   return <section data-testid="scientific-capabilities-panel" aria-label="Scientific capabilities"
@@ -64,14 +75,43 @@ export function ScientificCapabilitiesPanel({ initialModule, environment, implem
     <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
       <strong>Scientific capabilities</strong>
       <label>Module <select data-testid="scientific-capabilities-module" value={module}
-        onChange={event => setModule(event.target.value as ScientificModule)}>
+        onChange={event => { setModule(event.target.value as ScientificModule); setFeatureGroup("All"); }}>
         {SCIENTIFIC_MODULES.map(id => <option key={id} value={id}>{MODULE_LABELS[id]}</option>)}
       </select></label>
       <input aria-label="Search capabilities" placeholder="Search capabilities" value={query}
         onChange={event => setQuery(event.target.value)} />
       <button type="button" onClick={onClose} style={{ marginLeft: "auto" }}>Close</button>
     </div>
-    <small>Availability reflects this running app. Registered operations need a verified host binding before they can run here.</small>
+    <small>Workspace entries describe existing tools and registered analysis kinds. A tool may need a compatible source or runtime; a registered kind is not necessarily an executable operation. Verified operations are listed separately below.</small>
+    <div style={{ display: "grid", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <strong>In Math3D ({visibleWorkspace.length})</strong>
+        <span>{MODULE_WORKSPACE_ENTRY[module]}</span>
+        {visibleWorkspace.length > 0 && module !== "graph3d" &&
+          <button type="button" onClick={() => onOpenWorkspace(module, featureGroup)}>
+            {module === "field" ? "Open Graphs" : module === "quantum" ? "Open verified examples" : "Open workspace"}
+          </button>}
+      </div>
+      {visibleWorkspace.length === 0 && <span>{matchingWorkspace.length === 0
+        ? "No dedicated workspace feature is recorded for this module in this build. Check registered and planned capabilities below."
+        : "No feature in this group matches the search."}</span>}
+      {matchingWorkspace.length > 0 && <div aria-label="Feature groups" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {(["All", ...groupOrder] as const).map(group => {
+          const count = group === "All" ? matchingWorkspace.length :
+            matchingWorkspace.filter(item => item.group === group).length;
+          return count > 0 && <button key={group} type="button" aria-pressed={featureGroup === group}
+            onClick={() => setFeatureGroup(group)}>{group} ({count})</button>;
+        })}
+      </div>}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 8 }}>
+        {visibleWorkspace.map(feature => <div key={feature.id} style={cardStyle}
+          data-testid={`workspace-feature-${feature.id}`}>
+          <strong>{feature.title}</strong>
+          <small>{feature.group} · {feature.id}</small>
+          <small>{feature.detail}</small>
+        </div>)}
+      </div>
+    </div>
     <div style={{ display: "grid", gap: 8 }}>
       <strong>Available here ({visibleAvailable.length})</strong>
       {visibleAvailable.length === 0 && <span>No verified operation in this app for {MODULE_LABELS[module]}.</span>}
