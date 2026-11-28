@@ -1,5 +1,6 @@
 /** Discoverable scientific intent, distinct from a host's executable implementation. */
 import { MATH3D_WORKER_OPERATION_REGISTRY, type Math3DWorkerOperationDefinition } from "./workerOperationRegistry";
+import { MODULE_SCIENTIFIC_OPERATIONS } from "./moduleScientificOperations";
 export const SCIENTIFIC_CAPABILITY_SCHEMA_VERSION = 1 as const;
 
 export const SCIENTIFIC_MODULES = [
@@ -154,7 +155,16 @@ const registeredMeshNormals: ScientificCapability = {
   methods: ["numerical"], validation: ["mesh-index-bounds"],
   execution: { deterministic: true, cancellable: false, supportsProgress: false },
 };
-const registeredCapabilities = new Map([...registeredCurvature, [registeredMeshNormals.id, registeredMeshNormals]]);
+const moduleCapabilities: ScientificCapability[] = MODULE_SCIENTIFIC_OPERATIONS.map(operation => ({
+  schemaVersion: 1, id: `${operation.module}.${operation.capability}`, version: "1.0.0",
+  module: operation.module, title: operation.title, category: "reference-operation",
+  status: "operation-registered", inputs: [{ name: "input", type: "JSON" }], parameters: [],
+  outputs: [{ name: "result", type: "JSON" }], methods: [operation.method],
+  validation: ["input-contract", "output-contract", "finite-values"],
+  execution: { deterministic: true, cancellable: false, supportsProgress: false },
+}));
+const registeredCapabilities = new Map([...registeredCurvature, [registeredMeshNormals.id, registeredMeshNormals],
+  ...moduleCapabilities.map(capability => [capability.id, capability] as const)]);
 
 const catalogued = (module: ScientificModule, name: string): ScientificCapability => ({
   schemaVersion: 1, id: `${module}.${name}`, version: "0.1.0", module,
@@ -201,5 +211,10 @@ export const SCIENTIFIC_CAPABILITY_REGISTRY = createScientificCapabilityRegistry
     implementationId: "math3d.surface.curvature-parametric" },
   { id: "surface.curvature.analytic-reference", version: "1.0.0", capabilityIds: [...registeredCurvature.keys()],
     method: "analytic", environments: ["browser", "desktop", "server"],
-    implementationId: "math3d.surface.curvature-analytic-reference" }, ...workerOperations],
+    implementationId: "math3d.surface.curvature-analytic-reference" },
+  ...MODULE_SCIENTIFIC_OPERATIONS.map(operation => ({
+    id: operation.id, version: "1.0.0", capabilityIds: [`${operation.module}.${operation.capability}`],
+    method: operation.method, environments: ["browser", "desktop", "server"] as const,
+    implementationId: `math3d.${operation.id}`,
+  })), ...workerOperations],
 );

@@ -60,6 +60,7 @@ export function ScientificCapabilitiesPanel({ initialModule, environment, implem
   onClose: () => void;
 }) {
   const [module, setModule] = useState(initialModule);
+  const [workflowRequest, setWorkflowRequest] = useState<{ operationId: string; serial: number } | null>(null);
   const [query, setQuery] = useState("");
   const [featureGroup, setFeatureGroup] = useState<ModuleWorkspaceFeature["group"] | "All">("All");
   const groups = scientificCapabilityGroups(module, environment, implementations);
@@ -133,11 +134,15 @@ export function ScientificCapabilitiesPanel({ initialModule, environment, implem
             <small>Workflow node: operation.{operation.id}</small>}
           {operation.id === "surface.curvature.parametric"
             ? <ParametricCurvaturePanel />
-            : <button type="button" onClick={() => onOpenOperation(operation.id)}>Open computation</button>}
+            : operation.category === "reference-operation"
+              ? <button type="button" onClick={() => setWorkflowRequest(current => ({
+                operationId: operation.id, serial: (current?.serial ?? 0) + 1 }))}>Add to workflow</button>
+              : <button type="button" onClick={() => onOpenOperation(operation.id)}>Open computation</button>}
         </div>)}
       </div>
     </div>
-    <ScientificWorkflowEditor environment={environment} implementations={implementations} />
+    <ScientificWorkflowEditor environment={environment} implementations={implementations}
+      request={workflowRequest} />
     <div style={{ display: "grid", gap: 8 }}>
       <strong>Registered operations, unavailable here ({visibleUnavailableOperations.length})</strong>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 8 }}>

@@ -1,4 +1,4 @@
-import type { ScientificWorkflowBinding } from "@math3d/core";
+import { moduleScientificOperationBindings, type ScientificWorkflowBinding } from "@math3d/core";
 import { surfaceCurvatureOperation } from "./surfaceAnalysis/surfaceCurvatureOperation";
 import { parametricSurfaceCurvatureOperation,
   type ParametricCurvatureParameters, type ParametricSurfaceSource } from
@@ -13,6 +13,7 @@ type JsonRecord = Record<string, unknown>;
 
 /** One adapter table is shared by the editor and server; each entry invokes a registered operation. */
 export const SCIENTIFIC_OPERATION_BINDINGS: Readonly<Record<string, ScientificWorkflowBinding>> = {
+  ...moduleScientificOperationBindings,
   "surface.curvature.compute": {
     implementationId: surfaceCurvatureOperation.definition.implementationId,
     execute: (input, parameters) => {

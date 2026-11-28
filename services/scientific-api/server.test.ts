@@ -21,10 +21,13 @@ describe("Scientific API verified server execution", () => {
     const response = await fetch(`${origin}/v1/operations`);
     expect(response.status).toBe(200);
     const report = await response.json();
-    expect(report.operations.map((item: { id: string }) => item.id)).toEqual([
+    expect(report.operations).toHaveLength(15);
+    expect(report.operations.map((item: { id: string }) => item.id)).toEqual(expect.arrayContaining([
       "surface.curvature.compute", "surface.curvature.parametric",
       "surface.curvature.analytic-reference", "mesh.normals.compute",
-    ]);
+      "graph2d.roots.quadratic", "graph3d.gradient.quadratic",
+      "quantum.probability-density.samples",
+    ]));
     expect(report.operations.some((item: { id: string }) => item.id === "curve.analyze")).toBe(false);
   });
 
@@ -54,6 +57,13 @@ describe("Scientific API verified server execution", () => {
     } });
     expect(outOfBounds.status).toBe(400);
     expect((await execute("curve.analyze", {})).status).toBe(404);
+  });
+
+  it("executes a new module operation through the HTTP client", async () => {
+    const client = await connectApiScientificOperations(origin);
+    const result = await client.execute("number-theory.modular-inverse.compute",
+      { value: 3, modulus: 11 }) as { inverse: number };
+    expect(result.inverse).toBe(4);
   });
 
   it("executes connected workflow nodes through the same verified bindings", async () => {

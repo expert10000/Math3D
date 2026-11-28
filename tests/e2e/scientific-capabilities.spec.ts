@@ -30,7 +30,7 @@ test("module capability discovery follows navigation and opens the verified Surf
     await module.selectOption("graph3d");
     await expect(panel).toContainText("Critical Points");
     await expect(panel).toContainText("No dedicated workspace feature");
-    await expect(panel).toContainText("No verified operation in this app for Graph 3D");
+    await expect(ctx.page.getByTestId("available-operation-graph3d.gradient.quadratic")).toBeVisible();
     await ctx.page.getByTestId("workspace-nav-mesh").click();
     await expect(module).toHaveValue("mesh");
     await expect(ctx.page.getByTestId("available-operation-mesh.normals.compute")).toBeVisible();
@@ -115,6 +115,29 @@ test("generic workflow editor runs a verified Mesh node", async () => {
     await editor.getByRole("button", { name: "Run workflow" }).click();
     await expect(editor.getByRole("status")).toContainText("step1 · mesh.normals.compute · completed",
       { timeout: 30_000 });
+  } finally {
+    await closeSurfaceApp(ctx);
+  }
+});
+
+test("a module operation opens the workflow editor and computes", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp();
+    await resetSurfaceAppState(ctx.page);
+    await ctx.page.getByTestId("scientific-capabilities-toggle").click();
+    await ctx.page.getByTestId("scientific-capabilities-module").selectOption("number-theory");
+    await ctx.page.getByTestId("available-operation-number-theory.modular-inverse.compute")
+      .getByRole("button", { name: "Add to workflow" }).click();
+    const editor = ctx.page.getByTestId("scientific-workflow-editor");
+    await expect(editor).toHaveAttribute("open", "");
+    await expect(editor.getByRole("textbox", { name: "Step 1 input" })).toHaveValue(
+      /"value": 3/);
+    await editor.getByRole("button", { name: "Run workflow" }).click();
+    await expect(editor.getByRole("status")).toContainText(
+      "step1 · number-theory.modular-inverse.compute · completed", { timeout: 30_000 });
+    await editor.getByText("step1 · number-theory.modular-inverse.compute · completed").click();
+    await expect(editor).toContainText('"inverse": 4');
   } finally {
     await closeSurfaceApp(ctx);
   }

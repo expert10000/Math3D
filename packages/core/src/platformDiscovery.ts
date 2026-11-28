@@ -1,6 +1,7 @@
 import { SCIENTIFIC_CAPABILITY_REGISTRY, type ScientificEnvironment,
   scientificModuleForWorkerOperation, type ScientificOperation } from "./scientificCapabilityRegistry";
 import { MATH3D_WORKER_OPERATION_REGISTRY } from "./workerOperationRegistry";
+import { MODULE_SCIENTIFIC_OPERATIONS, moduleScientificOperationParameterSchema } from "./moduleScientificOperations";
 
 export const PLATFORM_REGISTRY_KINDS = [
   "scientific-operations", "mathematical-objects", "computational-methods",
@@ -24,6 +25,8 @@ export type DiscoveryJsonSchema = Readonly<{
   minItems?: number;
   maxItems?: number;
   default?: string | number | boolean;
+  /** Valid starter value for a generated editor; execution still validates it. */
+  example?: unknown;
 }>;
 
 export type PlatformDescriptor = Readonly<{
@@ -381,6 +384,20 @@ const canonicalWorkerDescriptors: ScientificOperationDescriptor[] = MATH3D_WORKE
 
 export const MATH3D_PLATFORM_DISCOVERY = createPlatformDiscovery([
   surfaceCurvatureDescriptor, parametricCurvatureDescriptor, analyticCurvatureDescriptor, meshNormalsDescriptor,
+    ...MODULE_SCIENTIFIC_OPERATIONS.map(spec => {
+      const operation = SCIENTIFIC_CAPABILITY_REGISTRY.getOperation(spec.id)!;
+      return { ...operation, kind: "scientific-operations" as const, status: "registered" as const,
+        title: spec.title, description: spec.description, module: spec.module,
+        category: "reference-operation", schemaCompleteness: "complete" as const,
+        inputSchema: spec.inputSchema, parameterSchema: moduleScientificOperationParameterSchema,
+        outputSchema: spec.outputSchema, supportedMethods: [],
+        requiredCapabilities: operation.capabilityIds, visualizationIds: [],
+        validatorIds: ["validation.finite-values"], headlessSupported: true,
+        cancellable: false, cacheable: true, deterministic: true,
+        references: { validators: ["validation.finite-values"],
+          "runtime-providers": ["runtime.math3d-js"] },
+      } satisfies ScientificOperationDescriptor;
+    }),
   ...canonicalWorkerDescriptors,
   entry("mathematical-objects", "surface.catenoid", "Catenoid"),
   entry("mathematical-objects", "curve.helix", "Helix"),

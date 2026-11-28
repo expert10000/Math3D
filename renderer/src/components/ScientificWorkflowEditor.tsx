@@ -6,6 +6,7 @@ import { generatableScientificWorkflowNodes, type ScientificEnvironment,
 type Draft = { id: string; operationId: string; input: string; parameters: string };
 
 function scaffold(schema: DiscoveryJsonSchema): unknown {
+  if (schema.example !== undefined) return schema.example;
   if (schema.default !== undefined) return schema.default;
   if (schema.anyOf) return scaffold(schema.anyOf[0]);
   if (schema.type === "object") return Object.fromEntries((schema.required ?? []).map(key =>
@@ -17,8 +18,9 @@ function scaffold(schema: DiscoveryJsonSchema): unknown {
   return null;
 }
 
-export function ScientificWorkflowEditor({ environment, implementations }: {
+export function ScientificWorkflowEditor({ environment, implementations, request }: {
   environment: ScientificEnvironment; implementations: readonly string[];
+  request?: { operationId: string; serial: number } | null;
 }) {
   const nodes = generatableScientificWorkflowNodes({ environment, implementations });
   const [drafts, setDrafts] = useState<Draft[]>([]);
@@ -27,7 +29,21 @@ export function ScientificWorkflowEditor({ environment, implementations }: {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ScientificWorkflowRun | null>(null);
   const workerRef = useRef<Worker | null>(null);
+  const detailsRef = useRef<HTMLDetailsElement | null>(null);
   useEffect(() => () => workerRef.current?.terminate(), []);
+  useEffect(() => {
+    if (!request) return;
+    const node = nodes.find(item => item.operationId === request.operationId);
+    if (!node) return;
+    setSelected(node.operationId);
+    setDrafts(current => [...current, { id: `step${Math.max(0, ...current.map(item =>
+      Number(item.id.replace(/^step/, "")) || 0)) + 1}`, operationId: node.operationId,
+      input: JSON.stringify(scaffold(node.inputSchema), null, 2),
+      parameters: JSON.stringify(scaffold(node.parameterSchema), null, 2) }]);
+    detailsRef.current?.setAttribute("open", "");
+  // The serial changes only for an explicit click. The parent keeps the same node list otherwise.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [request?.serial]);
   if (!nodes.length) return null;
 
   const addStep = () => {
@@ -70,7 +86,7 @@ export function ScientificWorkflowEditor({ environment, implementations }: {
       setError(cause instanceof Error ? cause.message : String(cause));
     }
   };
-  return <details data-testid="scientific-workflow-editor" style={{ border: "1px solid #aac9f5",
+  return <details ref={detailsRef} data-testid="scientific-workflow-editor" style={{ border: "1px solid #aac9f5",
     borderRadius: 10, padding: 10, background: "white" }}>
     <summary>Workflow editor</summary>
     <div style={{ display: "grid", gap: 8, marginTop: 8 }}>

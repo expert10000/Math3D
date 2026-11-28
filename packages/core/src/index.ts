@@ -268,6 +268,7 @@ export * from "./scientificCapabilityRegistry";
 export * from "./platformDiscovery";
 export * from "./scientificOperationProducts";
 export * from "./scientificWorkflow";
+export * from "./moduleScientificOperations";
 export * from "./m3dBinaryResources";
 export * from "./graph2dTools";
 export * from "./graph2dStatus";

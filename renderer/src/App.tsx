@@ -427,6 +427,7 @@ import { parametricSurfaceCurvatureOperation } from "./surfaceAnalysis/parametri
 import { resolveScientificOperationAvailability } from "@math3d/core";
 import type { ScientificModule } from "@math3d/core";
 import { ScientificCapabilitiesPanel } from "./components/ScientificCapabilitiesPanel";
+import { moduleScientificOperationBindings } from "@math3d/core";
 import { adaptSurfaceCurvatureScientificResult } from "./surfaceAnalysis/surfaceScientificResult";
 import {
   SurfaceAnalysisScheduler,
@@ -82632,7 +82633,8 @@ case "mobius":
                 environment={window.appRuntime ? "desktop" : "browser"}
                 implementations={[surfaceCurvatureOperation.definition.implementationId,
                   parametricSurfaceCurvatureOperation.definition.implementationId,
-                  "worker:mesh.normals.compute"]}
+                  "worker:mesh.normals.compute",
+                  ...Object.values(moduleScientificOperationBindings).map(binding => binding.implementationId)]}
                 onClose={() => setScientificCapabilitiesOpen(false)}
                 onOpenWorkspace={(module, group) => {
                   if (module === "quantum") {
