@@ -2,24 +2,30 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { _electron as electron } from "playwright";
 import { expect } from "@playwright/test";
 import { createRequire } from "node:module";
 
-const [executable, producerPath, outputArgument] = process.argv.slice(2);
+const [executable, producerPath, outputArgument, existingProfileArgument, expectedLegacyCheckpoint] = process.argv.slice(2);
 if (![executable, producerPath, outputArgument].every(path => path && isAbsolute(path)))
   throw new Error("Pass absolute installed Math3D executable, producer receipt, and new output directory");
+if (existingProfileArgument && !isAbsolute(existingProfileArgument))
+  throw new Error("Existing upgrade profile must be absolute");
+if (existingProfileArgument && !/^[0-9a-f]{64}$/.test(expectedLegacyCheckpoint ?? ""))
+  throw new Error("Pass the expected 1.7 Project checkpoint SHA-256 with an upgrade profile");
 const require = createRequire(import.meta.url);
 const { importQuantumSceneBundle } = require("../dist/main/quantumScene/importer.js");
 const { sceneFingerprint } = require("../dist/main/quantumScene/recent.js");
 const producer = JSON.parse(await readFile(producerPath, "utf8"));
 assert.equal(producer.schema, "theory-lab/ute2-installed-producer/v1");
 assert.equal(producer.status, "passed");
-const output = resolve(outputArgument), profile = join(output, "profile"), transfer = join(output, "transfer");
-await mkdir(output); await mkdir(profile); await mkdir(transfer);
+const output = resolve(outputArgument), profile = existingProfileArgument ? resolve(existingProfileArgument) : join(output, "profile");
+const transfer = join(output, "transfer");
+if (existingProfileArgument) assert.equal((await stat(profile)).isDirectory(), true);
+await mkdir(output); if (!existingProfileArgument) await mkdir(profile); await mkdir(transfer);
 const source = join(output, "bulk.qscene"), edgeSource = join(output, "edge.qscene"), pack = join(output, "project.qpack");
 await cp(producer.bulk.scene, source, { recursive: true });
 await cp(producer.edge.scene, edgeSource, { recursive: true });
@@ -59,6 +65,12 @@ try {
   let page = await app.firstWindow();
   assert.equal(await app.evaluate(({ app }) => app.isPackaged), true);
   assert.equal(await app.evaluate(({ app }) => app.getVersion()), "2.0.0");
+  const legacyCheckpoint = async page => page.evaluate(() => localStorage.getItem("math3d.mixed-workspace.v1"));
+  if (existingProfileArgument) {
+    const checkpoint = await legacyCheckpoint(page);
+    assert.ok(checkpoint?.includes("Upgrade Graph from v1.7.0"));
+    assert.equal(createHash("sha256").update(checkpoint).digest("hex"), expectedLegacyCheckpoint);
+  }
   await expect(page.getByTestId("quantum-scene-preview")).toBeVisible({ timeout: 90_000 });
   const direct = await page.evaluate(request => window.quantumScenes.ute2TopologyReceipt(request), { fingerprint });
   assert.equal(direct.chern, -1); assert.equal(direct.resultSha256, producer.bulk.resultSha256);
@@ -121,6 +133,10 @@ try {
 
   app = await launch(profile);
   page = await app.firstWindow();
+  if (existingProfileArgument) {
+    const checkpoint = await legacyCheckpoint(page);
+    assert.equal(createHash("sha256").update(checkpoint ?? "").digest("hex"), expectedLegacyCheckpoint);
+  }
   await page.getByTestId("projects-toggle").click();
   projects = page.getByTestId("project-explorer-panel");
   await projects.getByTestId(`project-open-saved-${projectId}`).click();
@@ -153,7 +169,8 @@ try {
     producerSha256: await sha(producerPath), sceneFingerprint: fingerprint, edgeFingerprint,
     runId: report.runId, resultSha256: report.resultSha256, projectId, workbookId,
     studyEvidenceSha256: await sha(evidencePath), transferredPack: pack,
-    transferredProjectId: restored.identity.id, changedSourceWithheld: true };
+    transferredProjectId: restored.identity.id, changedSourceWithheld: true,
+    existingUpgradeProfile: Boolean(existingProfileArgument), legacyCheckpointSha256: expectedLegacyCheckpoint ?? null };
   await writeFile(join(output, "consumer.json"), JSON.stringify(record, null, 2) + "\n", { flag: "wx" });
   console.log(`Installed Math3D class-D consumer passed: ${projectId}, ${workbookId}`);
 } finally { await app.close(); }

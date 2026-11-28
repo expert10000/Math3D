@@ -4,7 +4,13 @@ param(
   [Parameter(Mandatory = $true)][string]$ReleaseManifestPath,
   [Parameter(Mandatory = $true)][string]$DevInstaller,
   [string]$WorkRoot = '',
-  [string]$EvidencePath = ''
+  [string]$EvidencePath = '',
+  [switch]$PreserveLocalRegistration,
+  [string]$OldPortableZip = '',
+  [string]$DevInstalledDirectory = '',
+  [string]$ExpectedDevExecutableSha256 = '',
+  [string]$ExpectedDevAsarSha256 = '',
+  [string]$ExpectedDevWorkerSha256 = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -22,7 +28,41 @@ if (Test-Path -LiteralPath $root) { throw "WorkRoot already exists: $root" }
 $registered = @(Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' -ErrorAction SilentlyContinue |
   ForEach-Object { Get-ItemProperty -LiteralPath $_.PSPath -ErrorAction SilentlyContinue } |
   Where-Object { $_.DisplayName -eq 'Math3D' })
-if ($registered.Count) { throw 'A stable Math3D installation is registered; use a clean Windows runner.' }
+if ($registered.Count -and -not $PreserveLocalRegistration -and -not ($OldPortableZip -and $DevInstalledDirectory)) {
+  throw 'A stable Math3D installation is registered; use a clean Windows runner.'
+}
+if ($DevInstalledDirectory -and (-not $OldPortableZip -or @($ExpectedDevExecutableSha256,
+      $ExpectedDevAsarSha256, $ExpectedDevWorkerSha256 | Where-Object { $_ -notmatch '^[0-9a-fA-F]{64}$' }).Count)) {
+  throw 'Payload overlay requires a published portable baseline and three expected payload SHA-256 values.'
+}
+
+$registryRoot = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall'
+$registrationBefore = @()
+$shortcutsBefore = @()
+if ($PreserveLocalRegistration) {
+  # This guarded mode changes only a disposable installation directory. Snapshot
+  # the two installer registrations and shortcuts that NSIS can update locally.
+  New-Item -ItemType Directory -Path $root | Out-Null
+  $registrationBefore = @(Get-ChildItem $registryRoot | ForEach-Object { Get-ItemProperty -LiteralPath $_.PSPath } |
+    Where-Object { $_.DisplayName -in @('Math3D', 'Math3D Dev') })
+  foreach ($item in $registrationBefore) {
+    $saved = Join-Path $root "registration-$($item.PSChildName).reg"
+    & reg.exe export "HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\$($item.PSChildName)" $saved /y | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Could not back up registration $($item.PSChildName)" }
+  }
+  $shortcutRoots = @([Environment]::GetFolderPath('Programs'), [Environment]::GetFolderPath('Desktop'))
+  $shortcutsBefore = @(foreach ($directory in $shortcutRoots) {
+    Get-ChildItem -LiteralPath $directory -Filter 'Math3D*.lnk' -File -Recurse -ErrorAction SilentlyContinue
+  })
+  $shortcutBackup = Join-Path $root 'shortcut-backup'
+  New-Item -ItemType Directory -Path $shortcutBackup | Out-Null
+  $shortcutsBefore = @($shortcutsBefore | ForEach-Object -Begin { $index = 0 } -Process {
+    $saved = Join-Path $shortcutBackup "$index.lnk"; $index++
+    Copy-Item -LiteralPath $_.FullName -Destination $saved
+    [pscustomobject]@{ FullName = $_.FullName; Saved = $saved;
+      Sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
+  })
+}
 
 $install = Join-Path $root 'Math3D'
 $rollbackInstall = Join-Path $root 'published-1.7-install-copy'
@@ -38,12 +78,14 @@ $evidence = [ordered]@{
   sourceCommit = (& git -C $repo rev-parse HEAD).Trim()
   checkedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
   installMode = 'same-directory-dev-overlay'; stableIdentityUpgrade = $false
+  oldPayloadMode = if ($OldPortableZip) { 'published-portable-extraction' } else { 'published-installer' }
+  devPayloadMode = if ($DevInstalledDirectory) { 'previously-installed-payload-copy' } else { 'installer' }
   oldVersion = '1.7.0'; devVersion = '2.0.0'; oldInstallerSha256 = $null
   devInstallerSha256 = $null; oldInstalledExecutableSha256 = $null
   devInstalledExecutableSha256 = $null; checkpointSha256 = $null
   profileInventorySha256 = $null; profileFileCount = $null
   checks = [ordered]@{ publishedBytes = 'pending'; unsignedDevBytes = 'pending'; oldInstall = 'pending'
-    seed = 'pending'; profileBackup = 'pending'; sameDirectoryDevInstall = 'pending'
+    seed = 'pending'; profileBackup = 'pending'; sameDirectoryDevInstall = 'pending'; sameDirectoryDevPayload = 'pending'
     retainedProjectAndSetting = 'pending'; rollbackProfile = 'pending'; rollbackOpen = 'pending' }
   failure = $null
 }
@@ -95,6 +137,15 @@ try {
     $manifest.math3d.installerSha256 -ne $oldHash) { throw 'Published 1.7 bytes differ from pinned release metadata.' }
   $evidence.oldInstallerSha256 = $oldHash
   $evidence.checks.publishedBytes = 'passed'
+  if ($OldPortableZip) {
+    $portable = (Resolve-Path -LiteralPath $OldPortableZip).Path
+    $portableHash = (Get-FileHash -LiteralPath $portable -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ([IO.Path]::GetFileName($portable) -ne 'Math3D-1.7.0-win-portable.zip' -or
+      $portableHash -ne '08adf6505a7c556a96e67f21d2fdface4f8a40e14ffeac4dde374175731116bf') {
+      throw 'Published portable 1.7 payload differs from pinned release bytes.'
+    }
+    $evidence.oldPortableSha256 = $portableHash
+  }
   if ([IO.Path]::GetFileName($dev) -ne 'Math3D Dev Setup 2.0.0.exe') { throw 'Expected the unsigned 2.0 Dev installer.' }
   $signature = Get-AuthenticodeSignature -LiteralPath $dev
   if ($signature.Status -ne 'NotSigned') { throw "Dev rehearsal expected an unsigned installer: $($signature.Status)" }
@@ -102,8 +153,16 @@ try {
   $evidence.devInstallerSha256 = (Get-FileHash -LiteralPath $dev -Algorithm SHA256).Hash.ToLowerInvariant()
   $evidence.checks.unsignedDevBytes = 'passed'
 
-  New-Item -ItemType Directory -Path $root | Out-Null
-  Invoke-Installer $old 'Published 1.7.0' 'Math3D.exe'
+  if (-not (Test-Path -LiteralPath $root)) { New-Item -ItemType Directory -Path $root | Out-Null }
+  if ($OldPortableZip) {
+    New-Item -ItemType Directory -Path $install | Out-Null
+    & 'C:\Program Files\7-Zip\7z.exe' x -y "-o$install" $portable | ForEach-Object { Write-Host $_ }
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath (Join-Path $install 'Math3D.exe'))) {
+      throw 'Published 1.7 portable extraction failed.'
+    }
+  } else {
+    Invoke-Installer $old 'Published 1.7.0' 'Math3D.exe'
+  }
   $oldExe = Join-Path $install 'Math3D.exe'
   $evidence.oldInstalledExecutableSha256 = (Get-FileHash -LiteralPath $oldExe -Algorithm SHA256).Hash.ToLowerInvariant()
   $evidence.checks.oldInstall = 'passed'
@@ -125,10 +184,32 @@ try {
   }
   $evidence.checks.profileBackup = 'passed'
 
-  Invoke-Installer $dev 'Unsigned Dev 2.0.0 overlay' 'Math3D Dev.exe'
+  if ($DevInstalledDirectory) {
+    $devPayload = (Resolve-Path -LiteralPath $DevInstalledDirectory).Path
+    $files = @(
+      @('Math3D Dev.exe', $ExpectedDevExecutableSha256),
+      @('resources\app.asar', $ExpectedDevAsarSha256),
+      @('resources\python-worker\worker.exe', $ExpectedDevWorkerSha256)
+    )
+    foreach ($file in $files) {
+      $actual = (Get-FileHash -LiteralPath (Join-Path $devPayload $file[0]) -Algorithm SHA256).Hash
+      if ($actual -ine $file[1]) { throw "Previously installed Dev payload mismatch: $($file[0])" }
+    }
+    & robocopy.exe $devPayload $install /E /R:2 /W:1 /NFL /NDL /NJH /NJS | Out-Null
+    if ($LASTEXITCODE -gt 7) { throw "Previously installed Dev payload copy failed: $LASTEXITCODE" }
+    foreach ($file in $files) {
+      $actual = (Get-FileHash -LiteralPath (Join-Path $install $file[0]) -Algorithm SHA256).Hash
+      if ($actual -ine $file[1]) { throw "Copied Dev payload mismatch: $($file[0])" }
+    }
+    $evidence.checks.sameDirectoryDevInstall = 'not-run'
+    $evidence.checks.sameDirectoryDevPayload = 'passed'
+  } else {
+    Invoke-Installer $dev 'Unsigned Dev 2.0.0 overlay' 'Math3D Dev.exe'
+    $evidence.checks.sameDirectoryDevInstall = 'passed'
+    $evidence.checks.sameDirectoryDevPayload = 'not-applicable'
+  }
   $devExe = Join-Path $install 'Math3D Dev.exe'
   $evidence.devInstalledExecutableSha256 = (Get-FileHash -LiteralPath $devExe -Algorithm SHA256).Hash.ToLowerInvariant()
-  $evidence.checks.sameDirectoryDevInstall = 'passed'
   $verify = Invoke-Phase 'verify' $devExe $profile $verifyFile
   if ($verify.checkpointSha256 -ne $seed.checkpointSha256 -or $verify.checkpointBytes -cne $seed.checkpointBytes) {
     throw 'Graph Project checkpoint bytes changed across Dev overlay.'
@@ -150,7 +231,44 @@ try {
   $evidence.status = 'failed'; $evidence.failure = $_.Exception.Message
   throw
 } finally {
+  $restoreFailure = $null
+  if ($PreserveLocalRegistration) {
+    try {
+      $registrationAfter = @(Get-ChildItem $registryRoot | ForEach-Object { Get-ItemProperty -LiteralPath $_.PSPath } |
+        Where-Object { $_.DisplayName -in @('Math3D', 'Math3D Dev') })
+      $oldKeys = @($registrationBefore | ForEach-Object { $_.PSChildName })
+      foreach ($item in $registrationAfter) {
+        if ($item.PSChildName -notin $oldKeys) {
+          Remove-Item -LiteralPath (Join-Path $registryRoot $item.PSChildName) -Recurse -Force
+        }
+      }
+      foreach ($item in $registrationBefore) {
+        & reg.exe import (Join-Path $root "registration-$($item.PSChildName).reg") | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "Could not restore registration $($item.PSChildName)" }
+      }
+      $shortcutRoots = @([Environment]::GetFolderPath('Programs'), [Environment]::GetFolderPath('Desktop'))
+      $shortcutsAfter = @(foreach ($directory in $shortcutRoots) {
+        Get-ChildItem -LiteralPath $directory -Filter 'Math3D*.lnk' -File -Recurse -ErrorAction SilentlyContinue
+      })
+      $oldShortcutNames = @($shortcutsBefore | ForEach-Object { $_.FullName })
+      foreach ($item in $shortcutsAfter) {
+        if ($item.FullName -notin $oldShortcutNames) { Remove-Item -LiteralPath $item.FullName -Force }
+      }
+      foreach ($item in $shortcutsBefore) {
+        Copy-Item -LiteralPath $item.Saved -Destination $item.FullName -Force
+        if ((Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -ne $item.Sha256) {
+          throw "Could not restore shortcut $($item.FullName)"
+        }
+      }
+      $evidence.localRegistrationRestored = $true
+    } catch {
+      $restoreFailure = $_.Exception.Message
+      $evidence.status = 'failed'; $evidence.localRegistrationRestored = $false
+      $evidence.registrationRestoreFailure = $restoreFailure
+    }
+  }
   New-Item -ItemType Directory -Path (Split-Path -Parent $EvidencePath) -Force | Out-Null
   $evidence | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $EvidencePath -Encoding UTF8
   Write-Host "Unsigned Dev upgrade evidence: $EvidencePath"
+  if ($restoreFailure) { throw $restoreFailure }
 }
