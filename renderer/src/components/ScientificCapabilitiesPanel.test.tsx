@@ -60,4 +60,13 @@ describe("module scientific capabilities", () => {
     expect(html).toContain("Graph 3D");
     expect(html).toContain("Quantum");
   });
+
+  it("shows the parametric operation editor only with its verified host binding", () => {
+    const html = renderToStaticMarkup(<ScientificCapabilitiesPanel initialModule="surface"
+      environment="browser" implementations={["math3d.surface.curvature-parametric"]}
+      onOpenOperation={() => {}} onOpenWorkspace={() => {}} onClose={() => {}} />);
+    expect(html).toContain("parametric-curvature-panel");
+    expect(html).toContain("x expression");
+    expect(html).toContain("Compute curvature");
+  });
 });

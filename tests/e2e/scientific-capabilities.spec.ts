@@ -77,3 +77,23 @@ test("verified Mesh normals route opens Mesh analysis", async () => {
     await closeSurfaceApp(ctx);
   }
 });
+
+test("parametric Surface operation computes in the capabilities panel", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp();
+    await resetSurfaceAppState(ctx.page);
+    await ctx.page.getByTestId("workspace-nav-surfaces").click();
+    await ctx.page.getByTestId("scientific-capabilities-toggle").click();
+    const editor = ctx.page.getByTestId("parametric-curvature-panel");
+    await expect(editor).toBeVisible();
+    await editor.getByRole("spinbutton", { name: "U samples" }).fill("5");
+    await editor.getByRole("spinbutton", { name: "V samples" }).fill("5");
+    await editor.getByRole("button", { name: "Compute curvature" }).click();
+    await expect(editor.getByRole("status")).toContainText("25 samples", { timeout: 30_000 });
+    await expect(editor.getByRole("status")).toContainText("reference passed");
+    await expect(editor.getByRole("img", { name: "Gaussian curvature field" })).toBeVisible();
+  } finally {
+    await closeSurfaceApp(ctx);
+  }
+});

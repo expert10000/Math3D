@@ -55,7 +55,8 @@ export function compareSurfaceCurvatureReference(reference: SurfaceCurvatureFiel
       !Number.isFinite(relativeTolerance) || relativeTolerance < 0)
     throw new RangeError("Reference tolerances must be nonnegative and finite.");
   if (reference.sampleCount !== candidate.sampleCount ||
-      reference.units.K !== candidate.units.K ||
+      (["K", "H", "k1", "k2"] as const).some(unit =>
+        reference.units[unit] !== candidate.units[unit]) ||
       reference.parameters.length !== candidate.parameters.length ||
       !Array.from(reference.parameters).every((value, index) =>
         Number.isFinite(value) && Math.abs(value - candidate.parameters[index]) <= 1e-10))
@@ -63,18 +64,23 @@ export function compareSurfaceCurvatureReference(reference: SurfaceCurvatureFiel
   let comparedCount = 0, squaredError = 0, maximumAbsoluteError = 0, passed = true;
   for (let index = 0; index < reference.sampleCount; index += 1) {
     if (!reference.validityMask[index] || !candidate.validityMask[index]) continue;
-    const expected = reference.gaussianCurvature[index];
-    const actual = candidate.gaussianCurvature[index];
-    if (!Number.isFinite(expected) || !Number.isFinite(actual)) continue;
-    const error = Math.abs(actual - expected);
-    maximumAbsoluteError = Math.max(maximumAbsoluteError, error);
-    squaredError += error * error;
+    const expectedValues = [reference.gaussianCurvature[index], reference.meanCurvature[index],
+      reference.principalCurvatures[index * 2], reference.principalCurvatures[index * 2 + 1]];
+    const actualValues = [candidate.gaussianCurvature[index], candidate.meanCurvature[index],
+      candidate.principalCurvatures[index * 2], candidate.principalCurvatures[index * 2 + 1]];
+    if (![...expectedValues, ...actualValues].every(Number.isFinite)) continue;
+    for (let channel = 0; channel < expectedValues.length; channel += 1) {
+      const expected = expectedValues[channel];
+      const error = Math.abs(actualValues[channel] - expected);
+      maximumAbsoluteError = Math.max(maximumAbsoluteError, error);
+      squaredError += error * error;
+      if (error > absoluteTolerance + relativeTolerance * Math.abs(expected)) passed = false;
+    }
     comparedCount += 1;
-    if (error > absoluteTolerance + relativeTolerance * Math.abs(expected)) passed = false;
   }
   return { sampleCount: reference.sampleCount, comparedCount,
     coverage: reference.sampleCount ? comparedCount / reference.sampleCount : 0,
-    rmse: comparedCount ? Math.sqrt(squaredError / comparedCount) : null,
+    rmse: comparedCount ? Math.sqrt(squaredError / (comparedCount * 4)) : null,
     maximumAbsoluteError: comparedCount ? maximumAbsoluteError : null,
     tolerance: absoluteTolerance, passed: passed && comparedCount === reference.validDomainCount };
 }

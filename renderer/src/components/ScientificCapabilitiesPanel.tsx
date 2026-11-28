@@ -7,6 +7,7 @@ import { MATH3D_PLATFORM_DISCOVERY, SCIENTIFIC_CAPABILITY_REGISTRY, SCIENTIFIC_M
   type ScientificOperationDescriptor } from "@math3d/core";
 import { MODULE_WORKSPACE_ENTRY, MODULE_WORKSPACE_FEATURES,
   type ModuleWorkspaceFeature } from "./moduleWorkspaceFeatures";
+import { ParametricCurvaturePanel } from "./ParametricCurvaturePanel";
 
 const MODULE_LABELS: Record<ScientificModule, string> = {
   graph2d: "Graph 2D", graph3d: "Graph 3D", curve: "Curves", surface: "Surfaces",
@@ -129,7 +130,9 @@ export function ScientificCapabilitiesPanel({ initialModule, environment, implem
             .join(", ")}</small>}
           {scientificWorkflowNode(operation, { environment, implementations }) &&
             <small>Workflow node: operation.{operation.id}</small>}
-          <button type="button" onClick={() => onOpenOperation(operation.id)}>Open computation</button>
+          {operation.id === "surface.curvature.parametric"
+            ? <ParametricCurvaturePanel />
+            : <button type="button" onClick={() => onOpenOperation(operation.id)}>Open computation</button>}
         </div>)}
       </div>
     </div>

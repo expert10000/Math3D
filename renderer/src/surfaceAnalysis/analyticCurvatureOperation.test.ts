@@ -33,6 +33,9 @@ describe("analytic Surface curvature reference", () => {
     const comparison = compareSurfaceCurvatureReference(reference, changed, 0.01);
     expect(comparison.passed).toBe(false);
     expect(comparison.maximumAbsoluteError).toBeCloseTo(0.1);
+    const changedMean = { ...reference, meanCurvature: new Float64Array(reference.meanCurvature) };
+    changedMean.meanCurvature[12] += 0.1;
+    expect(compareSurfaceCurvatureReference(reference, changedMean, 0.01).passed).toBe(false);
     const otherGrid = analyticSurfaceCurvatureOperation.execute({ presetId: "saddle", resolutionU: 3,
       resolutionV: 3 });
     expect(() => compareSurfaceCurvatureReference(reference, otherGrid, 0.01))

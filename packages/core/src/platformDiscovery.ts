@@ -226,6 +226,61 @@ const surfaceCurvatureDescriptor: ScientificOperationDescriptor = {
     metrics: curvatureMetricIds,
   },
 };
+const parametricCurvatureOperation = SCIENTIFIC_CAPABILITY_REGISTRY.getOperation(
+  "surface.curvature.parametric")!;
+const parameterRangeSchema: DiscoveryJsonSchema = { type: "object", additionalProperties: false,
+  properties: { min: { type: "number" }, max: { type: "number" },
+    periodic: { type: "boolean" } }, required: ["min", "max"] };
+const parametricCurvatureDescriptor: ScientificOperationDescriptor = {
+  ...parametricCurvatureOperation, kind: "scientific-operations", status: "registered",
+  title: "Compute parametric Surface curvature",
+  description: "Sample a serializable parametric Surface using adaptive numerical derivatives; compare against a matching exact preset when one is supplied.",
+  module: "surface", category: "differential-geometry", schemaCompleteness: "complete",
+  inputSchema: { type: "object", additionalProperties: false,
+    properties: { surface: { type: "object", additionalProperties: false, properties: {
+      kind: { type: "string", enum: ["parametric"] },
+      expressions: { type: "object", additionalProperties: false,
+        properties: { x: { type: "string" }, y: { type: "string" }, z: { type: "string" } },
+        required: ["x", "y", "z"] },
+      domain: { type: "object", additionalProperties: false,
+        properties: { u: parameterRangeSchema, v: parameterRangeSchema }, required: ["u", "v"] },
+      lengthUnit: { type: "string" }, orientationSign: { type: "integer", enum: [-1, 1] },
+      referencePresetId: { type: "string" },
+    }, required: ["kind", "expressions", "domain"] } }, required: ["surface"] },
+  parameterSchema: { type: "object", additionalProperties: false, properties: {
+    resolutionU: { type: "integer", minimum: 2, maximum: 256, default: 128 },
+    resolutionV: { type: "integer", minimum: 2, maximum: 256, default: 128 },
+    absoluteTolerance: { type: "number", minimum: 0, default: 0.001 },
+    relativeTolerance: { type: "number", minimum: 0, default: 0.01 },
+  } },
+  outputSchema: { type: "object", additionalProperties: false, properties: {
+    field: curvatureOutputSchema,
+    validation: { type: "object", additionalProperties: false, properties: {
+      finiteValues: { type: "boolean" }, domainCoverage: { type: "number", minimum: 0, maximum: 1 },
+      referenceStatus: { type: "string", enum: ["passed", "failed", "unavailable"] },
+      referenceRmse: numericValue, referenceMaximumAbsoluteError: numericValue,
+      referenceComparedCount: { type: "integer", minimum: 0 },
+    }, required: ["finiteValues", "domainCoverage", "referenceStatus", "referenceRmse",
+      "referenceMaximumAbsoluteError", "referenceComparedCount"] },
+  }, required: ["field", "validation"] },
+  supportedMethods: ["surface.curvature.parametric-numerical"],
+  requiredCapabilities: parametricCurvatureOperation.capabilityIds,
+  visualizationIds: ["view.scalarField", "view.histogram"],
+  validatorIds: ["validation.finite-values", "validation.domain-coverage",
+    "validation.referenceTolerance"],
+  headlessSupported: true, cancellable: false, cacheable: true, deterministic: true,
+  references: {
+    "computational-methods": ["surface.curvature.parametric-numerical"],
+    "scientific-features": ["surface.gaussianCurvature"],
+    visualizations: ["view.scalarField", "view.histogram"],
+    validators: ["validation.finite-values", "validation.domain-coverage",
+      "validation.referenceTolerance"],
+    "ui-routes": ["workspace.surfaces.analysis"],
+    workflows: ["flow.surface.curvatureAnalysis"],
+    "runtime-providers": ["runtime.math3d-js"],
+    metrics: ["metric.rmse"],
+  },
+};
 const analyticCurvatureOperation = SCIENTIFIC_CAPABILITY_REGISTRY.getOperation(
   "surface.curvature.analytic-reference")!;
 const analyticCurvatureDescriptor: ScientificOperationDescriptor = {
@@ -325,11 +380,12 @@ const canonicalWorkerDescriptors: ScientificOperationDescriptor[] = MATH3D_WORKE
 });
 
 export const MATH3D_PLATFORM_DISCOVERY = createPlatformDiscovery([
-  surfaceCurvatureDescriptor, analyticCurvatureDescriptor, meshNormalsDescriptor,
+  surfaceCurvatureDescriptor, parametricCurvatureDescriptor, analyticCurvatureDescriptor, meshNormalsDescriptor,
   ...canonicalWorkerDescriptors,
   entry("mathematical-objects", "surface.catenoid", "Catenoid"),
   entry("mathematical-objects", "curve.helix", "Helix"),
   entry("computational-methods", "surface.curvature.sampled-numerical", "Sampled numerical curvature"),
+  entry("computational-methods", "surface.curvature.parametric-numerical", "Parametric numerical curvature"),
   entry("computational-methods", "surface.curvature.exact-analytic", "Exact analytic curvature"),
   entry("computational-methods", "mesh.curvature.angleDefect", "Angle defect curvature"),
   entry("computational-methods", "mesh.normals.area-weighted", "Area weighted vertex normals"),

@@ -423,6 +423,7 @@ import { SurfaceDocumentAdapter, surfaceDocumentFromLegacyDefinition } from "./s
 import { SurfaceMeshKernelHandoff } from "./surfaceAnalysis/surfaceMeshKernelHandoff";
 import { createSurfaceCurvaturePayload, surfaceCurvatureRegionIndices } from "./surfaceAnalysis/surfaceCurvature";
 import { surfaceCurvatureOperation } from "./surfaceAnalysis/surfaceCurvatureOperation";
+import { parametricSurfaceCurvatureOperation } from "./surfaceAnalysis/parametricCurvatureOperation";
 import { resolveScientificOperationAvailability } from "@math3d/core";
 import type { ScientificModule } from "@math3d/core";
 import { ScientificCapabilitiesPanel } from "./components/ScientificCapabilitiesPanel";
@@ -82630,6 +82631,7 @@ case "mobius":
                 initialModule={activeCapabilityModule}
                 environment={window.appRuntime ? "desktop" : "browser"}
                 implementations={[surfaceCurvatureOperation.definition.implementationId,
+                  parametricSurfaceCurvatureOperation.definition.implementationId,
                   "worker:mesh.normals.compute"]}
                 onClose={() => setScientificCapabilitiesOpen(false)}
                 onOpenWorkspace={(module, group) => {
