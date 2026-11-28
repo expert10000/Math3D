@@ -56,7 +56,7 @@ describe("module scientific capabilities", () => {
     expect(html).toContain("Open workspace");
     expect(html).toContain("Create (");
     expect(html).toContain("Analyze (");
-    expect((html.match(/<option/g) ?? []).length).toBe(SCIENTIFIC_MODULES.length);
+    expect((html.match(/<option/g) ?? []).length).toBeGreaterThanOrEqual(SCIENTIFIC_MODULES.length);
     expect(html).toContain("Graph 3D");
     expect(html).toContain("Quantum");
   });

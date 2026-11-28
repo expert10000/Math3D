@@ -194,12 +194,12 @@ export const SCIENTIFIC_CAPABILITY_REGISTRY = createScientificCapabilityRegistry
   [...SCIENTIFIC_MODULES.flatMap(module => moduleCatalog[module].map(name =>
     registeredCapabilities.get(`${module}.${name}`) ?? catalogued(module, name))), ...workerCapabilities],
   [{ id: "surface.curvature.compute", version: "1.0.0", capabilityIds: [...registeredCurvature.keys()],
-    method: "numerical", environments: ["browser", "desktop"],
+    method: "numerical", environments: ["browser", "desktop", "server"],
     implementationId: "math3d.surface.curvature-field" },
   { id: "surface.curvature.parametric", version: "1.0.0", capabilityIds: [...registeredCurvature.keys()],
-    method: "numerical", environments: ["browser", "desktop"],
+    method: "numerical", environments: ["browser", "desktop", "server"],
     implementationId: "math3d.surface.curvature-parametric" },
   { id: "surface.curvature.analytic-reference", version: "1.0.0", capabilityIds: [...registeredCurvature.keys()],
-    method: "analytic", environments: ["browser", "desktop"],
+    method: "analytic", environments: ["browser", "desktop", "server"],
     implementationId: "math3d.surface.curvature-analytic-reference" }, ...workerOperations],
 );

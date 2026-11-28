@@ -1,5 +1,26 @@
 # Standalone scientific-scene publisher (SSR-05)
 
+## Scientific operation API
+
+Build and start the loopback Math3D scientific API with `npm run build:scientific-api` and
+`npm run start:scientific-api`. Python 3.10+ uses only the standard library:
+
+```python
+from scientific_operations import connect_scientific_api
+
+client = connect_scientific_api("http://127.0.0.1:8772")
+print(client.operations())
+result = client.execute("mesh.normals.compute", {
+    "mesh": {"positions": [0, 0, 0, 1, 0, 0, 0, 1, 0], "indices": [0, 1, 2]}
+})
+print(result["normals"])
+```
+
+The client obtains the server's actual binding report, checks requests and responses
+against the operation descriptors, and can call `client.run_workflow(steps)`.
+Only complete operations bound by that server are listed. The caller chooses the
+trusted server origin; the service listens on `127.0.0.1` by default.
+
 This standard-library Python 3.10+ module writes a bounded `scientific-scene/v1` `.sscene` directory. It is a producer-side tool, **not** a Python runtime embedded in Math3D. It does not import Math3D, start Electron, or contact a worker. The source hash identifies the published component payload bytes in manifest order; it does not authenticate the producer or prove scientific correctness.
 
 From Python or a Jupyter notebook:

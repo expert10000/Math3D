@@ -97,3 +97,25 @@ test("parametric Surface operation computes in the capabilities panel", async ()
     await closeSurfaceApp(ctx);
   }
 });
+
+test("generic workflow editor runs a verified Mesh node", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp();
+    await resetSurfaceAppState(ctx.page);
+    await ctx.page.getByTestId("scientific-capabilities-toggle").click();
+    const editor = ctx.page.getByTestId("scientific-workflow-editor");
+    await editor.locator("summary").first().click();
+    await editor.getByRole("combobox", { name: "Workflow operation" })
+      .selectOption("mesh.normals.compute");
+    await editor.getByRole("button", { name: "Add step" }).click();
+    await editor.getByRole("textbox", { name: "Step 1 input" }).fill(JSON.stringify({ mesh: {
+      positions: [0, 0, 0, 1, 0, 0, 0, 1, 0], indices: [0, 1, 2],
+    } }));
+    await editor.getByRole("button", { name: "Run workflow" }).click();
+    await expect(editor.getByRole("status")).toContainText("step1 · mesh.normals.compute · completed",
+      { timeout: 30_000 });
+  } finally {
+    await closeSurfaceApp(ctx);
+  }
+});

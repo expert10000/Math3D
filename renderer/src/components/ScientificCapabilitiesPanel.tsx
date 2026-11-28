@@ -8,6 +8,7 @@ import { MATH3D_PLATFORM_DISCOVERY, SCIENTIFIC_CAPABILITY_REGISTRY, SCIENTIFIC_M
 import { MODULE_WORKSPACE_ENTRY, MODULE_WORKSPACE_FEATURES,
   type ModuleWorkspaceFeature } from "./moduleWorkspaceFeatures";
 import { ParametricCurvaturePanel } from "./ParametricCurvaturePanel";
+import { ScientificWorkflowEditor } from "./ScientificWorkflowEditor";
 
 const MODULE_LABELS: Record<ScientificModule, string> = {
   graph2d: "Graph 2D", graph3d: "Graph 3D", curve: "Curves", surface: "Surfaces",
@@ -136,6 +137,7 @@ export function ScientificCapabilitiesPanel({ initialModule, environment, implem
         </div>)}
       </div>
     </div>
+    <ScientificWorkflowEditor environment={environment} implementations={implementations} />
     <div style={{ display: "grid", gap: 8 }}>
       <strong>Registered operations, unavailable here ({visibleUnavailableOperations.length})</strong>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 8 }}>
